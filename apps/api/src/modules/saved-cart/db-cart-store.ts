@@ -91,11 +91,28 @@ export class DbCartStore implements CartStore {
   }
 
   async markConverted(identity: CartIdentity, locationId: string): Promise<void> {
-    const existing = await this.findActive(this.prisma, identity, locationId);
-    if (!existing) return;
-    await this.prisma.savedCart.update({
-      where: { id: existing.id },
-      data: { status: SavedCartStatus.CONVERTED },
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await this.findActive(tx, identity, locationId);
+      if (!existing) return;
+
+      const identityWhere =
+        identity.kind === "user"
+          ? { userId: identity.userId, guestToken: null }
+          : { guestToken: identity.guestToken, userId: null };
+
+      await tx.savedCart.deleteMany({
+        where: {
+          ...identityWhere,
+          locationId,
+          status: SavedCartStatus.CONVERTED,
+          id: { not: existing.id },
+        },
+      });
+
+      await tx.savedCart.update({
+        where: { id: existing.id },
+        data: { status: SavedCartStatus.CONVERTED },
+      });
     });
   }
 

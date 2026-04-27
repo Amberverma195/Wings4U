@@ -16,7 +16,15 @@ export function getPublicApiBase(): string {
 
 /** Socket.IO connects to the API process directly (not proxied through Next). */
 export function getRealtimeOrigin(): string {
-  return process.env.NEXT_PUBLIC_REALTIME_ORIGIN ?? "http://127.0.0.1:3001";
+  const configured = process.env.NEXT_PUBLIC_REALTIME_ORIGIN?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return "http://127.0.0.1:3001";
 }
 
 export const DEFAULT_LOCATION_ID =
