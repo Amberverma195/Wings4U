@@ -9,10 +9,8 @@ import { isAuthorizedForSurface, policyForPath } from "./src/lib/surface-policy"
  * Scope is intentionally narrow:
  *   - Signed-out / invalid / expired JWT -> redirect to `/auth/login`.
  *   - Valid JWT whose role/employeeRole claim fails the surface policy ->
- *     rewrite to `/403` with a real HTTP 403 status so the browser, curl,
- *     and any consumer sees a proper Forbidden response. Rewriting (not
- *     redirecting) keeps the URL bar on the requested path and avoids a
- *     302 -> 200 pattern that some clients cache oddly.
+ *     allow the request through to the authoritative server layout, which
+ *     can fail closed as a 404 using the current DB-backed session.
  *   - Valid JWT satisfying the surface policy -> allow through.
  *
  * This is a prefilter only. It never hits the database and it never reaches
@@ -43,8 +41,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!isAuthorizedForSurface(session, policyId)) {
-    const deniedUrl = new URL("/403", req.url);
-    return NextResponse.rewrite(deniedUrl, { status: 403 });
+    return NextResponse.next();
   }
 
   return NextResponse.next();
