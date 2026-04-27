@@ -18,6 +18,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const showMarketingSections = pathname === "/";
   const isSaucesRoute = pathname === "/sauces";
+  const isKdsRoute = pathname === "/kds" || pathname?.startsWith("/kds/");
   /** Login/signup use a neutral background; global embers sit above main (z-index 996) and add an orange wash. */
   const hideFireEmbers = /^\/auth\/(login|signup)\/?$/.test(pathname ?? "");
   /** Only scroll to top on real route changes — not on mount/remount while staying on the same path (fixes scroll jumping while reading the page). */
@@ -47,6 +48,15 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
       <div style={styles.app}>
         <WingKingsGlobalStyle />
         <FireEmbers />
+        {children}
+      </div>
+    );
+  }
+
+  if (isKdsRoute) {
+    return (
+      <div style={styles.app}>
+        <WingKingsGlobalStyle />
         {children}
       </div>
     );

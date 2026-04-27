@@ -9,6 +9,7 @@ declare module "express-serve-static-core" {
       role: "CUSTOMER" | "STAFF" | "ADMIN";
       employeeRole?: "MANAGER" | "CASHIER" | "KITCHEN" | "DRIVER";
       locationId?: string;
+      stationLocationId?: string;
       isPosSession: boolean;
       sessionId: string;
     };

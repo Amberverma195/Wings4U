@@ -19,6 +19,7 @@ import {
   Min,
 } from "class-validator";
 import type { Request } from "express";
+import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { KDS_STAFF, Roles } from "../../common/decorators/roles.decorator";
@@ -151,7 +152,7 @@ class BusyModeHistoryQueryDto {
 }
 
 @Controller("kds")
-@UseGuards(LocationScopeGuard, StoreNetworkGuard)
+@UseGuards(LocationScopeGuard, StoreNetworkGuard, KdsStationGuard)
 export class KdsController {
   constructor(
     private readonly kdsService: KdsService,

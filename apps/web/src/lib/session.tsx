@@ -41,6 +41,7 @@ export interface SessionState {
   authenticated: boolean;
   user: SessionUser | null;
   isPosSession: boolean;
+  stationLocationId?: string;
   profileComplete: boolean;
   needsProfileCompletion: boolean;
   /** Re-fetch session from server */
@@ -53,6 +54,7 @@ interface SessionApiResponse {
   authenticated: boolean;
   user?: SessionUser;
   is_pos_session?: boolean;
+  station_location_id?: string;
   profile_complete: boolean;
   needs_profile_completion: boolean;
 }
@@ -60,6 +62,7 @@ interface SessionApiResponse {
 const SIGNED_OUT_SESSION: SessionApiResponse = {
   authenticated: false,
   is_pos_session: false,
+  station_location_id: undefined,
   profile_complete: false,
   needs_profile_completion: false,
 };
@@ -73,6 +76,7 @@ const SessionContext = createContext<SessionState>({
   authenticated: false,
   user: null,
   isPosSession: false,
+  stationLocationId: undefined,
   profileComplete: false,
   needsProfileCompletion: false,
   refresh: async () => {},
@@ -177,6 +181,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       authenticated: data.authenticated,
       user: data.user ?? null,
       isPosSession: data.is_pos_session === true,
+      stationLocationId: data.station_location_id,
       profileComplete: data.profile_complete,
       needsProfileCompletion: data.needs_profile_completion,
       refresh: fetchSession,

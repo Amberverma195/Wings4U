@@ -4,7 +4,7 @@
  * The standalone `/manager` surface has been removed. Manager-role staff
  * still remain valid KDS operators, so this suite now focuses on:
  *
- *   - KDS HTTP policy: ADMIN, any STAFF, and in-store network only
+ *   - KDS HTTP policy: ADMIN, any KDS station STAFF, and in-store network only
  *   - driver availability mutation policy: ADMIN or self-driver only
  *   - refresh preserving `employeeRole` for KDS staff
  *   - `/auth/session` exposing authoritative `employeeRole`
@@ -82,12 +82,15 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
     userId: string,
     role: UserRole,
     employeeRole?: EmployeeRole,
+    station?: { locationId: string; isPosSession?: boolean },
   ): Promise<SessionHandle> {
     const refresh = randomBytes(48).toString("hex");
     const session = await prisma.authSession.create({
       data: {
         userId,
         refreshTokenHash: sha256(refresh),
+        locationId: station?.locationId,
+        isPosSession: station?.isPosSession ?? false,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
     });
@@ -150,10 +153,18 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
 
     adminSession = await createSession(adminUserId, "ADMIN");
     customerSession = await createSession(customerUserId, "CUSTOMER");
-    managerSession = await createSession(managerUserId, "STAFF", "MANAGER");
-    kitchenSession = await createSession(kitchenUserId, "STAFF", "KITCHEN");
-    cashierSession = await createSession(cashierUserId, "STAFF", "CASHIER");
-    driverSession = await createSession(driverUserId, "STAFF", "DRIVER");
+    managerSession = await createSession(managerUserId, "STAFF", "MANAGER", {
+      locationId,
+    });
+    kitchenSession = await createSession(kitchenUserId, "STAFF", "KITCHEN", {
+      locationId,
+    });
+    cashierSession = await createSession(cashierUserId, "STAFF", "CASHIER", {
+      locationId,
+    });
+    driverSession = await createSession(driverUserId, "STAFF", "DRIVER", {
+      locationId,
+    });
 
     await prisma.employeeProfile.update({
       where: { userId: cashierUserId },
@@ -284,6 +295,18 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
       expect(Array.isArray(res.body.data)).toBe(true);
     });
 
+    it("rejects normal STAFF sessions that have not unlocked the KDS station", async () => {
+      const normalStaff = await createSession(cashierUserId, "STAFF", "CASHIER");
+
+      const res = await request(server)
+        .get(`${BASE}/kds/orders`)
+        .set(authHeaders(normalStaff.token, locationId))
+        .set("X-Forwarded-For", TRUSTED_IP)
+        .expect(403);
+
+      expect(res.body.errors[0].message).toContain("KDS station access");
+    });
+
     it("rejects KDS driver picker outside the trusted store network", async () => {
       const res = await request(server)
         .get(`${BASE}/drivers/available`)
@@ -351,6 +374,8 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
         role: "CUSTOMER" | "STAFF" | "ADMIN";
         employeeRole?: EmployeeRole;
         locationId?: string;
+        stationLocationId?: string;
+        isPosSession?: boolean;
       },
     ) => {
       const authorizer = realtime as unknown as {
@@ -361,6 +386,8 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
             role: "CUSTOMER" | "STAFF" | "ADMIN";
             employeeRole?: EmployeeRole;
             locationId?: string;
+            stationLocationId?: string;
+            isPosSession: boolean;
             sessionId: string;
           },
           socket: {
@@ -374,7 +401,11 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
 
       return authorizer.authorizeKdsLocationChannel(
         locationId,
-        { ...user, sessionId: `e2e-${user.userId}` },
+        {
+          ...user,
+          isPosSession: user.isPosSession ?? false,
+          sessionId: `e2e-${user.userId}`,
+        },
         {
           handshake: {
             headers: { "x-forwarded-for": ip },
@@ -406,6 +437,7 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
             role: "STAFF",
             employeeRole,
             locationId,
+            stationLocationId: locationId,
           }),
         ).resolves.toBeNull();
       }

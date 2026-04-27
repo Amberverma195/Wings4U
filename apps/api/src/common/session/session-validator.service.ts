@@ -21,6 +21,7 @@ export interface AuthorizedSession {
   role: UserRole;
   employeeRole?: EmployeeRole;
   locationId?: string;
+  stationLocationId?: string;
   isPosSession: boolean;
   sessionId: string;
 }
@@ -96,6 +97,7 @@ export class SessionValidator {
       employeeRole: dbRole === "STAFF" ? dbEmployeeRole : undefined,
       locationId:
         dbRole === "STAFF" ? session.user.employeeProfile?.locationId : undefined,
+      stationLocationId: session.locationId ?? undefined,
       isPosSession: session.isPosSession === true,
       sessionId: session.id,
     };

@@ -1670,7 +1670,12 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
 
 function canAccessKds(session: SessionState): boolean {
   if (!session.authenticated || !session.user) return false;
-  return session.user.role === "ADMIN" || session.user.role === "STAFF";
+  if (session.user.role === "ADMIN") return true;
+  return (
+    session.user.role === "STAFF" &&
+    !session.isPosSession &&
+    session.stationLocationId === DEFAULT_LOCATION_ID
+  );
 }
 
 export function KdsClient() {

@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { IsString } from "class-validator";
 import type { Request } from "express";
+import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -30,10 +31,11 @@ export class DriversController {
 
   /**
    * Used by the KDS surface to pick a driver to assign. It follows the
-   * same in-store station rule as KDS itself.
+   * same in-store station rule as KDS itself: ADMIN session or KDS PIN
+   * station session for STAFF.
    */
   @Get("available")
-  @UseGuards(StoreNetworkGuard)
+  @UseGuards(StoreNetworkGuard, KdsStationGuard)
   @Roles(POLICIES.KDS_STAFF_OR_ADMIN)
   async getAvailable(@Req() req: Request) {
     return this.driversService.getAvailableDrivers(req.locationId!);

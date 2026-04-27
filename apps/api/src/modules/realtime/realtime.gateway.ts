@@ -46,6 +46,8 @@ interface SocketUser {
   role: "CUSTOMER" | "STAFF" | "ADMIN";
   employeeRole?: "MANAGER" | "CASHIER" | "KITCHEN" | "DRIVER";
   locationId?: string;
+  stationLocationId?: string;
+  isPosSession: boolean;
   sessionId: string;
 }
 
@@ -112,6 +114,8 @@ export class RealtimeGateway
       role: session.role,
       employeeRole: session.employeeRole,
       locationId: session.locationId,
+      stationLocationId: session.stationLocationId,
+      isPosSession: session.isPosSession,
       sessionId: session.sessionId,
     };
 
@@ -292,6 +296,8 @@ export class RealtimeGateway
       role: session.role,
       employeeRole: session.employeeRole,
       locationId: session.locationId,
+      stationLocationId: session.stationLocationId,
+      isPosSession: session.isPosSession,
       sessionId: session.sessionId,
     };
 
@@ -396,6 +402,10 @@ export class RealtimeGateway
 
     if (!user.locationId || user.locationId !== locationId) {
       return "Insufficient permissions - wrong location";
+    }
+
+    if (user.isPosSession || user.stationLocationId !== locationId) {
+      return "KDS access requires KDS station access";
     }
 
     return null;

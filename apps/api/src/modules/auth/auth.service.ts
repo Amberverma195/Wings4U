@@ -99,6 +99,7 @@ interface SessionInfo {
     email?: string;
   };
   is_pos_session: boolean;
+  station_location_id?: string;
   profile_complete: boolean;
   needs_profile_completion: boolean;
 }
@@ -689,6 +690,7 @@ export class AuthService {
       userId: string;
       role: string;
       employeeRole?: string;
+      stationLocationId?: string;
       isPosSession?: boolean;
     },
   ): Promise<SessionInfo> {
@@ -742,6 +744,7 @@ export class AuthService {
         email: email ?? undefined,
       },
       is_pos_session: authUser.isPosSession === true,
+      station_location_id: authUser.stationLocationId,
       profile_complete: complete,
       needs_profile_completion: !complete,
     };
