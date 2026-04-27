@@ -12,6 +12,7 @@ import type { ApiEnvelope } from "@wings4u/contracts";
 import type { OrderSummary } from "@/lib/types";
 import { ACTIVE_STATUSES, TERMINAL_STATUSES } from "@/lib/types";
 import { AccountSkeleton } from "@/components/account-skeleton";
+import { AccountSurfaceLinks } from "../account-surface-links";
 
 import styles from "./orders.module.css";
 
@@ -133,18 +134,11 @@ export function OrdersListClient() {
                   <span>My Cards</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                {session.user?.role === "ADMIN" && (
-                  <>
-                    <Link href="/admin" className={styles.navLink}>
-                      <span>Admin Panel</span>
-                      <span className={styles.navLinkArrow}>→</span>
-                    </Link>
-                    <Link href="/kds" className={styles.navLink}>
-                      <span>KDS</span>
-                      <span className={styles.navLinkArrow}>→</span>
-                    </Link>
-                  </>
-                )}
+                <AccountSurfaceLinks
+                  user={session.user}
+                  navLinkClassName={styles.navLink}
+                  navLinkArrowClassName={styles.navLinkArrow}
+                />
                 <button onClick={handleLogout} className={styles.navLink} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ color: '#ef4444' }}>Logout</span>
                   <span className={styles.navLinkArrow} style={{ color: '#ef4444' }}>→</span>

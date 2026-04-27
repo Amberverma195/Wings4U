@@ -8,6 +8,7 @@ import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import type { ActivePromo } from "@/lib/types";
 import { AccountSkeleton } from "@/components/account-skeleton";
+import { AccountSurfaceLinks } from "../account-surface-links";
 
 import styles from "./profile.module.css";
 
@@ -280,18 +281,11 @@ export default function ProfilePage() {
                   <span>My Cards</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                {session.user?.role === "ADMIN" && (
-                  <>
-                    <Link href="/admin" className={styles.navLink}>
-                      <span>Admin Panel</span>
-                      <span className={styles.navLinkArrow}>→</span>
-                    </Link>
-                    <Link href="/kds" className={styles.navLink}>
-                      <span>KDS</span>
-                      <span className={styles.navLinkArrow}>→</span>
-                    </Link>
-                  </>
-                )}
+                <AccountSurfaceLinks
+                  user={session.user}
+                  navLinkClassName={styles.navLink}
+                  navLinkArrowClassName={styles.navLinkArrow}
+                />
                 <button
                   type="button"
                   onClick={() => setLogoutConfirmOpen(true)}

@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { AccountSkeleton } from "@/components/account-skeleton";
 import styles from "../addresses/addresses.module.css";
 import { RequireAuthModal } from "@/components/require-auth-modal";
+import { AccountSurfaceLinks } from "../account-surface-links";
 
 function formatPhoneNumber(phone?: string | null) {
   if (!phone) return "";
@@ -123,18 +124,11 @@ function CardsContent() {
                   <span>My Cards</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                {session.user?.role === "ADMIN" && (
-                  <>
-                    <Link href="/admin" className={styles.navLink}>
-                      <span>Admin Panel</span>
-                      <span className={styles.navLinkArrow}>→</span>
-                    </Link>
-                    <Link href="/kds" className={styles.navLink}>
-                      <span>KDS</span>
-                      <span className={styles.navLinkArrow}>→</span>
-                    </Link>
-                  </>
-                )}
+                <AccountSurfaceLinks
+                  user={session.user}
+                  navLinkClassName={styles.navLink}
+                  navLinkArrowClassName={styles.navLinkArrow}
+                />
                 <button onClick={handleLogout} className={styles.navLink} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ color: '#ef4444' }}>Logout</span>
                   <span className={styles.navLinkArrow} style={{ color: '#ef4444' }}>→</span>
