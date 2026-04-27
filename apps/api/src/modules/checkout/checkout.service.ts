@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
+import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import {
@@ -888,11 +889,10 @@ export class CheckoutService {
       // rolls back the debit. The row lock held to COMMIT prevents concurrent
       // checkouts from double-spending the same balance.
       if (walletAppliedCents > 0) {
-        const wallet = await tx.customerWallet.findUnique({
-          where: { customerUserId: params.userId },
-          select: { balanceCents: true },
-        });
-        const currentBalance = wallet?.balanceCents ?? 0;
+        const currentBalance = await lockAndReadWalletBalanceCents(
+          tx,
+          params.userId,
+        );
         if (currentBalance < walletAppliedCents) {
           throw new UnprocessableEntityException({
             message: "Insufficient wallet balance",

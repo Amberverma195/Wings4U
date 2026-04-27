@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
+import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import {
@@ -420,10 +421,11 @@ export class OrderChangesService {
       // approval increases the total, debit the wallet for the delta. Runs in
       // the same transaction so everything rolls back on any later failure.
       if (order.paymentMethod === "STORE_CREDIT" && priceDelta > 0) {
-        const wallet = await tx.customerWallet.findUnique({
-          where: { customerUserId: order.customerUserId },
-        });
-        if (!wallet || wallet.balanceCents < priceDelta) {
+        const balanceAfterLock = await lockAndReadWalletBalanceCents(
+          tx,
+          order.customerUserId,
+        );
+        if (balanceAfterLock < priceDelta) {
           throw new UnprocessableEntityException({
             message: "Insufficient wallet balance to approve this change",
             field: "items",
