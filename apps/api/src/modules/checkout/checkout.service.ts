@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  HttpException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -24,13 +23,21 @@ import {
   type SaladCustomizationInput,
   type PricingPolicy,
   computePricing,
-  getLocationLocalDate,
-  isLunchSpecialMenuItem,
-  buildScheduleViolationBody,
   getBuilderPriceDelta,
   parseRemovedIngredients,
   getSaladCustomization,
 } from "../shared/pricing";
+import {
+  assertLocationOpenForFulfillment,
+  assertMenuItemOrderable,
+  assertModifierOptionAllowedForItem,
+  assertWingFlavoursOrderable,
+  collectScheduleViolation,
+  collectWingFlavourRefs,
+  getScheduleContext,
+  loadWingFlavourMapForRefs,
+  throwScheduleViolations,
+} from "../shared/order-validation";
 
 type PlaceOrderParams = {
   userId: string;
@@ -435,7 +442,11 @@ export class CheckoutService {
       const menuItemMap = new Map(menuItems.map((menuItem) => [menuItem.id, menuItem]));
 
       const allOptionIds = params.items.flatMap(
-        (item) => item.modifierSelections?.map((selection) => selection.modifierOptionId) ?? [],
+        (item) => {
+          const standardOpts = item.modifierSelections?.map((selection) => selection.modifierOptionId) ?? [];
+          const saladOpts = getSaladCustomization(item.builderPayload)?.modifierOptionIds ?? [];
+          return [...standardOpts, ...saladOpts];
+        }
       );
       const rawModifierOptions =
         allOptionIds.length > 0
@@ -482,45 +493,23 @@ export class CheckoutService {
       const scheduleViolationIds: string[] = [];
       const lunchScheduleViolationIds: string[] = [];
       const timezone = location.timezoneName ?? "America/Toronto";
-      const local = getLocationLocalDate(scheduledReference, timezone);
-      const dow = local.getDay();
-      const hhmm = local.getHours() * 60 + local.getMinutes();
-      for (const cartItem of params.items) {
-        const menuItem = menuItemMap.get(cartItem.menuItemId);
-        if (menuItem && menuItem.schedules.length > 0) {
-          const inWindow = menuItem.schedules.some((schedule) => {
-            if (schedule.dayOfWeek !== dow) return false;
-            const from = new Date(schedule.timeFrom);
-            const to = new Date(schedule.timeTo);
-            const fromMin = from.getUTCHours() * 60 + from.getUTCMinutes();
-            const toMin = to.getUTCHours() * 60 + to.getUTCMinutes();
-            return hhmm >= fromMin && hhmm < toMin;
-          });
-          if (!inWindow) {
-            scheduleViolationIds.push(menuItem.id);
-            if (isLunchSpecialMenuItem(menuItem)) {
-              lunchScheduleViolationIds.push(menuItem.id);
-            }
-          }
-        }
-        if (menuItem?.requiresSpecialInstructions && !cartItem.specialInstructions?.trim()) {
-          throw new UnprocessableEntityException({
-            message: `"${menuItem.name}" requires special instructions`,
-            field: "items",
-          });
-        }
-      }
-      if (scheduleViolationIds.length > 0) {
-        throw new HttpException(
-          buildScheduleViolationBody({
-            affectedItemIds: scheduleViolationIds,
-            timezone,
-            lunchOnly:
-              lunchScheduleViolationIds.length === scheduleViolationIds.length,
-          }),
-          422,
-        );
-      }
+      const scheduleContext = getScheduleContext(scheduledReference, timezone);
+
+      await assertLocationOpenForFulfillment({
+        db: tx,
+        locationId: params.locationId,
+        fulfillmentType: params.fulfillmentType,
+        context: scheduleContext,
+      });
+
+      const wingFlavourRefs = params.items.flatMap((item) =>
+        collectWingFlavourRefs(item.builderPayload),
+      );
+      const wingFlavourMap = await loadWingFlavourMapForRefs({
+        db: tx,
+        locationId: params.locationId,
+        refs: wingFlavourRefs,
+      });
 
       let itemSubtotalCents = 0;
       const lineItems: {
@@ -554,27 +543,17 @@ export class CheckoutService {
         }
         // PRD §8 precedence: soft-deleted / archived items must be rejected
         // before the is_available check so the error is accurate and explicit.
-        if (menuItem.archivedAt) {
-          throw new UnprocessableEntityException({
-            message: `Menu item "${menuItem.name}" is no longer available`,
-            field: "items",
-          });
-        }
-        if (!menuItem.isAvailable) {
-          throw new UnprocessableEntityException({
-            message: `Menu item "${menuItem.name}" is currently unavailable`,
-            field: "items",
-          });
-        }
-        if (
-          menuItem.allowedFulfillmentType !== "BOTH" &&
-          menuItem.allowedFulfillmentType !== params.fulfillmentType
-        ) {
-          throw new UnprocessableEntityException({
-            message: `Menu item "${menuItem.name}" is not available for ${params.fulfillmentType}`,
-            field: "items",
-          });
-        }
+        assertMenuItemOrderable({
+          menuItem,
+          fulfillmentType: params.fulfillmentType,
+          specialInstructions: cartItem.specialInstructions,
+        });
+        collectScheduleViolation(
+          menuItem,
+          scheduleContext,
+          scheduleViolationIds,
+          lunchScheduleViolationIds,
+        );
 
         const removedIngredients = getRemovedIngredientsFromInput({
           removedIngredients: cartItem.removedIngredients,
@@ -604,12 +583,17 @@ export class CheckoutService {
               field: "items",
             });
           }
-          if (saladMenuItem.archivedAt) {
-            throw new UnprocessableEntityException({
-              message: `Salad menu item "${saladMenuItem.name}" is no longer available`,
-              field: "items",
-            });
-          }
+          assertMenuItemOrderable({
+            menuItem: saladMenuItem,
+            fulfillmentType: params.fulfillmentType,
+            label: "Salad",
+          });
+          collectScheduleViolation(
+            saladMenuItem,
+            scheduleContext,
+            scheduleViolationIds,
+            lunchScheduleViolationIds,
+          );
 
           const allowedSaladIngredientMap = new Map(
             saladMenuItem.removableIngredients.map((ingredient) => [ingredient.id, ingredient]),
@@ -648,8 +632,16 @@ export class CheckoutService {
           }
         }
 
+        assertWingFlavoursOrderable({
+          builderPayload: cartItem.builderPayload,
+          wingFlavourMap,
+        });
+
         let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload);
         const modifiers: (typeof lineItems)[number]["modifiers"] = [];
+        const saladModifierOptionIds = new Set(
+          saladCustomization?.modifierOptionIds ?? [],
+        );
 
         if (cartItem.modifierSelections) {
           for (let selectionIndex = 0; selectionIndex < cartItem.modifierSelections.length; selectionIndex++) {
@@ -660,6 +652,9 @@ export class CheckoutService {
                 message: `Modifier option ${selection.modifierOptionId} not found or inactive`,
                 field: "items",
               });
+            }
+            if (!saladModifierOptionIds.has(selection.modifierOptionId)) {
+              assertModifierOptionAllowedForItem({ option, menuItem });
             }
             modifierTotalCents += option.priceDeltaCents;
             modifiers.push({
@@ -731,6 +726,12 @@ export class CheckoutService {
           modifiers,
         });
       }
+
+      throwScheduleViolations({
+        scheduleViolationIds,
+        lunchScheduleViolationIds,
+        timezone,
+      });
 
       let deliveryFeeCents = 0;
       if (params.fulfillmentType === "DELIVERY") {
@@ -1032,14 +1033,15 @@ export class CheckoutService {
         });
 
         for (const slot of flavourSlots) {
+          const f = wingFlavourMap.get(slot.wing_flavour_id);
           await tx.orderItemFlavour.create({
             data: {
               orderItemId: orderItem.id,
               slotNo: slot.slot_no,
               flavourRole: "STANDARD",
               wingFlavourId: slot.wing_flavour_id,
-              flavourNameSnapshot: slot.flavour_name,
-              heatLevelSnapshot: "",
+              flavourNameSnapshot: f ? f.name : slot.flavour_name,
+              heatLevelSnapshot: f ? f.heatLevel : "",
               placement: (slot.placement ?? "ON_WINGS") as "ON_WINGS" | "ON_SIDE" | "MIXED",
               sortOrder: slot.slot_no,
             },
@@ -1047,16 +1049,17 @@ export class CheckoutService {
         }
 
         if (extraFlavour) {
+          const f = wingFlavourMap.get(extraFlavour.wing_flavour_id);
           await tx.orderItemFlavour.create({
             data: {
               orderItemId: orderItem.id,
-              slotNo: flavourSlots.length + 1,
+              slotNo: 99,
               flavourRole: "EXTRA",
               wingFlavourId: extraFlavour.wing_flavour_id,
-              flavourNameSnapshot: extraFlavour.flavour_name,
-              heatLevelSnapshot: "",
-              placement: (extraFlavour.placement ?? "ON_WINGS") as "ON_WINGS" | "ON_SIDE" | "MIXED",
-              sortOrder: flavourSlots.length + 1,
+              flavourNameSnapshot: f ? f.name : extraFlavour.flavour_name,
+              heatLevelSnapshot: f ? f.heatLevel : "",
+              placement: (extraFlavour.placement ?? "ON_SIDE") as "ON_WINGS" | "ON_SIDE" | "MIXED",
+              sortOrder: 99,
             },
           });
         }

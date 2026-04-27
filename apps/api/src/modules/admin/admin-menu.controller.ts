@@ -31,6 +31,22 @@ import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { AdminMenuService } from "./admin-menu.service";
 
+// ── Wing Flavours DTO ──
+
+class CreateUpdateWingFlavourDto {
+  @IsString()
+  name!: string;
+
+  @IsIn(["MILD", "MEDIUM", "HOT", "DRY_RUB"])
+  category!: "MILD" | "MEDIUM" | "HOT" | "DRY_RUB";
+
+  @IsInt()
+  sort_order!: number;
+
+  @IsBoolean()
+  is_active!: boolean;
+}
+
 // ── Nested DTOs ──
 
 class ModifierGroupRefDto {
@@ -162,6 +178,38 @@ export class AdminMenuController {
   @Get("modifier-groups")
   async listModifierGroups(@Req() req: Request) {
     return this.adminMenuService.listModifierGroups(req.locationId!);
+  }
+
+  // ── Wing Flavours (Sauces) ──
+
+  @Get("wing-flavours")
+  async listWingFlavours(@Req() req: Request) {
+    return this.adminMenuService.listWingFlavours(req.locationId!);
+  }
+
+  @Post("wing-flavours")
+  async createWingFlavour(
+    @Body() body: CreateUpdateWingFlavourDto,
+    @Req() req: Request,
+  ) {
+    return this.adminMenuService.createWingFlavour(req.locationId!, body);
+  }
+
+  @Put("wing-flavours/:id")
+  async updateWingFlavour(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: CreateUpdateWingFlavourDto,
+    @Req() req: Request,
+  ) {
+    return this.adminMenuService.updateWingFlavour(req.locationId!, id, body);
+  }
+
+  @Delete("wing-flavours/:id")
+  async archiveWingFlavour(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.adminMenuService.archiveWingFlavour(req.locationId!, id);
   }
 
   // ── Items ──

@@ -75,6 +75,7 @@ export function CartPage() {
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkoutValidating, setCheckoutValidating] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [menu, setMenu] = useState<MenuResponse | null>(null);
@@ -756,16 +757,52 @@ export function CartPage() {
                 <button
                   type="button"
                   className="cart-checkout-fire-btn"
-                  onClick={() => {
+                  onClick={async () => {
                     if (lunchScheduleConflict || deliveryBlockedMessage || deliveryMinimumBlocked)
                       return;
-                    router.push("/checkout");
+
+                    setCheckoutValidating(true);
+                    setQuoteError(null);
+                    try {
+                      const env = await apiJson<CartQuoteResponse>("/api/v1/cart/quote", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          location_id: cart.locationId,
+                          fulfillment_type: cart.fulfillmentType,
+                          items: cart.items.map((item) => ({
+                            menu_item_id: item.menu_item_id,
+                            quantity: item.quantity,
+                            modifier_selections: item.modifier_selections.map((modifier) => ({
+                              modifier_option_id: modifier.modifier_option_id,
+                            })),
+                            removed_ingredients: getRemovedIngredientsForApi(item),
+                            special_instructions: item.special_instructions || undefined,
+                            builder_payload: item.builder_payload,
+                          })),
+                          scheduled_for: cart.scheduledFor ?? undefined,
+                          promo_code: promoApplied.trim() || undefined,
+                          driver_tip_cents: tipCents,
+                          apply_wings_reward: applyWingsReward ? true : undefined,
+                        }),
+                        locationId: cart.locationId,
+                      });
+                      setQuote(env.data);
+                      router.push("/checkout");
+                    } catch (cause) {
+                      setQuoteError(cause instanceof Error ? cause.message : "Failed to validate cart");
+                    } finally {
+                      setCheckoutValidating(false);
+                    }
                   }}
                   disabled={Boolean(
-                    lunchScheduleConflict || deliveryBlockedMessage || deliveryMinimumBlocked,
+                    lunchScheduleConflict ||
+                      deliveryBlockedMessage ||
+                      deliveryMinimumBlocked ||
+                      checkoutValidating,
                   )}
                 >
-                  <span className="btn-label">CHECKOUT {"\u2192"}</span>
+                  <span className="btn-label">{checkoutValidating ? "VALIDATING..." : "CHECKOUT \u2192"}</span>
                 </button>
               </div>
             </aside>

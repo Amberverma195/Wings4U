@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
 import * as crypto from "node:crypto";
@@ -33,6 +34,13 @@ export type CreateUpdateItemPayload = {
 
 export type CreateUpdateCategoryPayload = {
   name: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
+export type CreateUpdateWingFlavourPayload = {
+  name: string;
+  category: "MILD" | "MEDIUM" | "HOT" | "DRY_RUB";
   sort_order: number;
   is_active: boolean;
 };
@@ -207,6 +215,76 @@ export class AdminMenuService {
           },
         },
       },
+    });
+  }
+
+  // ────────── Wing Flavours ──────────
+
+  async listWingFlavours(locationId: string) {
+    return this.prisma.wingFlavour.findMany({
+      where: { locationId, archivedAt: null, heatLevel: { not: "PLAIN" } },
+      orderBy: [
+        { sortOrder: "asc" }
+      ],
+    });
+  }
+
+  async createWingFlavour(locationId: string, data: CreateUpdateWingFlavourPayload) {
+    if ((data as { category?: string }).category === "PLAIN") {
+      throw new UnprocessableEntityException("Plain sauce is managed by the system");
+    }
+    const slug = generateSlug(data.name);
+    const existing = await this.prisma.wingFlavour.findUnique({
+      where: { locationId_slug: { locationId, slug } },
+    });
+    const finalSlug = existing ? `${slug}-${crypto.randomBytes(2).toString("hex")}` : slug;
+
+    return this.prisma.wingFlavour.create({
+      data: {
+        locationId,
+        name: data.name,
+        slug: finalSlug,
+        heatLevel: data.category,
+        isPlain: false,
+        isActive: data.is_active,
+        sortOrder: data.sort_order,
+      },
+    });
+  }
+
+  async updateWingFlavour(locationId: string, id: string, data: CreateUpdateWingFlavourPayload) {
+    const flavour = await this.prisma.wingFlavour.findFirst({
+      where: { id, locationId, archivedAt: null },
+    });
+    if (!flavour) throw new NotFoundException("Sauce not found");
+    if (flavour.heatLevel === "PLAIN") {
+      throw new UnprocessableEntityException("Plain sauce is managed by the system");
+    }
+
+    return this.prisma.wingFlavour.update({
+      where: { id },
+      data: {
+        name: data.name,
+        heatLevel: data.category,
+        isPlain: false,
+        isActive: data.is_active,
+        sortOrder: data.sort_order,
+      },
+    });
+  }
+
+  async archiveWingFlavour(locationId: string, id: string) {
+    const flavour = await this.prisma.wingFlavour.findFirst({
+      where: { id, locationId, archivedAt: null },
+    });
+    if (!flavour) throw new NotFoundException("Sauce not found");
+    if (flavour.heatLevel === "PLAIN") {
+      throw new UnprocessableEntityException("Plain sauce is managed by the system");
+    }
+
+    return this.prisma.wingFlavour.update({
+      where: { id },
+      data: { archivedAt: new Date(), isActive: false },
     });
   }
 

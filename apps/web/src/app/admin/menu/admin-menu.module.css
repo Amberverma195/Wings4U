@@ -41,6 +41,38 @@
   border-color: rgba(194, 73, 20, 0.34);
 }
 
+.menuTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(23, 18, 13, 0.12);
+}
+
+.menuTab {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(23, 18, 13, 0.62);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.78rem 1rem;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.menuTab:hover {
+  background: rgba(255, 252, 248, 0.74);
+  color: #130e0a;
+}
+
+.menuTab[data-active="true"] {
+  background: rgba(194, 73, 20, 0.14);
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px rgba(194, 73, 20, 0.18);
+}
+
 .categoryDock {
   position: sticky;
   top: 4.75rem;
@@ -208,6 +240,102 @@
     rgba(247, 237, 226, 0.95) 100%
   ) !important;
   border: 1px solid rgba(110, 73, 36, 0.18) !important;
+}
+
+.sauceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(23, 18, 13, 0.12);
+}
+
+.sauceTitle {
+  margin: 0.2rem 0 0;
+  color: #130e0a;
+  font-size: 1.25rem;
+}
+
+.sauceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.sauceGroup {
+  min-width: 0;
+  border: 1px solid rgba(110, 73, 36, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 252, 248, 0.68);
+  padding: 0.95rem;
+}
+
+.sauceGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+  color: rgba(23, 18, 13, 0.72);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sauceList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.sauceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.58rem 0.65rem;
+  border: 1px solid rgba(110, 73, 36, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 251, 246, 0.92);
+}
+
+.sauceRow[data-inactive="true"] {
+  opacity: 0.62;
+}
+
+.sauceNameBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.sauceName {
+  color: rgba(23, 18, 13, 0.88);
+  font-size: 0.94rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sauceStatus {
+  color: #8d2519;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sauceEmpty {
+  border: 1px dashed rgba(110, 73, 36, 0.18);
+  border-radius: 14px;
+  color: rgba(23, 18, 13, 0.5);
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 1rem;
+  text-align: center;
 }
 
 .toolbar {
@@ -789,10 +917,57 @@
   padding: 1rem 1.5rem;
   border-top: 1px solid rgba(23, 18, 13, 0.12);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
   background: rgba(255, 250, 243, 0.74);
+}
+
+.modalFooterActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.sauceModalContent {
+  max-width: 640px;
+  border-radius: 18px;
+}
+
+.sauceFormGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.label {
+  font-size: 0.81rem;
+  color: rgba(23, 18, 13, 0.78);
+  font-weight: 700;
+}
+
+.sauceStatusToggle {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(110, 73, 36, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 252, 248, 0.76);
+  color: rgba(23, 18, 13, 0.78);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.sauceStatusToggle .checkbox {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
 }
 
 .btnCancel {
@@ -883,6 +1058,10 @@
   .categoryDock {
     top: 4.1rem;
   }
+
+  .sauceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -913,5 +1092,26 @@
 
   .modalIntroMeta {
     justify-content: flex-start;
+  }
+
+  .sauceHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sauceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modalFooter {
+    justify-content: stretch;
+  }
+
+  .modalFooterActions {
+    width: 100%;
+  }
+
+  .modalFooterActions > button {
+    flex: 1;
   }
 }

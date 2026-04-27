@@ -19,3 +19,13 @@ export type FullMenuItem = {
   allowedFulfillmentType: "BOTH" | "PICKUP" | "DELIVERY";
   category: { id: string; name: string };
 };
+
+export type WingFlavour = {
+  id: string;
+  name: string;
+  slug: string;
+  heatLevel: "MILD" | "MEDIUM" | "HOT" | "DRY_RUB" | "PLAIN";
+  isPlain: boolean;
+  isActive: boolean;
+  sortOrder: number;
+};

@@ -205,6 +205,30 @@ async function getDeliveryOrderInput(
   };
 }
 
+async function setAlwaysOpenLocationHours(
+  prisma: PrismaService,
+  locationId: string,
+) {
+  await prisma.locationHours.deleteMany({
+    where: { locationId, serviceType: { in: ["PICKUP", "DELIVERY"] } },
+  });
+
+  for (const serviceType of ["PICKUP", "DELIVERY"] as const) {
+    for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek++) {
+      await prisma.locationHours.create({
+        data: {
+          locationId,
+          serviceType,
+          dayOfWeek,
+          timeFrom: new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
+          timeTo: new Date(Date.UTC(1970, 0, 1, 23, 59, 0)),
+          isClosed: false,
+        },
+      });
+    }
+  }
+}
+
 describe("API (e2e)", () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication["getHttpServer"]>;
@@ -242,6 +266,7 @@ describe("API (e2e)", () => {
       where: { code: "LON01" },
     });
     locationId = location!.id;
+    await setAlwaysOpenLocationHours(prisma, locationId);
 
     const users = await prisma.user.findMany({
       include: { employeeProfile: true },
@@ -3573,6 +3598,383 @@ describe("API (e2e)", () => {
       expect(res.body.errors.length).toBeGreaterThan(0);
       expect(res.body.errors[0]).toHaveProperty("code");
       expect(res.body.errors[0]).toHaveProperty("message");
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  13. Admin Sauces & Checkout Safety                                  */
+  /* ------------------------------------------------------------------ */
+
+  describe("Admin Sauces & Checkout Safety", () => {
+    let sauceId: string;
+    let inactiveSauceId: string;
+    let categoryId: string;
+    let archivedSaladId: string;
+    let pickupOnlySaladId: string;
+    let wingItemId: string;
+    let foreignModifierOptionId: string;
+
+    const adminCookie = () => `access_token=${adminToken}; csrf_token=${CSRF}`;
+
+    beforeAll(async () => {
+      const suffix = randomUUID().slice(0, 8);
+      const wingItem = await prisma.menuItem.findFirstOrThrow({
+        where: {
+          locationId,
+          builderType: "WINGS",
+          isAvailable: true,
+          archivedAt: null,
+        },
+      });
+      wingItemId = wingItem.id;
+
+      // 1. Create a sauce
+      const createSauceRes = await request(server)
+        .post(`${BASE}/admin/menu/wing-flavours`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .send({
+          name: `Test Archivable Sauce ${suffix}`,
+          category: "HOT",
+          sort_order: 1,
+          is_active: true,
+        })
+        .expect(201);
+      sauceId = createSauceRes.body.data.id;
+
+      const inactiveSauceRes = await request(server)
+        .post(`${BASE}/admin/menu/wing-flavours`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .send({
+          name: `Test Inactive Sauce ${suffix}`,
+          category: "MILD",
+          sort_order: 2,
+          is_active: false,
+        })
+        .expect(201);
+      inactiveSauceId = inactiveSauceRes.body.data.id;
+
+      // 2. Setup category and salad for child validation tests
+      const catRes = await request(server)
+        .post(`${BASE}/admin/menu/categories`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .send({
+          name: `Safety Category ${suffix}`,
+          sort_order: 10,
+          is_active: true,
+        })
+        .expect(201);
+      categoryId = catRes.body.data.id;
+
+      const saladRes = await request(server)
+        .post(`${BASE}/admin/menu/items`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .send({
+          name: `Test Salad ${suffix}`,
+          category_id: categoryId,
+          base_price_cents: 800,
+          stock_status: "NORMAL",
+          is_hidden: false,
+          allowed_fulfillment_type: "BOTH",
+        })
+        .expect(201);
+      archivedSaladId = saladRes.body.data.id;
+
+      const pickupOnlySaladRes = await request(server)
+        .post(`${BASE}/admin/menu/items`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .send({
+          name: `Pickup Salad ${suffix}`,
+          category_id: categoryId,
+          base_price_cents: 800,
+          stock_status: "NORMAL",
+          is_hidden: false,
+          allowed_fulfillment_type: "PICKUP",
+        })
+        .expect(201);
+      pickupOnlySaladId = pickupOnlySaladRes.body.data.id;
+
+      const foreignGroup = await prisma.modifierGroup.create({
+        data: {
+          locationId,
+          name: `Foreign Safety Group ${suffix}`,
+          displayLabel: "Foreign Safety Group",
+          selectionMode: "SINGLE",
+          minSelect: 0,
+          maxSelect: 1,
+          sortOrder: 999,
+        },
+      });
+      const foreignOption = await prisma.modifierOption.create({
+        data: {
+          modifierGroupId: foreignGroup.id,
+          name: `Foreign Option ${suffix}`,
+          priceDeltaCents: 50,
+          isActive: true,
+          sortOrder: 1,
+        },
+      });
+      foreignModifierOptionId = foreignOption.id;
+    });
+
+    it("Archived sauce rejection: should reject cart if a sauce is archived", async () => {
+      // Archive the sauce
+      await request(server)
+        .delete(`${BASE}/admin/menu/wing-flavours/${sauceId}`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .expect(200);
+
+      // Quote should fail
+      const quoteRes = await request(server)
+        .post(`${BASE}/cart/quote`)
+        .set("X-Location-Id", locationId)
+        .send({
+          fulfillment_type: "PICKUP",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              modifier_selections: [],
+              builder_payload: {
+                builder_type: "WINGS",
+                flavour_slots: [{ slot_no: 1, wing_flavour_id: sauceId, flavour_name: "Test Archivable Sauce", placement: "ON_WINGS" }],
+              },
+            },
+          ],
+        });
+
+      expect(quoteRes.status).toBe(422);
+      expect(quoteRes.body.errors[0].message).toContain("Test Archivable Sauce");
+      expect(quoteRes.body.errors[0].message).toContain("no longer available");
+    });
+
+    it("Archived sauce rejection: should also reject checkout", async () => {
+      const res = await authedPost(server, "/checkout", customerToken, locationId)
+        .set("Idempotency-Key", randomUUID())
+        .send({
+          location_id: locationId,
+          fulfillment_type: "PICKUP",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              modifier_selections: [],
+              builder_payload: {
+                builder_type: "WINGS",
+                flavour_slots: [{ slot_no: 1, wing_flavour_id: sauceId, flavour_name: "Test Archivable Sauce", placement: "ON_WINGS" }],
+              },
+            },
+          ],
+        });
+
+      expect(res.status).toBe(422);
+      expect(res.body.errors[0].message).toContain("Test Archivable Sauce");
+      expect(res.body.errors[0].message).toContain("no longer available");
+    });
+
+    it("Inactive and missing sauces are rejected by quote", async () => {
+      const inactiveRes = await request(server)
+        .post(`${BASE}/cart/quote`)
+        .set("X-Location-Id", locationId)
+        .send({
+          fulfillment_type: "PICKUP",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              builder_payload: {
+                builder_type: "WINGS",
+                flavour_slots: [{ slot_no: 1, wing_flavour_id: inactiveSauceId, flavour_name: "Test Inactive Sauce", placement: "ON_WINGS" }],
+              },
+            },
+          ],
+        });
+      expect(inactiveRes.status).toBe(422);
+      expect(inactiveRes.body.errors[0].message).toContain("currently unavailable");
+
+      const missingRes = await request(server)
+        .post(`${BASE}/cart/quote`)
+        .set("X-Location-Id", locationId)
+        .send({
+          fulfillment_type: "PICKUP",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              builder_payload: {
+                builder_type: "WINGS",
+                flavour_slots: [{ slot_no: 1, wing_flavour_id: randomUUID(), flavour_name: "Ghost Sauce", placement: "ON_WINGS" }],
+              },
+            },
+          ],
+        });
+      expect(missingRes.status).toBe(422);
+      expect(missingRes.body.errors[0].message).toContain("Ghost Sauce");
+    });
+
+    it("Store hour enforcement: should reject quote if store is closed for fulfillment type", async () => {
+      try {
+        await prisma.locationHours.deleteMany({
+          where: { locationId, serviceType: "PICKUP" },
+        });
+        for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek++) {
+          await prisma.locationHours.create({
+            data: {
+              locationId,
+              serviceType: "PICKUP",
+              dayOfWeek,
+              timeFrom: new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
+              timeTo: new Date(Date.UTC(1970, 0, 1, 23, 59, 0)),
+              isClosed: true,
+            },
+          });
+        }
+
+        const quoteRes = await request(server)
+          .post(`${BASE}/cart/quote`)
+          .set("X-Location-Id", locationId)
+          .send({
+            fulfillment_type: "PICKUP",
+            items: [
+              {
+                menu_item_id: wingItemId,
+                quantity: 1,
+                modifier_selections: [],
+              },
+            ],
+          });
+
+        expect(quoteRes.status).toBe(422);
+        expect(quoteRes.body.errors[0].message).toContain("not open for pickup at the selected time");
+      } finally {
+        await setAlwaysOpenLocationHours(prisma, locationId);
+      }
+    });
+
+    it("Salad child-item validation: should reject quote if salad is archived", async () => {
+      // Archive the salad
+      await request(server)
+        .delete(`${BASE}/admin/menu/items/${archivedSaladId}`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .expect(200);
+
+      const quoteRes = await request(server)
+        .post(`${BASE}/cart/quote`)
+        .set("X-Location-Id", locationId)
+        .send({
+          fulfillment_type: "DELIVERY",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              modifier_selections: [],
+              builder_payload: {
+                builder_type: "WINGS",
+                salad_customization: {
+                  salad_menu_item_id: archivedSaladId,
+                  removed_ingredients: [],
+                  modifier_selections: [],
+                },
+              },
+            },
+          ],
+        });
+
+      expect(quoteRes.status).toBe(422);
+      expect(quoteRes.body.errors[0].message).toContain("no longer available");
+      expect(quoteRes.body.errors[0].message).toContain("Test Salad");
+    });
+
+    it("Salad child-item validation: should reject pickup-only salad in delivery cart", async () => {
+      const quoteRes = await request(server)
+        .post(`${BASE}/cart/quote`)
+        .set("X-Location-Id", locationId)
+        .send({
+          fulfillment_type: "DELIVERY",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              modifier_selections: [],
+              builder_payload: {
+                builder_type: "WINGS",
+                salad_customization: {
+                  salad_menu_item_id: pickupOnlySaladId,
+                  removed_ingredients: [],
+                  modifier_selections: [],
+                },
+              },
+            },
+          ],
+        });
+
+      expect(quoteRes.status).toBe(422);
+      expect(quoteRes.body.errors[0].message).toContain("not available for DELIVERY");
+    });
+
+    it("Modifier validation: should reject active options not attached to the menu item", async () => {
+      const quoteRes = await request(server)
+        .post(`${BASE}/cart/quote`)
+        .set("X-Location-Id", locationId)
+        .send({
+          fulfillment_type: "PICKUP",
+          items: [
+            {
+              menu_item_id: wingItemId,
+              quantity: 1,
+              modifier_selections: [{ modifier_option_id: foreignModifierOptionId }],
+            },
+          ],
+        });
+
+      expect(quoteRes.status).toBe(422);
+      expect(quoteRes.body.errors[0].message).toContain("not valid");
+    });
+
+    it("Admin sauce management should not expose or mutate Plain sauce", async () => {
+      const plainSauce = await prisma.wingFlavour.findFirstOrThrow({
+        where: { locationId, heatLevel: "PLAIN", archivedAt: null },
+      });
+
+      const listRes = await request(server)
+        .get(`${BASE}/admin/menu/wing-flavours`)
+        .set("Cookie", adminCookie())
+        .set("X-Location-Id", locationId)
+        .expect(200);
+      expect(listRes.body.data.some((flavour: { id: string }) => flavour.id === plainSauce.id)).toBe(false);
+
+      const createPlainRes = await request(server)
+        .post(`${BASE}/admin/menu/wing-flavours`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId)
+        .send({
+          name: "Should Not Create Plain",
+          category: "PLAIN",
+          sort_order: 1,
+          is_active: true,
+        });
+      expect([400, 422]).toContain(createPlainRes.status);
+
+      const archivePlainRes = await request(server)
+        .delete(`${BASE}/admin/menu/wing-flavours/${plainSauce.id}`)
+        .set("Cookie", adminCookie())
+        .set("X-CSRF-Token", CSRF)
+        .set("X-Location-Id", locationId);
+      expect(archivePlainRes.status).toBe(422);
     });
   });
 });
