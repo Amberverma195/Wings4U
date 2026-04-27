@@ -14,15 +14,23 @@ export function getPublicApiBase(): string {
   return process.env.INTERNAL_API_URL ?? "http://127.0.0.1:3001";
 }
 
-/** Socket.IO connects to the API process directly (not proxied through Next). */
+/**
+ * Socket.IO connects through the Next.js dev/prod server by default so the
+ * `/ws` rewrite in `next.config.ts` can proxy the upgrade to the Nest API.
+ * This avoids hard-coding port 3001 (which is not exposed publicly on
+ * preview/prod deployments) and keeps cookies first-party.
+ *
+ * Override with `NEXT_PUBLIC_REALTIME_ORIGIN` only for split-host setups
+ * where the API runs on a different domain that the browser must hit
+ * directly (e.g. a separate realtime cluster).
+ */
 export function getRealtimeOrigin(): string {
   const configured = process.env.NEXT_PUBLIC_REALTIME_ORIGIN?.trim();
   if (configured) return configured.replace(/\/$/, "");
 
   if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:3001`;
-  }
+    return window.location.origin;
+    }
 
   return "http://127.0.0.1:3001";
 }

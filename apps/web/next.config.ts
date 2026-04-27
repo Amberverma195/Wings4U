@@ -20,7 +20,16 @@ const nextConfig: NextConfig = {
     authInterrupts: true,
   },
   async rewrites() {
-    return [{ source: "/api/:path*", destination: `${apiProxyTarget}/api/:path*` }];
+    return [
+      { source: "/api/:path*", destination: `${apiProxyTarget}/api/:path*` },
+      { source: "/ws", destination: `${apiProxyTarget}/ws` },
+      { source: "/ws/:path*", destination: `${apiProxyTarget}/ws/:path*` },
+      { source: "/socket.io", destination: `${apiProxyTarget}/socket.io` },
+      {
+        source: "/socket.io/:path*",
+        destination: `${apiProxyTarget}/socket.io/:path*`,
+      },
+    ];
   },
 };
 
