@@ -21,7 +21,11 @@ type ModifierRow = {
   revenue_cents: number;
 };
 
-type SoldOutRow = { menu_item_id: string; count: number };
+type SoldOutRow = {
+  inventory_item_id: string;
+  item_name: string;
+  count: number;
+};
 
 type ProductsResponse = {
   top_items: ProductRow[];
@@ -198,8 +202,8 @@ export function ProductsReportClient() {
           ) : (
             <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.1rem" }}>
               {data.sold_out_frequency.map((r) => (
-                <li key={r.menu_item_id}>
-                  Item {r.menu_item_id.slice(0, 8)}…{" "}
+                <li key={r.inventory_item_id}>
+                  {r.item_name}{" "}
                   <span className="surface-muted">— {r.count} times</span>
                 </li>
               ))}

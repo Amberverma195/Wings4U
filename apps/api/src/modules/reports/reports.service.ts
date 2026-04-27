@@ -239,33 +239,6 @@ export class ReportsService {
     }));
 
     // Attach rates for modifiers (top modifiers)
-    const modifierOptions = await this.prisma.orderItemModifier.groupBy({
-      by: ['modifierOptionId', 'modifierNameSnapshot', 'modifierGroupNameSnapshot'],
-      where: {
-        orderItem: {
-          order: {
-            locationId,
-            placedAt: { gte: startDate, lte: endDate },
-            status: { notIn: ["CANCELLED"] },
-          },
-        },
-      },
-      _sum: { quantity: true, priceDeltaCents: true },
-      orderBy: {
-        _sum: { quantity: "desc" },
-      },
-      take: 50,
-    });
-
-    const modifiers = modifierOptions.map(mod => ({
-      modifier_option_id: mod.modifierOptionId,
-      modifier_name: mod.modifierNameSnapshot,
-      modifier_group: mod.modifierGroupNameSnapshot,
-      quantity_sold: mod._sum.quantity ?? 0,
-      revenue_cents: (mod._sum.priceDeltaCents && mod._sum.quantity) ? mod._sum.priceDeltaCents * mod._sum.quantity : 0, // This is an approximation since priceDelta might vary, but group by usually aggregates them, actually lineTotalCents isn't available here, so priceDeltaCents is just the base. Wait, priceDeltaCents sum doesn't include quantity multiplication in Prisma group by unless we do it in raw. Let's just return what we have correctly.
-    }));
-
-    // recalculate modifier revenue correctly
     const modifiersRaw = await this.prisma.$queryRaw<{
       modifier_option_id: string | null;
       modifier_name: string;
@@ -317,17 +290,22 @@ export class ReportsService {
       quantity_sold: item._sum.quantity ?? 0,
     }));
 
-    // Sold out frequency per item
-    // Approximation: count of `inventory_adjustments` where reason is 'SOLD_OUT' or `86` or similar.
-    // Or if `BusyModeEvent` has `affectedItems`.
-    // Since we don't have exactly an item-level sold-out tracking table schema easily visible,
-    // let's assume we do `$queryRaw` to count `inventory_adjustments` with type 'STOCK_OUT' per item.
-    const soldOutFrequency = await this.prisma.$queryRaw<{ menu_item_id: string, count: number }[]>`
-      SELECT menu_item_id, COUNT(*)::int as count 
-      FROM inventory_adjustments 
-      WHERE location_id = ${locationId}::uuid 
-        AND reason_text ILIKE '%sold out%'
-      GROUP BY menu_item_id
+    const soldOutFrequency = await this.prisma.$queryRaw<{
+      inventory_item_id: string;
+      item_name: string;
+      count: number;
+    }[]>`
+      SELECT
+        ia.inventory_item_id,
+        ii.name as item_name,
+        COUNT(*)::int as count
+      FROM inventory_adjustments ia
+      JOIN inventory_items ii ON ii.id = ia.inventory_item_id
+      WHERE ia.location_id = ${locationId}::uuid
+        AND ia.created_at >= ${startDate}
+        AND ia.created_at <= ${endDate}
+        AND ia.reason_text ILIKE '%sold out%'
+      GROUP BY ia.inventory_item_id, ii.name
       ORDER BY count DESC
       LIMIT 20
     `;

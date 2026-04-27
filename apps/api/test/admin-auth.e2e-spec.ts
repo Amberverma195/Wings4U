@@ -298,6 +298,77 @@ describe("Admin access (e2e, hardening plan)", () => {
     );
   });
 
+  describe("product performance report payload", () => {
+    it("returns empty report arrays without sold-out inventory rows", async () => {
+      const start = encodeURIComponent("2000-01-01T00:00:00.000Z");
+      const end = encodeURIComponent("2000-01-01T23:59:59.999Z");
+
+      const res = await request(server)
+        .get(`${BASE}/reports/products?start_date=${start}&end_date=${end}`)
+        .set(authHeaders(adminSession.token, locationId))
+        .expect(200);
+
+      expect(res.body.data).toMatchObject({
+        top_items: [],
+        least_items: [],
+        top_modifiers: [],
+        sold_out_frequency: [],
+      });
+    });
+
+    it("reports sold-out frequency from inventory adjustments", async () => {
+      const itemName = `e2e-sold-out-${randomUUID().slice(0, 8)}`;
+      const now = new Date();
+      const inventoryItem = await prisma.inventoryItem.create({
+        data: {
+          locationId,
+          name: itemName,
+          unitLabel: "each",
+          currentQuantityNumeric: 0,
+          lowStockThresholdNumeric: 1,
+        },
+      });
+
+      try {
+        await prisma.inventoryAdjustment.create({
+          data: {
+            inventoryItemId: inventoryItem.id,
+            locationId,
+            adjustmentType: "MANUAL_SUBTRACT",
+            deltaNumeric: -1,
+            quantityAfterNumeric: 0,
+            reasonText: "Sold out during e2e report test",
+            actorUserId: adminUserId,
+            createdAt: now,
+          },
+        });
+
+        const start = encodeURIComponent(
+          new Date(now.getTime() - 60_000).toISOString(),
+        );
+        const end = encodeURIComponent(
+          new Date(now.getTime() + 60_000).toISOString(),
+        );
+
+        const res = await request(server)
+          .get(`${BASE}/reports/products?start_date=${start}&end_date=${end}`)
+          .set(authHeaders(adminSession.token, locationId))
+          .expect(200);
+
+        expect(res.body.data.sold_out_frequency).toContainEqual({
+          inventory_item_id: inventoryItem.id,
+          item_name: itemName,
+          count: 1,
+        });
+      } finally {
+        await prisma.inventoryAdjustment.deleteMany({
+          where: { inventoryItemId: inventoryItem.id },
+        });
+        await prisma.inventoryItem.delete({ where: { id: inventoryItem.id } });
+      }
+    });
+  });
+
   describe("former manager workflows - settings/order changes/reviews now ADMIN only", () => {
     expectAdminOnly("GET locations/settings", () =>
       request(server).get(`${BASE}/locations/settings`),
