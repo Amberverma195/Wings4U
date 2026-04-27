@@ -54,7 +54,7 @@ Do not use `git add .` for the first upload. Use explicit paths so extra folders
 Recommended first upload:
 
 ```powershell
-git add .gitignore GitGuide.md .editorconfig .env.example package.json package-lock.json tsconfig.base.json apps/api apps/print-agent apps/web packages/contracts packages/database packages/pricing
+git add .gitignore GitGuide.md .editorconfig package.json package-lock.json tsconfig.base.json apps/api apps/print-agent apps/web packages/contracts packages/database packages/pricing
 ```
 
 The `packages` folders are included because the apps import them:
@@ -109,7 +109,7 @@ After the first push, use this flow for normal updates:
 
 ```powershell
 git status --short
-git add apps/api apps/print-agent apps/web packages/contracts packages/database packages/pricing package.json package-lock.json tsconfig.base.json .editorconfig .env.example .gitignore GitGuide.md
+git add apps/api apps/print-agent apps/web packages/contracts packages/database packages/pricing package.json package-lock.json tsconfig.base.json .editorconfig .gitignore GitGuide.md
 git status --short
 git commit -m "Describe your change"
 git push
@@ -120,5 +120,5 @@ git push
 - `.gitignore` should stay at the root of this `Code` folder because this is where the Git repository will be initialized.
 - GitHub only receives files that are committed.
 - `node_modules` and `.env` files should not be committed.
-- `.env.example` is safe to commit because it should contain placeholder values, not real secrets.
+- Keep `.env` and `.env.example` files local unless you intentionally want to publish sanitized templates.
 - Use `git diff --cached --name-only` before every commit when you want to be extra sure what is about to be uploaded.
