@@ -1,0 +1,8 @@
+{
+  "name": "@wings4u/print-agent",
+  "private": true,
+  "scripts": {
+    "dev": "node src/main.ts",
+    "build": "echo print-agent-build-placeholder"
+  }
+}

@@ -1,0 +1,307 @@
+/**
+ * Kitchen Display (KDS) — staff-only surface.
+ * The site shell uses light text on #0a0a0a; KDS reuses “surface-*” classes meant for
+ * cream pages, so we scope a warm light panel + dark body text here.
+ */
+
+.kds-page {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1.1rem 1.25rem 2rem;
+  /* Slightly darker warm parchment than before — still light enough for dark body text */
+  background: linear-gradient(
+    168deg,
+    #e0d4c2 0%,
+    #d4c6ae 45%,
+    #c9b99a 100%
+  );
+  color: #17120d;
+  box-shadow: inset 0 1px 0 rgba(255, 252, 248, 0.28);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.kds-page h1 {
+  color: #141008;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.kds-page .surface-eyebrow {
+  color: #8e2f08;
+}
+
+/* Muted copy was designed for light cream — reinforce contrast on this panel */
+.kds-page .surface-muted {
+  color: rgba(23, 18, 13, 0.72) !important;
+}
+
+.kds-page .surface-error {
+  color: #7a1f06 !important;
+}
+
+/* Ticket cards: clearer “paper” on the parchment rail */
+.kds-page article {
+  border-color: rgba(23, 18, 13, 0.14) !important;
+  box-shadow: 0 4px 18px rgba(23, 18, 13, 0.08);
+}
+
+/* Order card header: customer, total, and ETA read at a glance in a busy kitchen */
+.kds-page .kds-order-card__customer {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #2b1a08;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  background: linear-gradient(180deg, rgba(255, 214, 140, 0.55), rgba(250, 195, 108, 0.45));
+  border: 1px solid rgba(140, 82, 20, 0.28);
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.kds-page .kds-order-card__customer-phone {
+  color: rgba(43, 26, 8, 0.72);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.kds-page .kds-order-card__total {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.12rem;
+  font-variant-numeric: tabular-nums;
+  color: #080604;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 0.5px rgba(0, 0, 0, 0.15);
+}
+
+.kds-page .kds-order-card__eta {
+  margin: 0.28rem 0 0;
+  display: inline-block;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #062a0a;
+  background: linear-gradient(180deg, rgba(24, 120, 48, 0.18), rgba(18, 100, 38, 0.14));
+  border: 1px solid rgba(12, 80, 30, 0.28);
+  padding: 0.18rem 0.5rem;
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/**
+ * Order card actions: full-width stack so each control matches the ticket width
+ * (globals .btn-primary uses width:100% but we had overridden with width:auto).
+ */
+.kds-order-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.75rem;
+  box-sizing: border-box;
+}
+
+.kds-order-actions .btn-primary,
+.kds-order-actions .btn-danger,
+.kds-order-actions .btn-secondary {
+  width: 100%;
+  min-height: 2.65rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+/* Header toolbar — manual refresh (easy to tap / spot in a busy kitchen) */
+.kds-page .kds-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 2.5rem;
+  padding: 0.45rem 1.15rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 12px;
+  border: 2px solid rgba(194, 73, 20, 0.55);
+  background: linear-gradient(180deg, #c24914 0%, #9e3a0f 100%);
+  color: #fff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 3px 10px rgba(23, 18, 13, 0.22);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.08s ease;
+}
+
+.kds-page .kds-refresh-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d4561a 0%, #b34412 100%);
+  border-color: rgba(255, 200, 160, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 5px 16px rgba(194, 73, 20, 0.35);
+}
+
+.kds-page .kds-refresh-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 2px 6px rgba(23, 18, 13, 0.25);
+}
+
+.kds-page .kds-refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Gate / auth messages: center the card in the dark shell */
+.kds-gate {
+  max-width: 520px;
+  margin: 1.25rem auto 2rem;
+}
+
+/* Modals / Overlays */
+.kds-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 4, 2, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.25rem;
+}
+
+.kds-modal-card {
+  background: linear-gradient(180deg, #fffaf4 0%, #f7eee3 100%);
+  border: 1px solid rgba(23, 18, 13, 0.12);
+  border-radius: 20px;
+  padding: 1.75rem;
+  max-width: 440px;
+  width: 100%;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.35) inset;
+  animation: kdsModalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes kdsModalIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.kds-modal-card h3 {
+  margin: 0 0 1rem;
+  font-weight: 800;
+  color: #1a1510;
+}
+
+.kds-modal-copy {
+  margin: -0.35rem 0 1rem;
+  color: rgba(26, 21, 16, 0.7);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.kds-modal-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 18, 13, 0.15);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.85rem;
+  font-size: 0.95rem;
+  color: #1a1510;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.kds-modal-input::placeholder {
+  color: rgba(26, 21, 16, 0.55);
+  opacity: 1; /* Firefox applies its own opacity; keep placeholder visibly dark */
+}
+
+.kds-modal-input:focus {
+  outline: none;
+  border-color: #c24914;
+  box-shadow: 0 0 0 3px rgba(194, 73, 20, 0.12);
+  background: #fff;
+}
+
+.kds-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  justify-content: flex-end;
+}
+
+.kds-driver-empty {
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px dashed rgba(23, 18, 13, 0.18);
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.kds-driver-empty strong {
+  display: block;
+  color: #1a1510;
+}
+
+.kds-driver-empty p {
+  margin: 0.35rem 0 0;
+}
+
+.kds-driver-meta {
+  margin-top: 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(23, 18, 13, 0.1);
+}
+
+.kds-driver-meta__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.kds-driver-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  background: rgba(39, 174, 96, 0.12);
+  color: #1f7a46;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.kds-driver-pill--busy {
+  background: rgba(194, 73, 20, 0.14);
+  color: #9e3a0f;
+}
+
+.kds-driver-warning {
+  margin-top: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: 14px;
+  background: rgba(194, 73, 20, 0.1);
+  border: 1px solid rgba(194, 73, 20, 0.18);
+  color: #8a320d;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.45;
+}

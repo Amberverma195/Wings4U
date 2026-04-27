@@ -1,0 +1,726 @@
+/* ============================================================
+   Order Detail — Premium warm layout
+   Yellow background matching profile/account pages.
+   Two-column on desktop, single-column on mobile.
+   ============================================================ */
+
+.pageShell {
+  position: relative;
+  min-height: 100vh;
+  background-color: #F8C676;
+  padding-bottom: 4rem;
+}
+
+.hub {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: #111827;
+}
+
+/* ── Top bar: back button + order title ───────────────── */
+.topBar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fcfcfc;
+  color: #111827;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.backBtn:hover {
+  background: #f97316;
+  color: white;
+  border-color: #f97316;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.25);
+}
+
+.backArrow {
+  font-size: 1.1rem;
+  transition: transform 0.2s ease;
+}
+
+.backBtn:hover .backArrow {
+  transform: translateX(-3px);
+}
+
+.orderTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.6rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fcfcfc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.orderNumber {
+  color: #f97316;
+}
+
+/* ── Two-column layout ───────────────────────────────── */
+.mainGrid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 1.75rem;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Left column: order details ──────────────────────── */
+.leftColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Main order card */
+.orderCard {
+  background: #fafafa;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 2rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  animation: fadeSlideUp 0.5s ease-out;
+}
+
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Status header inside order card */
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.statusPillActive {
+  color: #fff;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  box-shadow: 0 4px 14px -4px rgba(249, 115, 22, 0.45);
+}
+
+.statusPillTerminal {
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.statusPillActive .statusDot {
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6); }
+  50% { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0); }
+}
+
+/* Meta chips row */
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.metaChipMuted {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* ETA bar */
+.etaBar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed, #fef3c7);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  margin-bottom: 1.25rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.etaIcon {
+  font-size: 1.15rem;
+}
+
+/* Delivery PIN */
+.pinCard {
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  margin-bottom: 1.25rem;
+}
+
+.pinLabel {
+  margin: 0 0 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #065f46;
+}
+
+.pinValue {
+  margin: 0;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 1.85rem;
+  letter-spacing: 0.55rem;
+  color: #065f46;
+}
+
+.pinHint {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(6, 95, 70, 0.7);
+}
+
+/* Cancel reason */
+.cancelReason {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: #fef2f2;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: #991b1b;
+  font-size: 0.9rem;
+}
+
+/* Section divider (items, timeline) */
+.section {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+.sectionTitle {
+  margin: 0 0 1rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+/* Item row */
+.itemRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.itemRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.itemName {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.itemMods {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.itemRemoved {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: #ef4444;
+}
+
+.itemInstructions {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: #9ca3af;
+}
+
+.itemPrice {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f97316;
+  white-space: nowrap;
+}
+
+/* Quote summary */
+.summary {
+  margin-top: 1.25rem;
+  padding: 1rem 1.15rem;
+  border-radius: 16px;
+  background: #f5f5f5;
+  border: 1px solid #f3f4f6;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.32rem 0;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.summaryAmount {
+  font-weight: 700;
+  color: #374151;
+}
+
+.summaryTotal {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 2px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.summaryTotalValue {
+  color: #f97316;
+  font-size: 1.2rem;
+}
+
+/* Action row (cancel / help) */
+.actionRow {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.cancelBtn {
+  padding: 0.6rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: #fef2f2;
+  color: #dc2626;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.helpBtn {
+  padding: 0.6rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #374151;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.helpBtn:hover {
+  background: #f97316;
+  color: #fff;
+  border-color: #f97316;
+}
+
+/* Timeline */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  border-left: 2px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.timelineItem {
+  position: relative;
+  padding: 0.55rem 0;
+  font-size: 0.88rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.timelineItem::before {
+  content: "";
+  position: absolute;
+  left: -1.6rem;
+  top: 0.75rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f97316;
+  box-shadow: 0 0 0 3px #F8C676;
+}
+
+.timelineItem:first-child::before {
+  background: linear-gradient(135deg, #f97316, #fb923c);
+  animation: timelinePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes timelinePulse {
+  0%, 100% { box-shadow: 0 0 0 3px #F8C676, 0 0 0 3px rgba(249, 115, 22, 0.6); }
+  50% { box-shadow: 0 0 0 3px #F8C676, 0 0 0 8px rgba(249, 115, 22, 0); }
+}
+
+.timelineStatus {
+  font-weight: 700;
+  color: #111827;
+}
+
+.timelineTime {
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.timelineReason {
+  color: #6b7280;
+  font-style: italic;
+  width: 100%;
+  font-size: 0.8rem;
+}
+
+/* ── Right column: add items + reorder ───────────────── */
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: sticky;
+  top: 5rem;
+}
+
+@media (max-width: 1024px) {
+  .rightColumn {
+    position: static;
+  }
+}
+
+.sideCard {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  animation: fadeSlideUp 0.5s ease-out 0.15s both;
+}
+
+/* Chat card */
+.chatCard {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  animation: fadeSlideUp 0.5s ease-out 0.1s both;
+}
+
+/* Support card */
+.supportBtn {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #374151;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.supportBtn:hover {
+  background: #f97316;
+  color: #fff;
+  border-color: #f97316;
+}
+
+/* Reorder button override */
+.reorderWrap {
+  display: flex;
+  justify-content: center;
+}
+
+/* Footer actions on bottom of left column */
+.footerActions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4rem 2rem;
+  font-size: 1rem;
+  color: #6b7280;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(249, 115, 22, 0.2);
+  border-top-color: #f97316;
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error state */
+.errorCard {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 2.5rem;
+  text-align: center;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.errorText {
+  color: #dc2626;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+/* Help modal */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modalContent {
+  background: white;
+  border-radius: 24px;
+  padding: 2rem;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+}
+
+.modalTitle {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.modalText {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.modalContactBtn {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3);
+}
+
+.modalCloseBtn {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #374151;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ── Surface-card overrides for right column ─────────── */
+/* OrderAddItems and OrderReviews render their own
+   <section className="surface-card">. Style them to match
+   the white-card aesthetic on our yellow background. */
+.rightColumn :global(.surface-card) {
+  background: white !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 24px !important;
+  padding: 1.5rem !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02) !important;
+  color: #111827 !important;
+  margin-top: 0 !important;
+}
+
+/* ── Chat overrides inside our light theme ───────────── */
+.chatCard :global(.chat-container h3) {
+  color: #111827;
+}
+
+.chatCard :global(.chat-messages) {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.chatCard :global(.chat-bubble.chat-own) {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px -4px rgba(249, 115, 22, 0.35);
+}
+
+.chatCard :global(.chat-bubble.chat-other) {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  border-radius: 14px;
+}
+
+.chatCard :global(.chat-input) {
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  color: #111827;
+}
+
+.chatCard :global(.chat-input:focus) {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+  outline: none;
+}
+
+.chatCard :global(.chat-send-btn) {
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+}
+
+.chatCard :global(.surface-muted) {
+  color: #9ca3af;
+}
+
+.chatCard :global(.surface-error) {
+  color: #dc2626;
+}
+

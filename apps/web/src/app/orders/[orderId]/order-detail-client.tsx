@@ -1,0 +1,504 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { apiFetch } from "@/lib/api";
+import { DEFAULT_LOCATION_ID } from "@/lib/env";
+import { cents, orderStatusCustomerLabel, shortTime, statusLabel } from "@/lib/format";
+import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
+import { useSession, withSilentRefresh } from "@/lib/session";
+import type { OrderDetail, OrderStatus } from "@/lib/types";
+import { OrderAddItems } from "@/components/order-add-items";
+import { OrderChat } from "@/components/order-chat";
+import { OrderReviews } from "@/components/order-reviews";
+import { ReorderButton } from "@/components/reorder-button";
+import { SupportTicketForm } from "@/components/support-ticket-form";
+import { OrderSkeleton } from "./order-skeleton";
+import styles from "./order-detail.module.css";
+
+function isTerminal(status: OrderStatus): boolean {
+  const terminalStatuses: ReadonlySet<string> = new Set([
+    "PICKED_UP",
+    "DELIVERED",
+    "NO_SHOW_PICKUP",
+    "NO_SHOW_DELIVERY",
+    "NO_PIN_DELIVERY",
+    "CANCELLED",
+  ]);
+  return terminalStatuses.has(status);
+}
+
+function cancelStillAllowed(order: OrderDetail): boolean {
+  if (!order.cancel_allowed_until) return false;
+  if (new Date(order.cancel_allowed_until) <= new Date()) return false;
+  // Even inside the 2-minute self-cancel window, once the kitchen has
+  // marked the order READY the food is plated / bagged for handoff. We
+  // hide the cancel button at that point and route the customer to the
+  // help flow instead. The backend also rejects this case (see
+  // `customerCancel` in `orders.service.ts`) — the UI check is just to
+  // keep the button from being shown at all in the common path.
+  if (order.status === "READY") return false;
+  return true;
+}
+
+type DeliveryPinResponse = {
+  pin: string | null;
+  expires_at?: string;
+  status?: string;
+};
+
+export function OrderDetailClient({ orderId }: { orderId: string }) {
+  const session = useSession();
+  const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [showSupport, setShowSupport] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [deliveryPin, setDeliveryPin] = useState<DeliveryPinResponse | null>(null);
+
+  useEffect(() => {
+    setOrder(null);
+    setError(null);
+    setDeliveryPin(null);
+  }, [orderId]);
+
+  const fetchOrder = useCallback(async () => {
+    try {
+      const res = await withSilentRefresh(
+        () =>
+          apiFetch(`/api/v1/orders/${orderId}`, {
+            locationId: DEFAULT_LOCATION_ID,
+          }),
+        session.refresh,
+        session.clear,
+      );
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body?.errors?.[0]?.message ?? `Failed to load order (${res.status})`);
+      }
+      const body = (await res.json()) as { data?: OrderDetail };
+      if (!body.data) {
+        throw new Error("Failed to load order");
+      }
+      setOrder(body.data);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load order");
+    }
+  }, [orderId, session]);
+
+  useEffect(() => {
+    void fetchOrder();
+  }, [fetchOrder]);
+
+  // PRD §7.8.5: fetch the delivery PIN while the order is out for delivery.
+  useEffect(() => {
+    if (!order || order.fulfillment_type !== "DELIVERY") {
+      setDeliveryPin(null);
+      return;
+    }
+    if (order.status !== "OUT_FOR_DELIVERY") {
+      setDeliveryPin(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await withSilentRefresh(
+          () =>
+            apiFetch(`/api/v1/orders/${orderId}/delivery-pin`, {
+              locationId: DEFAULT_LOCATION_ID,
+            }),
+          session.refresh,
+          session.clear,
+        );
+        if (!res.ok) return;
+        const body = (await res.json()) as { data?: DeliveryPinResponse };
+        if (!cancelled && body.data) setDeliveryPin(body.data);
+      } catch {
+        // Non-fatal — PIN display is best-effort.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order, orderId, session]);
+
+  // Realtime: subscribe to `order:${orderId}` so the customer sees status
+  // changes (accepted / ready / out-for-delivery / delivered) without a
+  // manual reload. `subscribeToChannels` keeps the subscription alive
+  // across reconnects.
+  useEffect(() => {
+    const socket = createOrdersSocket();
+
+    const refresh = () => void fetchOrder();
+    socket.on("order.accepted", refresh);
+    socket.on("order.status_changed", refresh);
+    socket.on("order.cancelled", refresh);
+    socket.on("order.driver_assigned", refresh);
+    socket.on("order.delivery_started", refresh);
+    socket.on("order.eta_updated", refresh);
+
+    const disposeSubscription = subscribeToChannels(socket, [
+      `order:${orderId}`,
+    ]);
+    socket.connect();
+
+    return () => {
+      disposeSubscription();
+      socket.disconnect();
+    };
+  }, [orderId, fetchOrder]);
+
+  const handleCancel = useCallback(async () => {
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const res = await withSilentRefresh(
+        () =>
+          apiFetch(`/api/v1/orders/${orderId}/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+            locationId: DEFAULT_LOCATION_ID,
+          }),
+        session.refresh,
+        session.clear,
+      );
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body?.errors?.[0]?.message ?? `Cancel failed (${res.status})`);
+      }
+      await fetchOrder();
+    } catch (e) {
+      setCancelError(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setCancelling(false);
+    }
+  }, [orderId, fetchOrder, session]);
+
+  /* ── Error state ──────────────────────────────────────── */
+  if (error) {
+    return (
+      <div className={styles.pageShell}>
+        <main className={styles.hub}>
+          <div className={styles.topBar}>
+            <Link href="/account/orders" className={styles.backBtn}>
+              <span className={styles.backArrow}>←</span>
+              Back to my orders
+            </Link>
+          </div>
+          <div className={styles.errorCard}>
+            <p className={styles.errorText}>{error}</p>
+            <Link href="/account/orders" className={styles.backBtn}>
+              <span className={styles.backArrow}>←</span>
+              My orders
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  /* ── Loading state ────────────────────────────────────── */
+  if (!order) {
+    return <OrderSkeleton />;
+  }
+
+  const terminal = isTerminal(order.status);
+
+  return (
+    <div className={styles.pageShell}>
+      <main className={styles.hub}>
+        {/* ── Top bar ───────────────────────────────────── */}
+        <div className={styles.topBar}>
+          <Link href="/account/orders" className={styles.backBtn}>
+            <span className={styles.backArrow}>←</span>
+            Back to my orders
+          </Link>
+          <h1 className={styles.orderTitle}>
+            Order <span className={styles.orderNumber}>#{order.order_number}</span>
+          </h1>
+        </div>
+
+        {/* ── Two-column grid ──────────────────────────── */}
+        <div className={styles.mainGrid}>
+          {/* LEFT — Order details */}
+          <div className={styles.leftColumn}>
+            <div className={styles.orderCard}>
+              {/* Status row */}
+              <div className={styles.statusRow}>
+                <span className={`${styles.statusPill} ${terminal ? styles.statusPillTerminal : styles.statusPillActive}`}>
+                  <span className={styles.statusDot} />
+                  {orderStatusCustomerLabel(order.status, order.fulfillment_type)}
+                </span>
+              </div>
+
+              {/* Meta chips */}
+              <div className={styles.metaRow}>
+                <span className={styles.metaChip}>{statusLabel(order.fulfillment_type)}</span>
+                <span className={`${styles.metaChip} ${styles.metaChipMuted}`}>
+                  {new Date(order.placed_at).toLocaleString()}
+                </span>
+              </div>
+
+              {/* ETA */}
+              {order.estimated_ready_at && !terminal && (
+                <div className={styles.etaBar}>
+                  <span className={styles.etaIcon}>⏱</span>
+                  <span>
+                    Estimated ready ~{shortTime(order.estimated_ready_at)}
+                    {order.estimated_window_min_minutes != null &&
+                      order.estimated_window_max_minutes != null && (
+                        <> ({order.estimated_window_min_minutes}–{order.estimated_window_max_minutes} min)</>
+                      )}
+                  </span>
+                </div>
+              )}
+
+              {/* Delivery PIN */}
+              {deliveryPin?.pin && (
+                <div className={styles.pinCard}>
+                  <p className={styles.pinLabel}>Delivery PIN</p>
+                  <p className={styles.pinValue}>{deliveryPin.pin}</p>
+                  <p className={styles.pinHint}>Share this PIN with your driver at handoff.</p>
+                </div>
+              )}
+
+              {/* Cancellation reason */}
+              {order.cancellation_reason && (
+                <p className={styles.cancelReason}>
+                  Cancellation reason: {order.cancellation_reason}
+                </p>
+              )}
+
+              {/* Items */}
+              <div className={styles.section}>
+                <h3 className={styles.sectionTitle}>Items</h3>
+                {order.items.map((item) => {
+                  const removedModifiers = item.modifiers.filter(
+                    (modifier) => modifier.modifier_kind === "REMOVE_INGREDIENT",
+                  );
+                  const addonModifiers = item.modifiers.filter(
+                    (modifier) => modifier.modifier_kind !== "REMOVE_INGREDIENT",
+                  );
+
+                  return (
+                    <div key={item.id} className={styles.itemRow}>
+                      <div>
+                        <p className={styles.itemName}>
+                          {item.product_name_snapshot} × {item.quantity}
+                        </p>
+                        {removedModifiers.length > 0 && (
+                          <p className={styles.itemRemoved}>
+                            {removedModifiers.map((m) => `No ${m.modifier_name_snapshot}`).join(", ")}
+                          </p>
+                        )}
+                        {addonModifiers.length > 0 && (
+                          <p className={styles.itemMods}>
+                            {addonModifiers.map((m) => m.modifier_name_snapshot).join(", ")}
+                          </p>
+                        )}
+                        {item.flavours.length > 0 && (
+                          <p className={styles.itemMods}>
+                            {item.flavours.map((f) => f.flavour_name_snapshot).join(", ")}
+                          </p>
+                        )}
+                        {item.special_instructions && (
+                          <p className={styles.itemInstructions}>{item.special_instructions}</p>
+                        )}
+                      </div>
+                      <span className={styles.itemPrice}>{cents(item.line_total_cents)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quote summary */}
+              <div className={styles.summary}>
+                <div className={styles.summaryRow}>
+                  <span>Subtotal</span>
+                  <span className={styles.summaryAmount}>{cents(order.item_subtotal_cents)}</span>
+                </div>
+                {order.delivery_fee_cents > 0 && (
+                  <div className={styles.summaryRow}>
+                    <span>Delivery fee</span>
+                    <span className={styles.summaryAmount}>{cents(order.delivery_fee_cents)}</span>
+                  </div>
+                )}
+                <div className={styles.summaryRow}>
+                  <span>Tax(13%)</span>
+                  <span className={styles.summaryAmount}>{cents(order.tax_cents)}</span>
+                </div>
+                {order.wallet_applied_cents > 0 && (
+                  <div className={styles.summaryRow}>
+                    <span>Wallet credit</span>
+                    <span className={styles.summaryAmount}>-{cents(order.wallet_applied_cents)}</span>
+                  </div>
+                )}
+                <div className={styles.summaryTotal}>
+                  <span>Total</span>
+                  <span className={styles.summaryTotalValue}>{cents(order.final_payable_cents)}</span>
+                </div>
+              </div>
+
+              {/* Cancel button */}
+              {!terminal && cancelStillAllowed(order) && (
+                <div className={styles.actionRow}>
+                  <button
+                    className={styles.cancelBtn}
+                    disabled={cancelling}
+                    onClick={handleCancel}
+                  >
+                    {cancelling ? "Cancelling…" : "Cancel order"}
+                  </button>
+                  {cancelError && <p style={{ color: "#dc2626", marginTop: "0.5rem", fontSize: "0.85rem" }}>{cancelError}</p>}
+                </div>
+              )}
+
+              {/* Help button (after cancel window expires) */}
+              {!terminal && !cancelStillAllowed(order) && order.cancel_allowed_until && (
+                <div className={styles.actionRow}>
+                  <button
+                    type="button"
+                    className={styles.helpBtn}
+                    onClick={() => setShowHelpModal(true)}
+                  >
+                    Help
+                  </button>
+                </div>
+              )}
+
+              {/* Timeline */}
+              {order.status_events.length > 0 && (
+                <div className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Timeline</h3>
+                  <ul className={styles.timeline}>
+                    {order.status_events.map((event) => (
+                      <li key={event.id} className={styles.timelineItem}>
+                        <span className={styles.timelineStatus}>
+                          {orderStatusCustomerLabel(event.to_status, order.fulfillment_type)}
+                        </span>
+                        <span className={styles.timelineTime}>
+                          {new Date(event.created_at).toLocaleString()}
+                        </span>
+                        {event.reason_text && (
+                          <span className={styles.timelineReason}>{event.reason_text}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Chat card — always in left column below order details */}
+            <div className={styles.chatCard}>
+              <OrderChat
+                orderId={orderId}
+                locationId={order.location_id}
+                isTerminal={terminal}
+              />
+            </div>
+
+            {/* Footer actions for terminal orders */}
+            {terminal && (
+              <div className={styles.footerActions}>
+                <ReorderButton
+                  orderId={orderId}
+                  locationId={order.location_id}
+                  variant="primary"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — Add items + support + reviews */}
+          <div className={styles.rightColumn}>
+            {/* Add more items (auto-hides after 3 min via component logic) */}
+            {!terminal && (
+              <OrderAddItems
+                orderId={orderId}
+                locationId={order.location_id}
+                placedAt={order.placed_at}
+                fulfillmentType={order.fulfillment_type}
+                orderStatus={order.status}
+              />
+            )}
+
+            {/* Reviews */}
+            <OrderReviews
+              orderId={orderId}
+              locationId={order.location_id}
+              items={order.items}
+              orderStatus={order.status}
+            />
+
+            {/* Support ticket (terminal orders) */}
+            {terminal && (
+              <div className={styles.sideCard}>
+                {showSupport ? (
+                  <SupportTicketForm
+                    orderId={orderId}
+                    locationId={order.location_id}
+                    onDone={() => setShowSupport(false)}
+                  />
+                ) : (
+                  <button
+                    className={styles.supportBtn}
+                    onClick={() => setShowSupport(true)}
+                  >
+                    Need help? Open a support ticket
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Help modal */}
+      {showHelpModal && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div
+            className={styles.modalContent}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={styles.modalTitle}>Need help with this order?</h3>
+            <p className={styles.modalText}>
+              {order.status === "READY"
+                ? "Your order is already prepared and can no longer be cancelled here. To request a cancellation, please contact us."
+                : "Cancellation might not be possible — your order may already be in preparation. To request a cancellation, please contact us."}
+            </p>
+            {order.location_phone ? (
+              <a
+                className={styles.modalContactBtn}
+                href={`tel:${order.location_phone}`}
+              >
+                Contact us · {order.location_phone}
+              </a>
+            ) : (
+              <p style={{ fontSize: "0.9rem", color: "#6b7280", marginBottom: "0.75rem" }}>
+                Store phone is not available. Please use the order chat below.
+              </p>
+            )}
+            <p style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: "1rem" }}>
+              You can also message the kitchen directly via the order chat below.
+            </p>
+            <button
+              type="button"
+              className={styles.modalCloseBtn}
+              onClick={() => setShowHelpModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

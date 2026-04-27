@@ -1,0 +1,790 @@
+/* ------------------------------------------------------------------ */
+/*  POS shell                                                          */
+/*                                                                     */
+/*  Dense information surface optimised for a station touchscreen /    */
+/*  staff laptop. Light theme matching the KDS (Kitchen Display),      */
+/*  with tap targets sized for fast use.                               */
+/* ------------------------------------------------------------------ */
+
+.pos-root {
+  min-height: 100vh;
+  /* Matching KDS warm parchment gradient */
+  background: linear-gradient(
+    168deg,
+    #e0d4c2 0%,
+    #d4c6ae 45%,
+    #c9b99a 100%
+  );
+  color: #17120d;
+  font-family: "DM Sans", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(180deg, #f7eee3 0%, #ede3d4 100%);
+  border-bottom: 1px solid rgba(140, 82, 20, 0.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.pos-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #c24914; /* Burnt orange from KDS */
+}
+
+.pos-brand-badge {
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(194, 73, 20, 0.08);
+  color: #9e3a0f;
+  border: 1px solid rgba(194, 73, 20, 0.2);
+  letter-spacing: 0.1em;
+}
+
+.pos-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  font-size: 0.85rem;
+}
+
+.pos-user-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.pos-user-chip strong {
+  color: #2b1a08;
+  font-weight: 700;
+}
+
+.pos-user-chip span {
+  color: rgba(43, 26, 8, 0.6);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pos-btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease,
+    box-shadow 0.2s ease;
+}
+
+.pos-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none !important;
+}
+
+.pos-btn--primary {
+  background: linear-gradient(135deg, #c24914 0%, #a83d0d 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px -10px rgba(194, 73, 20, 0.6);
+}
+
+.pos-btn--primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px -10px rgba(194, 73, 20, 0.7);
+}
+
+.pos-btn--ghost {
+  background: rgba(255, 255, 255, 0.4);
+  color: #2b1a08;
+  border: 1px solid rgba(140, 82, 20, 0.15);
+}
+
+.pos-btn--ghost:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.pos-btn--danger {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+.pos-btn--danger:not(:disabled):hover {
+  background: rgba(220, 38, 38, 0.12);
+}
+
+/* ------------------------------------------------------------------ */
+/*  POS login card (fallback/legacy)                                   */
+/* ------------------------------------------------------------------ */
+
+.pos-login-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.pos-login-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fffaf4;
+  border: 1px solid rgba(140, 82, 20, 0.15);
+  border-radius: 20px;
+  padding: 1.75rem 1.9rem 1.6rem;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.15);
+}
+
+.pos-login-eyebrow {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.25em;
+  color: #c24914;
+}
+
+.pos-login-title {
+  margin: 0 0 0.2rem;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #1a1510;
+}
+
+.pos-login-sub {
+  margin: 0 0 1.5rem;
+  color: rgba(26, 21, 16, 0.65);
+  font-size: 0.9rem;
+}
+
+.pos-pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 1rem 0 1.3rem;
+}
+
+.pos-pin-dot {
+  width: 48px;
+  height: 56px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid rgba(140, 82, 20, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.6rem;
+  color: #2b1a08;
+}
+
+.pos-pin-dot--filled {
+  background: rgba(194, 73, 20, 0.05);
+  border-color: rgba(194, 73, 20, 0.3);
+}
+
+.pos-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.pos-key {
+  padding: 0.95rem 0;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  color: #1a1510;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+}
+
+.pos-key:active:not(:disabled) {
+  transform: scale(0.96);
+  background: rgba(194, 73, 20, 0.08);
+}
+
+.pos-key--action {
+  background: transparent;
+  color: rgba(26, 21, 16, 0.5);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.pos-login-submit {
+  margin-top: 1.1rem;
+  width: 100%;
+  padding: 0.95rem;
+  font-size: 1rem;
+}
+
+.pos-login-error {
+  margin: 0.7rem 0 0;
+  color: #b91c1c;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------ */
+/*  POS main layout                                                    */
+/* ------------------------------------------------------------------ */
+
+.pos-workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(380px, 460px) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .pos-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pos-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.pos-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pos-tab {
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(140, 82, 20, 0.12);
+  color: rgba(43, 26, 8, 0.7);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pos-tab--active {
+  background: #c24914;
+  color: #fff;
+  border-color: #9e3a0f;
+  box-shadow: 0 4px 10px rgba(194, 73, 20, 0.25);
+}
+
+.pos-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 0.5rem;
+}
+
+.pos-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.85rem 0.85rem 0.9rem;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(140, 82, 20, 0.1);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, background 0.15s ease, border 0.15s ease, box-shadow 0.15s ease;
+  color: inherit;
+  min-height: 90px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+}
+
+.pos-item-card:not(:disabled):hover {
+  background: #fff;
+  border-color: rgba(194, 73, 20, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.06);
+}
+
+.pos-item-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.pos-item-name {
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1a1510;
+}
+
+.pos-item-price {
+  color: #c24914;
+  font-weight: 700;
+}
+
+.pos-item-meta {
+  font-size: 0.72rem;
+  color: rgba(26, 21, 16, 0.55);
+}
+
+.pos-empty {
+  padding: 2rem;
+  text-align: center;
+  color: rgba(26, 21, 16, 0.5);
+  font-size: 0.9rem;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cart                                                               */
+/* ------------------------------------------------------------------ */
+
+.pos-cart {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(140, 82, 20, 0.12);
+  border-radius: 16px;
+  padding: 1rem;
+  min-height: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.pos-cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pos-cart-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.03em;
+  color: #1a1510;
+}
+
+.pos-cart-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-right: 2px;
+  min-height: 0;
+}
+
+.pos-cart-line {
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.pos-cart-line-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pos-cart-line-name {
+  font-weight: 700;
+  color: #1a1510;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pos-cart-line-mods {
+  font-size: 0.75rem;
+  color: rgba(26, 21, 16, 0.55);
+  margin-top: 0.2rem;
+  word-break: break-word;
+}
+
+.pos-qty {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pos-qty button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 1rem;
+  background: #fff;
+  color: #1a1510;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-qty button:hover {
+  background: rgba(194, 73, 20, 0.05);
+  border-color: rgba(194, 73, 20, 0.3);
+}
+
+.pos-qty-value {
+  min-width: 22px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.pos-cart-totals {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.pos-cart-totals-row {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(26, 21, 16, 0.7);
+}
+
+.pos-cart-totals-row--emph {
+  color: #1a1510;
+  font-weight: 800;
+  font-size: 1.05rem;
+  margin-top: 0.25rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.pos-customer-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0.9rem 0;
+}
+
+.pos-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(26, 21, 16, 0.55);
+}
+
+.pos-field input,
+.pos-field select,
+.pos-field textarea {
+  font-family: inherit;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  color: #1a1510;
+  font-size: 0.9rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.pos-field input:focus,
+.pos-field select:focus,
+.pos-field textarea:focus {
+  outline: none;
+  border-color: rgba(194, 73, 20, 0.5);
+  box-shadow: 0 0 0 3px rgba(194, 73, 20, 0.08);
+}
+
+.pos-segmented {
+  display: flex;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 3px;
+  gap: 3px;
+}
+
+.pos-segmented button {
+  flex: 1;
+  padding: 0.45rem;
+  background: transparent;
+  color: rgba(26, 21, 16, 0.6);
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.pos-segmented button[aria-pressed="true"] {
+  background: #fff;
+  color: #c24914;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.pos-payments {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.pos-payment-btn {
+  padding: 0.75rem 0.4rem;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  color: rgba(26, 21, 16, 0.8);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  font-size: 0.82rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.pos-payment-btn[aria-pressed="true"] {
+  background: rgba(194, 73, 20, 0.05);
+  border-color: #c24914;
+  color: #c24914;
+  box-shadow: 0 0 0 1px #c24914;
+}
+
+.pos-place-btn {
+  margin-top: 0.9rem;
+  width: 100%;
+  padding: 0.95rem;
+  font-size: 1rem;
+}
+
+.pos-cart-message {
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: rgba(220, 38, 38, 0.05);
+  color: #b91c1c;
+  border: 1px solid rgba(220, 38, 38, 0.15);
+}
+
+.pos-cart-message--ok {
+  background: rgba(34, 197, 94, 0.08);
+  color: #15803d;
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Modal                                                              */
+/* ------------------------------------------------------------------ */
+
+.pos-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 1rem;
+}
+
+.pos-modal {
+  width: 100%;
+  max-width: 520px;
+  background: #fffaf4;
+  border: 1px solid rgba(140, 82, 20, 0.15);
+  border-radius: 18px;
+  padding: 1.25rem 1.3rem 1.1rem;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+}
+
+.pos-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.pos-modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #1a1510;
+}
+
+.pos-modal-close {
+  background: transparent;
+  border: none;
+  color: rgba(26, 21, 16, 0.5);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+
+.pos-modal-close:hover {
+  color: #c24914;
+  background: rgba(194, 73, 20, 0.05);
+}
+
+.pos-modifier-group {
+  margin-bottom: 1rem;
+}
+
+.pos-modifier-group h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  color: #c24914;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pos-modifier-group h4 small {
+  font-size: 0.7rem;
+  color: rgba(26, 21, 16, 0.5);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+.pos-modifier-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  margin-bottom: 0.3rem;
+  cursor: pointer;
+  font-size: 0.88rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.pos-modifier-option[aria-pressed="true"] {
+  background: rgba(194, 73, 20, 0.05);
+  border-color: #c24914;
+  color: #c24914;
+}
+
+.pos-modifier-option-price {
+  color: rgba(26, 21, 16, 0.6);
+  font-size: 0.8rem;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Orders list                                                        */
+/* ------------------------------------------------------------------ */
+
+.pos-orders-strip {
+  margin-top: 1rem;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(140, 82, 20, 0.1);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+}
+
+.pos-orders-strip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.pos-orders-strip-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #1a1510;
+  letter-spacing: 0.04em;
+}
+
+.pos-orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pos-order-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.55rem 0.65rem;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.pos-order-num {
+  font-weight: 800;
+  color: #c24914;
+}
+
+.pos-order-badge {
+  font-size: 0.68rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(194, 73, 20, 0.08);
+  color: #9e3a0f;
+  border: 1px solid rgba(194, 73, 20, 0.2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pos-order-badge--phone {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.pos-order-total {
+  font-weight: 700;
+  color: #1a1510;
+}
+
+.pos-order-pay {
+  color: rgba(26, 21, 16, 0.5);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.pos-order-row button {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+}

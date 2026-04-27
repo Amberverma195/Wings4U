@@ -1,0 +1,1919 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [citext, pgcrypto, uuid_ossp(map: "uuid-ossp", schema: "extensions")]
+}
+
+model Location {
+  id                       String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                     String                    @unique
+  name                     String
+  addressLine1             String                    @map("address_line_1")
+  addressLine2             String?                   @map("address_line_2")
+  city                     String
+  provinceCode             String                    @map("province_code")
+  postalCode               String                    @map("postal_code")
+  phoneNumber              String                    @map("phone_number")
+  timezoneName             String                    @map("timezone_name")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  adminAuditLogs           AdminAuditLog[]
+  adminLocationAssignments AdminLocationAssignment[]
+  authSessions             AuthSession[]
+  busyModeEvents           BusyModeEvent[]
+  cancellationRequests     CancellationRequest[]
+  cateringInquiries        CateringInquiry[]
+  checkoutIdempotencyKeys  CheckoutIdempotencyKey[]
+  dailyTaxSummaries        DailyTaxSummary[]
+  devices                  Device[]
+  kdsHeartbeats            KdsHeartbeat[]
+  driverPayouts            DriverPayout[]
+  driverProfiles           DriverProfile[]
+  employeeProfiles         EmployeeProfile[]
+  employeeShifts           EmployeeShift[]
+  inventoryAdjustments     InventoryAdjustment[]
+  inventoryItems           InventoryItem[]
+  hours                    LocationHours[]
+  settings                 LocationSettings?
+  menuCategories           MenuCategory[]
+  menuItems                MenuItem[]
+  modifierGroups           ModifierGroup[]
+  orderDriverEvents        OrderDriverEvent[]
+  orderPayments            OrderPayment[]
+  orderStatusEvents        OrderStatusEvent[]
+  orders                   Order[]
+  promoCodes               PromoCode[]
+  posLoginAttempts         PosLoginAttempt[]
+  refundRequests           RefundRequest[]
+  registerSessions         RegisterSession[]
+  registers                Register[]
+  restockLists             RestockList[]
+  savedCarts               SavedCart[]
+  supportTickets           SupportTicket[]
+  wingFlavours             WingFlavour[]
+
+  @@index([isActive], map: "idx_locations_active")
+  @@map("locations")
+}
+
+model User {
+  id                        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role                      UserRole
+  displayName               String                    @map("display_name")
+  firstName                 String?                   @map("first_name")
+  lastName                  String?                   @map("last_name")
+  passwordHash              String?                   @map("password_hash")
+  isActive                  Boolean                   @default(true) @map("is_active")
+  createdAt                 DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  archivedAt                DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  adminAuditLogs            AdminAuditLog[]
+  adminLocationAssignments  AdminLocationAssignment[]
+  authSessionsRevokedBy     AuthSession[]             @relation("session_revoked_by")
+  authSessions              AuthSession[]
+  busyModeEventsStarted     BusyModeEvent[]           @relation("busy_event_started_by")
+  busyModeEventsEnded       BusyModeEvent[]           @relation("busy_event_ended_by")
+  cancellationRequestsBy    CancellationRequest[]     @relation("cancel_requested_by")
+  cancellationReviewedBy    CancellationRequest[]     @relation("cancel_reviewed_by")
+  cashDrawerEvents          CashDrawerEvent[]         @relation("drawer_actor")
+  cashDrawerApprovedBy      CashDrawerEvent[]         @relation("drawer_approved_by")
+  cateringInquiries         CateringInquiry[]
+  chatReadStates            ChatReadState[]
+  checkoutIdempotencyKeys   CheckoutIdempotencyKey[]
+  creditCreatedBy           CustomerCreditLedger[]    @relation("credit_created_by")
+  customerCreditLedger      CustomerCreditLedger[]    @relation("credit_customer")
+  customerAddresses         CustomerAddress[]
+  customerProfile           CustomerProfile?
+  customerWallet            CustomerWallet?
+  customerWingsRewards      CustomerWingsRewards?
+  customerWingsStampLedger  CustomerWingsStampLedger[]
+  deliveryPinBypassBy       DeliveryPinVerification[] @relation("pin_bypass_by")
+  deliveryPinVerifiedBy     DeliveryPinVerification[] @relation("pin_verified_by")
+  driverDeliveryReviews     DriverDeliveryReview[]
+  driverPayoutsCreatedBy    DriverPayout[]            @relation("payout_created_by")
+  driverPayoutsPaidBy       DriverPayout[]            @relation("payout_paid_by")
+  employeeProfile           EmployeeProfile?
+  inventoryAdjustments      InventoryAdjustment[]
+  itemReviewReplies         ItemReview[]              @relation("review_admin_reply")
+  itemReviews               ItemReview[]              @relation("review_customer")
+  orderChangeRequestsBy     OrderChangeRequest[]      @relation("change_requested_by")
+  orderChangeResolvedBy     OrderChangeRequest[]      @relation("change_resolved_by")
+  orderDriverEventsActor    OrderDriverEvent[]        @relation("driver_event_actor")
+  order_eta_events          OrderEtaEvent[]
+  orderFinalizationEvents   OrderFinalizationEvent[]  @relation("finalization_confirmed_by")
+  orderMessages             OrderMessage[]
+  orderPaymentsCreatedBy    OrderPayment[]            @relation("payment_created_by")
+  orderPaymentsInitiatedBy  OrderPayment[]            @relation("payment_initiated_by")
+  orderStatusEventsActor    OrderStatusEvent[]
+  ordersCancelledBy         Order[]                   @relation("cancelled_by")
+  ordersAsCustomer          Order[]                   @relation("customer_orders")
+  ordersDeliveryCompletedBy Order[]                   @relation("delivery_completed_by")
+  ordersStudentVerifiedBy   Order[]                   @relation("student_verified_by")
+  promoCodesCreatedBy       PromoCode[]
+  promoRedemptions          PromoRedemption[]
+  refundApprovedBy          RefundRequest[]           @relation("refund_approved_by")
+  refundIssuedBy            RefundRequest[]           @relation("refund_issued_by")
+  refundRejectedBy          RefundRequest[]           @relation("refund_rejected_by")
+  refundRequestsBy          RefundRequest[]           @relation("refund_requested_by")
+  registerSessionsClosed    RegisterSession[]         @relation("register_closed_by")
+  registerSessionsOpened    RegisterSession[]         @relation("register_opened_by")
+  restockLists              RestockList[]
+  savedCarts                SavedCart[]
+  supportTicketEvents       SupportTicketEvent[]
+  supportTicketMessages     SupportTicketMessage[]
+  supportTicketResolutions  SupportTicketResolution[]
+  supportTicketsAssigned    SupportTicket[]           @relation("ticket_assigned")
+  supportTicketsCustomer    SupportTicket[]           @relation("ticket_customer")
+  supportTicketsResolved    SupportTicket[]           @relation("ticket_resolved")
+  identities                UserIdentity[]
+
+  @@index([role, isActive], map: "idx_users_role_active")
+  @@map("users")
+}
+
+model UserIdentity {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String           @map("user_id") @db.Uuid
+  provider        IdentityProvider
+  providerSubject String?          @map("provider_subject")
+  emailNormalized String?          @unique(map: "uq_email") @map("email_normalized") @db.Citext
+  phoneE164       String?          @unique(map: "uq_phone") @map("phone_e164")
+  isPrimary       Boolean          @default(false) @map("is_primary")
+  isVerified      Boolean          @default(false) @map("is_verified")
+  verifiedAt      DateTime?        @map("verified_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  otpCodes        AuthOtpCode[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([provider, providerSubject], map: "uq_provider_subject")
+  @@index([userId, isPrimary(sort: Desc)], map: "idx_user_identities_user_primary")
+  @@map("user_identities")
+}
+
+model AuthOtpCode {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userIdentityId String       @map("user_identity_id") @db.Uuid
+  otpHash        String       @map("otp_hash")
+  purpose        String
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  consumedAt     DateTime?    @map("consumed_at") @db.Timestamptz(6)
+  attemptCount   Int          @default(0) @map("attempt_count")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  userIdentity   UserIdentity @relation(fields: [userIdentityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userIdentityId, purpose, expiresAt], map: "idx_auth_otp_identity_purpose")
+  @@map("auth_otp_codes")
+}
+
+model CustomerProfile {
+  userId                String   @id @map("user_id") @db.Uuid
+  marketingOptIn        Boolean  @default(false) @map("marketing_opt_in")
+  totalSuccessfulOrders Int      @default(0) @map("total_successful_orders")
+  totalNoShows          Int      @default(0) @map("total_no_shows")
+  prepaymentRequired    Boolean  @default(false) @map("prepayment_required")
+  preferredName         String?  @map("preferred_name")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([prepaymentRequired], map: "idx_customer_profiles_prepayment")
+  @@map("customer_profiles")
+}
+
+model CustomerAddress {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  label      String?
+  line1      String
+  city       String
+  postalCode String   @map("postal_code")
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, updatedAt(sort: Desc)], map: "idx_customer_addresses_user_updated")
+  @@map("customer_addresses")
+}
+
+model EmployeeProfile {
+  userId               String          @id @map("user_id") @db.Uuid
+  locationId           String          @map("location_id") @db.Uuid
+  role                 EmployeeRole
+  employeePinHash      String?         @map("employee_pin_hash")
+  hourlyRateCents      Int?            @map("hourly_rate_cents")
+  hireDate             DateTime?       @map("hire_date") @db.Date
+  isActiveEmployee     Boolean         @default(true) @map("is_active_employee")
+  posFailedAttempts    Int             @default(0) @map("pos_failed_attempts")
+  posLockoutUntil      DateTime?       @map("pos_lockout_until") @db.Timestamptz(6)
+  posCodeDeactivatedAt DateTime?       @map("pos_code_deactivated_at") @db.Timestamptz(6)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  archivedAt           DateTime?       @map("archived_at") @db.Timestamptz(6)
+  driverProfile        DriverProfile?
+  location             Location        @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  employeeShifts       EmployeeShift[]
+
+  @@index([locationId, role, isActiveEmployee], map: "idx_employee_profiles_loc_role")
+  @@map("employee_profiles")
+}
+
+model AdminLocationAssignment {
+  userId     String   @map("user_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  isPrimary  Boolean  @default(true) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([userId, locationId])
+  @@index([locationId, userId], map: "idx_admin_location_assignments_location")
+  @@map("admin_location_assignments")
+}
+
+model DriverProfile {
+  userId                   String                   @id @map("user_id") @db.Uuid
+  locationId               String                   @map("location_id") @db.Uuid
+  phoneNumberMirror        String                   @map("phone_number_mirror")
+  emailMirror              String?                  @map("email_mirror") @db.Citext
+  vehicleType              String?                  @map("vehicle_type")
+  vehicleIdentifier        String?                  @map("vehicle_identifier")
+  availabilityStatus       DriverAvailabilityStatus @default(OFF_SHIFT) @map("availability_status")
+  isActive                 Boolean                  @default(true) @map("is_active")
+  isOnDelivery             Boolean                  @default(false) @map("is_on_delivery")
+  lastAssignedAt           DateTime?                @map("last_assigned_at") @db.Timestamptz(6)
+  lastDeliveryCompletedAt  DateTime?                @map("last_delivery_completed_at") @db.Timestamptz(6)
+  totalDeliveriesCompleted Int                      @default(0) @map("total_deliveries_completed")
+  averageRatingNumeric     Decimal?                 @map("average_rating_numeric") @db.Decimal(3, 2)
+  createdAt                DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  archivedAt               DateTime?                @map("archived_at") @db.Timestamptz(6)
+  driverDeliveryReviews    DriverDeliveryReview[]
+  driverPayoutLinks        DriverPayoutOrderLink[]
+  driverPayouts            DriverPayout[]
+  location                 Location                 @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employeeProfile          EmployeeProfile          @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction)
+  orderDriverEvents        OrderDriverEvent[]
+  ordersAssigned           Order[]
+
+  @@index([locationId, availabilityStatus, isActive], map: "idx_driver_profiles_loc_avail")
+  @@map("driver_profiles")
+}
+
+model AuthSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  deviceInfo       String?   @map("device_info")
+  ipAddress        String?   @map("ip_address") @db.Inet
+  locationId       String?   @map("location_id") @db.Uuid
+  isPosSession     Boolean   @default(false) @map("is_pos_session")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastActiveAt     DateTime  @default(now()) @map("last_active_at") @db.Timestamptz(6)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedByUserId  String?   @map("revoked_by_user_id") @db.Uuid
+  location         Location? @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  revokedBy        User?     @relation("session_revoked_by", fields: [revokedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, revokedAt, expiresAt], map: "idx_auth_sessions_user_active")
+  @@map("auth_sessions")
+}
+
+model LocationSettings {
+  locationId                   String   @id @map("location_id") @db.Uuid
+  taxRateBps                   Int      @map("tax_rate_bps")
+  taxDeliveryFee               Boolean  @default(true) @map("tax_delivery_fee")
+  taxTip                       Boolean  @default(false) @map("tax_tip")
+  discountsReduceTaxableBase   Boolean  @default(true) @map("discounts_reduce_taxable_base")
+  deliveryFeeCents             Int      @default(499) @map("delivery_fee_cents")
+  freeDeliveryThresholdCents   Int?     @map("free_delivery_threshold_cents")
+  minimumDeliverySubtotalCents Int      @default(0) @map("minimum_delivery_subtotal_cents")
+  defaultPrepTimeMinutes       Int      @default(30) @map("default_prep_time_minutes")
+  busyModeEnabled              Boolean  @default(false) @map("busy_mode_enabled")
+  busyModePrepTimeMinutes      Int?     @map("busy_mode_prep_time_minutes")
+  firstOrderDiscountEnabled    Boolean  @default(true) @map("first_order_discount_enabled")
+  defaultPromoStackable        Boolean  @default(false) @map("default_promo_stackable")
+  prepaymentThresholdNoShows   Int      @default(3) @map("prepayment_threshold_no_shows")
+  allowedPostalCodes           Json     @default("[]") @map("allowed_postal_codes")
+  trustedIpRanges              Json     @default("[]") @map("trusted_ip_ranges")
+  paymentGatewayConfig         Json     @default("{}") @map("payment_gateway_config")
+  kdsAutoAcceptSeconds         Int      @default(10) @map("kds_auto_accept_seconds")
+  deliveryPinExpiryMinutes     Int      @default(240) @map("delivery_pin_expiry_minutes")
+  managerCreditLimitCents      Int?     @map("manager_credit_limit_cents")
+  defaultPickupMinMinutes      Int      @default(30) @map("default_pickup_min_minutes")
+  defaultPickupMaxMinutes      Int      @default(40) @map("default_pickup_max_minutes")
+  defaultDeliveryMinMinutes    Int      @default(40) @map("default_delivery_min_minutes")
+  defaultDeliveryMaxMinutes    Int      @default(60) @map("default_delivery_max_minutes")
+  overdueDeliveryGraceMinutes  Int      @default(10) @map("overdue_delivery_grace_minutes")
+  addItemsAutoApproveEnabled   Boolean  @default(false) @map("add_items_auto_approve_enabled")
+  createdAt                    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location                     Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("location_settings")
+}
+
+model LocationHours {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId  String   @map("location_id") @db.Uuid
+  serviceType String   @map("service_type")
+  dayOfWeek   Int      @map("day_of_week") @db.SmallInt
+  timeFrom    DateTime @map("time_from") @db.Time(6)
+  timeTo      DateTime @map("time_to") @db.Time(6)
+  isClosed    Boolean  @default(false) @map("is_closed")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([locationId, serviceType, dayOfWeek, timeFrom, timeTo])
+  @@index([locationId, serviceType, dayOfWeek], map: "idx_location_hours_lookup")
+  @@map("location_hours")
+}
+
+model MenuCategory {
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId           String                    @map("location_id") @db.Uuid
+  name                 String
+  slug                 String
+  sortOrder            Int                       @default(0) @map("sort_order")
+  isActive             Boolean                   @default(true) @map("is_active")
+  archivedAt           DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location             Location                  @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  menuItems            MenuItem[]
+  bxgyQualifyCategory  PromoBxgyRule[]           @relation("bxgy_qualifying_category")
+  bxgyRewardCategory   PromoBxgyRule[]           @relation("bxgy_reward_category")
+  promoCategoryTargets PromoCodeCategoryTarget[]
+
+  @@unique([locationId, slug])
+  @@index([locationId, sortOrder], map: "idx_menu_categories_loc_order")
+  @@map("menu_categories")
+}
+
+model WingFlavour {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId        String             @map("location_id") @db.Uuid
+  name              String
+  slug              String
+  heatLevel         String             @map("heat_level")
+  isPlain           Boolean            @default(false) @map("is_plain")
+  isActive          Boolean            @default(true) @map("is_active")
+  sortOrder         Int                @default(0) @map("sort_order")
+  archivedAt        DateTime?          @map("archived_at") @db.Timestamptz(6)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  modifierOptions   ModifierOption[]
+  orderItemFlavours OrderItemFlavour[]
+  location          Location           @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([locationId, slug])
+  @@index([locationId, heatLevel, sortOrder], map: "idx_wing_flavours_loc_heat")
+  @@map("wing_flavours")
+}
+
+model MenuItem {
+  id                          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId                  String                   @map("location_id") @db.Uuid
+  categoryId                  String                   @map("category_id") @db.Uuid
+  name                        String
+  slug                        String
+  description                 String?
+  basePriceCents              Int                      @map("base_price_cents")
+  imageUrl                    String?                  @map("image_url")
+  isAvailable                 Boolean                  @default(true) @map("is_available")
+  stockStatus                 String                   @default("NORMAL") @map("stock_status")
+  isHidden                    Boolean                  @default(false) @map("is_hidden")
+  isPopular                   Boolean                  @default(false) @map("is_popular")
+  allowedFulfillmentType      String                   @default("BOTH") @map("allowed_fulfillment_type")
+  builderType                 String?                  @map("builder_type")
+  requiresSpecialInstructions Boolean                  @default(false) @map("requires_special_instructions")
+  archivedAt                  DateTime?                @map("archived_at") @db.Timestamptz(6)
+  createdAt                   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  modifierGroups              MenuItemModifierGroup[]
+  removableIngredients        RemovableIngredient[]
+  schedules                   MenuItemSchedule[]
+  category                    MenuCategory             @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location                    Location                 @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  orderItems                  OrderItem[]
+  savedCartItems              SavedCartItem[]
+  bxgyQualifyProduct          PromoBxgyRule[]          @relation("bxgy_qualifying_product")
+  bxgyRewardProduct           PromoBxgyRule[]          @relation("bxgy_reward_product")
+  promoProductTargets         PromoCodeProductTarget[]
+
+  @@unique([locationId, slug])
+  @@index([locationId, categoryId, isAvailable], map: "idx_menu_items_loc_category")
+  @@map("menu_items")
+}
+
+model RemovableIngredient {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  menuItemId String   @map("menu_item_id") @db.Uuid
+  name       String
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([menuItemId, sortOrder], map: "idx_removable_ingredients_item")
+  @@map("removable_ingredients")
+}
+
+model ModifierGroup {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId         String                  @map("location_id") @db.Uuid
+  name               String
+  displayLabel       String                  @map("display_label")
+  selectionMode      String                  @map("selection_mode")
+  minSelect          Int                     @default(0) @map("min_select")
+  maxSelect          Int?                    @map("max_select")
+  isRequired         Boolean                 @default(false) @map("is_required")
+  sortOrder          Int                     @default(0) @map("sort_order")
+  contextKey         String?                 @map("context_key")
+  archivedAt         DateTime?               @map("archived_at") @db.Timestamptz(6)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  menuItems          MenuItemModifierGroup[]
+  location           Location                @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  options            ModifierOption[]
+  orderItemModifiers OrderItemModifier[]
+
+  @@index([locationId, sortOrder], map: "idx_modifier_groups_loc")
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  modifierGroupId      String              @map("modifier_group_id") @db.Uuid
+  name                 String
+  priceDeltaCents      Int                 @default(0) @map("price_delta_cents")
+  isDefault            Boolean             @default(false) @map("is_default")
+  isActive             Boolean             @default(true) @map("is_active")
+  sortOrder            Int                 @default(0) @map("sort_order")
+  addonMatchNormalized String?             @map("addon_match_normalized")
+  linkedFlavourId      String?             @map("linked_flavour_id") @db.Uuid
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  linkedFlavour        WingFlavour?        @relation(fields: [linkedFlavourId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  modifierGroup        ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItemModifiers   OrderItemModifier[]
+
+  @@index([modifierGroupId, isActive, sortOrder], map: "idx_modifier_options_group")
+  @@map("modifier_options")
+}
+
+model MenuItemModifierGroup {
+  menuItemId      String        @map("menu_item_id") @db.Uuid
+  modifierGroupId String        @map("modifier_group_id") @db.Uuid
+  sortOrder       Int           @default(0) @map("sort_order")
+  contextKey      String?       @map("context_key")
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([menuItemId, modifierGroupId])
+  @@index([menuItemId, sortOrder], map: "idx_menu_item_modifier_groups_item")
+  @@map("menu_item_modifier_groups")
+}
+
+model MenuItemSchedule {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  menuItemId String   @map("menu_item_id") @db.Uuid
+  dayOfWeek  Int      @map("day_of_week") @db.SmallInt
+  timeFrom   DateTime @map("time_from") @db.Time(6)
+  timeTo     DateTime @map("time_to") @db.Time(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([menuItemId, dayOfWeek, timeFrom], map: "idx_menu_item_schedules_item_day")
+  @@map("menu_item_schedules")
+}
+
+model CheckoutIdempotencyKey {
+  idempotencyKey     String   @id @map("idempotency_key")
+  userId             String?  @map("user_id") @db.Uuid
+  locationId         String   @map("location_id") @db.Uuid
+  requestFingerprint String   @map("request_fingerprint")
+  orderId            String?  @map("order_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+  location           Location @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user               User?    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order              Order?   @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_checkout_idempotency_order")
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_checkout_idempotency_user")
+  @@map("checkout_idempotency_keys")
+}
+
+model SavedCart {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String?         @map("user_id") @db.Uuid
+  guestToken       String?         @map("guest_token")
+  locationId       String          @map("location_id") @db.Uuid
+  fulfillmentType  FulfillmentType @default(PICKUP) @map("fulfillment_type")
+  locationTimezone String          @default("America/Toronto") @map("location_timezone")
+  scheduledFor     DateTime?       @map("scheduled_for") @db.Timestamptz(6)
+  driverTipPercent String          @default("none") @map("driver_tip_percent")
+  status           SavedCartStatus @default(ACTIVE)
+  expiresAt        DateTime?       @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items            SavedCartItem[]
+  location         Location        @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user             User?           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([userId, locationId, status], map: "uq_saved_cart_user_loc_status")
+  @@unique([guestToken, locationId, status], map: "uq_saved_cart_guest_loc_status")
+  @@index([expiresAt], map: "idx_saved_cart_expires_at")
+  @@map("saved_carts")
+}
+
+model SavedCartItem {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cartId                 String    @map("cart_id") @db.Uuid
+  menuItemId             String    @map("menu_item_id") @db.Uuid
+  menuItemSlug           String?   @map("menu_item_slug")
+  nameSnapshot           String    @map("name_snapshot")
+  imageUrl               String?   @map("image_url")
+  basePriceCents         Int       @map("base_price_cents")
+  quantity               Int
+  specialInstructions    String    @default("") @map("special_instructions")
+  modifierSelectionsJson Json      @default("[]") @map("modifier_selections_json")
+  removedIngredientsJson Json      @default("[]") @map("removed_ingredients_json")
+  builderPayloadJson     Json?     @map("builder_payload_json")
+  lineKey                String    @map("line_key")
+  sortOrder              Int       @default(0) @map("sort_order")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  cart                   SavedCart @relation(fields: [cartId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menuItem               MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([cartId, lineKey], map: "uq_saved_cart_items_cart_line")
+  @@index([cartId, sortOrder], map: "idx_saved_cart_items_cart")
+  @@map("saved_cart_items")
+}
+
+model Order {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId                  String                    @map("location_id") @db.Uuid
+  customerUserId              String                    @map("customer_user_id") @db.Uuid
+  orderNumber                 BigInt                    @map("order_number")
+  orderSource                 OrderSource               @map("order_source")
+  fulfillmentType             FulfillmentType           @map("fulfillment_type")
+  status                      OrderStatus
+  contactlessPref             ContactlessPref?          @map("contactless_pref")
+  scheduledFor                DateTime                  @map("scheduled_for") @db.Timestamptz(6)
+  placedAt                    DateTime                  @default(now()) @map("placed_at") @db.Timestamptz(6)
+  acceptedAt                  DateTime?                 @map("accepted_at") @db.Timestamptz(6)
+  readyAt                     DateTime?                 @map("ready_at") @db.Timestamptz(6)
+  completedAt                 DateTime?                 @map("completed_at") @db.Timestamptz(6)
+  cancelledAt                 DateTime?                 @map("cancelled_at") @db.Timestamptz(6)
+  cancelledByUserId           String?                   @map("cancelled_by_user_id") @db.Uuid
+  cancellationSource          String?                   @map("cancellation_source")
+  cancellationReason          String?                   @map("cancellation_reason")
+  assignedDriverUserId        String?                   @map("assigned_driver_user_id") @db.Uuid
+  estimatedTravelMinutes      Int?                      @map("estimated_travel_minutes")
+  estimatedArrivalAt          DateTime?                 @map("estimated_arrival_at") @db.Timestamptz(6)
+  deliveryStartedAt           DateTime?                 @map("delivery_started_at") @db.Timestamptz(6)
+  deliveryCompletedAt         DateTime?                 @map("delivery_completed_at") @db.Timestamptz(6)
+  deliveryPhoneSnapshot       String?                   @map("delivery_phone_snapshot")
+  customerNameSnapshot        String                    @map("customer_name_snapshot")
+  customerPhoneSnapshot       String                    @map("customer_phone_snapshot")
+  customerEmailSnapshot       String?                   @map("customer_email_snapshot") @db.Citext
+  addressSnapshotJson         Json?                     @map("address_snapshot_json")
+  pricingSnapshotJson         Json                      @default("{}") @map("pricing_snapshot_json")
+  revalidationDiffJson        Json?                     @map("revalidation_diff_json")
+  itemSubtotalCents           Int                       @map("item_subtotal_cents")
+  itemDiscountTotalCents      Int                       @default(0) @map("item_discount_total_cents")
+  orderDiscountTotalCents     Int                       @default(0) @map("order_discount_total_cents")
+  discountedSubtotalCents     Int                       @map("discounted_subtotal_cents")
+  taxableSubtotalCents        Int                       @map("taxable_subtotal_cents")
+  taxCents                    Int                       @map("tax_cents")
+  taxRateBps                  Int                       @map("tax_rate_bps")
+  taxDeliveryFeeApplied       Boolean                   @default(false) @map("tax_delivery_fee_applied")
+  taxTipApplied               Boolean                   @default(false) @map("tax_tip_applied")
+  taxSnapshotLabel            String                    @default("ONTARIO_HST_13") @map("tax_snapshot_label")
+  deliveryFeeCents            Int                       @default(0) @map("delivery_fee_cents")
+  driverTipCents              Int                       @default(0) @map("driver_tip_cents")
+  walletAppliedCents          Int                       @default(0) @map("wallet_applied_cents")
+  netPaidAmountCents          Int                       @default(0) @map("net_paid_amount_cents")
+  finalPayableCents           Int                       @map("final_payable_cents")
+  remainingRefundableCents    Int                       @default(0) @map("remaining_refundable_cents")
+  paymentMethod               PaymentMethod?            @map("payment_method")
+  paymentStatusSummary        OrderPaymentStatusSummary @default(UNPAID) @map("payment_status_summary")
+  customerOrderNotes          String?                   @map("customer_order_notes")
+  estimatedReadyAt            DateTime?                 @map("estimated_ready_at") @db.Timestamptz(6)
+  estimatedWindowMinMinutes   Int?                      @map("estimated_window_min_minutes")
+  estimatedWindowMaxMinutes   Int?                      @map("estimated_window_max_minutes")
+  busyModeExtraMinutesApplied Int                       @default(0) @map("busy_mode_extra_minutes_applied")
+  cancelAllowedUntil          DateTime?                 @map("cancel_allowed_until") @db.Timestamptz(6)
+  requiresManualReview        Boolean                   @default(false) @map("requires_manual_review")
+  studentDiscountRequested    Boolean                   @default(false) @map("student_discount_requested")
+  studentDiscountVerifiedBy   String?                   @map("student_discount_verified_by") @db.Uuid
+  studentDiscountAmountCents  Int                       @default(0) @map("student_discount_amount_cents")
+  deliveryCompletedByUserId   String?                   @map("delivery_completed_by_user_id") @db.Uuid
+  driverReassignedAt          DateTime?                 @map("driver_reassigned_at") @db.Timestamptz(6)
+  cancellationChatMessageId   String?                   @map("cancellation_chat_message_id") @db.Uuid
+  createdAt                   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  cancellationRequests        CancellationRequest[]
+  chatReadStates              ChatReadState[]
+  chatSideReadStates          ChatSideReadState[]
+  checkoutIdempotencyKeys     CheckoutIdempotencyKey[]
+  creditLedgerEntries         CustomerCreditLedger[]
+  wingsStampLedgerEntries     CustomerWingsStampLedger[]
+  deliveryPinVerification     DeliveryPinVerification?
+  driverDeliveryReviews       DriverDeliveryReview?
+  driverPayoutLinks           DriverPayoutOrderLink[]
+  itemReviews                 ItemReview[]
+  changeRequests              OrderChangeRequest[]
+  conversation                OrderConversation?
+  orderDiscounts              OrderDiscount[]
+  driverEvents                OrderDriverEvent[]
+  etaEvents                   OrderEtaEvent[]
+  finalizationEvents          OrderFinalizationEvent[]
+  orderItems                  OrderItem[]
+  messages                    OrderMessage[]            @relation("order_thread_messages")
+  payments                    OrderPayment[]
+  statusEvents                OrderStatusEvent[]
+  cancellationChatMessage     OrderMessage?             @relation("order_cancellation_pointer", fields: [cancellationChatMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_cancellation_chat_message")
+  assignedDriver              DriverProfile?            @relation(fields: [assignedDriverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  cancelledBy                 User?                     @relation("cancelled_by", fields: [cancelledByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer                    User                      @relation("customer_orders", fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deliveryCompletedBy         User?                     @relation("delivery_completed_by", fields: [deliveryCompletedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location                    Location                  @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  studentVerifiedBy           User?                     @relation("student_verified_by", fields: [studentDiscountVerifiedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  promoRedemptions            PromoRedemption[]
+  refundRequests              RefundRequest[]
+  supportTicketResolutions    SupportTicketResolution[] @relation("resolution_replacement_order")
+  supportTickets              SupportTicket[]
+
+  @@unique([locationId, orderNumber])
+  @@index([locationId, status, scheduledFor], map: "idx_orders_loc_status_sched")
+  @@index([customerUserId, placedAt(sort: Desc)], map: "idx_orders_customer")
+  @@map("orders")
+}
+
+model OrderItem {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId              String               @map("order_id") @db.Uuid
+  menuItemId           String?              @map("menu_item_id") @db.Uuid
+  lineNo               Int                  @map("line_no")
+  productNameSnapshot  String               @map("product_name_snapshot")
+  categoryNameSnapshot String               @map("category_name_snapshot")
+  builderType          String?              @map("builder_type")
+  quantity             Int
+  unitPriceCents       Int                  @map("unit_price_cents")
+  lineDiscountCents    Int                  @default(0) @map("line_discount_cents")
+  lineTotalCents       Int                  @map("line_total_cents")
+  specialInstructions  String?              @map("special_instructions")
+  builderPayloadJson   Json?                @map("builder_payload_json")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviews              ItemReview[]
+  flavours             OrderItemFlavour[]
+  modifiers            OrderItemModifier[]
+  wingConfig           OrderItemWingConfig?
+  menuItem             MenuItem?            @relation(fields: [menuItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                Order                @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([orderId, lineNo])
+  @@index([orderId, lineNo], map: "idx_order_items_order")
+  @@map("order_items")
+}
+
+model OrderItemModifier {
+  id                        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderItemId               String          @map("order_item_id") @db.Uuid
+  modifierGroupId           String?         @map("modifier_group_id") @db.Uuid
+  modifierOptionId          String?         @map("modifier_option_id") @db.Uuid
+  modifierGroupNameSnapshot String          @map("modifier_group_name_snapshot")
+  modifierNameSnapshot      String          @map("modifier_name_snapshot")
+  modifierKind              String          @map("modifier_kind")
+  quantity                  Int             @default(1)
+  priceDeltaCents           Int             @default(0) @map("price_delta_cents")
+  sortOrder                 Int             @default(0) @map("sort_order")
+  modifierGroup             ModifierGroup?  @relation(fields: [modifierGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  modifierOption            ModifierOption? @relation(fields: [modifierOptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  orderItem                 OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderItemId, sortOrder], map: "idx_order_item_modifiers_item")
+  @@map("order_item_modifiers")
+}
+
+model OrderItemWingConfig {
+  orderItemId          String    @id @map("order_item_id") @db.Uuid
+  wingType             String    @map("wing_type")
+  preparation          String
+  weightLb             Decimal   @map("weight_lb") @db.Decimal(3, 1)
+  requiredFlavourCount Int       @map("required_flavour_count") @db.SmallInt
+  saucingMethod        String?   @map("saucing_method")
+  sideFlavourSlot      Int?      @map("side_flavour_slot") @db.SmallInt
+  extraFlavourAdded    Boolean   @default(false) @map("extra_flavour_added")
+  orderItem            OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("order_item_wing_configs")
+}
+
+model OrderItemFlavour {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderItemId         String       @map("order_item_id") @db.Uuid
+  slotNo              Int          @map("slot_no") @db.SmallInt
+  flavourRole         String       @map("flavour_role")
+  wingFlavourId       String?      @map("wing_flavour_id") @db.Uuid
+  flavourNameSnapshot String       @map("flavour_name_snapshot")
+  heatLevelSnapshot   String       @map("heat_level_snapshot")
+  placement           String
+  sortOrder           Int          @default(0) @map("sort_order")
+  orderItem           OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  wingFlavour         WingFlavour? @relation(fields: [wingFlavourId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([orderItemId, sortOrder], map: "idx_order_item_flavours_item")
+  @@map("order_item_flavours")
+}
+
+model OrderStatusEvent {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId     String       @map("order_id") @db.Uuid
+  locationId  String       @map("location_id") @db.Uuid
+  fromStatus  OrderStatus? @map("from_status")
+  toStatus    OrderStatus  @map("to_status")
+  eventType   String       @map("event_type")
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  reasonText  String?      @map("reason_text")
+  payloadJson Json         @default("{}") @map("payload_json")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor       User?        @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location    Location     @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderId, createdAt], map: "idx_order_status_events_order_created")
+  @@index([locationId, createdAt(sort: Desc)], map: "idx_order_status_events_loc_created")
+  @@map("order_status_events")
+}
+
+model OrderEtaEvent {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId             String    @map("order_id") @db.Uuid
+  oldEstimatedReadyAt DateTime? @map("old_estimated_ready_at") @db.Timestamptz(6)
+  newEstimatedReadyAt DateTime? @map("new_estimated_ready_at") @db.Timestamptz(6)
+  changedByUserId     String?   @map("changed_by_user_id") @db.Uuid
+  reason              String?
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  users               User?     @relation(fields: [changedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order               Order     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderId, createdAt], map: "idx_order_eta_events_order")
+  @@map("order_eta_events")
+}
+
+model OrderFinalizationEvent {
+  id                        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId                   String      @map("order_id") @db.Uuid
+  finalStatus               OrderStatus @map("final_status")
+  confirmed                 Boolean
+  confirmedByUserId         String?     @map("confirmed_by_user_id") @db.Uuid
+  confirmationPromptVersion String?     @map("confirmation_prompt_version")
+  createdAt                 DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  confirmedBy               User?       @relation("finalization_confirmed_by", fields: [confirmedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderId, createdAt], map: "idx_order_finalization_events_order")
+  @@map("order_finalization_events")
+}
+
+model CancellationRequest {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId               String             @map("order_id") @db.Uuid
+  locationId            String             @map("location_id") @db.Uuid
+  requestedByUserId     String             @map("requested_by_user_id") @db.Uuid
+  requestSource         String             @map("request_source")
+  reasonText            String             @map("reason_text")
+  status                String
+  reviewedByAdminUserId String?            @map("reviewed_by_admin_user_id") @db.Uuid
+  reviewedAt            DateTime?          @map("reviewed_at") @db.Timestamptz(6)
+  decisionNote          String?            @map("decision_note")
+  chatThreadId          String?            @map("chat_thread_id") @db.Uuid
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  location              Location           @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                 Order              @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requestedBy           User               @relation("cancel_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reviewedBy            User?              @relation("cancel_reviewed_by", fields: [reviewedByAdminUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  chatThread            OrderConversation? @relation(fields: [chatThreadId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([orderId, status], map: "idx_cancellation_requests_order_status")
+  @@index([locationId, status, createdAt(sort: Desc)], map: "idx_cancellation_requests_loc_status")
+  @@map("cancellation_requests")
+}
+
+model OrderChangeRequest {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId            String              @map("order_id") @db.Uuid
+  requestedByUserId  String              @map("requested_by_user_id") @db.Uuid
+  type               ChangeRequestType
+  status             ChangeRequestStatus @default(PENDING)
+  requestedItemsJson Json                @default("[]") @map("requested_items_json")
+  resolvedAt         DateTime?           @map("resolved_at") @db.Timestamptz(6)
+  resolvedByUserId   String?             @map("resolved_by_user_id") @db.Uuid
+  rejectionReason    String?             @map("rejection_reason")
+  note               String?
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requestedBy        User                @relation("change_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolvedBy         User?               @relation("change_resolved_by", fields: [resolvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([orderId, status], map: "idx_order_change_requests_order_status")
+  @@map("order_change_requests")
+}
+
+model OrderDriverEvent {
+  id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId                String        @map("order_id") @db.Uuid
+  locationId             String        @map("location_id") @db.Uuid
+  driverUserId           String        @map("driver_user_id") @db.Uuid
+  eventType              String        @map("event_type")
+  actorUserId            String        @map("actor_user_id") @db.Uuid
+  estimatedTravelMinutes Int?          @map("estimated_travel_minutes")
+  noteText               String?       @map("note_text")
+  createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor                  User          @relation("driver_event_actor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver                 DriverProfile @relation(fields: [driverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  location               Location      @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                  Order         @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderId, createdAt], map: "idx_order_driver_events_order_created")
+  @@index([driverUserId, createdAt(sort: Desc)], map: "idx_order_driver_events_driver_created")
+  @@map("order_driver_events")
+}
+
+model DeliveryPinVerification {
+  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId            String                @unique @map("order_id") @db.Uuid
+  pinHash            String                @map("pin_hash")
+  pinPlaintext       String?               @map("pin_plaintext")
+  generatedAt        DateTime              @default(now()) @map("generated_at") @db.Timestamptz(6)
+  expiresAt          DateTime              @map("expires_at") @db.Timestamptz(6)
+  failedAttempts     Int                   @default(0) @map("failed_attempts")
+  lockedAt           DateTime?             @map("locked_at") @db.Timestamptz(6)
+  verifiedAt         DateTime?             @map("verified_at") @db.Timestamptz(6)
+  verifiedByUserId   String?               @map("verified_by_user_id") @db.Uuid
+  verificationResult PinVerificationResult @default(PENDING) @map("verification_result")
+  bypassReason       String?               @map("bypass_reason")
+  bypassByUserId     String?               @map("bypass_by_user_id") @db.Uuid
+  bypassBy           User?                 @relation("pin_bypass_by", fields: [bypassByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order              Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  verifiedBy         User?                 @relation("pin_verified_by", fields: [verifiedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([verificationResult, expiresAt], map: "idx_delivery_pin_verifications_result")
+  @@map("delivery_pin_verifications")
+}
+
+model PromoCode {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                    String                    @unique @db.Citext
+  name                    String
+  discountType            PromoDiscountType         @map("discount_type")
+  scopeType               PromoScopeType            @default(GLOBAL) @map("scope_type")
+  locationId              String?                   @map("location_id") @db.Uuid
+  discountValue           Decimal                   @map("discount_value") @db.Decimal(12, 2)
+  eligibleFulfillmentType String                    @default("BOTH") @map("eligible_fulfillment_type")
+  isStackable             Boolean                   @default(false) @map("is_stackable")
+  isFirstOrderOnly        Boolean                   @default(false) @map("is_first_order_only")
+  startsAt                DateTime?                 @map("starts_at") @db.Timestamptz(6)
+  endsAt                  DateTime?                 @map("ends_at") @db.Timestamptz(6)
+  usageLimitTotal         Int?                      @map("usage_limit_total")
+  usageLimitPerCustomer   Int?                      @map("usage_limit_per_customer")
+  isActive                Boolean                   @default(true) @map("is_active")
+  rulePayloadJson         Json                      @default("{}") @map("rule_payload_json")
+  archivedAt              DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  minSubtotalCents        Int                       @default(0) @map("min_subtotal_cents")
+  maxDiscountCents        Int?                      @map("max_discount_cents")
+  usageCount              Int                       @default(0) @map("usage_count")
+  validTimeFrom           DateTime?                 @map("valid_time_from") @db.Time(6)
+  validTimeTo             DateTime?                 @map("valid_time_to") @db.Time(6)
+  isOneTimePerCustomer    Boolean                   @default(false) @map("is_one_time_per_customer")
+  createdByUserId         String?                   @map("created_by_user_id") @db.Uuid
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orderDiscounts          OrderDiscount[]
+  bxgyRule                PromoBxgyRule?
+  categoryTargets         PromoCodeCategoryTarget[]
+  productTargets          PromoCodeProductTarget[]
+  createdBy               User?                     @relation(fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location                Location?                 @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  redemptions             PromoRedemption[]
+  validDays               PromoValidDay[]
+
+  @@index([isActive, startsAt, endsAt], map: "idx_promo_codes_active_window")
+  @@index([scopeType, locationId], map: "idx_promo_codes_scope")
+  @@map("promo_codes")
+}
+
+model PromoCodeProductTarget {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promoCodeId String    @map("promo_code_id") @db.Uuid
+  menuItemId  String    @map("menu_item_id") @db.Uuid
+  menuItem    MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([promoCodeId, menuItemId])
+  @@index([promoCodeId], map: "idx_promo_code_product_targets_promo")
+  @@map("promo_code_product_targets")
+}
+
+model PromoCodeCategoryTarget {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promoCodeId    String       @map("promo_code_id") @db.Uuid
+  menuCategoryId String       @map("menu_category_id") @db.Uuid
+  menuCategory   MenuCategory @relation(fields: [menuCategoryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  promoCode      PromoCode    @relation(fields: [promoCodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([promoCodeId, menuCategoryId])
+  @@index([promoCodeId], map: "idx_promo_code_category_targets_promo")
+  @@map("promo_code_category_targets")
+}
+
+model PromoValidDay {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promoCodeId String    @map("promo_code_id") @db.Uuid
+  dayOfWeek   Int       @map("day_of_week") @db.SmallInt
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([promoCodeId, dayOfWeek])
+  @@index([promoCodeId], map: "idx_promo_valid_days_promo")
+  @@map("promo_valid_days")
+}
+
+model PromoBxgyRule {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promoCodeId          String        @unique @map("promo_code_id") @db.Uuid
+  qualifyingCategoryId String?       @map("qualifying_category_id") @db.Uuid
+  qualifyingProductId  String?       @map("qualifying_product_id") @db.Uuid
+  requiredQty          Int           @map("required_qty")
+  rewardCategoryId     String?       @map("reward_category_id") @db.Uuid
+  rewardProductId      String?       @map("reward_product_id") @db.Uuid
+  rewardQty            Int           @map("reward_qty")
+  rewardRule           String        @map("reward_rule")
+  maxUsesPerOrder      Int           @default(1) @map("max_uses_per_order")
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  promoCode            PromoCode     @relation(fields: [promoCodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  qualifyingCategory   MenuCategory? @relation("bxgy_qualifying_category", fields: [qualifyingCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  qualifyingProduct    MenuItem?     @relation("bxgy_qualifying_product", fields: [qualifyingProductId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rewardCategory       MenuCategory? @relation("bxgy_reward_category", fields: [rewardCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rewardProduct        MenuItem?     @relation("bxgy_reward_product", fields: [rewardProductId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("promo_bxgy_rules")
+}
+
+model PromoRedemption {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promoCodeId         String    @map("promo_code_id") @db.Uuid
+  orderId             String    @map("order_id") @db.Uuid
+  customerUserId      String    @map("customer_user_id") @db.Uuid
+  discountAmountCents Int       @map("discount_amount_cents")
+  metadataJson        Json      @default("{}") @map("metadata_json")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  customer            User      @relation(fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order               Order     @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  promoCode           PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([promoCodeId, orderId])
+  @@index([customerUserId, createdAt(sort: Desc)], map: "idx_promo_redemptions_customer")
+  @@map("promo_redemptions")
+}
+
+model OrderDiscount {
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId             String     @map("order_id") @db.Uuid
+  promoCodeId         String?    @map("promo_code_id") @db.Uuid
+  discountType        String     @map("discount_type")
+  discountAmountCents Int        @map("discount_amount_cents")
+  description         String?
+  appliedByUserId     String?    @map("applied_by_user_id") @db.Uuid
+  reasonText          String?    @map("reason_text")
+  appliedAt           DateTime   @default(now()) @map("applied_at") @db.Timestamptz(6)
+  order               Order      @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  promoCode           PromoCode? @relation(fields: [promoCodeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([orderId], map: "idx_order_discounts_order")
+  @@map("order_discounts")
+}
+
+model OrderPayment {
+  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId               String                   @map("order_id") @db.Uuid
+  locationId            String                   @map("location_id") @db.Uuid
+  paymentMethod         PaymentTenderMethod      @map("payment_method")
+  transactionType       PaymentTransactionType   @default(CAPTURE) @map("transaction_type")
+  transactionStatus     PaymentTransactionStatus @default(PENDING) @map("transaction_status")
+  signedAmountCents     Int                      @map("signed_amount_cents")
+  currency              String                   @default("CAD") @db.Char(3)
+  provider              String?
+  providerTransactionId String?                  @map("provider_transaction_id")
+  processorPayloadJson  Json                     @default("{}") @map("processor_payload_json")
+  initiatedByUserId     String?                  @map("initiated_by_user_id") @db.Uuid
+  failureReason         String?                  @map("failure_reason")
+  createdByUserId       String?                  @map("created_by_user_id") @db.Uuid
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy             User?                    @relation("payment_created_by", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  initiatedBy           User?                    @relation("payment_initiated_by", fields: [initiatedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location              Location                 @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                 Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderId, createdAt], map: "idx_order_payments_order")
+  @@map("order_payments")
+}
+
+model SupportTicket {
+  id                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId          String                    @map("location_id") @db.Uuid
+  orderId             String?                   @map("order_id") @db.Uuid
+  customerUserId      String?                   @map("customer_user_id") @db.Uuid
+  ticketType          String                    @map("ticket_type")
+  status              TicketStatus
+  resolutionType      TicketResolutionType?     @map("resolution_type")
+  subject             String
+  description         String
+  createdSource       String                    @map("created_source")
+  priority            String                    @default("NORMAL")
+  assignedAdminUserId String?                   @map("assigned_admin_user_id") @db.Uuid
+  resolvedByUserId    String?                   @map("resolved_by_user_id") @db.Uuid
+  resolvedAt          DateTime?                 @map("resolved_at") @db.Timestamptz(6)
+  createdAt           DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  refundRequests      RefundRequest[]
+  events              SupportTicketEvent[]
+  messages            SupportTicketMessage[]
+  resolutions         SupportTicketResolution[]
+  assignedAdmin       User?                     @relation("ticket_assigned", fields: [assignedAdminUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer            User?                     @relation("ticket_customer", fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location            Location                  @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order               Order?                    @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolvedBy          User?                     @relation("ticket_resolved", fields: [resolvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([locationId, status, createdAt(sort: Desc)], map: "idx_support_tickets_loc_status")
+  @@index([orderId], map: "idx_support_tickets_order")
+  @@map("support_tickets")
+}
+
+model RefundRequest {
+  id                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId             String                    @map("order_id") @db.Uuid
+  locationId          String                    @map("location_id") @db.Uuid
+  supportTicketId     String?                   @map("support_ticket_id") @db.Uuid
+  requestedByUserId   String                    @map("requested_by_user_id") @db.Uuid
+  amountCents         Int                       @map("amount_cents")
+  refundMethod        RefundMethod              @default(STORE_CREDIT) @map("refund_method")
+  status              RefundStatus              @default(PENDING)
+  reasonText          String                    @map("reason_text")
+  approvedByUserId    String?                   @map("approved_by_user_id") @db.Uuid
+  approvedAt          DateTime?                 @map("approved_at") @db.Timestamptz(6)
+  issuedByUserId      String?                   @map("issued_by_user_id") @db.Uuid
+  issuedAt            DateTime?                 @map("issued_at") @db.Timestamptz(6)
+  rejectedByUserId    String?                   @map("rejected_by_user_id") @db.Uuid
+  rejectedAt          DateTime?                 @map("rejected_at") @db.Timestamptz(6)
+  processorReference  String?                   @map("processor_reference")
+  createdAt           DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  creditLedgerEntries CustomerCreditLedger[]
+  approvedBy          User?                     @relation("refund_approved_by", fields: [approvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  issuedBy            User?                     @relation("refund_issued_by", fields: [issuedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location            Location                  @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order               Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rejectedBy          User?                     @relation("refund_rejected_by", fields: [rejectedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestedBy         User                      @relation("refund_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supportTicket       SupportTicket?            @relation(fields: [supportTicketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ticketResolutions   SupportTicketResolution[]
+
+  @@index([orderId, status], map: "idx_refund_requests_order_status")
+  @@index([locationId, status, createdAt(sort: Desc)], map: "idx_refund_requests_loc_status")
+  @@map("refund_requests")
+}
+
+model CustomerWallet {
+  customerUserId      String   @id @map("customer_user_id") @db.Uuid
+  balanceCents        Int      @default(0) @map("balance_cents")
+  lifetimeCreditCents Int      @default(0) @map("lifetime_credit_cents")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                User     @relation(fields: [customerUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("customer_wallets")
+}
+
+model CustomerCreditLedger {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerUserId    String         @map("customer_user_id") @db.Uuid
+  orderId           String?        @map("order_id") @db.Uuid
+  refundRequestId   String?        @map("refund_request_id") @db.Uuid
+  entryType         String         @map("entry_type")
+  amountCents       Int            @map("amount_cents")
+  balanceAfterCents Int            @map("balance_after_cents")
+  reasonText        String         @map("reason_text")
+  createdByUserId   String?        @map("created_by_user_id") @db.Uuid
+  expiresAt         DateTime?      @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy         User?          @relation("credit_created_by", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer          User           @relation("credit_customer", fields: [customerUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order             Order?         @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refundRequest     RefundRequest? @relation(fields: [refundRequestId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([customerUserId, createdAt(sort: Desc)], map: "idx_customer_credit_ledger_customer")
+  @@map("customer_credit_ledger")
+}
+
+/// Per-customer stamp rewards summary.
+///
+/// Customers earn ONE stamp per whole pound of wings on every order
+/// that completes successfully (`status` -> `DELIVERED` or `PICKED_UP`).
+/// Every 8 stamps can be redeemed for "1lb of wings free" at checkout.
+/// `availableStamps` is capped at 8 by application logic so stampings
+/// beyond a full redemption target are ignored until the user redeems.
+model CustomerWingsRewards {
+  customerUserId   String   @id @map("customer_user_id") @db.Uuid
+  /// Current redeemable stamp balance. Capped at 8 — extra pounds don't
+  /// accrue until the user redeems the free-wings reward.
+  availableStamps  Int      @default(0) @map("available_stamps")
+  /// Monotonic lifetime count of stamps ever awarded. Never decreases
+  /// on redemption — used only for UI ("X stamps earned to date").
+  lifetimeStamps   Int      @default(0) @map("lifetime_stamps")
+  /// Monotonic lifetime count of free-wings rewards redeemed. Used
+  /// for UI ("X free pounds unlocked").
+  lifetimeRedemptions Int   @default(0) @map("lifetime_redemptions")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user             User     @relation(fields: [customerUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("customer_wings_rewards")
+}
+
+/// Audit log of every wings-stamp balance change. Mirrors the
+/// `customer_credit_ledger` pattern so revenue/ops tooling can read it
+/// the same way. Earn entries reference the `Order` that granted them;
+/// redeem entries reference the `Order` the reward was applied to.
+model CustomerWingsStampLedger {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerUserId     String   @map("customer_user_id") @db.Uuid
+  orderId            String?  @map("order_id") @db.Uuid
+  /// `EARNED` (positive delta) or `REDEEMED` (negative delta).
+  entryType          String   @map("entry_type")
+  /// Signed stamp change — +1..+8 for earn (floored pounds of wings on
+  /// the awarding order) or -8 for a single redemption.
+  deltaStamps        Int      @map("delta_stamps")
+  /// Available-stamp balance after applying `deltaStamps`. Useful for
+  /// quickly rendering timelines without a running sum.
+  balanceAfterStamps Int      @map("balance_after_stamps")
+  /// Pounds of wings on the awarding order (decimal to match
+  /// `order_item_wing_configs.weight_lb`). Null on redemption rows.
+  poundsAwarded      Decimal? @map("pounds_awarded") @db.Decimal(5, 2)
+  reasonText         String   @map("reason_text")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  customer           User     @relation(fields: [customerUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order              Order?   @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([orderId, entryType], map: "uq_customer_wings_stamp_ledger_order_entry_type")
+  @@index([customerUserId, createdAt(sort: Desc)], map: "idx_customer_wings_stamps_customer")
+  @@map("customer_wings_stamp_ledger")
+}
+
+model OrderConversation {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId              String                @unique @map("order_id") @db.Uuid
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  closedAt             DateTime?             @map("closed_at") @db.Timestamptz(6)
+  order                Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  messages             OrderMessage[]
+  cancellationRequests CancellationRequest[]
+
+  @@map("order_conversations")
+}
+
+model OrderMessage {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId         String              @map("conversation_id") @db.Uuid
+  orderId                String              @map("order_id") @db.Uuid
+  senderUserId           String              @map("sender_user_id") @db.Uuid
+  senderSurface          String              @map("sender_surface")
+  messageBody            String              @map("message_body")
+  isSystemMessage        Boolean             @default(false) @map("is_system_message")
+  visibility             String              @default("BOTH")
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt              DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  chatReadStates         ChatReadState[]
+  chatSideReadStates     ChatSideReadState[]
+  conversation           OrderConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order                  Order               @relation("order_thread_messages", fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sender                 User                @relation(fields: [senderUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ordersCancelledViaChat Order[]             @relation("order_cancellation_pointer")
+
+  @@index([orderId, createdAt], map: "idx_order_messages_order_created")
+  @@map("order_messages")
+}
+
+model ChatSideReadState {
+  orderId           String        @map("order_id") @db.Uuid
+  readerSide        String        @map("reader_side")
+  lastReadMessageId String?       @map("last_read_message_id") @db.Uuid
+  lastReadAt        DateTime?     @map("last_read_at") @db.Timestamptz(6)
+  lastReadMessage   OrderMessage? @relation(fields: [lastReadMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([orderId, readerSide])
+  @@map("chat_side_read_states")
+}
+
+model ChatReadState {
+  orderId           String        @map("order_id") @db.Uuid
+  userId            String        @map("user_id") @db.Uuid
+  lastReadMessageId String?       @map("last_read_message_id") @db.Uuid
+  lastReadAt        DateTime?     @map("last_read_at") @db.Timestamptz(6)
+  lastReadMessage   OrderMessage? @relation(fields: [lastReadMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([orderId, userId])
+  @@map("chat_read_states")
+}
+
+model SupportTicketMessage {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supportTicketId String        @map("support_ticket_id") @db.Uuid
+  authorUserId    String        @map("author_user_id") @db.Uuid
+  messageBody     String        @map("message_body")
+  isInternalNote  Boolean       @default(false) @map("is_internal_note")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  author          User          @relation(fields: [authorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supportTicket   SupportTicket @relation(fields: [supportTicketId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([supportTicketId, createdAt], map: "idx_support_ticket_messages_ticket")
+  @@map("support_ticket_messages")
+}
+
+model SupportTicketResolution {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId           String               @map("ticket_id") @db.Uuid
+  resolutionType     TicketResolutionType @map("resolution_type")
+  refundRequestId    String?              @map("refund_request_id") @db.Uuid
+  replacementOrderId String?              @map("replacement_order_id") @db.Uuid
+  creditAmountCents  Int?                 @map("credit_amount_cents")
+  note               String?
+  createdByUserId    String               @map("created_by_user_id") @db.Uuid
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy          User                 @relation(fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refundRequest      RefundRequest?       @relation(fields: [refundRequestId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replacementOrder   Order?               @relation("resolution_replacement_order", fields: [replacementOrderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ticket             SupportTicket        @relation(fields: [ticketId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([ticketId, createdAt], map: "idx_support_ticket_resolutions_ticket")
+  @@map("support_ticket_resolutions")
+}
+
+model SupportTicketEvent {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId          String        @map("ticket_id") @db.Uuid
+  eventType         String        @map("event_type")
+  fromValue         String?       @map("from_value")
+  toValue           String?       @map("to_value")
+  performedByUserId String?       @map("performed_by_user_id") @db.Uuid
+  note              String?
+  payloadJson       Json          @default("{}") @map("payload_json")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  performedBy       User?         @relation(fields: [performedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([ticketId, createdAt], map: "idx_support_ticket_events_ticket")
+  @@map("support_ticket_events")
+}
+
+model ItemReview {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId              String    @map("order_id") @db.Uuid
+  orderItemId          String    @map("order_item_id") @db.Uuid
+  customerUserId       String    @map("customer_user_id") @db.Uuid
+  rating               Int       @db.SmallInt
+  reviewBody           String?   @map("review_body")
+  isApprovedPublic     Boolean   @default(false) @map("is_approved_public")
+  adminReply           String?   @map("admin_reply")
+  adminRepliedAt       DateTime? @map("admin_replied_at") @db.Timestamptz(6)
+  adminRepliedByUserId String?   @map("admin_replied_by_user_id") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  adminRepliedBy       User?     @relation("review_admin_reply", fields: [adminRepliedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer             User      @relation("review_customer", fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                Order     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItem            OrderItem @relation(fields: [orderItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([orderItemId, customerUserId])
+  @@index([orderItemId], map: "idx_item_reviews_item")
+  @@index([orderId], map: "idx_item_reviews_order")
+  @@map("item_reviews")
+}
+
+model DriverDeliveryReview {
+  id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId        String                    @unique @map("order_id") @db.Uuid
+  driverUserId   String                    @map("driver_user_id") @db.Uuid
+  customerUserId String                    @map("customer_user_id") @db.Uuid
+  ratingStars    Int                       @map("rating_stars") @db.SmallInt
+  comment        String?
+  createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tags           DriverDeliveryReviewTag[]
+  customer       User                      @relation(fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver         DriverProfile             @relation(fields: [driverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  order          Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([driverUserId, createdAt(sort: Desc)], map: "idx_driver_delivery_reviews_driver")
+  @@index([orderId], map: "idx_driver_delivery_reviews_order")
+  @@map("driver_delivery_reviews")
+}
+
+model DriverDeliveryReviewTag {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId         String               @map("review_id") @db.Uuid
+  tagCode          String               @map("tag_code")
+  tagLabelSnapshot String               @map("tag_label_snapshot")
+  sentiment        ReviewTagSentiment
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  review           DriverDeliveryReview @relation(fields: [reviewId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([reviewId], map: "idx_driver_delivery_review_tags_review")
+  @@map("driver_delivery_review_tags")
+}
+
+model DriverPayout {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverUserId       String                  @map("driver_user_id") @db.Uuid
+  locationId         String                  @map("location_id") @db.Uuid
+  payPeriodStart     DateTime                @map("pay_period_start") @db.Date
+  payPeriodEnd       DateTime                @map("pay_period_end") @db.Date
+  totalDeliveries    Int                     @default(0) @map("total_deliveries")
+  totalTipsCents     Int                     @default(0) @map("total_tips_cents")
+  basePayCents       Int                     @default(0) @map("base_pay_cents")
+  totalEarningsCents Int                     @default(0) @map("total_earnings_cents")
+  payoutStatus       PayoutStatus            @default(UNPAID) @map("payout_status")
+  paidAt             DateTime?               @map("paid_at") @db.Timestamptz(6)
+  paidByUserId       String?                 @map("paid_by_user_id") @db.Uuid
+  paymentNote        String?                 @map("payment_note")
+  createdByUserId    String                  @map("created_by_user_id") @db.Uuid
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  orderLinks         DriverPayoutOrderLink[]
+  createdBy          User                    @relation("payout_created_by", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver             DriverProfile           @relation(fields: [driverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  location           Location                @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  paidBy             User?                   @relation("payout_paid_by", fields: [paidByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([driverUserId, payPeriodStart(sort: Desc)], map: "idx_driver_payouts_driver")
+  @@index([locationId, payoutStatus], map: "idx_driver_payouts_loc_status")
+  @@map("driver_payouts")
+}
+
+model DriverPayoutOrderLink {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payoutId     String        @map("payout_id") @db.Uuid
+  orderId      String        @map("order_id") @db.Uuid
+  driverUserId String        @map("driver_user_id") @db.Uuid
+  tipCents     Int           @default(0) @map("tip_cents")
+  basePayCents Int           @default(0) @map("base_pay_cents")
+  driver       DriverProfile @relation(fields: [driverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payout       DriverPayout  @relation(fields: [payoutId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([orderId, driverUserId])
+  @@index([payoutId], map: "idx_driver_payout_order_links_payout")
+  @@map("driver_payout_order_links")
+}
+
+model InventoryItem {
+  id                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId               String                @map("location_id") @db.Uuid
+  name                     String
+  unitLabel                String                @map("unit_label")
+  currentQuantityNumeric   Decimal               @default(0) @map("current_quantity_numeric") @db.Decimal(12, 2)
+  lowStockThresholdNumeric Decimal?              @map("low_stock_threshold_numeric") @db.Decimal(12, 2)
+  isActive                 Boolean               @default(true) @map("is_active")
+  archivedAt               DateTime?             @map("archived_at") @db.Timestamptz(6)
+  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  adjustments              InventoryAdjustment[]
+  location                 Location              @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  restockItems             RestockListItem[]
+
+  @@index([locationId, isActive], map: "idx_inventory_items_loc_active")
+  @@map("inventory_items")
+}
+
+model InventoryAdjustment {
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inventoryItemId      String                  @map("inventory_item_id") @db.Uuid
+  locationId           String                  @map("location_id") @db.Uuid
+  adjustmentType       InventoryAdjustmentType @map("adjustment_type")
+  deltaNumeric         Decimal                 @map("delta_numeric") @db.Decimal(12, 2)
+  quantityAfterNumeric Decimal                 @map("quantity_after_numeric") @db.Decimal(12, 2)
+  reasonText           String                  @map("reason_text")
+  actorUserId          String                  @map("actor_user_id") @db.Uuid
+  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor                User                    @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inventoryItem        InventoryItem           @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  location             Location                @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([inventoryItemId, createdAt(sort: Desc)], map: "idx_inventory_adjustments_item_created")
+  @@map("inventory_adjustments")
+}
+
+model RestockList {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId      String            @map("location_id") @db.Uuid
+  name            String
+  status          String
+  createdByUserId String            @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items           RestockListItem[]
+  createdBy       User              @relation(fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location        Location          @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([locationId, status], map: "idx_restock_lists_loc_status")
+  @@map("restock_lists")
+}
+
+model RestockListItem {
+  id                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restockListId            String        @map("restock_list_id") @db.Uuid
+  inventoryItemId          String        @map("inventory_item_id") @db.Uuid
+  requestedQuantityNumeric Decimal       @map("requested_quantity_numeric") @db.Decimal(12, 2)
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  inventoryItem            InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  restockList              RestockList   @relation(fields: [restockListId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([restockListId], map: "idx_restock_list_items_list")
+  @@map("restock_list_items")
+}
+
+model Device {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId         String          @map("location_id") @db.Uuid
+  deviceType         String          @map("device_type")
+  name               String
+  stationKey         String?         @map("station_key")
+  ipAddress          String?         @map("ip_address") @db.Inet
+  isActive           Boolean         @default(true) @map("is_active")
+  lastSeenAt         DateTime?       @map("last_seen_at") @db.Timestamptz(6)
+  metadataJson       Json            @default("{}") @map("metadata_json")
+  apiTokenHash       String?         @map("api_token_hash")
+  deviceRegisteredAt DateTime?       @map("device_registered_at") @db.Timestamptz(6)
+  tokenLastUsedAt    DateTime?       @map("token_last_used_at") @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location           Location        @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employeeShifts     EmployeeShift[]
+  registers          Register[]
+
+  @@index([locationId, deviceType, isActive], map: "idx_devices_loc_type")
+  @@map("devices")
+}
+
+model Register {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId String            @map("location_id") @db.Uuid
+  deviceId   String?           @map("device_id") @db.Uuid
+  name       String
+  isActive   Boolean           @default(true) @map("is_active")
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions   RegisterSession[]
+  device     Device?           @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location   Location          @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([locationId, name])
+  @@index([locationId, isActive], map: "idx_registers_loc_active")
+  @@map("registers")
+}
+
+model RegisterSession {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  registerId         String            @map("register_id") @db.Uuid
+  locationId         String            @map("location_id") @db.Uuid
+  openedByUserId     String            @map("opened_by_user_id") @db.Uuid
+  closedByUserId     String?           @map("closed_by_user_id") @db.Uuid
+  openingFloatCents  Int               @map("opening_float_cents")
+  expectedCloseCents Int?              @map("expected_close_cents")
+  actualCloseCents   Int?              @map("actual_close_cents")
+  openedAt           DateTime          @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt           DateTime?         @map("closed_at") @db.Timestamptz(6)
+  status             String
+  drawerEvents       CashDrawerEvent[]
+  closedBy           User?             @relation("register_closed_by", fields: [closedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location           Location          @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  openedBy           User              @relation("register_opened_by", fields: [openedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  register           Register          @relation(fields: [registerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([registerId, status, openedAt(sort: Desc)], map: "idx_register_sessions_register_status")
+  @@map("register_sessions")
+}
+
+model CashDrawerEvent {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  registerSessionId String          @map("register_session_id") @db.Uuid
+  eventType         String          @map("event_type")
+  amountCents       Int             @default(0) @map("amount_cents")
+  actorUserId       String          @map("actor_user_id") @db.Uuid
+  approvedByUserId  String?         @map("approved_by_user_id") @db.Uuid
+  reasonText        String?         @map("reason_text")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor             User            @relation("drawer_actor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approvedBy        User?           @relation("drawer_approved_by", fields: [approvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registerSession   RegisterSession @relation(fields: [registerSessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([registerSessionId, createdAt], map: "idx_cash_drawer_events_session_created")
+  @@map("cash_drawer_events")
+}
+
+model EmployeeShift {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeUserId    String          @map("employee_user_id") @db.Uuid
+  locationId        String          @map("location_id") @db.Uuid
+  deviceId          String?         @map("device_id") @db.Uuid
+  clockInAt         DateTime        @default(now()) @map("clock_in_at") @db.Timestamptz(6)
+  clockOutAt        DateTime?       @map("clock_out_at") @db.Timestamptz(6)
+  status            String
+  totalBreakMinutes Int             @default(0) @map("total_break_minutes")
+  netWorkedMinutes  Int?            @map("net_worked_minutes")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  breaks            EmployeeBreak[]
+  device            Device?         @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee          EmployeeProfile @relation(fields: [employeeUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  location          Location        @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeUserId, status, clockInAt(sort: Desc)], map: "idx_employee_shifts_emp_open")
+  @@index([locationId, status], map: "idx_employee_shifts_loc_open")
+  @@map("employee_shifts")
+}
+
+model EmployeeBreak {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeShiftId String        @map("employee_shift_id") @db.Uuid
+  breakType       String        @map("break_type")
+  startedAt       DateTime      @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt         DateTime?     @map("ended_at") @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  shift           EmployeeShift @relation(fields: [employeeShiftId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([employeeShiftId, startedAt], map: "idx_employee_breaks_shift")
+  @@map("employee_breaks")
+}
+
+model CateringInquiry {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerUserId     String?   @map("customer_user_id") @db.Uuid
+  name               String
+  email              String    @db.Citext
+  phoneNumber        String    @map("phone_number")
+  eventDate          DateTime? @map("event_date") @db.Date
+  messageBody        String    @map("message_body")
+  status             String    @default("NEW")
+  assignedLocationId String?   @map("assigned_location_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  assignedLocation   Location? @relation(fields: [assignedLocationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer           User?     @relation(fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_catering_inquiries_status")
+  @@map("catering_inquiries")
+}
+
+model AdminAuditLog {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId        String?   @map("location_id") @db.Uuid
+  actorUserId       String?   @map("actor_user_id") @db.Uuid
+  actorRoleSnapshot String    @map("actor_role_snapshot")
+  actionKey         String    @map("action_key")
+  entityType        String    @map("entity_type")
+  entityId          String?   @map("entity_id") @db.Uuid
+  reasonText        String?   @map("reason_text")
+  payloadJson       Json      @default("{}") @map("payload_json")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor             User?     @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location          Location? @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([locationId, createdAt(sort: Desc)], map: "idx_admin_audit_logs_loc_created")
+  @@index([actorUserId, createdAt(sort: Desc)], map: "idx_admin_audit_logs_actor_created")
+  @@index([entityType, entityId], map: "idx_admin_audit_logs_entity")
+  @@map("admin_audit_logs")
+}
+
+model DailyTaxSummary {
+  businessDate           DateTime @map("business_date") @db.Date
+  locationId             String   @map("location_id") @db.Uuid
+  ordersCount            Int      @default(0) @map("orders_count")
+  taxableSalesCents      Int      @default(0) @map("taxable_sales_cents")
+  taxCollectedCents      Int      @default(0) @map("tax_collected_cents")
+  refundTaxReversedCents Int      @default(0) @map("refund_tax_reversed_cents")
+  netTaxCents            Int      @default(0) @map("net_tax_cents")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location               Location @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([businessDate, locationId])
+  @@index([locationId, businessDate(sort: Desc)], map: "idx_daily_tax_summary_loc")
+  @@map("daily_tax_summary")
+}
+
+enum UserRole {
+  CUSTOMER
+  STAFF
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum EmployeeRole {
+  MANAGER
+  CASHIER
+  KITCHEN
+  DRIVER
+
+  @@map("employee_role")
+}
+
+enum IdentityProvider {
+  PHONE_OTP
+  EMAIL
+  GOOGLE
+
+  @@map("identity_provider")
+}
+
+enum FulfillmentType {
+  PICKUP
+  DELIVERY
+
+  @@map("fulfillment_type")
+}
+
+enum OrderSource {
+  ONLINE
+  POS
+  PHONE
+  ADMIN
+
+  @@map("order_source")
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  PICKED_UP
+  DELIVERED
+  NO_SHOW_PICKUP
+  NO_SHOW_DELIVERY
+  // PRD §7.8.5 — forced delivery completion when the customer could not
+  // produce a valid PIN after `PIN_MAX_FAILED_ATTEMPTS` failed attempts.
+  // Terminal, but recorded separately from DELIVERED so ops can audit
+  // which deliveries were handed off without PIN verification.
+  NO_PIN_DELIVERY
+  CANCELLED
+
+  @@map("order_status")
+}
+
+enum SavedCartStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+
+  @@map("saved_cart_status")
+}
+
+enum ContactlessPref {
+  HAND_TO_ME
+  LEAVE_AT_DOOR
+  CALL_ON_ARRIVAL
+  TEXT_ON_ARRIVAL
+
+  @@map("contactless_pref")
+}
+
+enum DriverAvailabilityStatus {
+  AVAILABLE
+  ON_DELIVERY
+  OFF_SHIFT
+  UNAVAILABLE
+  INACTIVE
+
+  @@map("driver_availability_status")
+}
+
+enum PromoDiscountType {
+  PERCENT
+  FIXED_AMOUNT
+  BXGY
+  FREE_DELIVERY
+
+  @@map("promo_discount_type")
+}
+
+enum PromoScopeType {
+  GLOBAL
+  LOCATION_SCOPED
+
+  @@map("promo_scope_type")
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  STORE_CREDIT
+  SPLIT
+  WAIVED
+
+  @@map("payment_method")
+}
+
+enum OrderPaymentStatusSummary {
+  UNPAID
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+  VOIDED
+
+  @@map("order_payment_status_summary")
+}
+
+enum PaymentTransactionType {
+  AUTH
+  CAPTURE
+  VOID
+  REFUND
+  ADJUSTMENT
+
+  @@map("payment_transaction_type")
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+
+  @@map("payment_transaction_status")
+}
+
+enum PaymentTenderMethod {
+  CASH
+  CARD
+  STORE_CREDIT
+  WAIVED
+
+  @@map("payment_tender_method")
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ISSUED
+  VOIDED
+
+  @@map("refund_status")
+}
+
+enum RefundMethod {
+  STORE_CREDIT
+  ORIGINAL_PAYMENT
+  CASH
+
+  @@map("refund_method")
+}
+
+enum InventoryAdjustmentType {
+  MANUAL_SET
+  MANUAL_ADD
+  MANUAL_SUBTRACT
+  WASTE
+  RESTOCK
+  CORRECTION
+
+  @@map("inventory_adjustment_type")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_REVIEW
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+
+  @@map("ticket_status")
+}
+
+enum TicketResolutionType {
+  NO_ACTION
+  STORE_CREDIT
+  PARTIAL_REFUND
+  FULL_REFUND
+  REPLACEMENT
+  FOLLOW_UP
+
+  @@map("ticket_resolution_type")
+}
+
+enum PinVerificationResult {
+  PENDING
+  VERIFIED
+  BYPASSED
+  EXPIRED
+  LOCKED
+
+  @@map("pin_verification_result")
+}
+
+enum ChangeRequestType {
+  ADD_ITEMS
+
+  @@map("change_request_type")
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("change_request_status")
+}
+
+enum ReviewTagSentiment {
+  POSITIVE
+  NEGATIVE
+
+  @@map("review_tag_sentiment")
+}
+
+enum PayoutStatus {
+  UNPAID
+  PAID
+  CANCELLED
+
+  @@map("payout_status")
+}
+
+model KdsHeartbeat {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  sessionKey String   @map("session_key")
+  deviceId   String?  @map("device_id") @db.Uuid
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([locationId, sessionKey], map: "uq_kds_heartbeats_loc_session")
+  @@index([locationId, lastSeenAt], map: "idx_kds_heartbeats_loc_last_seen")
+  @@map("kds_heartbeats")
+}
+
+model BusyModeEvent {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId          String    @map("location_id") @db.Uuid
+  startedAt           DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt             DateTime? @map("ended_at") @db.Timestamptz(6)
+  startedByUserId     String?   @map("started_by_user_id") @db.Uuid
+  endedByUserId       String?   @map("ended_by_user_id") @db.Uuid
+  prepMinutesSnapshot Int?      @map("prep_minutes_snapshot")
+  note                String?
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location            Location  @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  startedBy           User?     @relation("busy_event_started_by", fields: [startedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  endedBy             User?     @relation("busy_event_ended_by", fields: [endedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([locationId, startedAt], map: "idx_busy_mode_events_loc_started")
+  @@map("busy_mode_events")
+}
+
+model PosLoginAttempt {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId        String   @map("location_id") @db.Uuid
+  clientIp          String   @map("client_ip")
+  deviceFingerprint String?  @map("device_fingerprint")
+  wasSuccessful     Boolean  @default(false) @map("was_successful")
+  attemptedAt       DateTime @default(now()) @map("attempted_at") @db.Timestamptz(6)
+  location          Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([locationId, clientIp, deviceFingerprint, attemptedAt], map: "idx_pos_login_attempts_lookup")
+  @@map("pos_login_attempts")
+}

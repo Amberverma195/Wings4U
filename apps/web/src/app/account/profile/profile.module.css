@@ -1,0 +1,820 @@
+/* ========================================================= */
+/* Profile Page — Layout & Modern Structure                  */
+/* ========================================================= */
+.pageShell {
+  position: relative;
+  min-height: 100vh;
+  background-color: #F8C676;
+  padding-bottom: 4rem;
+}
+
+.hub {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: #111827;
+}
+
+/* ========================================================= */
+/* Sidebar Identity Card                                     */
+/* ========================================================= */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.identityCard {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: profileFadeIn 0.5s ease-out;
+}
+
+.avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f97316, #fb923c);
+  color: white;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 25px -5px rgba(249, 115, 22, 0.4);
+  position: relative;
+}
+
+.avatar::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(249, 115, 22, 0.2);
+}
+
+.name {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: #111827;
+}
+
+.phone {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #4b5563;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 0.4rem;
+  margin-bottom: 2rem;
+}
+
+.phone svg {
+  width: 16px;
+  height: 16px;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1.5rem;
+}
+
+.statusReady {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.statusPending {
+  background: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fde68a;
+}
+
+.navLinks {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 1.5rem;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #4b5563;
+  transition: all 0.2s ease;
+}
+
+.navLink:hover {
+  background: #fff7ed;
+  color: #f97316;
+}
+
+.navLinkActive {
+  background: #fff7ed;
+  color: #f97316;
+}
+
+.navLinkArrow {
+  opacity: 0;
+  transform: translateX(-5px);
+  transition: all 0.2s ease;
+}
+
+.navLink:hover .navLinkArrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ========================================================= */
+/* Main Content Structure                                    */
+/* ========================================================= */
+.mainContainer {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.contentStack {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  animation: profileFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.section {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 2.25rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.sectionHeader {
+  margin-bottom: 2rem;
+}
+
+.eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #f97316;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.sectionTitle {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.sectionDesc {
+  color: #6b7280;
+  font-size: 1rem;
+  line-height: 1.5;
+  margin-top: 0.5rem;
+}
+
+/* Rewards Grid in Main */
+.rewardsGrid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem;
+  background: #fafafa;
+  border-radius: 20px;
+  border: 1px solid #f3f4f6;
+  margin-top: 1rem;
+}
+
+.pointsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pointsNum {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: #f97316;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.pointsLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.pointsCredit {
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+/* Dual Column Inside Main */
+.innerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.5rem;
+}
+
+.settingsCard {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid #e5e7eb;
+  padding: 2rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+/* Reuse existing form/timeline styles but with new structure */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field input {
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: #f97316;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1);
+}
+
+.saveBtn {
+  background: linear-gradient(135deg, #f97316, #fb923c);
+  color: white;
+  border: none;
+  padding: 1rem;
+  border-radius: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -8px rgba(249, 115, 22, 0.5);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.saveBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -8px rgba(249, 115, 22, 0.55);
+}
+
+.saveBtnShake {
+  animation: shakeBtn 0.4s ease;
+}
+
+@keyframes shakeBtn {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+  90% { transform: translateX(1px); }
+}
+
+/* Timeline */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.timelineItem {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  background: #fafafa;
+  border-radius: 16px;
+  border: 1px solid #f3f4f6;
+  transition: all 0.2s ease;
+}
+
+.timelineItem:hover {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  transform: translateX(3px);
+}
+
+.marker {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: white;
+}
+
+.pos { background: #10b981; }
+.neg { background: #ef4444; }
+
+/* ---------- Wings-rewards stamp card ---------- */
+
+/* Entire section is a button — show a subtle affordance so users know it
+   opens a modal. Hover + focus lifts the card and reveals the tap hint. */
+.wingsRewardsSection {
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.wingsRewardsSection:hover,
+.wingsRewardsSection:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -12px rgba(249, 115, 22, 0.35);
+  outline: none;
+}
+
+/* "X/8" denominator that sits next to the big stamp count. */
+.stampsDenominator {
+  font-size: 1.75rem;
+  color: #9ca3af;
+  font-weight: 700;
+  margin-left: 0.2rem;
+}
+
+/* 8-slot stamp row underneath the ring. Each filled slot shows a wing
+   emoji, empty slots show their position so the customer always knows
+   "5 of 8". The row wraps on narrow widths. */
+.stampRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.stampSlot {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #f3f4f6;
+  border: 2px dashed #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #9ca3af;
+  font-size: 1rem;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.stampSlotFilled {
+  background: linear-gradient(135deg, #fff7ed, #fed7aa);
+  border: 2px solid #fb923c;
+  color: #9a3412;
+  font-size: 1.35rem;
+  transform: scale(1.02);
+}
+
+.sectionTapHint {
+  margin-top: 1rem;
+  margin-bottom: 0;
+  font-size: 0.85rem;
+  color: #9ca3af;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ---------- Stamps detail modal ---------- */
+
+.stampModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 1000;
+  animation: stampModalFade 180ms ease;
+}
+
+@keyframes stampModalFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.stampModalCard {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.25);
+  animation: stampModalSlide 220ms ease;
+}
+
+@keyframes stampModalSlide {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.stampModalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stampModalTitle {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #111827;
+  margin: 0.25rem 0 0 0;
+}
+
+.stampModalClose {
+  background: #f3f4f6;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 150ms ease;
+}
+.stampModalClose:hover { background: #e5e7eb; }
+
+/* ---------- Logout confirmation modal ---------- */
+
+.logoutModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 1000;
+  animation: stampModalFade 180ms ease;
+}
+
+.logoutModalCard {
+  width: min(440px, 100%);
+  background: white;
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.25);
+  border: 1px solid #fed7aa;
+  animation: stampModalSlide 220ms ease;
+}
+
+.logoutModalTitle {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.logoutModalText {
+  color: #6b7280;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.logoutModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.logoutCancelBtn,
+.logoutConfirmBtn {
+  border: none;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.logoutCancelBtn {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.logoutCancelBtn:hover {
+  background: #e5e7eb;
+}
+
+.logoutConfirmBtn {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  color: white;
+  box-shadow: 0 10px 24px -12px rgba(239, 68, 68, 0.7);
+}
+
+.logoutConfirmBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -14px rgba(239, 68, 68, 0.75);
+}
+
+.stampModalSummary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #fff7ed, #fafafa);
+  border: 1px solid #fed7aa;
+  border-radius: 16px;
+  margin-bottom: 1.5rem;
+}
+
+.stampModalStat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: center;
+}
+
+.stampModalStatValue {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #f97316;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stampModalStatLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.stampHistorySection {
+  margin-top: 1.75rem;
+}
+
+.stampHistoryTitle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.75rem 0;
+}
+
+.stampHistoryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stampHistoryItem {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.85rem;
+  background: #fafafa;
+  border: 1px solid #f3f4f6;
+  border-radius: 14px;
+}
+
+.stampHistoryIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+}
+
+.stampHistoryIconEarn {
+  background: linear-gradient(135deg, #fff7ed, #fed7aa);
+  color: #9a3412;
+}
+
+.stampHistoryIconRedeem {
+  background: linear-gradient(135deg, #ecfdf5, #a7f3d0);
+  color: #065f46;
+}
+
+.stampHistoryBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.stampHistoryBodyTitle {
+  font-size: 0.95rem;
+  color: #111827;
+  font-weight: 700;
+}
+
+.stampHistoryMeta {
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
+.stampHistoryReason {
+  font-size: 0.82rem;
+  color: #6b7280;
+  line-height: 1.35;
+}
+
+.stampHistoryDelta strong {
+  font-size: 1rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.stampHistoryDeltaEarn { color: #10b981; }
+.stampHistoryDeltaRedeem { color: #ef4444; }
+
+/* Empty-state for "no stamps yet" — mirrors the orders-page empty state
+   (large circular icon + subtle copy) so they feel like siblings. */
+.stampEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.stampEmptyIcon {
+  font-size: 2.25rem;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  margin-bottom: 1rem;
+}
+
+.stampEmptyTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 0.35rem 0;
+}
+
+.stampEmptyDesc {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 0;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .mainContainer {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    max-width: 400px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .stampModalSummary {
+    grid-template-columns: 1fr;
+  }
+  .stampModalCard {
+    padding: 1.5rem;
+    border-radius: 18px;
+  }
+  .logoutModalCard {
+    padding: 1.5rem;
+    border-radius: 18px;
+  }
+  .logoutModalActions {
+    flex-direction: column-reverse;
+  }
+  .logoutCancelBtn,
+  .logoutConfirmBtn {
+    width: 100%;
+  }
+  .stampSlot {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@media (max-width: 768px) {
+  .innerGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .rewardsGrid {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+}
+
+@keyframes profileFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes profileFadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Keeping progress ring styles from yours as they are good */
+.progressRing {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+}
+
+.progressRing svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ringTrack { fill: none; stroke: #f3f4f6; stroke-width: 8; }
+.ringProgress { fill: none; stroke: url(#profile-ring-gradient-v2); stroke-width: 10; stroke-linecap: round; }
+
+.ringText {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ringText strong { font-size: 1.5rem; font-weight: 800; color: #111827; }
+.ringText span { font-size: 0.65rem; font-weight: 700; color: #9ca3af; text-transform: uppercase; }

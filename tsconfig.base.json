@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@wings4u/contracts": [
+        "./packages/contracts/src"
+      ],
+      "@wings4u/database": [
+        "./packages/database/src"
+      ],
+      "@wings4u/pricing": [
+        "./packages/pricing/src"
+      ]
+    }
+  }
+}

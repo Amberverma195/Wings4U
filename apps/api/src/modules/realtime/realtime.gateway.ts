@@ -1,0 +1,393 @@
+import {
+  ConnectedSocket,
+  MessageBody,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from "@nestjs/websockets";
+import { Injectable, Logger } from "@nestjs/common";
+import { Server, Socket } from "socket.io";
+import { SessionValidator } from "../../common/session/session-validator.service";
+import { PrismaService } from "../../database/prisma.service";
+
+type RealtimeEventName =
+  | "order.placed"
+  | "order.accepted"
+  | "order.status_changed"
+  | "order.cancelled"
+  | "order.driver_assigned"
+  | "order.delivery_started"
+  | "order.eta_updated"
+  | "order.manual_review_required"
+  | "order.change_requested"
+  | "order.change_approved"
+  | "order.change_rejected"
+  | "chat.message"
+  | "chat.read"
+  | "cancellation.requested"
+  | "cancellation.decided"
+  | "refund.requested"
+  | "support.ticket_created"
+  | "support.auto_ticket"
+  | "driver.availability_changed"
+  | "driver.delivery_completed"
+  | "admin.busy_mode_changed";
+
+const CHANNEL_PATTERN = /^(orders|order|chat|admin|drivers):(.+)$/;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+interface SocketUser {
+  userId: string;
+  role: "CUSTOMER" | "STAFF" | "ADMIN";
+  employeeRole?: "MANAGER" | "CASHIER" | "KITCHEN" | "DRIVER";
+  locationId?: string;
+  sessionId: string;
+}
+
+function parseCookies(cookieHeader: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  for (const pair of cookieHeader.split(";")) {
+    const [key, ...rest] = pair.trim().split("=");
+    if (key) cookies[key.trim()] = rest.join("=").trim();
+  }
+  return cookies;
+}
+
+@Injectable()
+@WebSocketGateway({
+  path: "/ws",
+  cors: { origin: true, credentials: true },
+})
+export class RealtimeGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
+  private readonly logger = new Logger(RealtimeGateway.name);
+  private readonly sessionSockets = new Map<string, Set<string>>();
+
+  constructor(
+    private readonly sessionValidator: SessionValidator,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @WebSocketServer()
+  server!: Server;
+
+  /* ------------------------------------------------------------------ */
+  /*  Connection lifecycle                                               */
+  /* ------------------------------------------------------------------ */
+
+  async handleConnection(socket: Socket): Promise<void> {
+    const cookieHeader = socket.handshake.headers.cookie;
+    if (!cookieHeader) {
+      this.logger.warn(`Connection rejected - no cookies (${socket.id})`);
+      socket.emit("error", { message: "Authentication required" });
+      socket.disconnect(true);
+      return;
+    }
+
+    const cookies = parseCookies(cookieHeader);
+    const token = cookies["access_token"];
+    if (!token) {
+      this.logger.warn(`Connection rejected - no access_token cookie (${socket.id})`);
+      socket.emit("error", { message: "Authentication required" });
+      socket.disconnect(true);
+      return;
+    }
+
+    const session = await this.sessionValidator.resolve(token);
+    if (!session) {
+      this.logger.warn(`Connection rejected - session invalid/revoked (${socket.id})`);
+      socket.emit("error", { message: "Invalid or expired session" });
+      socket.disconnect(true);
+      return;
+    }
+
+    const user: SocketUser = {
+      userId: session.userId,
+      role: session.role,
+      employeeRole: session.employeeRole,
+      locationId: session.locationId,
+      sessionId: session.sessionId,
+    };
+
+    socket.data.accessToken = token;
+    socket.data.user = user;
+    this.trackSessionSocket(user.sessionId, socket.id);
+    this.logger.log(
+      `Client connected: ${socket.id} (user=${user.userId}, role=${user.role})`,
+    );
+  }
+
+  handleDisconnect(socket: Socket): void {
+    const user = socket.data.user as SocketUser | undefined;
+    if (user) {
+      this.untrackSessionSocket(user.sessionId, socket.id);
+    }
+    this.logger.log(
+      `Client disconnected: ${socket.id}` +
+        (user ? ` (user=${user.userId})` : ""),
+    );
+  }
+
+  disconnectSession(sessionId: string, message = "Session ended"): void {
+    const socketIds = this.sessionSockets.get(sessionId);
+    if (!socketIds || !this.server) {
+      return;
+    }
+
+    for (const socketId of [...socketIds]) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (!socket) {
+        continue;
+      }
+      socket.emit("error", { message });
+      socket.disconnect(true);
+    }
+
+    this.sessionSockets.delete(sessionId);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Channel subscriptions                                              */
+  /* ------------------------------------------------------------------ */
+
+  @SubscribeMessage("subscribe")
+  async handleSubscribe(
+    @MessageBody() data: { channel: string },
+    @ConnectedSocket() socket: Socket,
+  ): Promise<{ subscribed: boolean; channel: string; error?: string }> {
+    const channel = typeof data?.channel === "string" ? data.channel : "";
+    const user = await this.revalidateSocketUser(socket);
+    if (!user) {
+      return { subscribed: false, channel, error: "Not authenticated" };
+    }
+
+    const match = CHANNEL_PATTERN.exec(channel);
+    if (!match) {
+      return { subscribed: false, channel, error: "Invalid channel format" };
+    }
+
+    const [, prefix, subject] = match;
+    const authError = await this.authorizeChannel(prefix, subject, user);
+    if (authError) {
+      this.logger.warn(
+        `Subscription denied: ${socket.id} -> ${channel} (${authError})`,
+      );
+      return { subscribed: false, channel, error: authError };
+    }
+
+    socket.join(channel);
+    this.logger.debug(`${socket.id} subscribed to ${channel}`);
+    return { subscribed: true, channel };
+  }
+
+  @SubscribeMessage("unsubscribe")
+  handleUnsubscribe(
+    @MessageBody() data: { channel: string },
+    @ConnectedSocket() socket: Socket,
+  ): { unsubscribed: boolean; channel: string } {
+    socket.leave(data.channel);
+    this.logger.debug(`${socket.id} unsubscribed from ${data.channel}`);
+    return { unsubscribed: true, channel: data.channel };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Event emission (called by other services)                          */
+  /* ------------------------------------------------------------------ */
+
+  emitToChannel(
+    channel: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): void {
+    this.server.to(channel).emit(event, {
+      event_type: event,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  emitOrderEvent(
+    locationId: string,
+    orderId: string,
+    event: RealtimeEventName,
+    payload: Record<string, unknown>,
+  ): void {
+    this.emitToChannel(`orders:${locationId}`, event, payload);
+    this.emitToChannel(`order:${orderId}`, event, payload);
+  }
+
+  emitChatEvent(
+    orderId: string,
+    event: "chat.message" | "chat.read",
+    payload: Record<string, unknown>,
+  ): void {
+    this.emitToChannel(`chat:${orderId}`, event, payload);
+  }
+
+  emitAdminEvent(
+    locationId: string,
+    event: RealtimeEventName,
+    payload: Record<string, unknown>,
+  ): void {
+    this.emitToChannel(`admin:${locationId}`, event, payload);
+  }
+
+  emitDriverEvent(
+    locationId: string,
+    event: RealtimeEventName,
+    payload: Record<string, unknown>,
+  ): void {
+    this.emitToChannel(`drivers:${locationId}`, event, payload);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Authorization helpers                                              */
+  /* ------------------------------------------------------------------ */
+
+  private trackSessionSocket(sessionId: string, socketId: string): void {
+    const sockets = this.sessionSockets.get(sessionId);
+    if (sockets) {
+      sockets.add(socketId);
+      return;
+    }
+    this.sessionSockets.set(sessionId, new Set([socketId]));
+  }
+
+  private untrackSessionSocket(sessionId: string, socketId: string): void {
+    const sockets = this.sessionSockets.get(sessionId);
+    if (!sockets) return;
+    sockets.delete(socketId);
+    if (sockets.size === 0) {
+      this.sessionSockets.delete(sessionId);
+    }
+  }
+
+  private async revalidateSocketUser(socket: Socket): Promise<SocketUser | null> {
+    const accessToken =
+      typeof socket.data.accessToken === "string"
+        ? (socket.data.accessToken as string)
+        : undefined;
+    if (!accessToken) {
+      socket.emit("error", { message: "Authentication required" });
+      socket.disconnect(true);
+      return null;
+    }
+
+    const session = await this.sessionValidator.resolve(accessToken);
+    if (!session) {
+      socket.emit("error", { message: "Invalid or expired session" });
+      socket.disconnect(true);
+      return null;
+    }
+
+    const existing = socket.data.user as SocketUser | undefined;
+    const user: SocketUser = {
+      userId: session.userId,
+      role: session.role,
+      employeeRole: session.employeeRole,
+      locationId: session.locationId,
+      sessionId: session.sessionId,
+    };
+
+    socket.data.user = user;
+    if (!existing || existing.sessionId !== user.sessionId) {
+      if (existing) {
+        this.untrackSessionSocket(existing.sessionId, socket.id);
+      }
+      this.trackSessionSocket(user.sessionId, socket.id);
+    }
+
+    return user;
+  }
+
+  private async authorizeChannel(
+    prefix: string,
+    subject: string,
+    user: SocketUser,
+  ): Promise<string | null> {
+    switch (prefix) {
+      case "order":
+      case "chat":
+        return this.authorizeOrderChannel(subject, user);
+
+      case "orders":
+      case "drivers":
+        return this.authorizeKdsLocationChannel(subject, user);
+
+      case "admin":
+        if (!UUID_RE.test(subject)) {
+          return "Invalid location id";
+        }
+        if (user.role !== "ADMIN") {
+          return "Insufficient permissions - ADMIN required";
+        }
+        return null;
+
+      default:
+        return "Unknown channel prefix";
+    }
+  }
+
+  private async authorizeOrderChannel(
+    orderId: string,
+    user: SocketUser,
+  ): Promise<string | null> {
+    if (!UUID_RE.test(orderId)) {
+      return "Invalid order id";
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { customerUserId: true, locationId: true },
+    });
+    if (!order) {
+      return "Order not found";
+    }
+
+    if (user.role === "ADMIN") {
+      return null;
+    }
+
+    if (user.role === "CUSTOMER") {
+      return order.customerUserId === user.userId
+        ? null
+        : "Insufficient permissions - order owner required";
+    }
+
+    if (!user.locationId || user.locationId !== order.locationId) {
+      return "Insufficient permissions - wrong location";
+    }
+
+    return null;
+  }
+
+  private authorizeKdsLocationChannel(
+    locationId: string,
+    user: SocketUser,
+  ): string | null {
+    if (!UUID_RE.test(locationId)) {
+      return "Invalid location id";
+    }
+
+    if (user.role === "ADMIN") {
+      return null;
+    }
+
+    if (
+      user.role !== "STAFF" ||
+      (user.employeeRole !== "KITCHEN" && user.employeeRole !== "MANAGER")
+    ) {
+      return "Insufficient permissions - KDS staff or ADMIN required";
+    }
+
+    if (!user.locationId || user.locationId !== locationId) {
+      return "Insufficient permissions - wrong location";
+    }
+
+    return null;
+  }
+}
