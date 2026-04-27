@@ -417,19 +417,40 @@ export class AuthService {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  POS login                                                         */
+  /*  Shared station login (POS + KDS)                                   */
   /* ------------------------------------------------------------------ */
 
-  private static readonly POS_MAX_ATTEMPTS = 5;
-  private static readonly POS_LOCKOUT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-  private static readonly POS_CODE_REUSE_COOLDOWN_DAYS = 30;
+  private static readonly STATION_MAX_ATTEMPTS = 5;
+  private static readonly STATION_LOCKOUT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+  private static readonly STATION_CODE_REUSE_COOLDOWN_DAYS = 30;
 
-  async posLogin(
-    employeeCode: string,
-    locationId: string,
-    clientIp: string,
-    deviceId?: string,
+  /**
+   * Shared employee-station-login helper used by both POS and KDS.
+   *
+   * Validates the employee PIN against the IP allowlist, enforces rate
+   * limiting, checks account status, handles code-reuse cooldowns, and
+   * creates an authenticated session + JWT token bundle.
+   *
+   * @param surface  - "POS" or "KDS" — used for error messages + audit keys
+   * @param opts.employeeCode       - the 5-digit employee PIN
+   * @param opts.locationId         - target location UUID
+   * @param opts.clientIp           - caller IP for allowlist + audit
+   * @param opts.deviceId           - optional device fingerprint
+   * @param opts.isPosSession       - whether to mark the session as POS
+   */
+  private async stationLogin(
+    surface: "POS" | "KDS",
+    opts: {
+      employeeCode: string;
+      locationId: string;
+      clientIp: string;
+      deviceId?: string;
+      isPosSession: boolean;
+    },
   ): Promise<TokenBundle> {
+    const { employeeCode, locationId, clientIp, deviceId, isPosSession } = opts;
+    const surfaceLabel = surface === "POS" ? "POS" : "KDS";
+
     // 1. IP allowlist check
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
@@ -437,12 +458,14 @@ export class AuthService {
     });
 
     if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
-      throw new ForbiddenException("POS access is restricted to in-store network only");
+      throw new ForbiddenException(
+        `${surfaceLabel} access is restricted to in-store network only`,
+      );
     }
 
     // 2. IP/device-based rate limiting (works even when no employee matches)
     const lockoutWindowStart = new Date(
-      Date.now() - AuthService.POS_LOCKOUT_WINDOW_MS,
+      Date.now() - AuthService.STATION_LOCKOUT_WINDOW_MS,
     );
     const recentFailedAttempts = await this.prisma.posLoginAttempt.count({
       where: {
@@ -454,7 +477,7 @@ export class AuthService {
       },
     });
 
-    if (recentFailedAttempts >= AuthService.POS_MAX_ATTEMPTS) {
+    if (recentFailedAttempts >= AuthService.STATION_MAX_ATTEMPTS) {
       throw new UnauthorizedException(
         "Too many failed attempts from this device. Please wait 10 minutes.",
       );
@@ -494,15 +517,15 @@ export class AuthService {
 
     if (!employee) {
       // No match — record failed attempt and reject
-      await this.recordPosLoginAttempt(locationId, clientIp, deviceId, false);
-      await this.logPosLoginAudit(locationId, clientIp, deviceId, null);
+      await this.recordStationLoginAttempt(locationId, clientIp, deviceId, false);
+      await this.logStationLoginAudit(surface, locationId, clientIp, deviceId, null);
       throw new UnauthorizedException("Invalid employee code or location");
     }
 
     // 4. User account active check
     if (!employee.user.isActive) {
-      await this.recordPosLoginAttempt(locationId, clientIp, deviceId, false);
-      await this.logPosLoginAudit(locationId, clientIp, deviceId, employee.userId);
+      await this.recordStationLoginAttempt(locationId, clientIp, deviceId, false);
+      await this.logStationLoginAudit(surface, locationId, clientIp, deviceId, employee.userId);
       throw new ForbiddenException("User account is deactivated");
     }
 
@@ -510,11 +533,11 @@ export class AuthService {
     if (employee.posCodeDeactivatedAt) {
       const cooldownEnd = new Date(
         employee.posCodeDeactivatedAt.getTime() +
-          AuthService.POS_CODE_REUSE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+          AuthService.STATION_CODE_REUSE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
       );
       if (new Date() < cooldownEnd) {
-        await this.recordPosLoginAttempt(locationId, clientIp, deviceId, false);
-        await this.logPosLoginAudit(locationId, clientIp, deviceId, employee.userId);
+        await this.recordStationLoginAttempt(locationId, clientIp, deviceId, false);
+        await this.logStationLoginAudit(surface, locationId, clientIp, deviceId, employee.userId);
         throw new ForbiddenException(
           "This employee code was recently deactivated. Please use a new code.",
         );
@@ -522,7 +545,7 @@ export class AuthService {
     }
 
     // 6. Record successful attempt and create session
-    await this.recordPosLoginAttempt(locationId, clientIp, deviceId, true);
+    await this.recordStationLoginAttempt(locationId, clientIp, deviceId, true);
 
     const refreshRaw = generateRefreshToken();
     const csrfToken = randomBytes(32).toString("hex");
@@ -533,7 +556,7 @@ export class AuthService {
         refreshTokenHash: sha256(refreshRaw),
         ipAddress: clientIp,
         locationId,
-        isPosSession: true,
+        isPosSession,
         expiresAt: refreshTokenExpiresAt(),
       },
     });
@@ -563,11 +586,50 @@ export class AuthService {
     };
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  POS login                                                         */
+  /* ------------------------------------------------------------------ */
+
+  async posLogin(
+    employeeCode: string,
+    locationId: string,
+    clientIp: string,
+    deviceId?: string,
+  ): Promise<TokenBundle> {
+    return this.stationLogin("POS", {
+      employeeCode,
+      locationId,
+      clientIp,
+      deviceId,
+      isPosSession: true,
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  KDS login                                                         */
+  /* ------------------------------------------------------------------ */
+
+  async kdsLogin(
+    employeeCode: string,
+    locationId: string,
+    clientIp: string,
+    deviceId?: string,
+  ): Promise<TokenBundle> {
+    return this.stationLogin("KDS", {
+      employeeCode,
+      locationId,
+      clientIp,
+      deviceId,
+      isPosSession: false,
+    });
+  }
+
   /**
-   * Record a POS login attempt in the rate-limit table.
+   * Record a station login attempt in the rate-limit table.
+   * Reuses the POS login attempt model for both POS and KDS.
    * Works regardless of whether an employee was matched.
    */
-  private async recordPosLoginAttempt(
+  private async recordStationLoginAttempt(
     locationId: string,
     clientIp: string,
     deviceId: string | undefined,
@@ -584,9 +646,10 @@ export class AuthService {
   }
 
   /**
-   * Write audit log entry for POS_LOGIN_FAIL.
+   * Write audit log entry for station login failure (POS or KDS).
    */
-  private async logPosLoginAudit(
+  private async logStationLoginAudit(
+    surface: "POS" | "KDS",
     locationId: string,
     clientIp: string,
     deviceId: string | undefined,
@@ -597,9 +660,9 @@ export class AuthService {
         locationId,
         actorUserId,
         actorRoleSnapshot: actorUserId ? "STAFF" : "UNKNOWN",
-        actionKey: "POS_LOGIN_FAIL",
-        entityType: "POS_SESSION",
-        reasonText: "Failed POS login attempt",
+        actionKey: `${surface}_LOGIN_FAIL`,
+        entityType: `${surface}_SESSION`,
+        reasonText: `Failed ${surface} login attempt`,
         payloadJson: {
           client_ip: clientIp,
           device_id: deviceId ?? null,
@@ -688,6 +751,25 @@ export class AuthService {
     locationId: string,
     clientIp: string,
   ): Promise<{ allowed: boolean; reason?: string }> {
+    return this.getStationNetworkStatus("POS", locationId, clientIp);
+  }
+
+  async getKdsNetworkStatus(
+    locationId: string,
+    clientIp: string,
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    return this.getStationNetworkStatus("KDS", locationId, clientIp);
+  }
+
+  /**
+   * Shared network-status check for POS and KDS surfaces.
+   * Returns whether the client IP is inside the store's trusted IP ranges.
+   */
+  private async getStationNetworkStatus(
+    surface: "POS" | "KDS",
+    locationId: string,
+    clientIp: string,
+  ): Promise<{ allowed: boolean; reason?: string }> {
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
       select: { trustedIpRanges: true },
@@ -699,7 +781,7 @@ export class AuthService {
 
     return {
       allowed: false,
-      reason: "POS access is restricted to in-store network only",
+      reason: `${surface} access is restricted to in-store network only`,
     };
   }
 

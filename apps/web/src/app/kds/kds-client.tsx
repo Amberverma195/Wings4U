@@ -1331,8 +1331,347 @@ function BusyModeControl({ session }: { session: KdsSessionControls }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  KDS Station Login Screen                                           */
+/* ------------------------------------------------------------------ */
+
+const KDS_PIN_LENGTH = 5;
+const KDS_KEYPAD_ROWS = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  ["clear", "0", "backspace"],
+] as const;
+
+function KdsFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="kds-page" style={{ minHeight: "100vh" }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          padding: "1rem 0 0.5rem",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 800,
+            fontSize: "1.35rem",
+            letterSpacing: "-0.02em",
+            color: "#141008",
+          }}
+        >
+          WINGS 4U{" "}
+          <span
+            style={{
+              display: "inline-block",
+              background:
+                "linear-gradient(180deg, #c24914 0%, #9e3a0f 100%)",
+              color: "#fff",
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              padding: "0.18rem 0.55rem",
+              borderRadius: "6px",
+              verticalAlign: "middle",
+              marginLeft: "0.35rem",
+              letterSpacing: "0.06em",
+            }}
+          >
+            KITCHEN
+          </span>
+        </div>
+      </header>
+      {children}
+    </div>
+  );
+}
+
+function KdsStatusScreen({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <KdsFrame>
+      <section className="kds-gate">
+        <div className="kds-modal-card" style={{ textAlign: "center" }}>
+          <h1
+            style={{
+              margin: "0 0 0.75rem",
+              fontSize: "1.4rem",
+              fontWeight: 800,
+              color: "#141008",
+            }}
+          >
+            {title}
+          </h1>
+          <p className="kds-modal-copy" style={{ margin: 0 }}>{message}</p>
+        </div>
+      </section>
+    </KdsFrame>
+  );
+}
+
+function KdsLoginScreen({ session }: { session: SessionState }) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submitCode = useCallback(
+    async (nextCode: string) => {
+      if (busy || nextCode.length !== KDS_PIN_LENGTH) return;
+
+      setBusy(true);
+      setError(null);
+
+      try {
+        const res = await apiFetch("/api/v1/auth/kds/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            employee_code: nextCode,
+            location_id: DEFAULT_LOCATION_ID,
+          }),
+        });
+        const body = (await res.json().catch(() => null)) as KdsApiEnvelope<unknown> | null;
+        if (!res.ok) {
+          throw new Error(getApiErrorMessage(body, `Request failed (${res.status})`));
+        }
+        setCode("");
+        await session.refresh();
+      } catch (err) {
+        setCode("");
+        setError(err instanceof Error ? err.message : "Could not sign in");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, session],
+  );
+
+  const appendDigit = useCallback(
+    (digit: string) => {
+      if (busy || code.length >= KDS_PIN_LENGTH) return;
+      const nextCode = `${code}${digit}`;
+      setCode(nextCode);
+      setError(null);
+      if (nextCode.length === KDS_PIN_LENGTH) {
+        void submitCode(nextCode);
+      }
+    },
+    [busy, code, submitCode],
+  );
+
+  const clearCode = useCallback(() => {
+    if (busy) return;
+    setCode("");
+    setError(null);
+  }, [busy]);
+
+  const backspace = useCallback(() => {
+    if (busy) return;
+    setCode((current) => current.slice(0, -1));
+    setError(null);
+  }, [busy]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key >= "0" && event.key <= "9") {
+        event.preventDefault();
+        appendDigit(event.key);
+        return;
+      }
+      if (event.key === "Backspace") {
+        event.preventDefault();
+        backspace();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        clearCode();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [appendDigit, backspace, clearCode]);
+
+  return (
+    <KdsFrame>
+      <section className="kds-gate" aria-label="KDS employee login">
+        <div className="kds-modal-card">
+          <p
+            className="kds-login-eyebrow"
+            style={{
+              margin: "0 0 0.25rem",
+              fontSize: "0.72rem",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#8e2f08",
+            }}
+          >
+            STATION ACCESS
+          </p>
+          <h1
+            style={{
+              margin: "0 0 0.5rem",
+              fontSize: "1.35rem",
+              fontWeight: 800,
+              color: "#141008",
+            }}
+          >
+            Enter employee PIN
+          </h1>
+          <p className="kds-modal-copy">
+            Store network verified. Use the store&apos;s 5-digit employee code
+            to unlock the kitchen display.
+          </p>
+
+          <div
+            className="kds-pin-display"
+            aria-label="Entered PIN"
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: "0.75rem",
+              margin: "1.25rem 0",
+            }}
+          >
+            {Array.from({ length: KDS_PIN_LENGTH }, (_, index) => (
+              <div
+                key={index}
+                style={{
+                  width: "2.4rem",
+                  height: "2.4rem",
+                  borderRadius: "12px",
+                  border: "2px solid",
+                  borderColor: code[index]
+                    ? "#c24914"
+                    : "rgba(23, 18, 13, 0.18)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1.4rem",
+                  fontWeight: 800,
+                  color: "#141008",
+                  background: code[index]
+                    ? "rgba(194, 73, 20, 0.08)"
+                    : "rgba(255, 255, 255, 0.7)",
+                  transition: "border-color 0.15s, background 0.15s",
+                }}
+                aria-hidden="true"
+              >
+                {code[index] ? "•" : ""}
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="kds-keypad"
+            role="group"
+            aria-label="PIN keypad"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: "0.5rem",
+              maxWidth: "280px",
+              margin: "0 auto 1rem",
+            }}
+          >
+            {KDS_KEYPAD_ROWS.flat().map((key) => {
+              if (key === "clear") {
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="btn-secondary"
+                    style={{
+                      minHeight: "3rem",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      borderRadius: "12px",
+                    }}
+                    onClick={clearCode}
+                    disabled={busy}
+                  >
+                    Clear
+                  </button>
+                );
+              }
+              if (key === "backspace") {
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="btn-secondary"
+                    style={{
+                      minHeight: "3rem",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      borderRadius: "12px",
+                    }}
+                    onClick={backspace}
+                    disabled={busy || code.length === 0}
+                    aria-label="Backspace"
+                  >
+                    Delete
+                  </button>
+                );
+              }
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className="btn-secondary"
+                  style={{
+                    minHeight: "3rem",
+                    fontSize: "1.15rem",
+                    fontWeight: 700,
+                    borderRadius: "12px",
+                  }}
+                  onClick={() => appendDigit(key)}
+                  disabled={busy}
+                >
+                  {key}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ width: "100%", minHeight: "2.75rem" }}
+            onClick={() => void submitCode(code)}
+            disabled={busy || code.length !== KDS_PIN_LENGTH}
+          >
+            {busy ? "Signing in..." : "Unlock kitchen display"}
+          </button>
+
+          {error ? (
+            <p
+              className="surface-error"
+              style={{ margin: "0.75rem 0 0", textAlign: "center" }}
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </section>
+    </KdsFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main KDS Client                                                    */
 /* ------------------------------------------------------------------ */
+
+function canAccessKds(session: SessionState): boolean {
+  if (!session.authenticated || !session.user) return false;
+  return session.user.role === "ADMIN" || session.user.role === "STAFF";
+}
 
 export function KdsClient() {
   const session = useSession();
@@ -1347,6 +1686,9 @@ export function KdsClient() {
     }),
     [session.clear, session.refresh],
   );
+
+  const canUseBoard = session.loaded && canAccessKds(session);
+  const needsPin = session.loaded && !canUseBoard;
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -1365,15 +1707,18 @@ export function KdsClient() {
     }
   }, [sessionControls]);
 
-  // Initial load
+  // Initial load — only if session is good
   useEffect(() => {
+    if (!canUseBoard) return;
     void loadOrders();
-  }, [loadOrders]);
+  }, [canUseBoard, loadOrders]);
 
   // Socket.IO realtime — subscribe to location-level orders channel.
   // `subscribeToChannels` keeps the subscription alive across reconnects
   // so KDS updates come from realtime events after the initial load.
   useEffect(() => {
+    if (!canUseBoard) return;
+
     const socket = createOrdersSocket();
     socketRef.current = socket;
 
@@ -1403,14 +1748,37 @@ export function KdsClient() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [loadOrders]);
+  }, [canUseBoard, loadOrders]);
 
-  // Authorization is enforced by the KDS server layout (`app/kds/layout.tsx`)
-  // via the shared surface gate, which performs an authoritative
-  // API-backed session check and calls `forbidden()` for non-KDS roles.
-  // No client-side role gate is needed or wanted: a client gate would
-  // still render the shell and kick off the orders fetch + realtime
-  // socket before auth finishes.
+  /* ---- Gate: show loading / PIN / customer-deny ---- */
+
+  if (!session.loaded) {
+    return (
+      <KdsStatusScreen
+        title="Checking session"
+        message="Loading KDS access..."
+      />
+    );
+  }
+
+  if (needsPin) {
+    // If the user has a CUSTOMER session, deny them instead of showing PIN
+    if (
+      session.authenticated &&
+      session.user?.role === "CUSTOMER"
+    ) {
+      return (
+        <KdsStatusScreen
+          title="KDS unavailable"
+          message="This station is reserved for authorized staff on the configured store network."
+        />
+      );
+    }
+    // No session or wrong session — show PIN unlock
+    return <KdsLoginScreen session={session} />;
+  }
+
+  /* ---- Authenticated ADMIN / STAFF — render KDS board ---- */
 
   return (
     <section className="kds-page">

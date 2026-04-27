@@ -88,6 +88,31 @@ class PosNetworkStatusDto {
   location_id!: string;
 }
 
+class KdsLoginDto {
+  @IsString()
+  @Matches(/^\d{5}$/, { message: "Employee code must be exactly 5 digits" })
+  employee_code!: string;
+
+  @IsString()
+  @Matches(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  )
+  location_id!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  device_id?: string;
+}
+
+class KdsNetworkStatusDto {
+  @IsString()
+  @Matches(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  )
+  location_id!: string;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Cookie helpers                                                    */
 /* ------------------------------------------------------------------ */
@@ -360,6 +385,48 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.posLogin(
+      body.employee_code,
+      body.location_id,
+      extractClientIp(req),
+      body.device_id,
+    );
+
+    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
+
+    return {
+      user: result.user,
+      employee: {
+        role: result.employeeRole,
+        location_id: result.locationId,
+      },
+    };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  KDS station endpoints                                              */
+  /* ------------------------------------------------------------------ */
+
+  @Public()
+  @Get("kds/network-status")
+  async kdsNetworkStatus(
+    @Query() query: KdsNetworkStatusDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.getKdsNetworkStatus(
+      query.location_id,
+      extractClientIp(req),
+    );
+  }
+
+  @Public()
+  @Post("kds/login")
+  @HttpCode(HttpStatus.OK)
+  async kdsLogin(
+    @Body() body: KdsLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.kdsLogin(
       body.employee_code,
       body.location_id,
       extractClientIp(req),

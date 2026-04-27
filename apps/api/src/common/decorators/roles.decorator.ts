@@ -38,12 +38,13 @@ export function Roles(
 }
 
 /**
- * PRD §7.5: "All KDS employees (KITCHEN or MANAGER role)" handle KDS ops.
- * CASHIER and DRIVER must NOT hit KDS endpoints. Use alongside "ADMIN"
- * for endpoints where admins also participate (which is most of them):
+ * KDS endpoints: any active STAFF user can operate the kitchen display.
+ * The original PRD restricted KDS to KITCHEN/MANAGER, but the in-store
+ * station model now allows any staff role (MANAGER, KITCHEN, CASHIER,
+ * DRIVER) so all crew members can use the shared station. Admin-only
+ * actions (PIN bypass/regenerate) still use `@Roles("ADMIN")` directly.
  *   @Roles(KDS_STAFF, "ADMIN")
  */
 export const KDS_STAFF: RoleSpec = {
   userRoles: ["STAFF"],
-  employeeRoles: ["KITCHEN", "MANAGER"],
 };

@@ -21,9 +21,10 @@ import { isAuthorizedForSurface, policyForPath } from "./src/lib/surface-policy"
  * so the admin/KDS/POS server layouts each perform an authoritative
  * server-side check against `GET /api/v1/auth/session` before rendering.
  *
- * For KDS specifically, the server-side move is mandatory because the
- * client component starts fetching data before any client-side auth gate
- * could run.
+ * For KDS specifically, the surface uses a station-access model (network
+ * gate + employee PIN) so it is NOT edge-gated — unsigned-out users on the
+ * store network see the PIN screen instead of being redirected to login.
+ * The KDS layout handles its own auth flow.
  */
 export async function middleware(req: NextRequest) {
   const policyId = policyForPath(req.nextUrl.pathname);
@@ -35,6 +36,8 @@ export async function middleware(req: NextRequest) {
   const session = await resolveSession(accessToken);
 
   if (!session) {
+    // KDS handles its own auth (network gate + PIN screen), so we don't
+    // redirect to /auth/login. For /admin, we still do.
     const loginUrl = new URL("/auth/login", req.url);
     return NextResponse.redirect(loginUrl);
   }
@@ -48,5 +51,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/kds/:path*"],
+  matcher: ["/admin/:path*"],
 };

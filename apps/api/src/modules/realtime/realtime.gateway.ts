@@ -8,8 +8,10 @@ import {
   WebSocketServer,
 } from "@nestjs/websockets";
 import { Injectable, Logger } from "@nestjs/common";
+import type { Request } from "express";
 import { Server, Socket } from "socket.io";
 import { SessionValidator } from "../../common/session/session-validator.service";
+import { extractClientIp, isAllowedStoreIp } from "../../common/utils/store-ip";
 import { PrismaService } from "../../database/prisma.service";
 
 type RealtimeEventName =
@@ -171,7 +173,7 @@ export class RealtimeGateway
     }
 
     const [, prefix, subject] = match;
-    const authError = await this.authorizeChannel(prefix, subject, user);
+    const authError = await this.authorizeChannel(prefix, subject, user, socket);
     if (authError) {
       this.logger.warn(
         `Subscription denied: ${socket.id} -> ${channel} (${authError})`,
@@ -308,6 +310,7 @@ export class RealtimeGateway
     prefix: string,
     subject: string,
     user: SocketUser,
+    socket: Socket,
   ): Promise<string | null> {
     switch (prefix) {
       case "order":
@@ -316,7 +319,7 @@ export class RealtimeGateway
 
       case "orders":
       case "drivers":
-        return this.authorizeKdsLocationChannel(subject, user);
+        return this.authorizeKdsLocationChannel(subject, user, socket);
 
       case "admin":
         if (!UUID_RE.test(subject)) {
@@ -365,23 +368,30 @@ export class RealtimeGateway
     return null;
   }
 
-  private authorizeKdsLocationChannel(
+  private async authorizeKdsLocationChannel(
     locationId: string,
     user: SocketUser,
-  ): string | null {
+    socket: Socket,
+  ): Promise<string | null> {
     if (!UUID_RE.test(locationId)) {
       return "Invalid location id";
+    }
+
+    const settings = await this.prisma.locationSettings.findUnique({
+      where: { locationId },
+      select: { trustedIpRanges: true },
+    });
+    const clientIp = this.extractSocketClientIp(socket);
+    if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
+      return "Store access is restricted to in-store network only";
     }
 
     if (user.role === "ADMIN") {
       return null;
     }
 
-    if (
-      user.role !== "STAFF" ||
-      (user.employeeRole !== "KITCHEN" && user.employeeRole !== "MANAGER")
-    ) {
-      return "Insufficient permissions - KDS staff or ADMIN required";
+    if (user.role !== "STAFF") {
+      return "Insufficient permissions - STAFF or ADMIN required";
     }
 
     if (!user.locationId || user.locationId !== locationId) {
@@ -389,5 +399,13 @@ export class RealtimeGateway
     }
 
     return null;
+  }
+
+  private extractSocketClientIp(socket: Socket): string {
+    const requestLike: Pick<Request, "headers" | "ip"> = {
+      headers: socket.handshake.headers as Request["headers"],
+      ip: socket.handshake.address,
+    };
+    return extractClientIp(requestLike);
   }
 }

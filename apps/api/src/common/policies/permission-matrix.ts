@@ -10,10 +10,9 @@ export const POLICIES = {
   // Admin only
   ADMIN_ONLY: { userRoles: ["ADMIN"] } as RoleSpec,
 
-  // KDS Staff (Kitchen + Manager) and Admin
+  // KDS: any active Staff and Admin (all employee roles permitted)
   KDS_STAFF_OR_ADMIN: {
     userRoles: ["ADMIN", "STAFF"],
-    employeeRoles: ["MANAGER", "KITCHEN"],
   } as RoleSpec,
 
   // Cashier, Manager, Admin

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ChatModule } from "../chat/chat.module";
+import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { RefundModule } from "../refunds/refund.module";
 import { RewardsModule } from "../rewards/rewards.module";
 import { SupportModule } from "../support/support.module";
@@ -20,6 +21,7 @@ import { OverdueDeliveryWorker } from "./overdue-delivery.worker";
     KdsAutoAcceptWorker,
     BusyModeService,
     DeliveryPinService,
+    StoreNetworkGuard,
     OverdueDeliveryWorker,
   ],
   exports: [KdsService, KdsHeartbeatService, BusyModeService, DeliveryPinService],

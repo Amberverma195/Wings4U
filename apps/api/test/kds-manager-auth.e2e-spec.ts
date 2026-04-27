@@ -4,7 +4,7 @@
  * The standalone `/manager` surface has been removed. Manager-role staff
  * still remain valid KDS operators, so this suite now focuses on:
  *
- *   - KDS HTTP policy: ADMIN, STAFF(KITCHEN), STAFF(MANAGER)
+ *   - KDS HTTP policy: ADMIN, any STAFF, and in-store network only
  *   - driver availability mutation policy: ADMIN or self-driver only
  *   - refresh preserving `employeeRole` for KDS staff
  *   - `/auth/session` exposing authoritative `employeeRole`
@@ -23,10 +23,14 @@ import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.setup";
 import { signJwt } from "../src/common/utils/jwt";
 import { PrismaService } from "../src/database/prisma.service";
+import { RealtimeGateway } from "../src/modules/realtime/realtime.gateway";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const BASE = "/api/v1";
 const CSRF = "e2e-csrf-token";
+const TRUSTED_IP = "192.168.1.100";
+const UNTRUSTED_IP = "172.16.0.1";
+const KDS_CODE = "33333";
 
 type UserRole = "CUSTOMER" | "STAFF" | "ADMIN";
 type EmployeeRole = "MANAGER" | "CASHIER" | "KITCHEN" | "DRIVER";
@@ -54,6 +58,7 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication["getHttpServer"]>;
   let prisma: PrismaService;
+  let realtime: RealtimeGateway;
 
   let locationId: string;
 
@@ -122,11 +127,16 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
 
     server = app.getHttpServer();
     prisma = app.get(PrismaService);
+    realtime = app.get(RealtimeGateway);
 
     const location = await prisma.location.findUniqueOrThrow({
       where: { code: "LON01" },
     });
     locationId = location.id;
+    await prisma.locationSettings.update({
+      where: { locationId },
+      data: { trustedIpRanges: [TRUSTED_IP] },
+    });
 
     const users = await prisma.user.findMany({
       include: { employeeProfile: true },
@@ -144,6 +154,16 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
     kitchenSession = await createSession(kitchenUserId, "STAFF", "KITCHEN");
     cashierSession = await createSession(cashierUserId, "STAFF", "CASHIER");
     driverSession = await createSession(driverUserId, "STAFF", "DRIVER");
+
+    await prisma.employeeProfile.update({
+      where: { userId: cashierUserId },
+      data: {
+        employeePinHash: sha256(KDS_CODE),
+        posFailedAttempts: 0,
+        posLockoutUntil: null,
+        posCodeDeactivatedAt: null,
+      },
+    });
 
     const order = await prisma.order.findFirst({
       where: { locationId },
@@ -211,11 +231,11 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
   /*  KDS surface                                                        */
   /* ------------------------------------------------------------------ */
 
-  describe("KDS surface - ADMIN or STAFF(KITCHEN|MANAGER)", () => {
+  describe("KDS surface - in-store ADMIN or any STAFF", () => {
     expectSurfacePolicy(
       "GET /kds/orders",
       () => request(server).get(`${BASE}/kds/orders`),
-      ["admin", "manager", "kitchen"],
+      ["admin", "manager", "kitchen", "cashier", "driver"],
     );
 
     expectSurfacePolicy(
@@ -224,13 +244,13 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
         request(server)
           .post(`${BASE}/kds/busy-mode`)
           .send({ active: false }),
-      ["admin", "manager", "kitchen"],
+      ["admin", "manager", "kitchen", "cashier", "driver"],
     );
 
     expectSurfacePolicy(
       "GET /drivers/available",
       () => request(server).get(`${BASE}/drivers/available`),
-      ["admin", "manager", "kitchen"],
+      ["admin", "manager", "kitchen", "cashier", "driver"],
     );
 
     expectSurfacePolicy(
@@ -241,6 +261,155 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
           .send({ reason: "e2e" }),
       ["admin"],
     );
+  });
+
+  describe("KDS store network gate and station login", () => {
+    it("rejects KDS HTTP endpoints outside the trusted store network", async () => {
+      const res = await request(server)
+        .get(`${BASE}/kds/orders`)
+        .set(authHeaders(adminSession.token, locationId))
+        .set("X-Forwarded-For", UNTRUSTED_IP)
+        .expect(403);
+
+      expect(res.body.errors[0].message).toContain("in-store network");
+    });
+
+    it("allows KDS HTTP endpoints from the trusted store network", async () => {
+      const res = await request(server)
+        .get(`${BASE}/kds/orders`)
+        .set(authHeaders(cashierSession.token, locationId))
+        .set("X-Forwarded-For", TRUSTED_IP)
+        .expect(200);
+
+      expect(Array.isArray(res.body.data)).toBe(true);
+    });
+
+    it("rejects KDS driver picker outside the trusted store network", async () => {
+      const res = await request(server)
+        .get(`${BASE}/drivers/available`)
+        .set(authHeaders(managerSession.token, locationId))
+        .set("X-Forwarded-For", UNTRUSTED_IP)
+        .expect(403);
+
+      expect(res.body.errors[0].message).toContain("in-store network");
+    });
+
+    it("KDS network status is public and reports trusted IP access", async () => {
+      const res = await request(server)
+        .get(`${BASE}/auth/kds/network-status?location_id=${locationId}`)
+        .set("X-Forwarded-For", TRUSTED_IP)
+        .expect(200);
+
+      expect(res.body.data).toMatchObject({ allowed: true });
+    });
+
+    it("KDS login does not require CSRF, even with a stale auth cookie", async () => {
+      const res = await request(server)
+        .post(`${BASE}/auth/kds/login`)
+        .set("X-Forwarded-For", TRUSTED_IP)
+        .set("Cookie", "access_token=stale-token")
+        .send({
+          employee_code: KDS_CODE,
+          location_id: locationId,
+          device_id: "e2e-kds-device",
+        })
+        .expect(200);
+
+      expect(res.body.data).toMatchObject({
+        user: { role: "STAFF" },
+        employee: { role: "CASHIER", location_id: locationId },
+      });
+    });
+
+    it("KDS login rejects untrusted IP before recording PIN failures", async () => {
+      await prisma.posLoginAttempt.deleteMany({
+        where: { locationId, clientIp: UNTRUSTED_IP },
+      });
+
+      await request(server)
+        .post(`${BASE}/auth/kds/login`)
+        .set("X-Forwarded-For", UNTRUSTED_IP)
+        .send({
+          employee_code: "99999",
+          location_id: locationId,
+          device_id: "e2e-kds-untrusted",
+        })
+        .expect(403);
+
+      const failedAttempts = await prisma.posLoginAttempt.count({
+        where: { locationId, clientIp: UNTRUSTED_IP, wasSuccessful: false },
+      });
+      expect(failedAttempts).toBe(0);
+    });
+  });
+
+  describe("KDS realtime store network and staff policy", () => {
+    const authorizeKdsChannel = (
+      ip: string,
+      user: {
+        userId: string;
+        role: "CUSTOMER" | "STAFF" | "ADMIN";
+        employeeRole?: EmployeeRole;
+        locationId?: string;
+      },
+    ) => {
+      const authorizer = realtime as unknown as {
+        authorizeKdsLocationChannel: (
+          locationId: string,
+          user: {
+            userId: string;
+            role: "CUSTOMER" | "STAFF" | "ADMIN";
+            employeeRole?: EmployeeRole;
+            locationId?: string;
+            sessionId: string;
+          },
+          socket: {
+            handshake: {
+              headers: Record<string, string>;
+              address: string;
+            };
+          },
+        ) => Promise<string | null>;
+      };
+
+      return authorizer.authorizeKdsLocationChannel(
+        locationId,
+        { ...user, sessionId: `e2e-${user.userId}` },
+        {
+          handshake: {
+            headers: { "x-forwarded-for": ip },
+            address: ip,
+          },
+        },
+      );
+    };
+
+    it("rejects KDS realtime subscriptions outside the trusted store network", async () => {
+      await expect(
+        authorizeKdsChannel(UNTRUSTED_IP, {
+          userId: adminUserId,
+          role: "ADMIN",
+        }),
+      ).resolves.toContain("in-store network");
+    });
+
+    it("allows any staff role to subscribe from the trusted store network", async () => {
+      for (const [userId, employeeRole] of [
+        [managerUserId, "MANAGER"],
+        [kitchenUserId, "KITCHEN"],
+        [cashierUserId, "CASHIER"],
+        [driverUserId, "DRIVER"],
+      ] as const) {
+        await expect(
+          authorizeKdsChannel(TRUSTED_IP, {
+            userId,
+            role: "STAFF",
+            employeeRole,
+            locationId,
+          }),
+        ).resolves.toBeNull();
+      }
+    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -467,7 +636,7 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
       expect(after.status).toBe(401);
     });
 
-    it("demoted manager (employeeProfile.role -> CASHIER) -> 403 on KDS endpoint", async () => {
+    it("employee role drift to CASHIER still passes KDS endpoint", async () => {
       const user = await prisma.user.create({
         data: {
           role: "STAFF",
@@ -500,7 +669,7 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
         const after = await request(server)
           .get(`${BASE}/kds/orders`)
           .set(authHeaders(session.token, locationId));
-        expect(after.status).toBe(403);
+        expect([401, 403]).not.toContain(after.status);
       } finally {
         await prisma.authSession.deleteMany({ where: { userId: user.id } });
         await prisma.employeeProfile.delete({ where: { userId: profile.userId } });
@@ -508,7 +677,7 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
       }
     });
 
-    it("demoted kitchen (employeeProfile.role -> DRIVER) -> 403 on KDS endpoint", async () => {
+    it("employee role drift to DRIVER still passes KDS endpoint", async () => {
       const user = await prisma.user.create({
         data: {
           role: "STAFF",
@@ -541,7 +710,7 @@ describe("KDS access and staff employeeRole auth (e2e)", () => {
         const after = await request(server)
           .get(`${BASE}/kds/orders`)
           .set(authHeaders(session.token, locationId));
-        expect(after.status).toBe(403);
+        expect([401, 403]).not.toContain(after.status);
       } finally {
         await prisma.authSession.deleteMany({ where: { userId: user.id } });
         await prisma.employeeProfile.delete({ where: { userId: profile.userId } });

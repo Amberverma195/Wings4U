@@ -12,6 +12,7 @@ import {
 import { IsString } from "class-validator";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
+import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { POLICIES } from "../../common/policies/permission-matrix";
@@ -28,12 +29,11 @@ export class DriversController {
   constructor(private readonly driversService: DriversService) {}
 
   /**
-   * Used by the KDS surface to pick a driver to assign. KDS itself is
-   * ADMIN / KITCHEN / MANAGER only, so this endpoint must not be broader
-   * than that or a CASHIER could enumerate available drivers via the API
-   * even though they cannot see the KDS page.
+   * Used by the KDS surface to pick a driver to assign. It follows the
+   * same in-store station rule as KDS itself.
    */
   @Get("available")
+  @UseGuards(StoreNetworkGuard)
   @Roles(POLICIES.KDS_STAFF_OR_ADMIN)
   async getAvailable(@Req() req: Request) {
     return this.driversService.getAvailableDrivers(req.locationId!);

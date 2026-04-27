@@ -42,7 +42,7 @@ export class StoreNetworkGuard implements CanActivate {
     const clientIp = this.extractClientIp(req);
     if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
       throw new ForbiddenException(
-        "POS access is restricted to in-store network only",
+        "Store access is restricted to in-store network only",
       );
     }
 

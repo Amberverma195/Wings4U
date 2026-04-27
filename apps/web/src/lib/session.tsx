@@ -93,9 +93,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [data, setData] = useState<SessionApiResponse>(SIGNED_OUT_SESSION);
 
+  // KDS is excluded from this list because it uses station-access (PIN
+  // screen) instead of redirecting to /auth/login. The KDS client shows
+  // its own PIN unlock screen when the session is missing.
   const isProtectedSurface =
     pathname?.startsWith("/admin") === true ||
-    pathname?.startsWith("/kds") === true ||
     pathname?.startsWith("/pos") === true;
 
   const applySignedOut = useCallback(() => {

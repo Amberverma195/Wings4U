@@ -23,6 +23,7 @@ const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 function skipCsrf(path: string): boolean {
   if (path.startsWith("/api/v1/auth/otp")) return true;
   if (path.startsWith("/api/v1/auth/pos/login")) return true;
+  if (path.startsWith("/api/v1/auth/kds/login")) return true;
   if (path.startsWith("/api/v1/auth/check-signup")) return true;
   // Public quote endpoint. Saved-cart mutations are intentionally NOT
   // allowlisted here because they become authenticated user-cart writes once

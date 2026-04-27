@@ -35,7 +35,6 @@ export const SURFACE_POLICIES: Record<
   },
   KDS_STAFF_OR_ADMIN: {
     userRoles: ["ADMIN", "STAFF"],
-    employeeRoles: ["KITCHEN", "MANAGER"],
   },
   POS_STAFF_OR_ADMIN: {
     userRoles: ["ADMIN", "STAFF"],
@@ -66,8 +65,12 @@ export function isAuthorizedForSurface(
 }
 
 /**
- * Map a request pathname to the shared-middleware surface policy that
- * protects it, or null if the path isn't edge-gated.
+ * Map a request pathname to the surface policy that protects it, or null
+ * if the path has no surface-level role gate.
+ *
+ * Used by Edge middleware for /admin and by server-side layout probes
+ * for /kds (KDS is station-access, not edge-gated — the middleware
+ * matcher excludes it, but the KDS layout still checks the policy).
  */
 export function policyForPath(pathname: string): SurfacePolicyId | null {
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
