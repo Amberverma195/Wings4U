@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 /**
  * Locks the customer's wallet row for the duration of the current transaction
- * and returns the current balance. Matches POS store-credit behavior.
+ * and returns the current balance for checkout, order-change, and POS debits.
  */
 export async function lockAndReadWalletBalanceCents(
   tx: Prisma.TransactionClient,

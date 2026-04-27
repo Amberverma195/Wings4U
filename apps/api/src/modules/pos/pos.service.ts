@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import type { OrderStatus, PaymentTenderMethod } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 
 interface PosOrderItem {
   menuItemId: string;
@@ -280,10 +281,9 @@ export class PosService {
       // 5b. STORE_CREDIT: validate and debit wallet atomically
       let walletAppliedCents = 0;
       if (params.paymentMethod === "STORE_CREDIT") {
-        const wallet = await tx.customerWallet.findUnique({
-          where: { customerUserId },
-        });
-        const balance = wallet?.balanceCents ?? 0;
+        // Lock before checking balance so concurrent POS store-credit orders
+        // cannot both pass against the same pre-debit wallet value.
+        const balance = await lockAndReadWalletBalanceCents(tx, customerUserId);
         if (balance < finalPayableCents) {
           throw new BadRequestException(
             `Insufficient store credit. Balance: ${balance} cents, required: ${finalPayableCents} cents`,
@@ -291,24 +291,16 @@ export class PosService {
         }
         walletAppliedCents = finalPayableCents;
 
-        // Lock and debit
-        await tx.$executeRaw`
-          SELECT balance_cents
-          FROM   customer_wallets
-          WHERE  customer_user_id = ${customerUserId}::uuid
-          FOR UPDATE
-        `;
-        await tx.customerWallet.update({
+        const updatedWallet = await tx.customerWallet.update({
           where: { customerUserId },
           data: { balanceCents: { decrement: walletAppliedCents } },
         });
-        const newBalance = balance - walletAppliedCents;
         await tx.customerCreditLedger.create({
           data: {
             customerUserId,
             entryType: "POS_DEBIT",
             amountCents: -walletAppliedCents,
-            balanceAfterCents: newBalance,
+            balanceAfterCents: updatedWallet.balanceCents,
             reasonText: "POS order wallet debit",
             createdByUserId: params.actorUserId,
           },
