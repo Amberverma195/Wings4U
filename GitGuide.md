@@ -1,12 +1,12 @@
-# GitHub Push Guide
+# GitHub Update Guide
 
-This project folder is:
+Use this guide after the first GitHub upload is already done.
+
+Project folder:
 
 ```powershell
 D:\Projects\Websites\Wings4U\Code
 ```
-
-If you initialize Git inside this `Code` folder, GitHub will not upload a folder named `Code`. The contents you commit from inside `Code` become the root of the GitHub repository.
 
 ## 1. Open the project folder
 
@@ -14,111 +14,99 @@ If you initialize Git inside this `Code` folder, GitHub will not upload a folder
 cd D:\Projects\Websites\Wings4U\Code
 ```
 
-## 2. Initialize Git
-
-Run this only if the folder is not already a Git repository.
-
-```powershell
-git init
-```
-
-## 3. Connect the GitHub repository
-
-```powershell
-git remote add origin https://github.com/Amberverma195/Wings4U.git
-```
-
-If `origin` already exists, update it instead:
-
-```powershell
-git remote set-url origin https://github.com/Amberverma195/Wings4U.git
-```
-
-## 4. Confirm the remote
-
-```powershell
-git remote -v
-```
-
-You should see:
-
-```text
-origin  https://github.com/Amberverma195/Wings4U.git (fetch)
-origin  https://github.com/Amberverma195/Wings4U.git (push)
-```
-
-## 5. Stage only the files you want to upload
-
-Do not use `git add .` for the first upload. Use explicit paths so extra folders like `.claude`, `.cursor`, `.local`, `db`, `infra`, `node_modules`, and design scratch files are not accidentally committed.
-
-Recommended first upload:
-
-```powershell
-git add .gitignore GitGuide.md .editorconfig package.json package-lock.json tsconfig.base.json apps/api apps/print-agent apps/web packages/contracts packages/database packages/pricing
-```
-
-The `packages` folders are included because the apps import them:
-
-- `apps/api` depends on `@wings4u/database`.
-- `apps/web` depends on `@wings4u/contracts`.
-- `packages/pricing` depends on `@wings4u/contracts` and is referenced by the root workspace scripts.
-
-Optional files you can add later:
-
-```powershell
-git add README.md .github
-```
-
-Add these only if you want the GitHub repo to include the current monorepo README and CI workflow. The current README mentions folders like `Docs`, `infra`, and `ops`, so it may need cleanup if those folders are not uploaded.
-
-## 6. Check what will be committed
+## 2. Check what changed
 
 ```powershell
 git status --short
 ```
 
-For a cleaner file-only list:
+Look at this list before staging anything. Files marked `??` are untracked.
+
+## 3. Stage only the changes you want to upload
+
+For changes in the main app folders, use:
+
+```powershell
+git add apps/api apps/web apps/print-agent
+```
+
+If your change also touched shared packages, add them too:
+
+```powershell
+git add packages/contracts packages/database packages/pricing
+```
+
+If your change touched root config files, add only the specific files you edited:
+
+```powershell
+git add package.json package-lock.json tsconfig.base.json .gitignore .gitattributes .editorconfig GitGuide.md
+```
+
+Avoid `git add .` unless you have carefully checked that every new and changed file should go to GitHub.
+
+## 4. Review exactly what will be committed
 
 ```powershell
 git diff --cached --name-only
 ```
 
-Review this list carefully. Only continue if it contains the files you actually want on GitHub.
-
-## 7. Commit the files
+If something is staged by mistake, unstage it:
 
 ```powershell
-git commit -m "Initial Wings4U app upload"
+git restore --staged path/to/file
 ```
 
-## 8. Set the branch name
+For example:
 
 ```powershell
-git branch -M main
+git restore --staged wings4u_order_mode_designs.html
 ```
 
-## 9. Push to GitHub
+## 5. Commit your changes
+
+Use a short message that describes what changed:
 
 ```powershell
-git push -u origin main
+git commit -m "Update menu page"
 ```
 
-## 10. Future updates
-
-After the first push, use this flow for normal updates:
+More examples:
 
 ```powershell
+git commit -m "Fix auth redirect toast"
+git commit -m "Update API order guard"
+git commit -m "Improve print agent drawer handling"
+```
+
+## 6. Push to GitHub
+
+```powershell
+git push
+```
+
+If Git says the remote has changes you do not have locally, run:
+
+```powershell
+git pull --rebase
+git push
+```
+
+## Quick flow
+
+Most of the time, this is enough:
+
+```powershell
+cd D:\Projects\Websites\Wings4U\Code
 git status --short
-git add apps/api apps/print-agent apps/web packages/contracts packages/database packages/pricing package.json package-lock.json tsconfig.base.json .editorconfig .gitignore GitGuide.md
-git status --short
+git add apps/api apps/web apps/print-agent packages/contracts packages/database packages/pricing
+git diff --cached --name-only
 git commit -m "Describe your change"
 git push
 ```
 
-## Important notes
+## Safety notes
 
-- `.gitignore` should stay at the root of this `Code` folder because this is where the Git repository will be initialized.
-- GitHub only receives files that are committed.
-- `node_modules` and `.env` files should not be committed.
-- Keep `.env` and `.env.example` files local unless you intentionally want to publish sanitized templates.
-- Use `git diff --cached --name-only` before every commit when you want to be extra sure what is about to be uploaded.
+- Do not commit `.env`, `.env.example`, `.env.local`, or any real secrets.
+- Do not commit `node_modules`, `.next`, `dist`, logs, or build/cache files.
+- Be careful with local-only folders like `.claude`, `.cursor`, `Cmds`, `db`, `infra`, `ops`, and design scratch files.
+- Use `git status --short` and `git diff --cached --name-only` before every commit.
