@@ -16,7 +16,9 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
+  IsDateString,
 } from "class-validator";
 import type { Request } from "express";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
@@ -34,6 +36,44 @@ class KdsOrdersQueryDto {
   @IsOptional()
   @IsString()
   statuses?: string;
+}
+
+const KDS_HISTORY_STATUSES = [
+  "PLACED",
+  "ACCEPTED",
+  "PREPARING",
+  "READY",
+  "OUT_FOR_DELIVERY",
+  "PICKED_UP",
+  "DELIVERED",
+  "NO_SHOW_PICKUP",
+  "NO_SHOW_DELIVERY",
+  "NO_PIN_DELIVERY",
+  "CANCELLED",
+] as const;
+
+class KdsHistoryQueryDto {
+  @IsOptional()
+  @IsDateString()
+  start_date?: string;
+
+  @IsOptional()
+  @IsDateString()
+  end_date?: string;
+
+  @IsOptional()
+  @IsIn(KDS_HISTORY_STATUSES)
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }
 
 class UpdateStatusDto {
@@ -204,6 +244,22 @@ export class KdsController {
       sessionKey: body.session_key,
       deviceId: body.device_id,
     });
+  }
+
+  @Get("orders/history")
+  @Roles(KDS_STAFF, "ADMIN")
+  async getOrderHistory(
+    @Query() query: KdsHistoryQueryDto,
+    @Req() req: Request,
+  ) {
+    return this.kdsService.getOrderHistory(
+      req.locationId!,
+      query.start_date,
+      query.end_date,
+      query.status,
+      query.limit,
+      query.cursor,
+    );
   }
 
   @Get("orders")

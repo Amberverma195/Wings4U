@@ -133,6 +133,12 @@ function serializeKdsOrder(
     customer_phone_snapshot: o.customerPhoneSnapshot,
     customer_order_notes: o.customerOrderNotes,
     item_subtotal_cents: o.itemSubtotalCents,
+    item_discount_total_cents: o.itemDiscountTotalCents,
+    order_discount_total_cents: o.orderDiscountTotalCents,
+    delivery_fee_cents: o.deliveryFeeCents,
+    driver_tip_cents: o.driverTipCents,
+    tax_cents: o.taxCents,
+    wallet_applied_cents: o.walletAppliedCents,
     final_payable_cents: o.finalPayableCents,
     payment_status_summary: o.paymentStatusSummary,
     estimated_ready_at: o.estimatedReadyAt,
@@ -201,12 +207,87 @@ export class KdsService {
       orderBy: { placedAt: "asc" },
     });
 
-    return orders.map((o) =>
-      serializeKdsOrder(
+    const orderIds = orders.map((o) => o.id);
+    const unreadCounts = await this.chatService.getUnreadCountsForOrders(
+      orderIds,
+      "STAFF",
+    );
+
+    return orders.map((o) => {
+      const serialized = serializeKdsOrder(
         o as unknown as Record<string, unknown>,
         settings?.kdsAutoAcceptSeconds ?? null,
-      ),
-    );
+      );
+      return {
+        ...serialized,
+        unread_customer_chat_count: unreadCounts.get(o.id) ?? 0,
+      };
+    });
+  }
+
+  async getOrderHistory(
+    locationId: string,
+    startDate?: string,
+    endDate?: string,
+    status?: string,
+    limit = 50,
+    cursor?: string,
+  ) {
+    const take = Number.isFinite(limit)
+      ? Math.min(Math.max(Math.trunc(limit), 1), 100)
+      : 50;
+    const where: any = { locationId };
+
+    if (startDate || endDate) {
+      where.placedAt = {};
+      if (startDate) {
+        where.placedAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        // Assume endDate is inclusive of that day by extending to end of day if it's just a date string,
+        // but since we will pass ISO strings from client, we can just use lte.
+        where.placedAt.lte = new Date(endDate);
+      }
+    }
+
+    if (status) {
+      where.status = status as OrderStatus;
+    }
+
+    const orders = await this.prisma.order.findMany({
+      where,
+      take: take + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: [{ placedAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        fulfillmentType: true,
+        customerNameSnapshot: true,
+        placedAt: true,
+        finalPayableCents: true,
+      },
+    });
+
+    let nextCursor: string | undefined;
+    if (orders.length > take) {
+      orders.pop();
+      nextCursor = orders[orders.length - 1]?.id;
+    }
+
+    return {
+      items: orders.map((o) => ({
+        id: o.id,
+        order_number: Number(o.orderNumber),
+        status: o.status,
+        fulfillment_type: o.fulfillmentType,
+        customer_name_snapshot: o.customerNameSnapshot,
+        placed_at: o.placedAt,
+        final_payable_cents: o.finalPayableCents,
+      })),
+      next_cursor: nextCursor,
+    };
   }
 
   async acceptOrder(

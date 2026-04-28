@@ -1,13 +1,12 @@
-import { use } from "react";
 import { TicketDetailClient } from "./ticket-detail-client";
 import { RequireAuthModal } from "@/components/require-auth-modal";
 
-export default function AccountSupportTicketPage({
+export default async function AccountSupportTicketPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
+  const { id } = await params;
 
   return (
     <main>

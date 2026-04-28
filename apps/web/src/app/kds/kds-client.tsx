@@ -7,6 +7,7 @@ import { cents } from "@/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { SessionState } from "@/lib/session";
+import { OrderChat } from "@/components/order-chat";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -61,6 +62,13 @@ type KdsOrder = {
   customer_phone_snapshot: string | null;
   customer_order_notes: string | null;
   estimated_ready_at: string | null;
+  item_subtotal_cents: number;
+  item_discount_total_cents: number;
+  order_discount_total_cents: number;
+  delivery_fee_cents: number;
+  driver_tip_cents: number;
+  tax_cents: number;
+  wallet_applied_cents: number;
   final_payable_cents: number;
   assigned_driver_user_id: string | null;
   kds_auto_accept_seconds: number | null;
@@ -68,6 +76,7 @@ type KdsOrder = {
   items: KdsItem[];
   pending_cancel_request: KdsPendingCancelRequest | null;
   pending_change_request_count: number;
+  unread_customer_chat_count: number;
 };
 
 type KdsDriver = {
@@ -816,10 +825,12 @@ function KdsOrderCard({
   order,
   session,
   onRefresh,
+  onClick,
 }: {
   order: KdsOrder;
   session: KdsSessionControls;
   onRefresh: () => void;
+  onClick?: () => void;
 }) {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -982,10 +993,12 @@ function KdsOrderCard({
   return (
     <>
       <article
+        onClick={onClick}
         style={{
           border: "1px solid var(--border)",
           borderRadius: "16px",
           padding: "0.9rem 1rem",
+          cursor: onClick ? "pointer" : "default",
           background: hasPendingCancel
             ? "rgba(231,76,60,0.06)"
             : order.status === "PLACED" && order.requires_manual_review
@@ -1029,6 +1042,27 @@ function KdsOrderCard({
                   📋 Add-Items Pending
                 </span>
               )}
+              {order.unread_customer_chat_count > 0 && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: "1.5rem",
+                    height: "1.5rem",
+                    padding: "0 0.35rem",
+                    borderRadius: "12px",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: "#fff",
+                    background: "#e74c3c",
+                    boxShadow: "0 2px 4px rgba(231,76,60,0.3)",
+                  }}
+                  title={`${order.unread_customer_chat_count} unread chat messages`}
+                >
+                  💬 {order.unread_customer_chat_count}
+                </span>
+              )}
             </div>
             <p className="kds-order-card__customer">
               <span>{order.customer_name_snapshot ?? "Guest"}</span>
@@ -1040,7 +1074,6 @@ function KdsOrderCard({
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p className="kds-order-card__total">{cents(order.final_payable_cents)}</p>
             <p className="kds-order-card__eta">ETA {formatKitchenTime(order.estimated_ready_at)}</p>
           </div>
         </div>
@@ -1048,6 +1081,7 @@ function KdsOrderCard({
         {/* ETA delta controls (PRD §11.3) */}
         {etaControlsVisible && (
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
               display: "flex",
               alignItems: "center",
@@ -1091,6 +1125,7 @@ function KdsOrderCard({
         {/* Pending cancel request details */}
         {hasPendingCancel && (
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
               background: "rgba(231,76,60,0.08)",
               borderRadius: "10px",
@@ -1169,7 +1204,9 @@ function KdsOrderCard({
 
         {/* Action buttons */}
         {actions.length > 0 && (
-          <div className="kds-order-actions">{actions}</div>
+          <div className="kds-order-actions" onClick={(e) => e.stopPropagation()}>
+            {actions}
+          </div>
         )}
         {actionError && (
           <p className="surface-error" style={{ margin: "0.4rem 0 0", fontSize: "0.85rem" }}>
@@ -1326,6 +1363,277 @@ function BusyModeControl({ session }: { session: KdsSessionControls }) {
         {state.enabled ? "Turn off busy mode" : "Turn on busy mode"}
       </button>
       {error && <span className="surface-error" style={{ fontSize: "0.75rem" }}>{error}</span>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Kds Options Modal                                                  */
+/* ------------------------------------------------------------------ */
+
+function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; onClose: () => void }) {
+  const [dateStr, setDateStr] = useState(() => {
+    const d = new Date();
+    // Use local date for default
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
+  const [status, setStatus] = useState("");
+  const [history, setHistory] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+
+  const load = useCallback(async (append = false) => {
+    setBusy(true);
+    setHistoryError(null);
+    try {
+      const query = new URLSearchParams();
+      if (dateStr) {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+        const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+        query.append("start_date", start.toISOString());
+        query.append("end_date", end.toISOString());
+      }
+      if (status) query.append("status", status);
+      if (append && nextCursor) query.append("cursor", nextCursor);
+      
+      const res = await kdsJson<{ items: any[]; next_cursor?: string }>(
+        session,
+        `/api/v1/kds/orders/history?${query.toString()}`,
+        { method: "GET", locationId: DEFAULT_LOCATION_ID }
+      );
+      
+      setHistory(prev => append ? [...prev, ...(res.items ?? [])] : (res.items ?? []));
+      setNextCursor(res.next_cursor ?? null);
+    } catch (e) {
+      if (!append) {
+        setHistory([]);
+        setNextCursor(null);
+      }
+      setHistoryError(e instanceof Error ? e.message : "Failed to load order history");
+    } finally {
+      setBusy(false);
+    }
+  }, [dateStr, status, session, nextCursor]);
+
+  useEffect(() => {
+    void load(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateStr, status, session]);
+
+  return (
+    <div className="kds-modal-overlay" onClick={onClose}>
+      <div className="kds-modal-card" style={{ maxWidth: "800px", width: "90vw" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2 style={{ margin: 0 }}>Options & History</h2>
+          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
+        </div>
+        
+        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <label className="surface-label" style={{ display: "block", marginBottom: "0.25rem" }}>Date</label>
+            <input type="date" value={dateStr} onChange={(e) => setDateStr(e.target.value)} className="kds-modal-input" />
+          </div>
+          <div>
+            <label className="surface-label" style={{ display: "block", marginBottom: "0.25rem" }}>Status</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="kds-modal-input">
+              <option value="">All Statuses</option>
+              <option value="PLACED">Placed</option>
+              <option value="ACCEPTED">Accepted</option>
+              <option value="PREPARING">Preparing</option>
+              <option value="READY">Ready</option>
+              <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="PICKED_UP">Picked Up</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="NO_SHOW_PICKUP">No-Show (Pickup)</option>
+              <option value="NO_SHOW_DELIVERY">No-Show (Delivery)</option>
+              <option value="NO_PIN_DELIVERY">No-PIN Delivery</option>
+            </select>
+          </div>
+        </div>
+
+        {historyError && (
+          <p className="surface-error" style={{ margin: "0 0 0.75rem", fontSize: "0.9rem" }}>
+            {historyError}
+          </p>
+        )}
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="surface-table" style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                <th style={{ padding: "0.5rem" }}>Order #</th>
+                <th style={{ padding: "0.5rem" }}>Status</th>
+                <th style={{ padding: "0.5rem" }}>Type</th>
+                <th style={{ padding: "0.5rem" }}>Customer</th>
+                <th style={{ padding: "0.5rem" }}>Placed Time</th>
+                <th style={{ padding: "0.5rem" }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {busy ? (
+                <tr><td colSpan={6} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
+              ) : history.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: "center", padding: "1rem" }}>No history found</td></tr>
+              ) : history.map((o) => (
+                <tr key={o.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "0.5rem" }}>#{o.order_number}</td>
+                  <td style={{ padding: "0.5rem" }}>{o.status}</td>
+                  <td style={{ padding: "0.5rem" }}>{o.fulfillment_type}</td>
+                  <td style={{ padding: "0.5rem" }}>{o.customer_name_snapshot ?? "Guest"}</td>
+                  <td style={{ padding: "0.5rem" }}>{new Date(o.placed_at).toLocaleTimeString()}</td>
+                  <td style={{ padding: "0.5rem" }}>{cents(o.final_payable_cents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {nextCursor && (
+            <div style={{ textAlign: "center", marginTop: "1rem" }}>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={() => void load(true)} 
+                disabled={busy}
+              >
+                {busy ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Kds Order Detail Modal                                             */
+/* ------------------------------------------------------------------ */
+
+function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: KdsOrder; session: KdsSessionControls; onRefresh: () => void; onClose: () => void }) {
+  // Trigger a refresh after a short delay so the chat read receipt has time to process
+  // and the badge gets cleared on the main KDS board.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onRefresh();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [onRefresh]);
+
+  const placedDate = new Date(order.placed_at);
+  const isTerminal = ["DELIVERED", "PICKED_UP", "CANCELLED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY"].includes(order.status);
+
+  return (
+    <div className="kds-modal-overlay" onClick={onClose}>
+      <div className="kds-modal-card" style={{ maxWidth: "1200px", width: "95vw", height: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: "1rem", marginBottom: "1rem" }}>
+          <div>
+            <h2 style={{ margin: "0 0 0.25rem" }}>Order #{order.order_number} <span style={{ fontSize: "1rem", color: "var(--text-muted)", fontWeight: "normal" }}>({order.id})</span></h2>
+            <p style={{ margin: 0, fontSize: "0.95rem" }}>
+              {order.customer_name_snapshot ?? "Guest"} {order.customer_phone_snapshot ? `| ${formatKdsOrderPhone(order.customer_phone_snapshot)}` : ""} | {order.fulfillment_type} | {order.status} | Placed: {placedDate.toLocaleTimeString()} | ETA: {formatKitchenTime(order.estimated_ready_at)}
+            </p>
+          </div>
+          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
+        </div>
+
+        <div style={{ display: "flex", gap: "1.5rem", flex: 1, minHeight: 0 }}>
+          {/* Main Left */}
+          <div style={{ flex: 2, overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.5rem", paddingRight: "0.5rem" }}>
+            <div>
+              <h3 style={{ margin: "0 0 1rem" }}>Items</h3>
+              <ul className="kds-order-card__items" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {order.items.map((item) => (
+                  <li key={item.id} style={{ marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px dashed var(--border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <strong style={{ fontSize: "1.1rem" }}>{item.quantity}x {item.product_name_snapshot}</strong>
+                    </div>
+                    {item.flavours && item.flavours.length > 0 && (
+                      <ul style={{ margin: "0.25rem 0 0 1.5rem", padding: 0, color: "#e67e22", fontWeight: 600 }}>
+                        {item.flavours.map((fl) => (
+                          <li key={fl.id}>
+                            {fl.flavour_name_snapshot}
+                            {fl.heat_level_snapshot ? ` (${fl.heat_level_snapshot})` : ""}
+                            {fl.placement === "ON_SIDE" ? " [On Side]" : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {item.modifiers && item.modifiers.length > 0 && (
+                      <ul style={{ margin: "0.25rem 0 0 1.5rem", padding: 0, color: "#34495e" }}>
+                        {item.modifiers.map((mod) => (
+                          <li key={mod.id}>
+                            {mod.modifier_kind === "REMOVE_INGREDIENT" ? (
+                              <span style={{ color: "#c0392b", textDecoration: "line-through" }}>
+                                NO {mod.modifier_name_snapshot}
+                              </span>
+                            ) : (
+                              <span>
+                                {mod.quantity > 1 ? `${mod.quantity}x ` : ""}
+                                {mod.modifier_name_snapshot}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {item.special_instructions && (
+                      <p style={{ margin: "0.5rem 0 0", color: "#c0392b", fontWeight: 700, fontStyle: "italic", background: "#fdf2e9", padding: "0.5rem", borderRadius: "8px" }}>
+                        Note: {item.special_instructions}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "1rem", marginTop: "auto" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>Pricing Summary</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                <span>Subtotal</span><span>{cents(order.item_subtotal_cents)}</span>
+              </div>
+              {(order.item_discount_total_cents > 0 || order.order_discount_total_cents > 0) && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem", color: "#c0392b" }}>
+                  <span>Discounts</span><span>-{cents(order.item_discount_total_cents + order.order_discount_total_cents)}</span>
+                </div>
+              )}
+              {order.delivery_fee_cents > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                  <span>Delivery Fee</span><span>{cents(order.delivery_fee_cents)}</span>
+                </div>
+              )}
+              {order.tax_cents > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                  <span>Tax</span><span>{cents(order.tax_cents)}</span>
+                </div>
+              )}
+              {order.driver_tip_cents > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                  <span>Tip</span><span>{cents(order.driver_tip_cents)}</span>
+                </div>
+              )}
+              {order.wallet_applied_cents > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem", color: "#27ae60" }}>
+                  <span>Wallet Credit</span><span>-{cents(order.wallet_applied_cents)}</span>
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontWeight: "bold", fontSize: "1.1rem" }}>
+                <span>Total</span><span>{cents(order.final_payable_cents)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Side */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border)", paddingLeft: "1.5rem", minWidth: 0 }}>
+            <OrderChat orderId={order.id} locationId={DEFAULT_LOCATION_ID} isTerminal={isTerminal} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1683,6 +1991,8 @@ export function KdsClient() {
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [detailOrder, setDetailOrder] = useState<KdsOrder | null>(null);
   const socketRef = useRef<ReturnType<typeof createOrdersSocket> | null>(null);
   const sessionControls = useMemo<KdsSessionControls>(
     () => ({
@@ -1799,6 +2109,14 @@ export function KdsClient() {
           <h1 style={{ margin: 0 }}>Active Tickets</h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOptionsOpen(true)}
+            style={{ fontWeight: "bold" }}
+          >
+            Options
+          </button>
           <BusyModeControl session={sessionControls} />
           <button
             type="button"
@@ -1864,6 +2182,7 @@ export function KdsClient() {
                     order={order}
                     session={sessionControls}
                     onRefresh={loadOrders}
+                    onClick={() => setDetailOrder(order)}
                   />
                 ))
               )}
@@ -1872,6 +2191,12 @@ export function KdsClient() {
           );
         })}
       </div>
+      {optionsOpen && (
+        <KdsOptionsModal session={sessionControls} onClose={() => setOptionsOpen(false)} />
+      )}
+      {detailOrder && (
+        <KdsOrderDetailModal order={detailOrder} session={sessionControls} onRefresh={loadOrders} onClose={() => setDetailOrder(null)} />
+      )}
     </section>
   );
 }
