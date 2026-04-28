@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -57,13 +58,19 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const [showSupport, setShowSupport] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPinResponse | null>(null);
-  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [orderStatusHistoryOpen, setOrderStatusHistoryOpen] = useState(false);
+  const orderStatusAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [orderStatusPopoverRect, setOrderStatusPopoverRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
 
   useEffect(() => {
     setOrder(null);
     setError(null);
     setDeliveryPin(null);
-    setTimelineExpanded(false);
+    setOrderStatusHistoryOpen(false);
   }, [orderId]);
 
   const fetchOrder = useCallback(async () => {
@@ -195,6 +202,50 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     }
   }, [orderId, fetchOrder, session]);
 
+  useLayoutEffect(() => {
+    if (!orderStatusHistoryOpen) {
+      setOrderStatusPopoverRect(null);
+      return;
+    }
+    if (!orderStatusAnchorRef.current) return;
+
+    const update = () => {
+      const el = orderStatusAnchorRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = Math.min(320, Math.max(260, r.width));
+      const pad = 8;
+      let left = r.left;
+      if (left + width > window.innerWidth - pad) {
+        left = window.innerWidth - pad - width;
+      }
+      if (left < pad) {
+        left = pad;
+      }
+      setOrderStatusPopoverRect({ top: r.bottom + 6, left, width });
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [orderStatusHistoryOpen]);
+
+  useEffect(() => {
+    if (!orderStatusHistoryOpen) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOrderStatusHistoryOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [orderStatusHistoryOpen]);
+
   /* ── Error state ──────────────────────────────────────── */
   if (error) {
     return (
@@ -227,7 +278,6 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const sortedStatusEvents = [...order.status_events].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
-  const timelineEventsVisible = timelineExpanded ? sortedStatusEvents : sortedStatusEvents.slice(0, 1);
 
   return (
     <div className={styles.pageShell}>
@@ -248,45 +298,40 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
           {/* LEFT — Order details */}
           <div className={styles.leftColumn}>
             <div className={styles.orderCard}>
-              {/* Status row — timeline summary on the right */}
+              {/* Status row — cancel / help on the right (timeline moved below summary) */}
               <div className={styles.statusRow}>
                 <span className={`${styles.statusPill} ${terminal ? styles.statusPillTerminal : styles.statusPillActive}`}>
                   <span className={styles.statusDot} />
                   {orderStatusCustomerLabel(order.status, order.fulfillment_type)}
                 </span>
-                {sortedStatusEvents.length > 0 && (
-                  <div className={styles.statusTimelineCompact}>
-                    <div className={styles.statusTimelineCompactHeader}>
-                      <span className={styles.statusTimelineLabel}>Timeline</span>
-                      {sortedStatusEvents.length > 1 && (
-                        <button
-                          type="button"
-                          className={styles.timelineToggleIcon}
-                          aria-expanded={timelineExpanded}
-                          aria-label={timelineExpanded ? "Collapse order timeline" : "Expand order timeline"}
-                          onClick={() => setTimelineExpanded((prev) => !prev)}
-                        >
-                          <span
-                            className={`${styles.timelineToggleArrow} ${timelineExpanded ? styles.timelineToggleArrowExpanded : ""}`}
-                            aria-hidden="true"
-                          >
-                            ▾
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                    <div
-                      className={
-                        timelineExpanded && sortedStatusEvents.length > 1
-                          ? styles.statusTimelineChakraExpandedBody
-                          : styles.statusTimelineChakraBody
-                      }
+                {!terminal && cancelStillAllowed(order) && (
+                  <div className={styles.statusRowActions}>
+                    <button
+                      className={styles.cancelBtn}
+                      disabled={cancelling}
+                      onClick={handleCancel}
                     >
-                      <OrderStatusTimelineChakra
-                        events={timelineEventsVisible}
-                        getStatusLabel={(s) => orderStatusCustomerLabel(s as OrderStatus, order.fulfillment_type)}
-                      />
-                    </div>
+                      {cancelling ? "Cancelling…" : "Cancel order"}
+                    </button>
+                    {cancelError && (
+                      <p style={{ color: "#dc2626", marginTop: "0.5rem", fontSize: "0.85rem", textAlign: "right" }}>
+                        {cancelError}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {!terminal && !cancelStillAllowed(order) && order.cancel_allowed_until && (
+                  <div className={styles.statusRowActions}>
+                    <button
+                      type="button"
+                      className={styles.helpBtn}
+                      onClick={() => {
+                        setOrderStatusHistoryOpen(false);
+                        setShowHelpModal(true);
+                      }}
+                    >
+                      Help
+                    </button>
                   </div>
                 )}
               </div>
@@ -399,30 +444,71 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 </div>
               </div>
 
-              {/* Cancel button */}
-              {!terminal && cancelStillAllowed(order) && (
-                <div className={styles.actionRow}>
-                  <button
-                    className={styles.cancelBtn}
-                    disabled={cancelling}
-                    onClick={handleCancel}
-                  >
-                    {cancelling ? "Cancelling…" : "Cancel order"}
-                  </button>
-                  {cancelError && <p style={{ color: "#dc2626", marginTop: "0.5rem", fontSize: "0.85rem" }}>{cancelError}</p>}
-                </div>
-              )}
-
-              {/* Help button (after cancel window expires) */}
-              {!terminal && !cancelStillAllowed(order) && order.cancel_allowed_until && (
-                <div className={styles.actionRow}>
+              {sortedStatusEvents.length > 0 && (
+                <div
+                  ref={orderStatusAnchorRef}
+                  className={`${styles.statusTimelineCompact} ${styles.timelineAfterSummary} ${styles.orderStatusPopoverHost}`}
+                >
                   <button
                     type="button"
-                    className={styles.helpBtn}
-                    onClick={() => setShowHelpModal(true)}
+                    className={styles.orderStatusTrigger}
+                    aria-expanded={orderStatusHistoryOpen}
+                    aria-haspopup="dialog"
+                    aria-label={orderStatusHistoryOpen ? "Close status updates" : "View all status updates"}
+                    onClick={() => setOrderStatusHistoryOpen((open) => !open)}
                   >
-                    Help
+                    <span className={styles.orderStatusTriggerHeader}>
+                      <span className={styles.statusTimelineLabel}>Order status</span>
+                      <span
+                        className={`${styles.timelineToggleArrow} ${orderStatusHistoryOpen ? styles.timelineToggleArrowExpanded : ""}`}
+                        aria-hidden="true"
+                      >
+                        ▾
+                      </span>
+                    </span>
+                    <div className={styles.orderStatusPreview}>
+                      <OrderStatusTimelineChakra
+                        events={sortedStatusEvents.slice(0, 1)}
+                        getStatusLabel={(s) => orderStatusCustomerLabel(s as OrderStatus, order.fulfillment_type)}
+                      />
+                    </div>
                   </button>
+
+                  {orderStatusHistoryOpen &&
+                    typeof document !== "undefined" &&
+                    createPortal(
+                      <>
+                        <div
+                          className={styles.orderStatusBackdrop}
+                          aria-hidden
+                          onClick={() => setOrderStatusHistoryOpen(false)}
+                        />
+                        {orderStatusPopoverRect ? (
+                          <div
+                            className={styles.orderStatusPopover}
+                            style={{
+                              top: orderStatusPopoverRect.top,
+                              left: orderStatusPopoverRect.left,
+                              width: orderStatusPopoverRect.width,
+                            }}
+                            role="dialog"
+                            aria-label="Order updates"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className={styles.orderStatusPopoverBody}>
+                              <OrderStatusTimelineChakra
+                                readable
+                                events={sortedStatusEvents}
+                                getStatusLabel={(s) =>
+                                  orderStatusCustomerLabel(s as OrderStatus, order.fulfillment_type)
+                                }
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </>,
+                      document.body,
+                    )}
                 </div>
               )}
 

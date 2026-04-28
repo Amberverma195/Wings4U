@@ -7,6 +7,7 @@ import {
   Text,
   Timeline,
 } from "@chakra-ui/react";
+import { statusEventWhenLine } from "@/lib/format";
 import type { OrderStatus, OrderStatusEvent } from "@/lib/types";
 import {
   LuCheck,
@@ -47,29 +48,43 @@ function timelineIconForStatus(toStatus: string): ComponentType<{ size?: number 
 type Props = {
   events: OrderStatusEvent[];
   getStatusLabel: (toStatus: string) => string;
+  /** Larger type and shorter dates for popovers and expanded views */
+  readable?: boolean;
 };
 
-export function OrderStatusTimelineChakra({ events, getStatusLabel }: Props) {
+export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = false }: Props) {
+  const size = readable ? "md" : "sm";
+  const iconPx = readable ? 16 : 14;
+
   return (
     <ChakraProvider value={defaultSystem}>
-      <Timeline.Root maxW="100%" size="sm" colorPalette="orange" variant="solid">
+      <Timeline.Root maxW="100%" size={size} colorPalette="orange" variant="solid">
         {events.map((event) => {
           const Icon = timelineIconForStatus(event.to_status);
           const title = getStatusLabel(event.to_status);
-          const when = new Date(event.created_at).toLocaleString();
+          const when = readable ? statusEventWhenLine(event.created_at) : new Date(event.created_at).toLocaleString();
           return (
             <Timeline.Item key={event.id}>
               <Timeline.Connector>
                 <Timeline.Separator />
                 <Timeline.Indicator>
-                  <Icon size={14} />
+                  <Icon size={iconPx} />
                 </Timeline.Indicator>
               </Timeline.Connector>
               <Timeline.Content>
-                <Timeline.Title textStyle="sm">{title}</Timeline.Title>
-                <Timeline.Description>{when}</Timeline.Description>
+                <Timeline.Title textStyle={readable ? "md" : "sm"} fontWeight={readable ? "semibold" : undefined}>
+                  {title}
+                </Timeline.Title>
+                <Timeline.Description
+                  color={readable ? "fg.muted" : undefined}
+                  textStyle={readable ? "sm" : undefined}
+                >
+                  {when}
+                </Timeline.Description>
                 {event.reason_text ? (
-                  <Text textStyle="sm">{event.reason_text}</Text>
+                  <Text textStyle="sm" color={readable ? "fg.muted" : undefined}>
+                    {event.reason_text}
+                  </Text>
                 ) : null}
               </Timeline.Content>
             </Timeline.Item>

@@ -14,6 +14,13 @@ export function Navbar() {
   const session = useSession();
   const { itemCount, cartAddNonce, isCartHydrating } = useCart();
   const [cartPulse, setCartPulse] = useState(false);
+  const isCustomerSession = session.authenticated && session.user?.role === "CUSTOMER";
+  const staffSurfaceHref =
+    session.authenticated && session.user?.role === "ADMIN"
+      ? "/admin"
+      : session.authenticated && session.user?.role === "STAFF"
+        ? "/kds"
+        : null;
 
   useEffect(() => {
     if (cartAddNonce === 0) return;
@@ -29,12 +36,16 @@ export function Navbar() {
         <WingsBrandLockup priority />
       </div>
       <div style={styles.navActions}>
-        {session.authenticated ? (
+        {isCustomerSession ? (
           <>
             <button style={styles.navBtn} onClick={() => router.push("/account/profile")}>
               {session.user?.displayName ?? "Account"}
             </button>
           </>
+        ) : staffSurfaceHref ? (
+          <button style={styles.navBtn} onClick={() => router.push(staffSurfaceHref)}>
+            {session.user?.role === "ADMIN" ? "Admin" : "KDS"}
+          </button>
         ) : (
           <button style={styles.navBtn} onClick={() => router.push("/auth/login")}>
             Login

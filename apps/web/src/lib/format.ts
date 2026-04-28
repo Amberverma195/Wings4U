@@ -18,6 +18,14 @@ export function shortDate(iso: string): string {
   });
 }
 
+/** Compact line for status history lists, e.g. "Apr 28 · 6:06 pm" */
+export function statusEventWhenLine(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${date} · ${time}`;
+}
+
 export function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60_000);
