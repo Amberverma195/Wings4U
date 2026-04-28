@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -125,6 +125,17 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     };
   }, [order, orderId, session]);
 
+  // Keep a stable ref to the latest fetchOrder so the socket effect doesn't
+  // tear down & reconnect every time the session object changes identity
+  // (which happens on focus, visibility-change, and pathname transitions).
+  // Without this, the effect's dependency on `fetchOrder` caused the socket
+  // to disconnect and reconnect on every session revalidation, creating a
+  // window where incoming events were silently dropped.
+  const fetchOrderRef = useRef(fetchOrder);
+  useEffect(() => {
+    fetchOrderRef.current = fetchOrder;
+  }, [fetchOrder]);
+
   // Realtime: subscribe to `order:${orderId}` so the customer sees status
   // changes (accepted / ready / out-for-delivery / delivered) without a
   // manual reload. `subscribeToChannels` keeps the subscription alive
@@ -132,13 +143,16 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   useEffect(() => {
     const socket = createOrdersSocket();
 
-    const refresh = () => void fetchOrder();
+    const refresh = () => void fetchOrderRef.current();
     socket.on("order.accepted", refresh);
     socket.on("order.status_changed", refresh);
     socket.on("order.cancelled", refresh);
     socket.on("order.driver_assigned", refresh);
     socket.on("order.delivery_started", refresh);
     socket.on("order.eta_updated", refresh);
+    socket.on("order.change_approved", refresh);
+    socket.on("order.change_rejected", refresh);
+    socket.on("cancellation.decided", refresh);
 
     const disposeSubscription = subscribeToChannels(socket, [
       `order:${orderId}`,
@@ -149,7 +163,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
       disposeSubscription();
       socket.disconnect();
     };
-  }, [orderId, fetchOrder]);
+  }, [orderId]);
 
   const handleCancel = useCallback(async () => {
     setCancelling(true);
