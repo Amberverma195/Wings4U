@@ -137,6 +137,49 @@
   margin-bottom: 1.25rem;
 }
 
+.statusTimelineCompact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  max-width: min(100%, 17rem);
+  margin-left: auto;
+}
+
+.statusTimelineCompactHeader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.statusTimelineLabel {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.statusTimelineChakraBody {
+  width: 100%;
+  max-width: 17rem;
+}
+
+.statusTimelineChakraExpandedBody {
+  width: 100%;
+  max-width: 17rem;
+  margin-top: 0.35rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e5e7eb;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 .statusPill {
   display: inline-flex;
   align-items: center;
@@ -283,6 +326,34 @@
   color: #9ca3af;
 }
 
+.timelineToggleIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0.15rem 0.25rem;
+  margin: 0;
+  color: #6b7280;
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.timelineToggleIcon:hover {
+  color: #111827;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.timelineToggleArrow {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.timelineToggleArrowExpanded {
+  transform: rotate(180deg);
+}
+
 /* Item row */
 .itemRow {
   display: flex;
@@ -420,67 +491,6 @@
   border-color: #f97316;
 }
 
-/* Timeline */
-.timeline {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 1.25rem;
-  border-left: 2px solid #e5e7eb;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.timelineItem {
-  position: relative;
-  padding: 0.55rem 0;
-  font-size: 0.88rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: baseline;
-}
-
-.timelineItem::before {
-  content: "";
-  position: absolute;
-  left: -1.6rem;
-  top: 0.75rem;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #f97316;
-  box-shadow: 0 0 0 3px #F8C676;
-}
-
-.timelineItem:first-child::before {
-  background: linear-gradient(135deg, #f97316, #fb923c);
-  animation: timelinePulse 1.6s ease-in-out infinite;
-}
-
-@keyframes timelinePulse {
-  0%, 100% { box-shadow: 0 0 0 3px #F8C676, 0 0 0 3px rgba(249, 115, 22, 0.6); }
-  50% { box-shadow: 0 0 0 3px #F8C676, 0 0 0 8px rgba(249, 115, 22, 0); }
-}
-
-.timelineStatus {
-  font-weight: 700;
-  color: #111827;
-}
-
-.timelineTime {
-  color: #9ca3af;
-  font-size: 0.8rem;
-}
-
-.timelineReason {
-  color: #6b7280;
-  font-style: italic;
-  width: 100%;
-  font-size: 0.8rem;
-}
-
-/* ── Right column: add items + reorder ───────────────── */
 .rightColumn {
   display: flex;
   flex-direction: column;

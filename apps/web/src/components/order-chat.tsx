@@ -28,7 +28,7 @@ export function OrderChat({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -69,8 +69,13 @@ export function OrderChat({
     };
   }, [orderId, fetchMessages]);
 
+  // Keep the transcript pinned to the latest message inside the scrollable
+  // `.chat-messages` pane only. `scrollIntoView` on a sentinel would also
+  // scroll the window when the pane doesn't need its own scrollbar yet.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   const send = useCallback(async () => {
@@ -111,7 +116,7 @@ export function OrderChat({
         {isClosed && <span className="surface-muted"> (closed)</span>}
       </h3>
 
-      <div className="chat-messages">
+      <div ref={messagesContainerRef} className="chat-messages">
         {messages.length === 0 && (
           <p className="surface-muted" style={{ textAlign: "center", padding: "1rem 0" }}>
             {canSend ? "No messages yet. Start a conversation." : "No chat messages for this order."}
@@ -127,7 +132,6 @@ export function OrderChat({
             <span className="chat-time">{relativeTime(msg.created_at)}</span>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
 
       {canSend && (

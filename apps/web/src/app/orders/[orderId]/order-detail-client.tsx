@@ -11,6 +11,7 @@ import type { OrderDetail, OrderStatus } from "@/lib/types";
 import { OrderAddItems } from "@/components/order-add-items";
 import { OrderChat } from "@/components/order-chat";
 import { OrderReviews } from "@/components/order-reviews";
+import { OrderStatusTimelineChakra } from "@/components/order-status-timeline-chakra";
 import { ReorderButton } from "@/components/reorder-button";
 import { SupportTicketForm } from "@/components/support-ticket-form";
 import { OrderSkeleton } from "./order-skeleton";
@@ -56,11 +57,13 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const [showSupport, setShowSupport] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPinResponse | null>(null);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
 
   useEffect(() => {
     setOrder(null);
     setError(null);
     setDeliveryPin(null);
+    setTimelineExpanded(false);
   }, [orderId]);
 
   const fetchOrder = useCallback(async () => {
@@ -221,6 +224,10 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   }
 
   const terminal = isTerminal(order.status);
+  const sortedStatusEvents = [...order.status_events].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+  const timelineEventsVisible = timelineExpanded ? sortedStatusEvents : sortedStatusEvents.slice(0, 1);
 
   return (
     <div className={styles.pageShell}>
@@ -241,12 +248,47 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
           {/* LEFT — Order details */}
           <div className={styles.leftColumn}>
             <div className={styles.orderCard}>
-              {/* Status row */}
+              {/* Status row — timeline summary on the right */}
               <div className={styles.statusRow}>
                 <span className={`${styles.statusPill} ${terminal ? styles.statusPillTerminal : styles.statusPillActive}`}>
                   <span className={styles.statusDot} />
                   {orderStatusCustomerLabel(order.status, order.fulfillment_type)}
                 </span>
+                {sortedStatusEvents.length > 0 && (
+                  <div className={styles.statusTimelineCompact}>
+                    <div className={styles.statusTimelineCompactHeader}>
+                      <span className={styles.statusTimelineLabel}>Timeline</span>
+                      {sortedStatusEvents.length > 1 && (
+                        <button
+                          type="button"
+                          className={styles.timelineToggleIcon}
+                          aria-expanded={timelineExpanded}
+                          aria-label={timelineExpanded ? "Collapse order timeline" : "Expand order timeline"}
+                          onClick={() => setTimelineExpanded((prev) => !prev)}
+                        >
+                          <span
+                            className={`${styles.timelineToggleArrow} ${timelineExpanded ? styles.timelineToggleArrowExpanded : ""}`}
+                            aria-hidden="true"
+                          >
+                            ▾
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                    <div
+                      className={
+                        timelineExpanded && sortedStatusEvents.length > 1
+                          ? styles.statusTimelineChakraExpandedBody
+                          : styles.statusTimelineChakraBody
+                      }
+                    >
+                      <OrderStatusTimelineChakra
+                        events={timelineEventsVisible}
+                        getStatusLabel={(s) => orderStatusCustomerLabel(s as OrderStatus, order.fulfillment_type)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Meta chips */}
@@ -384,27 +426,6 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 </div>
               )}
 
-              {/* Timeline */}
-              {order.status_events.length > 0 && (
-                <div className={styles.section}>
-                  <h3 className={styles.sectionTitle}>Timeline</h3>
-                  <ul className={styles.timeline}>
-                    {order.status_events.map((event) => (
-                      <li key={event.id} className={styles.timelineItem}>
-                        <span className={styles.timelineStatus}>
-                          {orderStatusCustomerLabel(event.to_status, order.fulfillment_type)}
-                        </span>
-                        <span className={styles.timelineTime}>
-                          {new Date(event.created_at).toLocaleString()}
-                        </span>
-                        {event.reason_text && (
-                          <span className={styles.timelineReason}>{event.reason_text}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
 
             {/* Order chat — hidden once the order is completed (terminal) */}

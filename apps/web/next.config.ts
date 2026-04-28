@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
   // 403 response for authenticated non-admin users.
   experimental: {
     authInterrupts: true,
+    optimizePackageImports: ["@chakra-ui/react"],
   },
   async rewrites() {
     return [
