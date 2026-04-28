@@ -127,9 +127,15 @@ export class SupportController {
   @Roles("CUSTOMER", "STAFF", "ADMIN")
   async getOne(
     @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
-    return this.supportService.getTicket(id, user.role, user.userId);
+    return this.supportService.getTicket(
+      id,
+      user.role,
+      user.userId,
+      req.locationId,
+    );
   }
 
   @Post(":id/messages")
@@ -137,6 +143,7 @@ export class SupportController {
   async addMessage(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: AddMessageDto,
+    @Req() req: Request,
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
     const isInternalNote =
@@ -147,6 +154,7 @@ export class SupportController {
       body.message_body,
       isInternalNote,
       user.role,
+      req.locationId,
     );
   }
 
@@ -155,9 +163,15 @@ export class SupportController {
   async updateStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: UpdateStatusDto,
+    @Req() req: Request,
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
-    return this.supportService.updateStatus(id, user.userId, body.status);
+    return this.supportService.updateStatus(
+      id,
+      user.userId,
+      body.status,
+      req.locationId,
+    );
   }
 
   @Post(":id/resolutions")
@@ -165,6 +179,7 @@ export class SupportController {
   async resolve(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: ResolveTicketDto,
+    @Req() req: Request,
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
     return this.supportService.resolve(
@@ -172,6 +187,7 @@ export class SupportController {
       user.userId,
       body.resolution_type,
       body.notes,
+      req.locationId,
     );
   }
 }
