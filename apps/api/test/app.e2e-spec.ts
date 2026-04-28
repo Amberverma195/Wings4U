@@ -2518,6 +2518,42 @@ describe("API (e2e)", () => {
         .expect(403);
     });
 
+    it("GET /support/tickets/:id rejects staff when the ticket belongs to another location", async () => {
+      const otherLocation = await prisma.location.create({
+        data: {
+          code: `SUPX${randomUUID().slice(0, 8)}`,
+          name: "Support Cross-Loc Test",
+          addressLine1: "2 Test Street",
+          city: "London",
+          provinceCode: "ON",
+          postalCode: "N6A 1A1",
+          phoneNumber: "+15195550125",
+          timezoneName: "America/Toronto",
+        },
+        select: { id: true },
+      });
+      const foreignTicket = await prisma.supportTicket.create({
+        data: {
+          locationId: otherLocation.id,
+          customerUserId,
+          ticketType: "OTHER",
+          status: "OPEN",
+          priority: "NORMAL",
+          createdSource: "CUSTOMER_APP",
+          subject: "Other location ticket",
+          description: "Should not be readable from primary location scope.",
+        },
+        select: { id: true },
+      });
+
+      await authedGet(
+        server,
+        `/support/tickets/${foreignTicket.id}`,
+        managerToken,
+        locationId,
+      ).expect(403);
+    });
+
     it("GET /admin/support-tickets/:id/order-details returns linked order details", async () => {
       const orderId = await createBareOrderForSupportTest(prisma, {
         locationId,

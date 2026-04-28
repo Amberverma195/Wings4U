@@ -66,6 +66,15 @@ function serializeResolution(r: Record<string, unknown>) {
   };
 }
 
+function assertTicketLocationScope(
+  ticket: { locationId: string },
+  locationId: string,
+) {
+  if (ticket.locationId !== locationId) {
+    throw new ForbiddenException("You do not have access to this ticket");
+  }
+}
+
 @Injectable()
 export class SupportService {
   constructor(private readonly prisma: PrismaService) {}
@@ -131,7 +140,12 @@ export class SupportService {
     return serializeTicketSummary(ticket as unknown as Record<string, unknown>);
   }
 
-  async getTicket(ticketId: string, viewerRole?: string, viewerUserId?: string) {
+  async getTicket(
+    ticketId: string,
+    viewerRole?: string,
+    viewerUserId?: string,
+    locationId?: string,
+  ) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
       include: {
@@ -143,6 +157,10 @@ export class SupportService {
 
     if (!ticket) {
       throw new NotFoundException("Support ticket not found");
+    }
+
+    if (locationId) {
+      assertTicketLocationScope(ticket, locationId);
     }
 
     // Customer ownership check: customers can only view their own tickets
@@ -244,12 +262,17 @@ export class SupportService {
     body: string,
     isInternalNote = false,
     senderRole?: string,
+    locationId?: string,
   ) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
     if (!ticket) {
       throw new NotFoundException("Support ticket not found");
+    }
+
+    if (locationId) {
+      assertTicketLocationScope(ticket, locationId);
     }
 
     // Customer ownership check: customers can only message their own tickets
@@ -290,12 +313,17 @@ export class SupportService {
     ticketId: string,
     actorUserId: string,
     newStatus: string,
+    locationId?: string,
   ) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
     if (!ticket) {
       throw new NotFoundException("Support ticket not found");
+    }
+
+    if (locationId) {
+      assertTicketLocationScope(ticket, locationId);
     }
 
     const oldStatus = ticket.status;
@@ -330,12 +358,17 @@ export class SupportService {
     resolvedByUserId: string,
     resolutionType: string,
     notes: string,
+    locationId?: string,
   ) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
     if (!ticket) {
       throw new NotFoundException("Support ticket not found");
+    }
+
+    if (locationId) {
+      assertTicketLocationScope(ticket, locationId);
     }
 
     if (ticket.status === "RESOLVED" || ticket.status === "CLOSED") {
