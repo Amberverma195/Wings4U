@@ -15,6 +15,7 @@ import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AdminService } from "./admin.service";
+import { SupportService } from "../support/support.service";
 
 class DecideCancellationDto {
   @IsEnum(["APPROVE", "DENY"])
@@ -85,7 +86,10 @@ class PendingQueueQueryDto {
 @UseGuards(LocationScopeGuard)
 @Roles("ADMIN")
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly supportService: SupportService,
+  ) {}
 
   @Post("cancellation-requests/:id/decide")
   async decideCancellation(
@@ -207,5 +211,12 @@ export class AdminController {
       limit: Number.isFinite(limit) ? limit : undefined,
     });
   }
-}
 
+  @Get("support-tickets/:id/order-details")
+  async getTicketOrderDetails(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.supportService.getTicketOrderDetails(id, req.locationId!);
+  }
+}

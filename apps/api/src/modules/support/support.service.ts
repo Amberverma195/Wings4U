@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from "@nestjs/common";
 import type { Prisma, TicketResolutionType, TicketStatus } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
@@ -81,6 +82,24 @@ export class SupportService {
   }) {
     const priority = params.priority ?? "NORMAL";
 
+    if (params.orderId) {
+      const linkedOrder = await this.prisma.order.findUnique({
+        where: { id: params.orderId },
+        select: { id: true, locationId: true, customerUserId: true },
+      });
+
+      if (!linkedOrder) {
+        throw new NotFoundException("Linked order not found");
+      }
+
+      if (
+        linkedOrder.locationId !== params.locationId ||
+        linkedOrder.customerUserId !== params.customerUserId
+      ) {
+        throw new ForbiddenException("You do not have access to this order");
+      }
+    }
+
     const ticket = await this.prisma.$transaction(async (tx) => {
       const created = await tx.supportTicket.create({
         data: {
@@ -112,7 +131,7 @@ export class SupportService {
     return serializeTicketSummary(ticket as unknown as Record<string, unknown>);
   }
 
-  async getTicket(ticketId: string, viewerRole?: string) {
+  async getTicket(ticketId: string, viewerRole?: string, viewerUserId?: string) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
       include: {
@@ -126,6 +145,15 @@ export class SupportService {
       throw new NotFoundException("Support ticket not found");
     }
 
+    // Customer ownership check: customers can only view their own tickets
+    if (
+      viewerRole === "CUSTOMER" &&
+      viewerUserId &&
+      ticket.customerUserId !== viewerUserId
+    ) {
+      throw new ForbiddenException("You do not have access to this ticket");
+    }
+
     const base = serializeTicketSummary(
       ticket as unknown as Record<string, unknown>,
     );
@@ -135,13 +163,21 @@ export class SupportService {
       .filter((m) => isStaffOrAdmin || !m.isInternalNote)
       .map((m) => serializeMessage(m as unknown as Record<string, unknown>));
 
+    const events = ticket.events
+      .filter((e) => {
+        if (isStaffOrAdmin) return true;
+        if (e.eventType === "MESSAGE_ADDED" && (e.payloadJson as Record<string, unknown>)?.is_internal_note === true) {
+          return false;
+        }
+        return true;
+      })
+      .map((e) => serializeEvent(e as unknown as Record<string, unknown>));
+
     return {
       ...base,
       description: ticket.description,
       messages,
-      events: ticket.events.map((e) =>
-        serializeEvent(e as unknown as Record<string, unknown>),
-      ),
+      events,
       resolutions: ticket.resolutions.map((r) =>
         serializeResolution(r as unknown as Record<string, unknown>),
       ),
@@ -167,6 +203,13 @@ export class SupportService {
       orderBy: { createdAt: "desc" },
       take: take + 1,
       ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+      include: {
+        messages: {
+          where: { isInternalNote: false },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
     });
 
     const hasMore = tickets.length > take;
@@ -174,9 +217,23 @@ export class SupportService {
     const nextCursor = hasMore ? page[page.length - 1].id : null;
 
     return {
-      tickets: page.map((t) =>
-        serializeTicketSummary(t as unknown as Record<string, unknown>),
-      ),
+      tickets: page.map((t) => {
+        const base = serializeTicketSummary(t as unknown as Record<string, unknown>);
+        const latestMsg = t.messages[0];
+        return {
+          ...base,
+          latest_public_message: latestMsg
+            ? {
+                message_body:
+                  latestMsg.messageBody.length > 120
+                    ? latestMsg.messageBody.slice(0, 120) + "…"
+                    : latestMsg.messageBody,
+                author_user_id: latestMsg.authorUserId,
+                created_at: latestMsg.createdAt,
+              }
+            : null,
+        };
+      }),
       next_cursor: nextCursor,
     };
   }
@@ -186,12 +243,21 @@ export class SupportService {
     senderUserId: string,
     body: string,
     isInternalNote = false,
+    senderRole?: string,
   ) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
     if (!ticket) {
       throw new NotFoundException("Support ticket not found");
+    }
+
+    // Customer ownership check: customers can only message their own tickets
+    if (
+      senderRole === "CUSTOMER" &&
+      ticket.customerUserId !== senderUserId
+    ) {
+      throw new ForbiddenException("You do not have access to this ticket");
     }
 
     const [message] = await this.prisma.$transaction([
@@ -312,5 +378,117 @@ export class SupportService {
     ]);
 
     return serializeTicketSummary(updated as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Fetch linked order details for a support ticket.
+   * Used by the admin "Order Details" modal.
+   */
+  async getTicketOrderDetails(ticketId: string, locationId: string) {
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        orderId: true,
+        customerUserId: true,
+        locationId: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException("Support ticket not found");
+    }
+
+    if (ticket.locationId !== locationId) {
+      throw new ForbiddenException("Ticket belongs to a different location");
+    }
+
+    if (!ticket.orderId) {
+      throw new NotFoundException("This ticket has no linked order");
+    }
+
+    if (!ticket.customerUserId) {
+      throw new ForbiddenException("Ticket is not linked to a customer");
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: ticket.orderId,
+        locationId,
+        customerUserId: ticket.customerUserId,
+      },
+      include: {
+        orderItems: {
+          orderBy: { lineNo: "asc" },
+          include: {
+            modifiers: { orderBy: { sortOrder: "asc" } },
+            flavours: { orderBy: { sortOrder: "asc" } },
+          },
+        },
+        payments: { orderBy: { createdAt: "asc" } },
+      },
+    });
+
+    if (!order) {
+      throw new ForbiddenException("Linked order does not match this ticket");
+    }
+
+    return {
+      ticket_id: ticket.id,
+      customer: {
+        user_id: order.customerUserId,
+        name: order.customerNameSnapshot,
+        phone: order.customerPhoneSnapshot,
+        email: order.customerEmailSnapshot ?? null,
+      },
+      order: {
+        id: order.id,
+        order_number: order.orderNumber.toString(),
+        status: order.status,
+        fulfillment_type: order.fulfillmentType,
+        placed_at: order.placedAt,
+        accepted_at: order.acceptedAt,
+        ready_at: order.readyAt,
+        completed_at: order.completedAt,
+        cancelled_at: order.cancelledAt,
+        payment_status: order.paymentStatusSummary,
+        item_subtotal_cents: order.itemSubtotalCents,
+        discount_total_cents:
+          order.itemDiscountTotalCents + order.orderDiscountTotalCents,
+        tax_cents: order.taxCents,
+        delivery_fee_cents: order.deliveryFeeCents,
+        driver_tip_cents: order.driverTipCents,
+        final_payable_cents: order.finalPayableCents,
+        customer_order_notes: order.customerOrderNotes,
+        address_snapshot: order.addressSnapshotJson,
+      },
+      payments: order.payments.map((p) => ({
+        id: p.id,
+        method: p.paymentMethod,
+        status: p.transactionStatus,
+        amount_cents: p.signedAmountCents,
+        created_at: p.createdAt,
+      })),
+      items: order.orderItems.map((item) => ({
+        id: item.id,
+        product_name: item.productNameSnapshot,
+        category_name: item.categoryNameSnapshot,
+        quantity: item.quantity,
+        unit_price_cents: item.unitPriceCents,
+        line_total_cents: item.lineTotalCents,
+        special_instructions: item.specialInstructions,
+        modifiers: item.modifiers.map((mod) => ({
+          name: mod.modifierNameSnapshot,
+          group_name: mod.modifierGroupNameSnapshot,
+          quantity: mod.quantity,
+          price_delta_cents: mod.priceDeltaCents,
+        })),
+        flavours: item.flavours.map((f) => ({
+          name: f.flavourNameSnapshot,
+          heat_level: f.heatLevelSnapshot,
+          placement: f.placement,
+        })),
+      })),
+    };
   }
 }

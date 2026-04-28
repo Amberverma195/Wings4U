@@ -129,7 +129,7 @@ export class SupportController {
     @Param("id", ParseUUIDPipe) id: string,
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
-    return this.supportService.getTicket(id, user.role);
+    return this.supportService.getTicket(id, user.role, user.userId);
   }
 
   @Post(":id/messages")
@@ -146,6 +146,7 @@ export class SupportController {
       user.userId,
       body.message_body,
       isInternalNote,
+      user.role,
     );
   }
 

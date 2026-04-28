@@ -286,6 +286,10 @@ export default function ProfilePage() {
                   navLinkClassName={styles.navLink}
                   navLinkArrowClassName={styles.navLinkArrow}
                 />
+                <Link href="/account/support" className={styles.navLink}>
+                  <span>Support</span>
+                  <span className={styles.navLinkArrow}>→</span>
+                </Link>
                 <button
                   type="button"
                   onClick={() => setLogoutConfirmOpen(true)}

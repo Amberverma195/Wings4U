@@ -229,6 +229,64 @@ async function setAlwaysOpenLocationHours(
   }
 }
 
+async function createBareOrderForSupportTest(
+  prisma: PrismaService,
+  params: {
+    locationId: string;
+    customerUserId: string;
+    orderNumber?: bigint;
+  },
+): Promise<string> {
+  const order = await prisma.order.create({
+    data: {
+      locationId: params.locationId,
+      customerUserId: params.customerUserId,
+      orderNumber:
+        params.orderNumber ??
+        BigInt(Date.now() + Math.floor(Math.random() * 100000)),
+      orderSource: "ONLINE",
+      fulfillmentType: "PICKUP",
+      status: "PLACED",
+      scheduledFor: new Date(),
+      customerNameSnapshot: "Support Test Customer",
+      customerPhoneSnapshot: "+15195550123",
+      itemSubtotalCents: 1000,
+      discountedSubtotalCents: 1000,
+      taxableSubtotalCents: 1000,
+      taxCents: 130,
+      taxRateBps: 1300,
+      finalPayableCents: 1130,
+      paymentStatusSummary: "UNPAID",
+    },
+    select: { id: true },
+  });
+
+  return order.id;
+}
+
+async function createSupportTestCustomer(prisma: PrismaService): Promise<string> {
+  const phone = nextTestPhone();
+  const user = await prisma.user.create({
+    data: {
+      role: "CUSTOMER",
+      displayName: "Support Test Customer",
+      identities: {
+        create: {
+          provider: "PHONE",
+          providerSubject: phone,
+          phoneE164: phone,
+          isPrimary: true,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  return user.id;
+}
+
 describe("API (e2e)", () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication["getHttpServer"]>;
@@ -2379,6 +2437,145 @@ describe("API (e2e)", () => {
       expect(data.priority).toBe("HIGH");
       expect(data.created_source).toBe("CUSTOMER_APP");
       ticketId = data.id;
+    });
+
+    it("POST /support/tickets can link the customer's own order", async () => {
+      const orderId = await createBareOrderForSupportTest(prisma, {
+        locationId,
+        customerUserId,
+      });
+
+      const res = await authedPost(
+        server,
+        "/support/tickets",
+        customerToken,
+        locationId,
+      )
+        .send({
+          ticket_type: "OTHER",
+          subject: "Question about my order",
+          description: "Please check this order.",
+          order_id: orderId,
+        })
+        .expect(201);
+
+      expect(res.body.data.order_id).toBe(orderId);
+    });
+
+    it("POST /support/tickets rejects another customer's order", async () => {
+      const otherCustomerUserId = await createSupportTestCustomer(prisma);
+      const otherOrderId = await createBareOrderForSupportTest(prisma, {
+        locationId,
+        customerUserId: otherCustomerUserId,
+      });
+
+      await authedPost(
+        server,
+        "/support/tickets",
+        customerToken,
+        locationId,
+      )
+        .send({
+          ticket_type: "OTHER",
+          subject: "Wrong customer order",
+          description: "This should not link.",
+          order_id: otherOrderId,
+        })
+        .expect(403);
+    });
+
+    it("POST /support/tickets rejects an order from another location", async () => {
+      const otherLocation = await prisma.location.create({
+        data: {
+          code: `SUP${randomUUID().slice(0, 8)}`,
+          name: "Support Test Location",
+          addressLine1: "1 Test Street",
+          city: "London",
+          provinceCode: "ON",
+          postalCode: "N6A 1A1",
+          phoneNumber: "+15195550124",
+          timezoneName: "America/Toronto",
+        },
+        select: { id: true },
+      });
+      const otherLocationOrderId = await createBareOrderForSupportTest(prisma, {
+        locationId: otherLocation.id,
+        customerUserId,
+      });
+
+      await authedPost(
+        server,
+        "/support/tickets",
+        customerToken,
+        locationId,
+      )
+        .send({
+          ticket_type: "OTHER",
+          subject: "Wrong location order",
+          description: "This should not link.",
+          order_id: otherLocationOrderId,
+        })
+        .expect(403);
+    });
+
+    it("GET /admin/support-tickets/:id/order-details returns linked order details", async () => {
+      const orderId = await createBareOrderForSupportTest(prisma, {
+        locationId,
+        customerUserId,
+      });
+      const createRes = await authedPost(
+        server,
+        "/support/tickets",
+        customerToken,
+        locationId,
+      )
+        .send({
+          ticket_type: "OTHER",
+          subject: "Order details modal",
+          description: "Admin should see this linked order.",
+          order_id: orderId,
+        })
+        .expect(201);
+
+      const res = await authedGet(
+        server,
+        `/admin/support-tickets/${createRes.body.data.id}/order-details`,
+        adminToken,
+        locationId,
+      ).expect(200);
+
+      expect(res.body.data.ticket_id).toBe(createRes.body.data.id);
+      expect(res.body.data.order.id).toBe(orderId);
+      expect(res.body.data.customer.user_id).toBe(customerUserId);
+    });
+
+    it("GET /admin/support-tickets/:id/order-details rejects a mismatched legacy order link", async () => {
+      const otherCustomerUserId = await createSupportTestCustomer(prisma);
+      const otherOrderId = await createBareOrderForSupportTest(prisma, {
+        locationId,
+        customerUserId: otherCustomerUserId,
+      });
+      const legacyTicket = await prisma.supportTicket.create({
+        data: {
+          locationId,
+          customerUserId,
+          orderId: otherOrderId,
+          ticketType: "OTHER",
+          status: "OPEN",
+          priority: "NORMAL",
+          createdSource: "CUSTOMER_APP",
+          subject: "Legacy mismatched link",
+          description: "This simulates a bad historical ticket-order link.",
+        },
+        select: { id: true },
+      });
+
+      await authedGet(
+        server,
+        `/admin/support-tickets/${legacyTicket.id}/order-details`,
+        adminToken,
+        locationId,
+      ).expect(403);
     });
 
     it("GET /support/tickets lists tickets for customer", async () => {

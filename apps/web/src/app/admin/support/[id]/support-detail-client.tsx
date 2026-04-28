@@ -1,6 +1,6 @@
 "use client";
 
-import { adminApiFetch, formatDateTime } from "../../admin-api";
+import { adminApiFetch, formatCents, formatDateTime } from "../../admin-api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
@@ -51,6 +51,27 @@ type TicketDetail = {
   resolutions: Resolution[];
 };
 
+type OrderDetails = {
+  ticket_id: string;
+  customer: { user_id: string; name: string; phone: string; email: string | null };
+  order: {
+    id: string; order_number: string; status: string; fulfillment_type: string;
+    placed_at: string; accepted_at: string | null; ready_at: string | null;
+    completed_at: string | null; cancelled_at: string | null;
+    payment_status: string; item_subtotal_cents: number; discount_total_cents: number;
+    tax_cents: number; delivery_fee_cents: number; driver_tip_cents: number;
+    final_payable_cents: number; customer_order_notes: string | null;
+    address_snapshot: Record<string, string> | null;
+  };
+  payments: { id: string; method: string; status: string; amount_cents: number; created_at: string }[];
+  items: {
+    id: string; product_name: string; category_name: string; quantity: number;
+    unit_price_cents: number; line_total_cents: number; special_instructions: string | null;
+    modifiers: { name: string; group_name: string; quantity: number; price_delta_cents: number }[];
+    flavours: { name: string; heat_level: string; placement: string }[];
+  }[];
+};
+
 const STATUSES = ["OPEN", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "CLOSED"];
 const RESOLUTION_TYPES = [
   "REFUND_ISSUED",
@@ -76,6 +97,11 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
   const [resolutionType, setResolutionType] = useState<string>("INFO_ONLY");
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [resolving, setResolving] = useState(false);
+
+  const [orderModal, setOrderModal] = useState(false);
+  const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -216,25 +242,55 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
     );
   }
 
+  const openOrderDetails = async () => {
+    setOrderModal(true);
+    setOrderLoading(true);
+    setOrderError(null);
+    try {
+      const res = await withSilentRefresh(
+        () => adminApiFetch(`/api/v1/admin/support-tickets/${ticketId}/order-details`),
+        session.refresh, session.clear,
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.errors?.[0]?.message ?? `Failed (${res.status})`);
+      setOrderDetails(json.data as OrderDetails);
+    } catch (e) {
+      setOrderError(e instanceof Error ? e.message : "Load failed");
+    } finally {
+      setOrderLoading(false);
+    }
+  };
+
   return (
     <>
       <Link href="/admin/support">← Back to support queue</Link>
 
       <section className="surface-card" style={{ marginTop: "0.75rem", marginBottom: "1rem" }}>
-        <p className="surface-eyebrow" style={{ margin: 0 }}>
-          {ticket.ticket_type} · {ticket.priority}
-        </p>
-        <h1 style={{ margin: "0.2rem 0 0" }}>{ticket.subject}</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
+          <div>
+            <p className="surface-eyebrow" style={{ margin: 0 }}>
+              {ticket.ticket_type} · {ticket.priority}
+            </p>
+            <h1 style={{ margin: "0.2rem 0 0" }}>{ticket.subject}</h1>
+          </div>
+          {ticket.order_id && (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ width: "auto", whiteSpace: "nowrap", flexShrink: 0 }}
+              onClick={() => void openOrderDetails()}
+            >
+              📦 Order Details
+            </button>
+          )}
+        </div>
         <p className="surface-muted" style={{ margin: "0.4rem 0 0", fontSize: "0.85rem" }}>
           Status <strong>{ticket.status}</strong> · created{" "}
           {formatDateTime(ticket.created_at)}
           {ticket.order_id && (
             <>
-              {" "}
-              ·{" "}
-              <Link href={`/admin/orders/${ticket.order_id}`}>
-                related order
-              </Link>
+              {" "}·{" "}
+              <Link href={`/admin/orders/${ticket.order_id}`}>related order</Link>
             </>
           )}
         </p>
@@ -432,6 +488,119 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
           </ul>
         )}
       </section>
+
+      {/* ── Order Details Modal ── */}
+      {orderModal && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem", zIndex: 1000 }}
+          onMouseDown={() => { setOrderModal(false); setOrderDetails(null); }}
+        >
+          <div
+            style={{ width: "min(680px,100%)", maxHeight: "90vh", overflowY: "auto", background: "white", borderRadius: "20px", padding: "2rem", boxShadow: "0 32px 64px -16px rgba(0,0,0,0.25)" }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+              <div>
+                <span className="surface-eyebrow">Order Details</span>
+                <h2 style={{ margin: "0.2rem 0 0", fontSize: "1.4rem" }}>Linked Order</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setOrderModal(false); setOrderDetails(null); }}
+                style={{ background: "#f3f4f6", border: "none", width: 36, height: 36, borderRadius: 12, fontSize: "1rem", fontWeight: 700, color: "#6b7280", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >✕</button>
+            </div>
+
+            {orderLoading && <p className="surface-muted">Loading order details…</p>}
+            {orderError && <p className="surface-error">{orderError}</p>}
+
+            {orderDetails && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                {/* Customer */}
+                <div style={{ padding: "1rem", background: "#fafafa", borderRadius: 14, border: "1px solid #f3f4f6" }}>
+                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af" }}>Customer</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem 1rem", fontSize: "0.9rem" }}>
+                    <div><strong>Name:</strong> {orderDetails.customer.name}</div>
+                    <div><strong>Phone:</strong> {orderDetails.customer.phone}</div>
+                    {orderDetails.customer.email && <div style={{ gridColumn: "1/-1" }}><strong>Email:</strong> {orderDetails.customer.email}</div>}
+                  </div>
+                </div>
+
+                {/* Order Summary */}
+                <div style={{ padding: "1rem", background: "#fafafa", borderRadius: 14, border: "1px solid #f3f4f6" }}>
+                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af" }}>Order</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem 1rem", fontSize: "0.9rem" }}>
+                    <div><strong>#</strong> {orderDetails.order.order_number}</div>
+                    <div><strong>Status:</strong> {orderDetails.order.status}</div>
+                    <div><strong>Type:</strong> {orderDetails.order.fulfillment_type}</div>
+                    <div><strong>Payment:</strong> {orderDetails.order.payment_status}</div>
+                    <div><strong>Placed:</strong> {formatDateTime(orderDetails.order.placed_at)}</div>
+                    {orderDetails.order.completed_at && <div><strong>Completed:</strong> {formatDateTime(orderDetails.order.completed_at)}</div>}
+                    {orderDetails.order.cancelled_at && <div><strong>Cancelled:</strong> {formatDateTime(orderDetails.order.cancelled_at)}</div>}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "0.5rem", marginTop: "0.75rem", padding: "0.75rem", background: "white", borderRadius: 10, border: "1px solid #e5e7eb", textAlign: "center", fontSize: "0.85rem" }}>
+                    <div><div style={{ fontWeight: 800, color: "#f97316" }}>{formatCents(orderDetails.order.item_subtotal_cents)}</div><div style={{ color: "#9ca3af", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>Subtotal</div></div>
+                    <div><div style={{ fontWeight: 800 }}>{formatCents(orderDetails.order.tax_cents)}</div><div style={{ color: "#9ca3af", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>Tax</div></div>
+                    <div><div style={{ fontWeight: 800, color: "#059669" }}>{formatCents(orderDetails.order.final_payable_cents)}</div><div style={{ color: "#9ca3af", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>Total</div></div>
+                  </div>
+                  {orderDetails.order.customer_order_notes && (
+                    <div style={{ marginTop: "0.75rem", padding: "0.6rem 0.8rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, fontSize: "0.85rem" }}>
+                      <strong>Notes:</strong> {orderDetails.order.customer_order_notes}
+                    </div>
+                  )}
+                  {orderDetails.order.address_snapshot && typeof orderDetails.order.address_snapshot === "object" && (
+                    <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "#6b7280" }}>
+                      <strong>Address:</strong>{" "}
+                      {[orderDetails.order.address_snapshot.line1, orderDetails.order.address_snapshot.city, orderDetails.order.address_snapshot.postalCode].filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                </div>
+
+                {/* Payments */}
+                {orderDetails.payments.length > 0 && (
+                  <div style={{ padding: "1rem", background: "#fafafa", borderRadius: 14, border: "1px solid #f3f4f6" }}>
+                    <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af" }}>Payments</h3>
+                    {orderDetails.payments.map((p) => (
+                      <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.4rem 0", borderBottom: "1px solid #f3f4f6", fontSize: "0.88rem" }}>
+                        <span>{p.method} · <span style={{ color: "#6b7280" }}>{p.status}</span></span>
+                        <span style={{ fontWeight: 700 }}>{formatCents(p.amount_cents)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Items */}
+                <div style={{ padding: "1rem", background: "#fafafa", borderRadius: 14, border: "1px solid #f3f4f6" }}>
+                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af" }}>Items</h3>
+                  {orderDetails.items.map((item) => (
+                    <div key={item.id} style={{ padding: "0.6rem 0", borderBottom: "1px solid #f3f4f6" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.92rem" }}>
+                        <span><strong>{item.quantity}×</strong> {item.product_name}</span>
+                        <span style={{ fontWeight: 700 }}>{formatCents(item.line_total_cents)}</span>
+                      </div>
+                      {item.modifiers.length > 0 && (
+                        <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.2rem" }}>
+                          {item.modifiers.map((m, i) => <span key={i}>{i > 0 ? ", " : ""}{m.name}</span>)}
+                        </div>
+                      )}
+                      {item.flavours.length > 0 && (
+                        <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.15rem" }}>
+                          🌶️ {item.flavours.map((f) => f.name).join(", ")}
+                        </div>
+                      )}
+                      {item.special_instructions && (
+                        <div style={{ fontSize: "0.8rem", color: "#b45309", marginTop: "0.15rem", fontStyle: "italic" }}>
+                          "{item.special_instructions}"
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
