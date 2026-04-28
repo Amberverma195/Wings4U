@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents, relativeTime, statusLabel } from "@/lib/format";
+import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { ReorderButton } from "@/components/reorder-button";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
@@ -83,6 +84,53 @@ export function OrdersListClient() {
   useEffect(() => {
     void fetchOrders();
   }, [fetchOrders]);
+
+  // Stable ref so the socket effect doesn't re-run when fetchOrders
+  // changes identity (session revalidation, etc.).
+  const fetchOrdersRef = useRef(fetchOrders);
+  useEffect(() => {
+    fetchOrdersRef.current = fetchOrders;
+  }, [fetchOrders]);
+
+  // Realtime: subscribe to each active order's channel so the list
+  // reflects status changes (accepted / ready / cancelled / etc.)
+  // without a manual page reload.
+  // Stabilise the channel list: only tear down the socket when the set of
+  // active order IDs actually changes, not on every re-render / re-fetch.
+  const activeOrderIdsKey = useMemo(
+    () =>
+      orders
+        .filter((o) => ACTIVE_STATUSES.has(o.status))
+        .map((o) => o.id)
+        .sort()
+        .join(","),
+    [orders],
+  );
+
+  useEffect(() => {
+    if (!activeOrderIdsKey) return;
+
+    const ids = activeOrderIdsKey.split(",");
+    const socket = createOrdersSocket();
+
+    const refresh = () => void fetchOrdersRef.current();
+    socket.on("order.accepted", refresh);
+    socket.on("order.status_changed", refresh);
+    socket.on("order.cancelled", refresh);
+    socket.on("order.driver_assigned", refresh);
+    socket.on("order.delivery_started", refresh);
+    socket.on("order.eta_updated", refresh);
+    socket.on("cancellation.decided", refresh);
+
+    const channels = ids.map((id) => `order:${id}`);
+    const disposeSubscription = subscribeToChannels(socket, channels);
+    socket.connect();
+
+    return () => {
+      disposeSubscription();
+      socket.disconnect();
+    };
+  }, [activeOrderIdsKey]);
 
   const { active, past } = useMemo(() => {
     return {

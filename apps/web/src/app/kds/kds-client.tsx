@@ -1718,6 +1718,13 @@ export function KdsClient() {
     void loadOrders();
   }, [canUseBoard, loadOrders]);
 
+  // Stable ref so the socket effect doesn't re-run when loadOrders
+  // changes identity (session revalidation, etc.).
+  const loadOrdersRef = useRef(loadOrders);
+  useEffect(() => {
+    loadOrdersRef.current = loadOrders;
+  }, [loadOrders]);
+
   // Socket.IO realtime — subscribe to location-level orders channel.
   // `subscribeToChannels` keeps the subscription alive across reconnects
   // so KDS updates come from realtime events after the initial load.
@@ -1727,7 +1734,7 @@ export function KdsClient() {
     const socket = createOrdersSocket();
     socketRef.current = socket;
 
-    const refresh = () => void loadOrders();
+    const refresh = () => void loadOrdersRef.current();
     socket.on("order.placed", refresh);
     socket.on("order.accepted", refresh);
     socket.on("order.status_changed", refresh);
@@ -1753,7 +1760,7 @@ export function KdsClient() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [canUseBoard, loadOrders]);
+  }, [canUseBoard]);
 
   /* ---- Gate: show loading / PIN / customer-deny ---- */
 
