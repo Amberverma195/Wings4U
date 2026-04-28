@@ -407,14 +407,16 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               )}
             </div>
 
-            {/* Chat card — always in left column below order details */}
-            <div className={styles.chatCard}>
-              <OrderChat
-                orderId={orderId}
-                locationId={order.location_id}
-                isTerminal={terminal}
-              />
-            </div>
+            {/* Order chat — hidden once the order is completed (terminal) */}
+            {!terminal && (
+              <div className={styles.chatCard}>
+                <OrderChat
+                  orderId={orderId}
+                  locationId={order.location_id}
+                  isTerminal={false}
+                />
+              </div>
+            )}
 
             {/* Footer actions for terminal orders */}
             {terminal && (
