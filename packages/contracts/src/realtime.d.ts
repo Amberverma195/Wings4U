@@ -53,11 +53,11 @@ export type ChatReadPayload = {
     reader_side: "CUSTOMER" | "STAFF";
 };
 export type CancellationRequestedPayload = {
-    order_id: string;
-    request_id: string;
-    request_source: string;
-    reason_text: string;
-    requested_by_user_id: string;
+  order_id: string;
+  request_id: string;
+  request_source: string;
+  reason_text: string;
+  requested_by_user_id: string | null;
 };
 export type CancellationDecidedPayload = {
     order_id: string;
