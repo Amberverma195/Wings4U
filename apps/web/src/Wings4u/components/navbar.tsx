@@ -53,7 +53,7 @@ export function Navbar() {
           </>
         ) : staffSurfaceHref ? (
           <>
-            <button style={styles.navBtn} onClick={() => router.push(staffSurfaceHref)}>
+            <button style={styles.navBtn} onClick={() => router.push("/account/profile")}>
               {session.user?.role === "ADMIN" ? "Admin" : "KDS"}
             </button>
             <button type="button" style={styles.navBtn} onClick={() => void handleStationLogout()}>
