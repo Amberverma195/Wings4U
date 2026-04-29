@@ -1,0 +1,226 @@
+
+<div id="root" style="background:#0a0a0a;min-height:700px;font-family:'Rajdhani',sans-serif;color:#fff;overflow-y:auto;padding:24px">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Oswald:wght@400;700&family=Rajdhani:wght@500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+#root::-webkit-scrollbar{width:3px}
+#root::-webkit-scrollbar-thumb{background:#ff4d0044}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(255,77,0,0.3)}50%{box-shadow:0 0 40px rgba(255,77,0,0.5)}}
+@keyframes shimmer{0%{background-position:200% center}100%{background-position:-200% center}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes borderFlow{0%{opacity:0.4}50%{opacity:1}100%{opacity:0.4}}
+@keyframes slideIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}
+
+.label{font-size:11px;font-weight:700;letter-spacing:3px;color:rgba(255,107,0,0.6);text-transform:uppercase;margin-bottom:6px;display:block}
+.concept-title{font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;letter-spacing:3px;color:#3a1800;text-align:center;margin-bottom:16px;text-transform:uppercase}
+
+/* ── CONCEPT 1: FULL SCREEN SPLIT ─────────────────────── */
+.c1{animation:fadeIn 0.5s both;border:1px solid #1e0a00;border-radius:16px;overflow:hidden;height:340px;display:grid;grid-template-columns:1fr 1fr;position:relative}
+.c1-side{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;cursor:pointer;transition:all 0.35s;padding:32px}
+.c1-left{background:linear-gradient(160deg,#0d0400,#1a0800)}
+.c1-right{background:linear-gradient(160deg,#0a0600,#140c00)}
+.c1-side:hover .c1-icon{transform:scale(1.15) translateY(-4px)}
+.c1-side:hover{background:linear-gradient(160deg,#1a0800,#2d1400)!important}
+.c1-side.active-l{background:linear-gradient(160deg,#2d1000,#ff4d0022)!important;border:2px solid #ff4d00}
+.c1-side.active-r{background:linear-gradient(160deg,#1a1200,#ff8c0022)!important;border:2px solid #ff8c00}
+.c1-divider{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;background:#0d0400;border-radius:50%;border:2px solid #2a1000;display:flex;align-items:center;justify-content:center;font-family:'Black Han Sans',sans-serif;font-size:10px;letter-spacing:1px;color:#4a2000;z-index:10}
+.c1-icon{font-size:52px;transition:transform 0.35s;filter:drop-shadow(0 0 16px rgba(255,100,0,0.25))}
+.c1-mode{font-family:'Black Han Sans',sans-serif;font-size:22px;letter-spacing:3px}
+.c1-desc{font-size:13px;color:#664422;text-align:center;line-height:1.5}
+.c1-badge{font-size:10px;font-weight:700;letter-spacing:2px;padding:4px 10px;border-radius:3px;border:1px solid}
+.c1-cta{position:absolute;bottom:0;left:0;right:0;background:#ff4d00;color:#000;font-family:'Black Han Sans',sans-serif;font-size:16px;letter-spacing:3px;padding:14px;text-align:center;cursor:pointer;opacity:0;transition:opacity 0.3s}
+.c1-cta.show{opacity:1}
+
+/* ── CONCEPT 2: CARD PICKER ───────────────────────────── */
+.c2{animation:fadeIn 0.5s 0.05s both;border:1px solid #1e0a00;border-radius:16px;overflow:hidden;background:linear-gradient(160deg,#0d0400,#080200);padding:36px 32px}
+.c2-header{text-align:center;margin-bottom:28px}
+.c2-header h3{font-family:'Black Han Sans',sans-serif;font-size:24px;letter-spacing:2px;margin-bottom:6px}
+.c2-header p{font-size:14px;color:#664422}
+.c2-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+.c2-card{border:2px solid #1e0a00;border-radius:12px;padding:24px 20px;cursor:pointer;position:relative;overflow:hidden;transition:all 0.3s;background:#0a0300}
+.c2-card::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity 0.3s}
+.c2-card.tk::before{background:radial-gradient(circle at 50% 0%,rgba(255,77,0,0.12),transparent)}
+.c2-card.dl::before{background:radial-gradient(circle at 50% 0%,rgba(255,140,0,0.12),transparent)}
+.c2-card:hover{transform:translateY(-3px)}
+.c2-card:hover::before{opacity:1}
+.c2-card.sel-tk{border-color:#ff4d00;background:#160600}
+.c2-card.sel-dl{border-color:#ff8c00;background:#120800}
+.c2-card.sel-tk::before,.c2-card.sel-dl::before{opacity:1}
+.c2-card-icon{font-size:40px;margin-bottom:10px;display:block;transition:transform 0.3s}
+.c2-card:hover .c2-card-icon{transform:scale(1.1) translateY(-2px)}
+.c2-card-name{font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;letter-spacing:2px;margin-bottom:6px}
+.c2-card-sub{font-size:12px;color:#553322;line-height:1.5}
+.c2-card-check{position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:50%;background:transparent;border:2px solid #2a1000;transition:all 0.25s;display:flex;align-items:center;justify-content:center;font-size:11px}
+.c2-card.sel-tk .c2-card-check{background:#ff4d00;border-color:#ff4d00;color:#000}
+.c2-card.sel-dl .c2-card-check{background:#ff8c00;border-color:#ff8c00;color:#000}
+.c2-pills{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.c2-pill{font-size:9px;font-weight:700;letter-spacing:2px;padding:3px 8px;border-radius:3px;border:1px solid rgba(255,77,0,0.3);color:rgba(255,100,0,0.7);background:rgba(255,77,0,0.08)}
+.c2-btn{width:100%;background:linear-gradient(135deg,#ff4d00,#ff8c00);border:none;color:#000;font-family:'Black Han Sans',sans-serif;font-size:17px;letter-spacing:3px;padding:16px;cursor:pointer;border-radius:8px;transition:all 0.3s;opacity:0.4;pointer-events:none}
+.c2-btn.ready{opacity:1;pointer-events:auto}
+.c2-btn.ready:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,80,0,0.28)}
+.c2-hint{text-align:center;font-size:12px;color:#3a1800;margin-top:10px;letter-spacing:1px}
+
+/* ── CONCEPT 3: TOGGLE STEP ───────────────────────────── */
+.c3{animation:fadeIn 0.5s 0.1s both;border:1px solid #1e0a00;border-radius:16px;overflow:hidden;background:#080200}
+.c3-top{background:linear-gradient(160deg,#0d0500,#080200);padding:28px 32px;text-align:center;border-bottom:1px solid #1e0a00}
+.c3-top h3{font-family:'Black Han Sans',sans-serif;font-size:22px;letter-spacing:2px;margin-bottom:5px}
+.c3-top p{font-size:13px;color:#553322}
+.c3-toggle{display:flex;background:#0a0300;border:1px solid #1e0a00;border-radius:10px;margin:20px 32px 0;padding:4px;gap:4px}
+.c3-opt{flex:1;padding:13px;border-radius:7px;cursor:pointer;transition:all 0.3s;display:flex;align-items:center;justify-content:center;gap:10px;font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;letter-spacing:2px;color:#443322;border:none;background:transparent}
+.c3-opt.on-tk{background:linear-gradient(135deg,#ff4d00,#ff7a00);color:#000;box-shadow:0 4px 16px rgba(255,77,0,0.25)}
+.c3-opt.on-dl{background:linear-gradient(135deg,#ff8c00,#ffaa00);color:#000;box-shadow:0 4px 16px rgba(255,140,0,0.25)}
+.c3-body{padding:24px 32px 28px;min-height:130px;transition:all 0.3s}
+.c3-info{display:flex;gap:16px;margin-bottom:20px}
+.c3-info-item{flex:1;background:#0d0500;border:1px solid #1e0a00;border-radius:8px;padding:14px;text-align:center}
+.c3-info-val{font-family:'Black Han Sans',sans-serif;font-size:20px;color:#ff8c00;margin-bottom:4px}
+.c3-info-lbl{font-size:10px;color:#443322;letter-spacing:2px;font-weight:700;text-transform:uppercase}
+.c3-btn{width:100%;border:none;color:#000;font-family:'Black Han Sans',sans-serif;font-size:17px;letter-spacing:3px;padding:15px;cursor:pointer;border-radius:8px;transition:all 0.3s;opacity:0.35}
+.c3-btn.ready-tk{background:linear-gradient(135deg,#ff4d00,#ff7a00);opacity:1}
+.c3-btn.ready-dl{background:linear-gradient(135deg,#ff8c00,#ffaa00);opacity:1}
+.c3-btn.ready-tk:hover,.c3-btn.ready-dl:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(255,80,0,0.25)}
+
+.section-row{margin-bottom:36px}
+</style>
+
+<script>
+const {useState} = React;
+
+// ─ CONCEPT 1: Full Split Screen
+function Concept1(){
+  const [sel,setSel]=useState(null);
+  return React.createElement('div',null,
+    React.createElement('div',{className:'concept-title'},'Concept A · Split Screen'),
+    React.createElement('div',{className:'c1'},
+      React.createElement('div',{
+        className:`c1-side c1-left${sel==='takeout'?' active-l':''}`,
+        onClick:()=>setSel('takeout')
+      },
+        React.createElement('div',{className:'c1-icon',style:{animation:sel==='takeout'?'float 2s ease-in-out infinite':''}},'🛍️'),
+        React.createElement('div',{className:'c1-mode',style:{color:sel==='takeout'?'#ff6b00':'#fff'}},'TAKEOUT'),
+        React.createElement('div',{className:'c1-desc'},'Pick up fresh from our kitchen. Ready in 15 min.'),
+        React.createElement('div',{className:'c1-badge',style:{color:'#ff6b00',borderColor:'rgba(255,107,0,0.35)',background:'rgba(255,107,0,0.08)'}}, 'FREE · FAST')
+      ),
+      React.createElement('div',{className:'c1-divider'},'OR'),
+      React.createElement('div',{
+        className:`c1-side c1-right${sel==='delivery'?' active-r':''}`,
+        onClick:()=>setSel('delivery')
+      },
+        React.createElement('div',{className:'c1-icon',style:{animation:sel==='delivery'?'float 2s ease-in-out infinite':''}},'🛵'),
+        React.createElement('div',{className:'c1-mode',style:{color:sel==='delivery'?'#ff8c00':'#fff'}},'DELIVERY'),
+        React.createElement('div',{className:'c1-desc'},'Hot to your door. Delivered within 30–40 min.'),
+        React.createElement('div',{className:'c1-badge',style:{color:'#ff8c00',borderColor:'rgba(255,140,0,0.35)',background:'rgba(255,140,0,0.08)'}},'$3.99 FEE')
+      ),
+      React.createElement('div',{className:`c1-cta${sel?' show':''}`,onClick:()=>{}},
+        `CONTINUE WITH ${sel?sel.toUpperCase():''} →`
+      )
+    )
+  );
+}
+
+// ─ CONCEPT 2: Card Picker
+function Concept2(){
+  const [sel,setSel]=useState(null);
+  return React.createElement('div',null,
+    React.createElement('div',{className:'concept-title'},'Concept B · Card Select'),
+    React.createElement('div',{className:'c2'},
+      React.createElement('div',{className:'c2-header'},
+        React.createElement('span',{className:'label'},'Step 1 of 2'),
+        React.createElement('h3',null,'HOW WOULD YOU LIKE YOUR ',React.createElement('span',{style:{background:'linear-gradient(90deg,#ff4d00,#ffaa00)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}},'WINGS?')),
+        React.createElement('p',null,'Select your preferred order method to continue')
+      ),
+      React.createElement('div',{className:'c2-cards'},
+        React.createElement('div',{
+          className:`c2-card tk${sel==='tk'?' sel-tk':''}`,
+          onClick:()=>setSel('tk')
+        },
+          React.createElement('div',{className:'c2-card-check'},sel==='tk'?'✓':''),
+          React.createElement('span',{className:'c2-card-icon'},'🛍️'),
+          React.createElement('div',{className:'c2-pills'},
+            React.createElement('span',{className:'c2-pill'},'FREE'),
+            React.createElement('span',{className:'c2-pill'},'15 MIN')
+          ),
+          React.createElement('div',{className:'c2-card-name',style:{color:sel==='tk'?'#ff6b00':'#ddd'}},'TAKEOUT'),
+          React.createElement('div',{className:'c2-card-sub'},'Pick up fresh & hot from our store. No wait, no fee.')
+        ),
+        React.createElement('div',{
+          className:`c2-card dl${sel==='dl'?' sel-dl':''}`,
+          onClick:()=>setSel('dl')
+        },
+          React.createElement('div',{className:'c2-card-check'},sel==='dl'?'✓':''),
+          React.createElement('span',{className:'c2-card-icon'},'🛵'),
+          React.createElement('div',{className:'c2-pills'},
+            React.createElement('span',{className:'c2-pill',style:{borderColor:'rgba(255,140,0,0.3)',color:'rgba(255,140,0,0.7)',background:'rgba(255,140,0,0.08)'}},'$3.99 FEE'),
+            React.createElement('span',{className:'c2-pill',style:{borderColor:'rgba(255,140,0,0.3)',color:'rgba(255,140,0,0.7)',background:'rgba(255,140,0,0.08)'}},'30–40 MIN')
+          ),
+          React.createElement('div',{className:'c2-card-name',style:{color:sel==='dl'?'#ff8c00':'#ddd'}},'DELIVERY'),
+          React.createElement('div',{className:'c2-card-sub'},'We bring the heat to your door. Fast & fresh.')
+        )
+      ),
+      React.createElement('button',{className:`c2-btn${sel?' ready':''}`},
+        sel?`CONTINUE WITH ${sel==='tk'?'TAKEOUT':'DELIVERY'} →`:'SELECT AN OPTION TO CONTINUE'
+      ),
+      React.createElement('div',{className:'c2-hint'},sel?'':' ← Pick one to unlock')
+    )
+  );
+}
+
+// ─ CONCEPT 3: Toggle + Info
+function Concept3(){
+  const [sel,setSel]=useState(null);
+  const infos={
+    takeout:[{v:'$0',l:'Delivery Fee'},{v:'15 min',l:'Ready In'},{v:'Hot',l:'Guaranteed'}],
+    delivery:[{v:'$3.99',l:'Delivery Fee'},{v:'30–40m',l:'Estimated'},{v:'5km',l:'Radius'}],
+  };
+  return React.createElement('div',null,
+    React.createElement('div',{className:'concept-title'},'Concept C · Toggle + Details'),
+    React.createElement('div',{className:'c3'},
+      React.createElement('div',{className:'c3-top'},
+        React.createElement('span',{className:'label'},'Order Mode'),
+        React.createElement('h3',null,'HOW ARE YOU ',React.createElement('span',{style:{background:'linear-gradient(90deg,#ff4d00,#ffaa00)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}},'GETTING YOUR WINGS?')),
+        React.createElement('p',null,'Choose below — details will update automatically'),
+        React.createElement('div',{className:'c3-toggle'},
+          React.createElement('button',{
+            className:`c3-opt${sel==='takeout'?' on-tk':''}`,
+            onClick:()=>setSel('takeout')
+          },'🛍️  TAKEOUT'),
+          React.createElement('button',{
+            className:`c3-opt${sel==='delivery'?' on-dl':''}`,
+            onClick:()=>setSel('delivery')
+          },'🛵  DELIVERY')
+        )
+      ),
+      React.createElement('div',{className:'c3-body'},
+        sel&&React.createElement('div',{style:{animation:'fadeIn 0.35s both'}},
+          React.createElement('div',{className:'c3-info'},
+            infos[sel].map(item=>React.createElement('div',{key:item.l,className:'c3-info-item'},
+              React.createElement('div',{className:'c3-info-val'},item.v),
+              React.createElement('div',{className:'c3-info-lbl'},item.l)
+            ))
+          ),
+        ),
+        !sel&&React.createElement('div',{style:{textAlign:'center',padding:'20px 0',color:'#2a1000',fontSize:13,letterSpacing:2,fontWeight:700}},'← SELECT AN OPTION ABOVE'),
+        React.createElement('button',{
+          className:`c3-btn${sel===null?'':sel==='takeout'?' ready-tk':' ready-dl'}`
+        },sel?`CONFIRM ${sel.toUpperCase()} →`:'CONFIRM ORDER MODE')
+      )
+    )
+  );
+}
+
+function App(){
+  return React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:32,maxWidth:640,margin:'0 auto'}},
+    React.createElement('div',{style:{textAlign:'center',marginBottom:8}},
+      React.createElement('div',{style:{fontFamily:'"Black Han Sans",sans-serif',fontSize:28,letterSpacing:3,color:'#ff6b00'}}, 'WINGS',React.createElement('span',{style:{color:'#fff'}},'4U')),
+      React.createElement('p',{style:{fontSize:12,color:'#3a1800',letterSpacing:3,marginTop:4}},'ORDER MODE SELECTOR — 3 CONCEPTS')
+    ),
+    React.createElement('div',{className:'section-row'},React.createElement(Concept1)),
+    React.createElement('div',{className:'section-row'},React.createElement(Concept2)),
+    React.createElement('div',{className:'section-row'},React.createElement(Concept3))
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

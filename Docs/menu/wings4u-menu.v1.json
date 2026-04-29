@@ -1,0 +1,1271 @@
+{
+  "meta": {
+    "version": 1,
+    "source_docx": "Docs/This menu for Wings 4 U contains a wide variety of wings.docx",
+    "extracted_at": "2026-03-23T07:13:31.087Z"
+  },
+  "location": {
+    "address_line_1": "1544 Dundas Street East",
+    "city": "London",
+    "province_code": "ON",
+    "postal_code": "N5W 3C1",
+    "phone_number": "+15194880800"
+  },
+  "categories": [
+    {
+      "name": "Lunch Specials",
+      "slug": "lunch-specials",
+      "sort_order": 1,
+      "items": [
+        {
+          "name": "Lunch Special: 5 wings + small fry or onion ring + 1 pop",
+          "slug": "lunch-special-5-wings-small-fry-or-onion-ring-1-pop",
+          "description": "5 wings + small fry or onion ring + 1 pop",
+          "base_price_cents": 999,
+          "schedules": [
+            {
+              "day_of_week": 0,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 1,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 2,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 3,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 4,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 5,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 6,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            }
+          ]
+        },
+        {
+          "name": "Lunch Special: 3pc. Chicken tender + small fry or onion ring + 1 pop",
+          "slug": "lunch-special-3pc-chicken-tender-small-fry-or-onion-ring-1-pop",
+          "description": "3pc. Chicken tender + small fry or onion ring + 1 pop",
+          "base_price_cents": 999,
+          "schedules": [
+            {
+              "day_of_week": 0,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 1,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 2,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 3,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 4,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 5,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 6,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            }
+          ]
+        },
+        {
+          "name": "Lunch Special: 6pc. Chicken nuggets + small fry or onion ring + 1 pop",
+          "slug": "lunch-special-6pc-chicken-nuggets-small-fry-or-onion-ring-1-pop",
+          "description": "6pc. Chicken nuggets + small fry or onion ring + 1 pop",
+          "base_price_cents": 999,
+          "schedules": [
+            {
+              "day_of_week": 0,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 1,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 2,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 3,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 4,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 5,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 6,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            }
+          ]
+        },
+        {
+          "name": "Lunch Special: Any burger + small fry or onion ring + 1 pop",
+          "slug": "lunch-special-any-burger-small-fry-or-onion-ring-1-pop",
+          "description": "Any burger + small fry or onion ring + 1 pop",
+          "base_price_cents": 999,
+          "schedules": [
+            {
+              "day_of_week": 0,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 1,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 2,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 3,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 4,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 5,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 6,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            }
+          ]
+        },
+        {
+          "name": "Lunch Special: Any wrap + small fry or onion ring + 1 pop",
+          "slug": "lunch-special-any-wrap-small-fry-or-onion-ring-1-pop",
+          "description": "Any wrap + small fry or onion ring + 1 pop",
+          "base_price_cents": 999,
+          "schedules": [
+            {
+              "day_of_week": 0,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 1,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 2,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 3,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 4,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 5,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 6,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            }
+          ]
+        },
+        {
+          "name": "Lunch Special: Large poutine + 1 pop",
+          "slug": "lunch-special-large-poutine-1-pop",
+          "description": "Large poutine + 1 pop",
+          "base_price_cents": 999,
+          "schedules": [
+            {
+              "day_of_week": 0,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 1,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 2,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 3,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 4,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 5,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            },
+            {
+              "day_of_week": 6,
+              "time_from": "11:00",
+              "time_to": "15:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wings",
+      "slug": "wings",
+      "sort_order": 2,
+      "items": []
+    },
+    {
+      "name": "Wing Combos",
+      "slug": "wing-combos",
+      "sort_order": 3,
+      "items": []
+    },
+    {
+      "name": "Burgers",
+      "slug": "burgers",
+      "sort_order": 4,
+      "items": [
+        {
+          "name": "Veggie Burger",
+          "slug": "veggie-burger",
+          "description": "All buns are toasted with butter. Sriracha mayo, lettuce, red onion, tomato, veggie patty tossed in signature sauce",
+          "base_price_cents": 799
+        },
+        {
+          "name": "Chicken Burger",
+          "slug": "chicken-burger",
+          "description": "All buns are toasted with butter. Sriracha mayo, lettuce, red onion, tomato, freshly breaded chicken tossed in Thai sauce",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Buffalo Chicken Burger",
+          "slug": "buffalo-chicken-burger",
+          "description": "All buns are toasted with butter. Sriracha mayo, lettuce, red onion, tomato, freshly breaded buffalo chicken",
+          "base_price_cents": 999
+        }
+      ]
+    },
+    {
+      "name": "Tenders",
+      "slug": "tenders",
+      "sort_order": 5,
+      "items": [
+        {
+          "name": "3 pc Tenders + 1 Dip (2 oz.)",
+          "slug": "3-pc-tenders-1-dip-2-oz",
+          "base_price_cents": 699
+        },
+        {
+          "name": "5 pc Tenders + 1 Dip (2 oz.)",
+          "slug": "5-pc-tenders-1-dip-2-oz",
+          "base_price_cents": 1199
+        },
+        {
+          "name": "10 pc Tenders + 1 Dip (4 oz.)",
+          "slug": "10-pc-tenders-1-dip-4-oz",
+          "base_price_cents": 2399
+        },
+        {
+          "name": "Chicken Tender Combo (3 pc)",
+          "slug": "chicken-tender-combo-3-pc",
+          "description": "3 pc tenders + small side + 1 dip (2 oz.) + 1 pop",
+          "base_price_cents": 1099
+        },
+        {
+          "name": "Chicken Tender Combo (5 pc)",
+          "slug": "chicken-tender-combo-5-pc",
+          "description": "5 pc tenders + large side + 1 dip (4 oz.) + 1 pop",
+          "base_price_cents": 1799
+        }
+      ]
+    },
+    {
+      "name": "Wraps",
+      "slug": "wraps",
+      "sort_order": 6,
+      "items": [
+        {
+          "name": "Grilled to perfection. Any wrap",
+          "slug": "grilled-to-perfection-any-wrap",
+          "description": "$9.99",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Veggie Wrap",
+          "slug": "veggie-wrap",
+          "description": "Lettuce, red onion, tomato, cauliflower bites, jalapeño popper, cheese blend, roasted garlic, tzatziki.",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Chicken Caesar Wrap",
+          "slug": "chicken-caesar-wrap",
+          "description": "Lettuce, bacon bits, parm cheese, hand-breaded chicken, Caesar dressing.",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Buffalo Chicken Wrap",
+          "slug": "buffalo-chicken-wrap",
+          "description": "Lettuce, red onion, cucumber, tomato, cheese blend, croutons, buffalo breaded chicken, sriracha mayo.",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Garden Chicken Wrap",
+          "slug": "garden-chicken-wrap",
+          "description": "Lettuce, red onion, tomato, cucumber, julienne carrots, cheese blend, hand-breaded chicken, ranch.",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Greek Chicken Wrap",
+          "slug": "greek-chicken-wrap",
+          "description": "Lettuce, red onion, cucumber, tomato, black olives, feta, Greek dressing.",
+          "base_price_cents": 999
+        }
+      ]
+    },
+    {
+      "name": "Poutines & Sides",
+      "slug": "poutines-sides",
+      "sort_order": 7,
+      "items": [
+        {
+          "name": "Regular Poutine",
+          "slug": "regular-poutine",
+          "base_price_cents": 649,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 350
+            }
+          ]
+        },
+        {
+          "name": "Bacon Poutine",
+          "slug": "bacon-poutine",
+          "base_price_cents": 699,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 500
+            }
+          ]
+        },
+        {
+          "name": "Buffalo Chicken Poutine",
+          "slug": "buffalo-chicken-poutine",
+          "base_price_cents": 799,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 500
+            }
+          ]
+        },
+        {
+          "name": "Butter Chicken Poutine",
+          "slug": "butter-chicken-poutine",
+          "base_price_cents": 799,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 500
+            }
+          ]
+        },
+        {
+          "name": "Fries",
+          "slug": "fries",
+          "base_price_cents": 449,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 300
+            }
+          ]
+        },
+        {
+          "name": "Onion Rings",
+          "slug": "onion-rings",
+          "base_price_cents": 449,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 300
+            }
+          ]
+        },
+        {
+          "name": "Wedges",
+          "slug": "wedges",
+          "base_price_cents": 449,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 300
+            }
+          ]
+        },
+        {
+          "name": "Coleslaw",
+          "slug": "coleslaw",
+          "base_price_cents": 449,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 300
+            }
+          ]
+        },
+        {
+          "name": "Gravy",
+          "slug": "gravy",
+          "base_price_cents": 199,
+          "size_options": [
+            {
+              "name": "Small",
+              "slug": "small",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "Large",
+              "slug": "large",
+              "price_delta_cents": 150
+            }
+          ]
+        },
+        {
+          "name": "Chicken Nuggets",
+          "slug": "chicken-nuggets",
+          "base_price_cents": 699,
+          "size_options": [
+            {
+              "name": "6pc",
+              "slug": "6pc",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "12pc",
+              "slug": "12pc",
+              "price_delta_cents": 500
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Specialty Fries",
+      "slug": "specialty-fries",
+      "sort_order": 8,
+      "items": [
+        {
+          "name": "Cajun Lemon Pepper Fries",
+          "slug": "cajun-lemon-pepper-fries",
+          "base_price_cents": 899
+        },
+        {
+          "name": "Creamy Dill Fries",
+          "slug": "creamy-dill-fries",
+          "description": "Regular or Spicy",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Gar-Par Fries",
+          "slug": "gar-par-fries",
+          "description": "Regular or Spicy",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Gar-Par Onion Rings",
+          "slug": "gar-par-onion-rings",
+          "description": "Regular or Spicy",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Gar-Par Wedges",
+          "slug": "gar-par-wedges",
+          "description": "Regular or Spicy",
+          "base_price_cents": 999
+        },
+        {
+          "name": "Greek Fries: Tomato, tzatziki, feta, olive oil, garlic, oregano, paprika",
+          "slug": "greek-fries-tomato-tzatziki-feta-olive-oil-garlic-oregano-paprika",
+          "base_price_cents": 1099
+        },
+        {
+          "name": "Chilli Cheese Fries (Red Meat)",
+          "slug": "chilli-cheese-fries-red-meat",
+          "base_price_cents": 1099
+        }
+      ]
+    },
+    {
+      "name": "Appetizers & Extras",
+      "slug": "appetizers-extras",
+      "sort_order": 9,
+      "items": [
+        {
+          "name": "Mac n Cheese Bites (8pc.)",
+          "slug": "mac-n-cheese-bites-8pc",
+          "description": "Served with ranch",
+          "base_price_cents": 799
+        },
+        {
+          "name": "Mozzarella Sticks (8pc.)",
+          "slug": "mozzarella-sticks-8pc",
+          "description": "Served with salsa",
+          "base_price_cents": 1049
+        },
+        {
+          "name": "Cheddar Cheese Cubes",
+          "slug": "cheddar-cheese-cubes",
+          "description": "Served with ranch",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Jalapeño Poppers (6pc.)",
+          "slug": "jalapeno-poppers-6pc",
+          "description": "Served with ranch",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Cauliflower Bites",
+          "slug": "cauliflower-bites",
+          "description": "Served with ranch",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Breaded Pickle Spears",
+          "slug": "breaded-pickle-spears",
+          "description": "Served with ranch",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Sweet Potato Fries",
+          "slug": "sweet-potato-fries",
+          "description": "Served with chipotle sauce",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Battered Mushroom Caps",
+          "slug": "battered-mushroom-caps",
+          "description": "Served with ranch",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Breaded Popcorn Chicken",
+          "slug": "breaded-popcorn-chicken",
+          "description": "Served with plum sauce",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Loaded Potato Skins (4pc.)",
+          "slug": "loaded-potato-skins-4pc",
+          "description": "Served with sour cream",
+          "base_price_cents": 949
+        },
+        {
+          "name": "Vegetable Samosa",
+          "slug": "vegetable-samosa",
+          "description": "Served with thai sauce",
+          "base_price_cents": 100
+        },
+        {
+          "name": "Veg. Samosa Poutine",
+          "slug": "veg-samosa-poutine",
+          "description": "Made with our signature sauce",
+          "base_price_cents": 1099
+        },
+        {
+          "name": "Spinach Dip",
+          "slug": "spinach-dip",
+          "base_price_cents": 1499
+        },
+        {
+          "name": "Chicken Loaded Fries",
+          "slug": "chicken-loaded-fries",
+          "description": "Fries, tomato, red onion, blend cheese, freshly breaded chicken drizzled with sweet chili sauce, ranch, house seasoning & served with sour cream on side",
+          "base_price_cents": 1199
+        },
+        {
+          "name": "Bacon Loaded Fries",
+          "slug": "bacon-loaded-fries",
+          "description": "Fries, tomato, red onion, blend cheese, bacon, drizzled with sweet chili sauce, ranch, house seasoning & served with sour cream on side",
+          "base_price_cents": 1199
+        },
+        {
+          "name": "Garlic Bread Plain",
+          "slug": "garlic-bread-plain",
+          "base_price_cents": 449,
+          "size_options": [
+            {
+              "name": "4pc",
+              "slug": "4pc",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "8pc",
+              "slug": "8pc",
+              "price_delta_cents": 350
+            }
+          ]
+        },
+        {
+          "name": "Garlic Bread Cheese",
+          "slug": "garlic-bread-cheese",
+          "base_price_cents": 549,
+          "size_options": [
+            {
+              "name": "4pc",
+              "slug": "4pc",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "8pc",
+              "slug": "8pc",
+              "price_delta_cents": 450
+            }
+          ]
+        },
+        {
+          "name": "Garlic Bread Cheese & Bacon",
+          "slug": "garlic-bread-cheese-and-bacon",
+          "base_price_cents": 649,
+          "size_options": [
+            {
+              "name": "4pc",
+              "slug": "4pc",
+              "price_delta_cents": 0
+            },
+            {
+              "name": "8pc",
+              "slug": "8pc",
+              "price_delta_cents": 550
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dips",
+      "slug": "dips",
+      "sort_order": 10,
+      "items": [
+        {
+          "name": "Dip",
+          "slug": "dip",
+          "description": "Ranch, Blue Cheese, Chipotle, etc.",
+          "base_price_cents": 100
+        }
+      ]
+    },
+    {
+      "name": "Drinks",
+      "slug": "drinks",
+      "sort_order": 11,
+      "items": [
+        {
+          "name": "Pop",
+          "slug": "pop",
+          "base_price_cents": 150,
+          "pop_options": [
+            "Coke",
+            "Diet Coke",
+            "Dew"
+          ]
+        },
+        {
+          "name": "Water",
+          "slug": "water",
+          "base_price_cents": 100
+        },
+        {
+          "name": "Energy Drink",
+          "slug": "energy-drink",
+          "base_price_cents": 299
+        }
+      ]
+    },
+    {
+      "name": "Dessert",
+      "slug": "dessert",
+      "sort_order": 12,
+      "items": [
+        {
+          "name": "Caramel Choco Brownie",
+          "slug": "caramel-choco-brownie",
+          "base_price_cents": 399
+        }
+      ]
+    },
+    {
+      "name": "Specials",
+      "slug": "specials",
+      "sort_order": 13,
+      "items": [
+        {
+          "name": "Wings-4-U Special",
+          "slug": "wings-4-u-special",
+          "description": "2 lbs wings + large fries + 4 Mozz. sticks + small salad + 2 pop",
+          "base_price_cents": 4399
+        }
+      ]
+    },
+    {
+      "name": "Party Specials",
+      "slug": "party-specials",
+      "sort_order": 14,
+      "items": [
+        {
+          "name": "75 Wings - up to 5 flavours",
+          "slug": "75-wings-up-to-5-flavours",
+          "description": "Party pack: 75 wings with up to 5 flavour choices",
+          "base_price_cents": 8999,
+          "builder_type": "WINGS"
+        },
+        {
+          "name": "100 Wings - up to 5 flavours",
+          "slug": "100-wings-up-to-5-flavours",
+          "description": "Party pack: 100 wings with up to 5 flavour choices",
+          "base_price_cents": 11699,
+          "builder_type": "WINGS"
+        }
+      ]
+    }
+  ],
+  "wing_pricing": [
+    {
+      "weight_lb": 1,
+      "required_flavour_count": 1,
+      "price_cents": 1299
+    },
+    {
+      "weight_lb": 1.5,
+      "required_flavour_count": 1,
+      "price_cents": 1899
+    },
+    {
+      "weight_lb": 2,
+      "required_flavour_count": 1,
+      "price_cents": 2499
+    },
+    {
+      "weight_lb": 3,
+      "required_flavour_count": 2,
+      "price_cents": 3599
+    },
+    {
+      "weight_lb": 4,
+      "required_flavour_count": 2,
+      "price_cents": 4699
+    },
+    {
+      "weight_lb": 5,
+      "required_flavour_count": 3,
+      "price_cents": 5899
+    }
+  ],
+  "wing_combo_pricing": [
+    {
+      "weight_lb": 1,
+      "price_cents": 1799,
+      "description": "1 small side + 1 pop"
+    },
+    {
+      "weight_lb": 1.5,
+      "price_cents": 2399,
+      "description": "1 large side + 1 pop"
+    },
+    {
+      "weight_lb": 2,
+      "price_cents": 2999,
+      "description": "1 large side + 2 pop"
+    },
+    {
+      "weight_lb": 3,
+      "price_cents": 4999,
+      "description": "2 large sides + 3 pop"
+    },
+    {
+      "weight_lb": 4,
+      "price_cents": 6499,
+      "description": "2 large sides + 4 pop"
+    },
+    {
+      "weight_lb": 5,
+      "price_cents": 7999,
+      "description": "2 large sides + 5 pop"
+    }
+  ],
+  "wing_flavours": [
+    {
+      "name": "BBQ",
+      "slug": "bbq",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Mild",
+      "slug": "mild",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Honey Garlic",
+      "slug": "honey-garlic",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Honey BBQ",
+      "slug": "honey-bbq",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "BBQ Ranch",
+      "slug": "bbq-ranch",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "BBQ Blue Cheese",
+      "slug": "bbq-blue-cheese",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "BBQ Dill",
+      "slug": "bbq-dill",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Garlic Parm (Gar-Par)",
+      "slug": "garlic-parm-gar-par",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Creamy Cajun",
+      "slug": "creamy-cajun",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "BBQ Gar-Par",
+      "slug": "bbq-gar-par",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Honey Gar-Par",
+      "slug": "honey-gar-par",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Honey Ranch",
+      "slug": "honey-ranch",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Honey Dill",
+      "slug": "honey-dill",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Maple BBQ",
+      "slug": "maple-bbq",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Smoky BBQ",
+      "slug": "smoky-bbq",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Apple Butter Mesquite",
+      "slug": "apple-butter-mesquite",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "BBQ Smokey Ranch",
+      "slug": "bbq-smokey-ranch",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Honey Smoke",
+      "slug": "honey-smoke",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Sweet & Sour",
+      "slug": "sweet-and-sour",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Zesty Orange Ginger",
+      "slug": "zesty-orange-ginger",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Creamy Dill",
+      "slug": "creamy-dill",
+      "heat_level": "MILD"
+    },
+    {
+      "name": "Thai Sweet & Spicy",
+      "slug": "thai-sweet-and-spicy",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Medium",
+      "slug": "medium",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Our Signature Sauce",
+      "slug": "our-signature-sauce",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Tangy BBQ (Louis Style)",
+      "slug": "tangy-bbq-louis-style",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Smoked Tequila Lime",
+      "slug": "smoked-tequila-lime",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Whisky BBQ",
+      "slug": "whisky-bbq",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Buffalo Honey",
+      "slug": "buffalo-honey",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Chilli Lime",
+      "slug": "chilli-lime",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Butter Chicken",
+      "slug": "butter-chicken",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Whisky Ranch",
+      "slug": "whisky-ranch",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Pineapple Curry",
+      "slug": "pineapple-curry",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Curry",
+      "slug": "curry",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Tequila Ranch",
+      "slug": "tequila-ranch",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Texas BBQ",
+      "slug": "texas-bbq",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Hickory BBQ",
+      "slug": "hickory-bbq",
+      "heat_level": "MEDIUM"
+    },
+    {
+      "name": "Fire & Ice",
+      "slug": "fire-and-ice",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Hot",
+      "slug": "hot",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Buffalo",
+      "slug": "spicy-buffalo",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Jamaican Hot",
+      "slug": "jamaican-hot",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Suicide",
+      "slug": "suicide",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Buffalo Ranch",
+      "slug": "buffalo-ranch",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Buffalo Blue",
+      "slug": "buffalo-blue",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Gar-Par",
+      "slug": "spicy-gar-par",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Ranch",
+      "slug": "spicy-ranch",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Dill",
+      "slug": "spicy-dill",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Cajun Ranch",
+      "slug": "spicy-cajun-ranch",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Lemon Ranch",
+      "slug": "spicy-lemon-ranch",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Mango Habanero",
+      "slug": "mango-habanero",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Sriracha Chilli",
+      "slug": "sriracha-chilli",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Honey Mustard",
+      "slug": "spicy-honey-mustard",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Spicy Island",
+      "slug": "spicy-island",
+      "heat_level": "HOT"
+    },
+    {
+      "name": "Cajun",
+      "slug": "cajun",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Lemon Pepper",
+      "slug": "lemon-pepper",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Salt & Pepper",
+      "slug": "salt-and-pepper",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Hot Dill Pickle",
+      "slug": "hot-dill-pickle",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Sriracha Lime",
+      "slug": "sriracha-lime",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Mango Chipotle",
+      "slug": "mango-chipotle",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Caribbean Jerk",
+      "slug": "caribbean-jerk",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Spicy Peri-Peri",
+      "slug": "spicy-peri-peri",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Garlic Parm",
+      "slug": "garlic-parm",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Maple Bacon",
+      "slug": "maple-bacon",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Buffalo",
+      "slug": "buffalo-dry-rub",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Nashville Hot",
+      "slug": "nashville-hot",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Thai Sweet & Spicy",
+      "slug": "thai-sweet-and-spicy-dry-rub",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Hot Honey",
+      "slug": "hot-honey",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Habanero Lime",
+      "slug": "habanero-lime",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "BBQ",
+      "slug": "bbq-dry-rub",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Spicy Tandoori",
+      "slug": "spicy-tandoori",
+      "heat_level": "DRY_RUB"
+    },
+    {
+      "name": "Tex-Mex",
+      "slug": "tex-mex",
+      "heat_level": "DRY_RUB"
+    }
+  ],
+  "notes": {
+    "combo_upgrade_price_cents": 499,
+    "extra_flavour_price_cents": 100
+  }
+}

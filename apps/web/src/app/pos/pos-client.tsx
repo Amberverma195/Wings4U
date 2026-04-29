@@ -408,6 +408,7 @@ function PosShell({ session }: { session: SessionState }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [amountTendered, setAmountTendered] = useState<string>("");
   const [orderNotes, setOrderNotes] = useState("");
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
 
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
 
@@ -417,6 +418,10 @@ function PosShell({ session }: { session: SessionState }) {
 
   const [todayOrders, setTodayOrders] = useState<PosOrder[]>([]);
   const [discountOrder, setDiscountOrder] = useState<PosOrder | null>(null);
+
+  const [showOrdersModal, setShowOrdersModal] = useState(false);
+  const [ordersSearchQuery, setOrdersSearchQuery] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null);
 
   const controls: SessionControls = useMemo(
     () => ({ refresh: session.refresh, clear: session.clear }),
@@ -544,7 +549,13 @@ function PosShell({ session }: { session: SessionState }) {
     setCustomerPhone("");
     setPlaceError(null);
     setPlaceSuccess(null);
+    setCurrentOrderId(null);
   }, []);
+
+  const startNewOrder = useCallback(() => {
+    clearCart();
+    setCurrentOrderId(`ORD-${Math.floor(1000 + Math.random() * 9000)}`);
+  }, [clearCart]);
 
   /* ---------- Pricing preview (client-side estimate) ---------- */
 
@@ -677,6 +688,29 @@ function PosShell({ session }: { session: SessionState }) {
           WINGS 4U <span className="pos-brand-badge">POS</span>
         </div>
         <div className="pos-topbar-right">
+          <div className="pos-topbar-nav">
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={startNewOrder}
+            >
+              New Order
+            </button>
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={() => setShowOrdersModal(true)}
+            >
+              Orders
+            </button>
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={() => alert("Employee functions placeholder")}
+            >
+              Staff
+            </button>
+          </div>
           <div className="pos-user-chip">
             <strong>{session.user?.displayName ?? "Employee"}</strong>
             <span>{session.user?.employeeRole ?? session.user?.role ?? "STAFF"}</span>
@@ -684,6 +718,7 @@ function PosShell({ session }: { session: SessionState }) {
           <button
             type="button"
             className="pos-btn pos-btn--ghost"
+            style={{ fontSize: "0.75rem", padding: "0.4rem 0.6rem" }}
             onClick={() => void signOut()}
           >
             Sign out
@@ -693,9 +728,21 @@ function PosShell({ session }: { session: SessionState }) {
 
       <div className="pos-workspace">
         <section className="pos-cart" aria-label="Cart">
-          <div className="pos-cart-header">
-            <h2>Cart</h2>
-            {cart.length > 0 ? (
+          {currentOrderId && (
+            <div className="pos-order-id-display">
+              <span>Order ID: <strong>{currentOrderId}</strong></span>
+              <button
+                type="button"
+                className="pos-modal-close"
+                style={{ fontSize: "1.1rem", padding: "0 0.25rem" }}
+                onClick={() => setCurrentOrderId(null)}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          {cart.length > 0 ? (
+            <div className="pos-cart-header">
               <button
                 type="button"
                 className="pos-btn pos-btn--danger"
@@ -704,13 +751,11 @@ function PosShell({ session }: { session: SessionState }) {
               >
                 Clear
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
           {cart.length === 0 ? (
-            <p className="pos-empty" style={{ padding: "1.3rem 0" }}>
-              Tap items on the right to start a ticket.
-            </p>
+            <div className="pos-empty" />
           ) : (
             <div className="pos-cart-list">
               {cart.map((line) => {
@@ -766,156 +811,307 @@ function PosShell({ session }: { session: SessionState }) {
             </div>
           )}
 
-          <div className="pos-customer-fields">
-            <label className="pos-field">
-              Fulfillment
-              <div className="pos-segmented">
-                <button
-                  type="button"
-                  aria-pressed={fulfillmentType === "PICKUP"}
-                  onClick={() => setFulfillmentType("PICKUP")}
-                >
-                  Pickup
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={fulfillmentType === "DELIVERY"}
-                  onClick={() => setFulfillmentType("DELIVERY")}
-                >
-                  Delivery
-                </button>
-              </div>
-            </label>
-            <label className="pos-field">
-              Source
-              <div className="pos-segmented">
-                <button
-                  type="button"
-                  aria-pressed={orderSource === "POS"}
-                  onClick={() => setOrderSource("POS")}
-                >
-                  Walk-in
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={orderSource === "PHONE"}
-                  onClick={() => setOrderSource("PHONE")}
-                >
-                  Phone
-                </button>
-              </div>
-            </label>
-            <label className="pos-field">
-              Customer name
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Optional"
-                autoComplete="off"
-              />
-            </label>
-            <label className="pos-field">
-              Phone
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="+1 519 ..."
-                autoComplete="off"
-              />
-            </label>
-            <label className="pos-field" style={{ gridColumn: "1 / -1" }}>
-              Notes
-              <textarea
-                value={orderNotes}
-                onChange={(e) => setOrderNotes(e.target.value)}
-                placeholder="Special instructions for the kitchen"
-                rows={2}
-              />
-            </label>
-          </div>
-
-          <div className="pos-cart-totals">
-            <div className="pos-cart-totals-row">
-              <span>Subtotal</span>
-              <span>{cents(subtotalCents)}</span>
-            </div>
-            <div className="pos-cart-totals-row">
-              <span>Tax (est.)</span>
-              <span>{cents(estimatedTaxCents)}</span>
-            </div>
-            <div className="pos-cart-totals-row pos-cart-totals-row--emph">
-              <span>Total</span>
-              <span>{cents(estimatedTotalCents)}</span>
-            </div>
-          </div>
-
-          <div className="pos-payments" role="radiogroup" aria-label="Payment method">
-            {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-pressed={paymentMethod === m}
-                aria-checked={paymentMethod === m}
-                className="pos-payment-btn"
-                onClick={() => setPaymentMethod(m)}
-              >
-                {PAYMENT_LABELS[m]}
-              </button>
-            ))}
-          </div>
-
-          {paymentMethod === "CASH" ? (
-            <div className="pos-customer-fields" style={{ marginTop: "0.75rem" }}>
+          <div className="pos-cart-footer">
+            <div className="pos-customer-fields">
               <label className="pos-field">
-                Amount tendered
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={amountTendered}
-                  onChange={(e) => setAmountTendered(e.target.value)}
-                  placeholder="0.00"
-                />
+                Fulfillment
+                <div className="pos-segmented">
+                  <button
+                    type="button"
+                    aria-pressed={fulfillmentType === "PICKUP"}
+                    onClick={() => setFulfillmentType("PICKUP")}
+                  >
+                    Pickup
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={fulfillmentType === "DELIVERY"}
+                    onClick={() => setFulfillmentType("DELIVERY")}
+                  >
+                    Delivery
+                  </button>
+                </div>
               </label>
               <label className="pos-field">
-                Change due
+                Source
+                <div className="pos-segmented">
+                  <button
+                    type="button"
+                    aria-pressed={orderSource === "POS"}
+                    onClick={() => setOrderSource("POS")}
+                  >
+                    Walk-in
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={orderSource === "PHONE"}
+                    onClick={() => setOrderSource("PHONE")}
+                  >
+                    Phone
+                  </button>
+                </div>
+              </label>
+              <label className="pos-field">
+                Customer name
                 <input
                   type="text"
-                  readOnly
-                  value={
-                    changeDueCents != null ? cents(changeDueCents) : "—"
-                  }
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Optional"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="pos-field">
+                Phone
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="+1 519 ..."
+                  autoComplete="off"
+                />
+              </label>
+              <label className="pos-field" style={{ gridColumn: "1 / -1" }}>
+                Notes
+                <textarea
+                  value={orderNotes}
+                  onChange={(e) => setOrderNotes(e.target.value)}
+                  placeholder="Special instructions for the kitchen"
+                  rows={2}
                 />
               </label>
             </div>
-          ) : null}
 
-          <button
-            type="button"
-            className="pos-btn pos-btn--primary pos-place-btn"
-            onClick={() => void placeOrder()}
-            disabled={placing || cart.length === 0}
-          >
-            {placing
-              ? "Placing…"
-              : `Place Order • ${cents(estimatedTotalCents)}`}
-          </button>
-
-          {placeError ? (
-            <div className="pos-cart-message">{placeError}</div>
-          ) : null}
-          {placeSuccess ? (
-            <div className="pos-cart-message pos-cart-message--ok">
-              {placeSuccess}
+            <div className="pos-cart-totals">
+              <div className="pos-cart-totals-row">
+                <span>Subtotal</span>
+                <span>{cents(subtotalCents)}</span>
+              </div>
+              <div className="pos-cart-totals-row">
+                <span>Tax (est.)</span>
+                <span>{cents(estimatedTaxCents)}</span>
+              </div>
+              <div className="pos-cart-totals-row pos-cart-totals-row--emph">
+                <span>Total</span>
+                <span>{cents(estimatedTotalCents)}</span>
+              </div>
             </div>
-          ) : null}
+
+            <div className="pos-payments" role="radiogroup" aria-label="Payment method">
+              {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-pressed={paymentMethod === m}
+                  aria-checked={paymentMethod === m}
+                  className="pos-payment-btn"
+                  onClick={() => setPaymentMethod(m)}
+                >
+                  {PAYMENT_LABELS[m]}
+                </button>
+              ))}
+            </div>
+
+            {paymentMethod === "CASH" ? (
+              <div className="pos-customer-fields" style={{ marginTop: "0.75rem" }}>
+                <label className="pos-field">
+                  Amount tendered
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={amountTendered}
+                    onChange={(e) => setAmountTendered(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </label>
+                <label className="pos-field">
+                  Change due
+                  <input
+                    type="text"
+                    readOnly
+                    value={
+                      changeDueCents != null ? cents(changeDueCents) : "—"
+                    }
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="pos-btn pos-btn--primary pos-place-btn"
+              onClick={() => void placeOrder()}
+              disabled={placing || cart.length === 0}
+            >
+              {placing
+                ? "Placing…"
+                : `Place Order • ${cents(estimatedTotalCents)}`}
+            </button>
+
+            {placeError ? (
+              <div className="pos-cart-message">{placeError}</div>
+            ) : null}
+            {placeSuccess ? (
+              <div className="pos-cart-message pos-cart-message--ok">
+                {placeSuccess}
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="pos-left">
+          {showOrdersModal && (
+            <div className="pos-orders-overlay">
+              <div className="pos-orders-header">
+                <h2 style={{ fontSize: "1.5rem", fontWeight: 800 }}>Daily Orders</h2>
+                <button
+                  type="button"
+                  className="pos-modal-close"
+                  onClick={() => {
+                    setShowOrdersModal(false);
+                    setSelectedOrder(null);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="pos-orders-search">
+                <input
+                  type="text"
+                  placeholder="Search by Order ID or Customer Name..."
+                  value={ordersSearchQuery}
+                  onChange={(e) => setOrdersSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="pos-orders-content">
+                <div className="pos-orders-sidebar">
+                  <div className="pos-orders-list-scroll" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    {todayOrders
+                      .filter((o) => {
+                        const q = ordersSearchQuery.toLowerCase();
+                        return (
+                          o.order_number.toString().includes(q) ||
+                          (o.customer_name_snapshot ?? "")
+                            .toLowerCase()
+                            .includes(q) ||
+                          (o.customer_phone_snapshot ?? "").includes(q)
+                        );
+                      })
+                      .map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          className={
+                            "pos-order-item" +
+                            (selectedOrder?.id === o.id
+                              ? " pos-order-item--active"
+                              : "")
+                          }
+                          onClick={() => setSelectedOrder(o)}
+                        >
+                          <span className="pos-order-item-id">
+                            #{o.order_number}
+                          </span>
+                          <div className="pos-order-item-meta">
+                            <div>{o.customer_name_snapshot || "Walk-in"}</div>
+                            <div>{o.customer_phone_snapshot || "No phone"}</div>
+                            <div>
+                              {new Date(o.placed_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                          <span className="pos-order-item-total">
+                            {cents(o.final_payable_cents)}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+
+                <div className="pos-orders-detail-view">
+                  {selectedOrder ? (
+                    <>
+                      <div className="pos-order-detail-header">
+                        <h3>Order #{selectedOrder.order_number}</h3>
+                        <div className="pos-order-detail-grid">
+                          <div className="pos-detail-group">
+                            <label>Customer</label>
+                            <span>
+                              {selectedOrder.customer_name_snapshot || "Walk-in"}
+                            </span>
+                          </div>
+                          <div className="pos-detail-group">
+                            <label>Phone</label>
+                            <span>
+                              {selectedOrder.customer_phone_snapshot || "—"}
+                            </span>
+                          </div>
+                          <div className="pos-detail-group">
+                            <label>Placed On</label>
+                            <span>
+                              {new Date(selectedOrder.placed_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="pos-detail-group">
+                            <label>Source</label>
+                            <span>{selectedOrder.order_source}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pos-order-detail-items">
+                        {(selectedOrder as any).items?.map(
+                          (item: any, idx: number) => (
+                            <div key={idx} className="pos-detail-item-row">
+                              <div className="pos-detail-item-info">
+                                <h4>
+                                  {item.quantity}× {item.product_name_snapshot}
+                                </h4>
+                                {item.modifiers?.length > 0 && (
+                                  <div className="pos-detail-item-mods">
+                                    {item.modifiers
+                                      .map(
+                                        (m: any) => m.modifier_name_snapshot,
+                                      )
+                                      .join(", ")}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="pos-detail-item-price">
+                                {cents(item.line_total_cents)}
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+
+                      <div
+                        className="pos-cart-totals"
+                        style={{ marginTop: "auto" }}
+                      >
+                        <div className="pos-cart-totals-row pos-cart-totals-row--emph">
+                          <span>Total</span>
+                          <span>{cents(selectedOrder.final_payable_cents)}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="pos-empty">
+                      Select an order to view details
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="pos-tabs" role="tablist">
             {(menu?.categories ?? []).map((cat) => (
               <button

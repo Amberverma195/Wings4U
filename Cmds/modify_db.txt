@@ -1,0 +1,35 @@
+Delete all the Users - BEGIN;
+
+-- FKs that point at orders with NO ACTION — break them first
+UPDATE checkout_idempotency_keys SET order_id = NULL WHERE order_id IS NOT NULL;
+UPDATE support_ticket_resolutions SET replacement_order_id = NULL WHERE replacement_order_id IS NOT NULL;
+UPDATE support_tickets SET order_id = NULL WHERE order_id IS NOT NULL;
+
+-- Credit ledger can reference refunds; refunds will go away with orders
+UPDATE customer_credit_ledger SET refund_request_id = NULL WHERE refund_request_id IS NOT NULL;
+UPDATE customer_credit_ledger SET order_id = NULL WHERE order_id IS NOT NULL;
+
+-- Stamps / promos / payouts (NO ACTION to order)
+DELETE FROM customer_wings_stamp_ledger WHERE order_id IS NOT NULL;
+DELETE FROM promo_redemptions;
+DELETE FROM driver_payout_order_links;
+
+-- Reviews reference order lines (NO ACTION on order_item) — remove before order_items go
+DELETE FROM item_reviews;
+
+-- Order points at a chat message for cancellation — clear before messages disappear
+UPDATE orders SET cancellation_chat_message_id = NULL WHERE cancellation_chat_message_id IS NOT NULL;
+
+-- This removes orders and everything with ON DELETE CASCADE from orders
+DELETE FROM orders;
+
+COMMIT;
+
+
+
+Delet all the orders - -- WARNING: This truncates `users` AND every table that has a foreign key
+-- TO `users`, which includes not only “account” data but, for example,
+-- the entire `promo_codes` table (all columns), not just the creator.
+-- Locations, menu, etc. stay only if they have NO FK to `users`.
+
+TRUNCATE TABLE users RESTART IDENTITY CASCADE;
