@@ -7,6 +7,7 @@
 .kds-page {
   box-sizing: border-box;
   width: 100%;
+  min-height: 100vh;
   padding: 1.1rem 1.25rem 2rem;
   /* Slightly darker warm parchment than before — still light enough for dark body text */
   background: linear-gradient(

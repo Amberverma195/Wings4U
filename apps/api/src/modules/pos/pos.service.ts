@@ -97,6 +97,7 @@ function serializePosOrder(order: Record<string, unknown>) {
     tax_rate_bps: o.taxRateBps,
     delivery_fee_cents: o.deliveryFeeCents,
     final_payable_cents: o.finalPayableCents,
+    total_paid_cents: o.netPaidAmountCents,
     payment_status_summary: o.paymentStatusSummary,
     customer_order_notes: o.customerOrderNotes,
     created_at: o.createdAt,
@@ -495,7 +496,7 @@ export class PosService {
     const orders = await this.prisma.order.findMany({
       where: {
         locationId,
-        orderSource: { in: ["POS", "PHONE"] },
+        orderSource: { in: ["POS", "PHONE", "ONLINE"] },
         placedAt: { gte: startOfDay },
       },
       include: {

@@ -84,8 +84,13 @@ type PosOrder = {
   placed_at: string;
   customer_name_snapshot: string | null;
   customer_phone_snapshot: string | null;
+  item_subtotal_cents: number;
+  tax_cents: number;
+  delivery_fee_cents: number;
   final_payable_cents: number;
+  total_paid_cents: number;
   payment_status_summary: string | null;
+  items?: any[];
 };
 
 type Envelope<T> = { data?: T; errors?: { message: string }[] | null };
@@ -400,8 +405,8 @@ function PosShell({ session }: { session: SessionState }) {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
 
-  const [fulfillmentType, setFulfillmentType] =
-    useState<FulfillmentType>("PICKUP");
+  const [diningOption, setDiningOption] = useState<"EAT_IN" | "TO_GO" | "DELIVERY">("EAT_IN");
+  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>("PICKUP");
   const [orderSource, setOrderSource] = useState<OrderSource>("POS");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -485,6 +490,9 @@ function PosShell({ session }: { session: SessionState }) {
       // Handled via modifier modal.
       return;
     }
+    setCurrentOrderId(
+      (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+    );
     setCart((prev) => {
       // Merge into existing identical simple line.
       const existing = prev.find(
@@ -519,6 +527,9 @@ function PosShell({ session }: { session: SessionState }) {
 
   const addConfiguredItem = useCallback(
     (line: CartLine) => {
+      setCurrentOrderId(
+        (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+      );
       setCart((prev) => [...prev, line]);
       setModifierItem(null);
     },
@@ -539,6 +550,35 @@ function PosShell({ session }: { session: SessionState }) {
 
   const removeLine = useCallback((localId: string) => {
     setCart((prev) => prev.filter((l) => l.localId !== localId));
+  }, []);
+
+  const copyOrderToCart = useCallback((order: PosOrder) => {
+    const lines: CartLine[] = (order.items ?? []).map((item: any) => {
+      const modTotal = (item.modifiers ?? []).reduce(
+        (s: number, m: any) => s + m.price_delta_cents,
+        0,
+      );
+      return {
+        localId: `${item.menu_item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        menuItemId: item.menu_item_id,
+        name: item.product_name_snapshot,
+        unitBaseCents: item.unit_price_cents - modTotal,
+        quantity: item.quantity,
+        modifiers: (item.modifiers ?? []).map((m: any) => ({
+          modifierOptionId: m.modifier_option_id,
+          groupName: m.modifier_group_name_snapshot,
+          optionName: m.modifier_name_snapshot,
+          priceDeltaCents: m.price_delta_cents,
+        })),
+        specialInstructions: item.special_instructions,
+      };
+    });
+
+    setCart(lines);
+    setCurrentOrderId(`ORD-${order.order_number}-RE`);
+    setFulfillmentType(order.fulfillment_type as FulfillmentType);
+    setCustomerName(order.customer_name_snapshot ?? "");
+    setCustomerPhone(order.customer_phone_snapshot ?? "");
   }, []);
 
   const clearCart = useCallback(() => {
@@ -684,9 +724,7 @@ function PosShell({ session }: { session: SessionState }) {
   return (
     <div className="pos-root">
       <header className="pos-topbar">
-        <div className="pos-brand">
-          WINGS 4U <span className="pos-brand-badge">POS</span>
-        </div>
+
         <div className="pos-topbar-right">
           <div className="pos-topbar-nav">
             <button
@@ -728,6 +766,56 @@ function PosShell({ session }: { session: SessionState }) {
 
       <div className="pos-workspace">
         <section className="pos-cart" aria-label="Cart">
+          {todayOrders.length > 0 && (
+            <div className="pos-recent-pills">
+              {todayOrders.slice(0, 12).map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className="pos-order-pill"
+                  onClick={() => copyOrderToCart(o)}
+                  title={`Re-order #${o.order_number}`}
+                >
+                  #{o.order_number}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="pos-dining-selector">
+            <button
+              type="button"
+              className="pos-dining-btn"
+              aria-pressed={diningOption === "EAT_IN"}
+              onClick={() => {
+                setDiningOption("EAT_IN");
+                setFulfillmentType("PICKUP");
+              }}
+            >
+              Eat-in
+            </button>
+            <button
+              type="button"
+              className="pos-dining-btn"
+              aria-pressed={diningOption === "TO_GO"}
+              onClick={() => {
+                setDiningOption("TO_GO");
+                setFulfillmentType("PICKUP");
+              }}
+            >
+              To-Go
+            </button>
+            <button
+              type="button"
+              className="pos-dining-btn"
+              aria-pressed={diningOption === "DELIVERY"}
+              onClick={() => {
+                setDiningOption("DELIVERY");
+                setFulfillmentType("DELIVERY");
+              }}
+            >
+              Delivery
+            </button>
+          </div>
           {currentOrderId && (
             <div className="pos-order-id-display">
               <span>Order ID: <strong>{currentOrderId}</strong></span>
@@ -741,18 +829,6 @@ function PosShell({ session }: { session: SessionState }) {
               </button>
             </div>
           )}
-          {cart.length > 0 ? (
-            <div className="pos-cart-header">
-              <button
-                type="button"
-                className="pos-btn pos-btn--danger"
-                style={{ padding: "0.4rem 0.7rem", fontSize: "0.8rem" }}
-                onClick={clearCart}
-              >
-                Clear
-              </button>
-            </div>
-          ) : null}
 
           {cart.length === 0 ? (
             <div className="pos-empty" />
@@ -813,25 +889,6 @@ function PosShell({ session }: { session: SessionState }) {
 
           <div className="pos-cart-footer">
             <div className="pos-customer-fields">
-              <label className="pos-field">
-                Fulfillment
-                <div className="pos-segmented">
-                  <button
-                    type="button"
-                    aria-pressed={fulfillmentType === "PICKUP"}
-                    onClick={() => setFulfillmentType("PICKUP")}
-                  >
-                    Pickup
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={fulfillmentType === "DELIVERY"}
-                    onClick={() => setFulfillmentType("DELIVERY")}
-                  >
-                    Delivery
-                  </button>
-                </div>
-              </label>
               <label className="pos-field">
                 Source
                 <div className="pos-segmented">
@@ -1017,17 +1074,26 @@ function PosShell({ session }: { session: SessionState }) {
                           <span className="pos-order-item-id">
                             #{o.order_number}
                           </span>
-                          <div className="pos-order-item-meta">
-                            <div>{o.customer_name_snapshot || "Walk-in"}</div>
-                            <div>{o.customer_phone_snapshot || "No phone"}</div>
-                            <div>
-                              {new Date(o.placed_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
+                          <div className="pos-order-customer">
+                            {o.customer_name_snapshot || "Walk-in"}
                           </div>
-                          <span className="pos-order-item-total">
+                          <div className="pos-order-phone">
+                            {o.customer_phone_snapshot || "No phone"}
+                          </div>
+                          <div className="pos-order-time">
+                            {new Date(o.placed_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                          <span
+                            className="pos-order-item-total"
+                            data-paid={
+                              o.final_payable_cents > 0 &&
+                              o.final_payable_cents <=
+                                (o as any).total_paid_cents
+                            }
+                          >
                             {cents(o.final_payable_cents)}
                           </span>
                         </button>
@@ -1039,7 +1105,10 @@ function PosShell({ session }: { session: SessionState }) {
                   {selectedOrder ? (
                     <>
                       <div className="pos-order-detail-header">
-                        <h3>Order #{selectedOrder.order_number}</h3>
+                        <div className="pos-detail-hero">
+                          <span className="pos-detail-label">Order Reference</span>
+                          <h3>#{selectedOrder.order_number}</h3>
+                        </div>
                         <div className="pos-order-detail-grid">
                           <div className="pos-detail-group">
                             <label>Customer</label>
@@ -1048,32 +1117,49 @@ function PosShell({ session }: { session: SessionState }) {
                             </span>
                           </div>
                           <div className="pos-detail-group">
-                            <label>Phone</label>
+                            <label>Payment Status</label>
+                            <span
+                              style={{
+                                color:
+                                  selectedOrder.final_payable_cents > 0 &&
+                                  selectedOrder.final_payable_cents <=
+                                    selectedOrder.total_paid_cents
+                                    ? "#4caf50"
+                                    : "#f44336",
+                              }}
+                            >
+                              {selectedOrder.final_payable_cents > 0 &&
+                              selectedOrder.final_payable_cents <=
+                                selectedOrder.total_paid_cents
+                                ? "PAID"
+                                : "NOT PAID"}
+                            </span>
+                          </div>
+                          <div className="pos-detail-group">
+                            <label>Phone Number</label>
                             <span>
                               {selectedOrder.customer_phone_snapshot || "—"}
                             </span>
                           </div>
                           <div className="pos-detail-group">
-                            <label>Placed On</label>
+                            <label>Placed At</label>
                             <span>
-                              {new Date(selectedOrder.placed_at).toLocaleString()}
+                              {new Date(selectedOrder.placed_at).toLocaleTimeString()}
                             </span>
-                          </div>
-                          <div className="pos-detail-group">
-                            <label>Source</label>
-                            <span>{selectedOrder.order_source}</span>
                           </div>
                         </div>
                       </div>
 
                       <div className="pos-order-detail-items">
+                        <div className="pos-detail-section-title">Order Items</div>
                         {(selectedOrder as any).items?.map(
                           (item: any, idx: number) => (
                             <div key={idx} className="pos-detail-item-row">
                               <div className="pos-detail-item-info">
-                                <h4>
-                                  {item.quantity}× {item.product_name_snapshot}
-                                </h4>
+                                <div className="pos-detail-item-name">
+                                  <span className="pos-detail-qty">{item.quantity}×</span>
+                                  {item.product_name_snapshot}
+                                </div>
                                 {item.modifiers?.length > 0 && (
                                   <div className="pos-detail-item-mods">
                                     {item.modifiers
@@ -1092,13 +1178,28 @@ function PosShell({ session }: { session: SessionState }) {
                         )}
                       </div>
 
-                      <div
-                        className="pos-cart-totals"
-                        style={{ marginTop: "auto" }}
-                      >
-                        <div className="pos-cart-totals-row pos-cart-totals-row--emph">
-                          <span>Total</span>
-                          <span>{cents(selectedOrder.final_payable_cents)}</span>
+                      <div className="pos-order-detail-footer">
+                        <div className="pos-order-price-summary">
+                          <div className="pos-price-row">
+                            <span>Subtotal</span>
+                            <span>{cents(selectedOrder.item_subtotal_cents)}</span>
+                          </div>
+                          <div className="pos-price-row">
+                            <span>Tax</span>
+                            <span>{cents(selectedOrder.tax_cents)}</span>
+                          </div>
+                          {selectedOrder.delivery_fee_cents > 0 && (
+                            <div className="pos-price-row">
+                              <span>Delivery Fee</span>
+                              <span>{cents(selectedOrder.delivery_fee_cents)}</span>
+                            </div>
+                          )}
+                          <div className="pos-price-row pos-price-row--total">
+                            <span>Total Amount</span>
+                            <strong>
+                              {cents(selectedOrder.final_payable_cents)}
+                            </strong>
+                          </div>
                         </div>
                       </div>
                     </>
@@ -1174,12 +1275,6 @@ function PosShell({ session }: { session: SessionState }) {
             </div>
           )}
 
-          <OrdersStrip
-            orders={todayOrders}
-            canDiscount={canApplyDiscount(session)}
-            onRefresh={() => void loadOrders()}
-            onDiscount={setDiscountOrder}
-          />
         </section>
 
 
@@ -1352,66 +1447,72 @@ function ModifierPicker({
           </button>
         </div>
 
-        {item.modifier_groups
-          .slice()
-          .sort((a, b) => a.sort_order - b.sort_order)
-          .map((group) => {
-            const picked = selection[group.id] ?? [];
-            const hint =
-              group.selection_mode === "SINGLE"
-                ? group.is_required
-                  ? "pick one"
-                  : "pick one (optional)"
-                : group.is_required
-                  ? `pick ${group.min_select || 1}–${group.max_select || group.options.length}`
-                  : `up to ${group.max_select || group.options.length}`;
-            return (
-              <div key={group.id} className="pos-modifier-group">
-                <h4>
-                  {group.display_label ?? group.name} <small>{hint}</small>
-                </h4>
-                {group.options.map((opt) => {
-                  const active = picked.includes(opt.id);
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className="pos-modifier-option"
-                      aria-pressed={active}
-                      onClick={() => toggle(group, opt.id)}
-                    >
-                      <span>{opt.name}</span>
-                      {opt.price_delta_cents ? (
-                        <span className="pos-modifier-option-price">
-                          +{cents(opt.price_delta_cents)}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
+        <div className="pos-modal-body">
+          {item.modifier_groups
+            .slice()
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((group) => {
+              const picked = selection[group.id] ?? [];
+              const hint =
+                group.selection_mode === "SINGLE"
+                  ? group.is_required
+                    ? "pick one"
+                    : "pick one (optional)"
+                  : group.is_required
+                    ? `pick ${group.min_select || 1}–${group.max_select || group.options.length}`
+                    : `up to ${group.max_select || group.options.length}`;
+              return (
+                <div key={group.id} className="pos-modifier-group">
+                  <h4>
+                    {group.display_label ?? group.name} <small>{hint}</small>
+                  </h4>
+                  <div className="pos-modifier-options-grid">
+                    {group.options.map((opt) => {
+                      const active = picked.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className="pos-modifier-option"
+                          aria-pressed={active}
+                          onClick={() => toggle(group, opt.id)}
+                        >
+                          <span>{opt.name}</span>
+                          {opt.price_delta_cents ? (
+                            <span className="pos-modifier-option-price">
+                              +{cents(opt.price_delta_cents)}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
 
-        <label className="pos-field">
-          Notes for this item
-          <textarea
-            rows={2}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Extra sauce, dressings, etc."
-          />
-        </label>
+          <label className="pos-field">
+            Notes for this item
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Extra sauce, dressings, etc."
+            />
+          </label>
+        </div>
 
-        <button
-          type="button"
-          className="pos-btn pos-btn--primary"
-          style={{ width: "100%", marginTop: "1rem", padding: "0.85rem" }}
-          onClick={submit}
-          disabled={!ok}
-        >
-          {ok ? `Add • ${cents(addCents)}` : (reason ?? "Select options")}
-        </button>
+        <div className="pos-modal-footer">
+          <button
+            type="button"
+            className="pos-btn pos-btn--primary"
+            style={{ width: "100%", padding: "1.25rem", fontSize: "1.2rem" }}
+            onClick={submit}
+            disabled={!ok}
+          >
+            {ok ? `Add to Order • ${cents(addCents)}` : (reason ?? "Select options")}
+          </button>
+        </div>
       </div>
     </div>
   );
