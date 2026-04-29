@@ -67,3 +67,23 @@ desktop.ini
 
 # Local tool state
 .local/
+.claude/
+.cursor/
+
+# Private/internal project notes and generated extracts
+Cmds/
+Docs/
+DESIGN_THEME_GUIDE.md
+README.md
+TODO.md
+temp_patch_existing.txt
+wings4u_order_mode_designs.html
+
+# Local assets, database scratch files, and ops/infra notes
+assests/
+db/
+infra/
+ops/
+
+# Keep repository automation local for now
+.github/
