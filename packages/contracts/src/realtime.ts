@@ -95,7 +95,8 @@ export type CancellationRequestedPayload = {
   request_id: string;
   request_source: string;
   reason_text: string;
-  requested_by_user_id: string;
+  /** Present when a staff user initiated the request; null for KDS station (PIN) sessions. */
+  requested_by_user_id: string | null;
 };
 
 export type CancellationDecidedPayload = {

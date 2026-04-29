@@ -44,7 +44,8 @@ type KdsItem = {
 
 type KdsPendingCancelRequest = {
   id: string;
-  requested_by_user_id: string;
+  /** Null when the request was made from a KDS station session (no staff user id). */
+  requested_by_user_id: string | null;
   request_source: string;
   reason_text: string | null;
   created_at: string;
