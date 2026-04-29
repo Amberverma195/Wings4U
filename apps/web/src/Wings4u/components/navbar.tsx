@@ -29,6 +29,15 @@ export function Navbar() {
     return () => window.clearTimeout(t);
   }, [cartAddNonce]);
 
+  const handleStationLogout = useCallback(async () => {
+    try {
+      await apiFetch("/api/v1/auth/logout", { method: "POST" });
+    } catch {
+      // best-effort; local clear still removes the station session from UI
+    }
+    session.clear();
+    router.refresh();
+  }, [router, session]);
 
   return (
     <nav style={styles.nav} className="wk-nav-bar">
@@ -43,9 +52,14 @@ export function Navbar() {
             </button>
           </>
         ) : staffSurfaceHref ? (
-          <button style={styles.navBtn} onClick={() => router.push(staffSurfaceHref)}>
-            {session.user?.role === "ADMIN" ? "Admin" : "KDS"}
-          </button>
+          <>
+            <button style={styles.navBtn} onClick={() => router.push(staffSurfaceHref)}>
+              {session.user?.role === "ADMIN" ? "Admin" : "KDS"}
+            </button>
+            <button type="button" style={styles.navBtn} onClick={() => void handleStationLogout()}>
+              Logout
+            </button>
+          </>
         ) : (
           <button style={styles.navBtn} onClick={() => router.push("/auth/login")}>
             Login

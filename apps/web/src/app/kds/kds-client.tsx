@@ -1993,6 +1993,7 @@ export function KdsClient() {
   const [error, setError] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState<KdsOrder | null>(null);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   const socketRef = useRef<ReturnType<typeof createOrdersSocket> | null>(null);
   const sessionControls = useMemo<KdsSessionControls>(
     () => ({
@@ -2021,6 +2022,20 @@ export function KdsClient() {
       setLoading(false);
     }
   }, [sessionControls]);
+
+  const logout = useCallback(async () => {
+    setLogoutBusy(true);
+    try {
+      await apiFetch("/api/v1/auth/logout", { method: "POST" });
+    } catch {
+      // best-effort; local clear still returns the station to the PIN screen
+    }
+    setOrders([]);
+    setDetailOrder(null);
+    setOptionsOpen(false);
+    session.clear();
+    setLogoutBusy(false);
+  }, [session]);
 
   // Initial load — only if session is good
   useEffect(() => {
@@ -2124,6 +2139,15 @@ export function KdsClient() {
             onClick={() => void loadOrders()}
           >
             Refresh
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void logout()}
+            disabled={logoutBusy}
+            style={{ fontWeight: "bold" }}
+          >
+            {logoutBusy ? "Logging out..." : "Logout"}
           </button>
         </div>
       </div>
