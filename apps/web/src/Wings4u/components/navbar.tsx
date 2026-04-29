@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FaCartShopping } from "react-icons/fa6";
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
@@ -16,11 +17,9 @@ export function Navbar() {
   const [cartPulse, setCartPulse] = useState(false);
   const isCustomerSession = session.authenticated && session.user?.role === "CUSTOMER";
   const staffSurfaceHref =
-    session.authenticated && session.user?.role === "ADMIN"
-      ? "/admin"
-      : session.authenticated && session.user?.role === "STAFF"
-        ? "/kds"
-        : null;
+    session.authenticated && (session.user?.role === "ADMIN" || session.user?.role === "STAFF")
+      ? "/account/profile"
+      : null;
 
   useEffect(() => {
     if (cartAddNonce === 0) return;
@@ -47,15 +46,15 @@ export function Navbar() {
       <div style={styles.navActions}>
         {isCustomerSession ? (
           <>
-            <button style={styles.navBtn} onClick={() => router.push("/account/profile")}>
+            <Link href="/account/profile" style={styles.navBtn}>
               {session.user?.displayName ?? "Account"}
-            </button>
+            </Link>
           </>
         ) : staffSurfaceHref ? (
           <>
-            <button style={styles.navBtn} onClick={() => router.push("/account/profile")}>
+            <Link href={staffSurfaceHref} style={styles.navBtn}>
               {session.user?.role === "ADMIN" ? "Admin" : "KDS"}
-            </button>
+            </Link>
             <button type="button" style={styles.navBtn} onClick={() => void handleStationLogout()}>
               Logout
             </button>
