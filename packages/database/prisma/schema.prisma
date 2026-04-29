@@ -32,6 +32,7 @@ model Location {
   dailyTaxSummaries        DailyTaxSummary[]
   devices                  Device[]
   kdsHeartbeats            KdsHeartbeat[]
+  kdsStationSessions       KdsStationSession[]
   driverPayouts            DriverPayout[]
   driverProfiles           DriverProfile[]
   employeeProfiles         EmployeeProfile[]
@@ -315,6 +316,7 @@ model LocationSettings {
   defaultDeliveryMaxMinutes    Int      @default(60) @map("default_delivery_max_minutes")
   overdueDeliveryGraceMinutes  Int      @default(10) @map("overdue_delivery_grace_minutes")
   addItemsAutoApproveEnabled   Boolean  @default(false) @map("add_items_auto_approve_enabled")
+  kdsPasswordHash              String?  @map("kds_password_hash") @db.VarChar(255)
   createdAt                    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   location                     Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -794,7 +796,7 @@ model CancellationRequest {
   id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orderId               String             @map("order_id") @db.Uuid
   locationId            String             @map("location_id") @db.Uuid
-  requestedByUserId     String             @map("requested_by_user_id") @db.Uuid
+  requestedByUserId     String?            @map("requested_by_user_id") @db.Uuid
   requestSource         String             @map("request_source")
   reasonText            String             @map("reason_text")
   status                String
@@ -805,7 +807,7 @@ model CancellationRequest {
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   location              Location           @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order                 Order              @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  requestedBy           User               @relation("cancel_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestedBy           User?              @relation("cancel_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reviewedBy            User?              @relation("cancel_reviewed_by", fields: [reviewedByAdminUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   chatThread            OrderConversation? @relation(fields: [chatThreadId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -835,19 +837,19 @@ model OrderChangeRequest {
 }
 
 model OrderDriverEvent {
-  id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orderId                String        @map("order_id") @db.Uuid
-  locationId             String        @map("location_id") @db.Uuid
-  driverUserId           String        @map("driver_user_id") @db.Uuid
-  eventType              String        @map("event_type")
-  actorUserId            String        @map("actor_user_id") @db.Uuid
-  estimatedTravelMinutes Int?          @map("estimated_travel_minutes")
-  noteText               String?       @map("note_text")
-  createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  actor                  User          @relation("driver_event_actor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  driver                 DriverProfile @relation(fields: [driverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
-  location               Location      @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  order                  Order         @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId                String         @map("order_id") @db.Uuid
+  locationId             String         @map("location_id") @db.Uuid
+  driverUserId           String?        @map("driver_user_id") @db.Uuid
+  eventType              String         @map("event_type")
+  actorUserId            String?        @map("actor_user_id") @db.Uuid
+  estimatedTravelMinutes Int?           @map("estimated_travel_minutes")
+  noteText               String?        @map("note_text")
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor                  User?          @relation("driver_event_actor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver                 DriverProfile? @relation(fields: [driverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  location               Location       @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                  Order          @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([orderId, createdAt], map: "idx_order_driver_events_order_created")
   @@index([driverUserId, createdAt(sort: Desc)], map: "idx_order_driver_events_driver_created")
@@ -1070,7 +1072,7 @@ model RefundRequest {
   orderId             String                    @map("order_id") @db.Uuid
   locationId          String                    @map("location_id") @db.Uuid
   supportTicketId     String?                   @map("support_ticket_id") @db.Uuid
-  requestedByUserId   String                    @map("requested_by_user_id") @db.Uuid
+  requestedByUserId   String?                   @map("requested_by_user_id") @db.Uuid
   amountCents         Int                       @map("amount_cents")
   refundMethod        RefundMethod              @default(STORE_CREDIT) @map("refund_method")
   status              RefundStatus              @default(PENDING)
@@ -1090,7 +1092,7 @@ model RefundRequest {
   location            Location                  @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order               Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   rejectedBy          User?                     @relation("refund_rejected_by", fields: [rejectedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  requestedBy         User                      @relation("refund_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestedBy         User?                     @relation("refund_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   supportTicket       SupportTicket?            @relation(fields: [supportTicketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   ticketResolutions   SupportTicketResolution[]
 
@@ -1916,4 +1918,22 @@ model PosLoginAttempt {
 
   @@index([locationId, clientIp, deviceFingerprint, attemptedAt], map: "idx_pos_login_attempts_lookup")
   @@map("pos_login_attempts")
+}
+
+model KdsStationSession {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId String    @map("location_id") @db.Uuid
+  sessionKey String    @unique @map("session_key")
+  tokenHash  String    @map("token_hash")
+  clientIp   String    @map("client_ip") @db.Inet
+  deviceId   String?   @map("device_id")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location   Location  @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([locationId], map: "idx_kds_station_sessions_loc_active")
+  @@index([sessionKey], map: "idx_kds_station_sessions_key")
+  @@map("kds_station_sessions")
 }
