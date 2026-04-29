@@ -676,13 +676,12 @@ export default function ProfilePage() {
             aria-labelledby="logout-modal-title"
             aria-describedby="logout-modal-desc"
           >
-            <span className={styles.eyebrow}>Account session</span>
+            <span className={styles.eyebrow}>Account</span>
             <h2 id="logout-modal-title" className={styles.logoutModalTitle}>
               Log out of Wings 4 U?
             </h2>
             <p id="logout-modal-desc" className={styles.logoutModalText}>
-              You will be signed out on this browser. Any protected staff or
-              admin tabs will return to the login page.
+              You will be signed out.
             </p>
             <div className={styles.logoutModalActions}>
               <button
@@ -694,10 +693,16 @@ export default function ProfilePage() {
               </button>
               <button
                 type="button"
-                className={styles.logoutConfirmBtn}
+                className="fire-btn"
+                style={{
+                  fontSize: '14px',
+                  padding: '10px 28px',
+                  minWidth: '140px',
+                  marginLeft: '0.5rem'
+                }}
                 onClick={handleLogout}
               >
-                Yes, log out
+                <span className="btn-label">Yes, log out</span>
               </button>
             </div>
           </div>

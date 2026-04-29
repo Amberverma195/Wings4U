@@ -540,38 +540,26 @@
 .logoutModalActions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-}
-
-.logoutCancelBtn,
-.logoutConfirmBtn {
-  border: none;
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2rem;
 }
 
 .logoutCancelBtn {
   background: #f3f4f6;
   color: #4b5563;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 150ms ease;
 }
 
 .logoutCancelBtn:hover {
   background: #e5e7eb;
-}
-
-.logoutConfirmBtn {
-  background: linear-gradient(135deg, #ef4444, #f97316);
-  color: white;
-  box-shadow: 0 10px 24px -12px rgba(239, 68, 68, 0.7);
-}
-
-.logoutConfirmBtn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 14px 30px -14px rgba(239, 68, 68, 0.75);
+  color: #111827;
 }
 
 .stampModalSummary {
