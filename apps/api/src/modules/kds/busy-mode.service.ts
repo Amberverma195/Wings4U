@@ -55,7 +55,7 @@ export class BusyModeService {
 
   async setState(
     locationId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     enabled: boolean,
     prepMinutes?: number,
     note?: string,

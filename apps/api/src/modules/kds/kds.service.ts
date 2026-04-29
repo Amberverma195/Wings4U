@@ -292,7 +292,7 @@ export class KdsService {
 
   async acceptOrder(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
   ) {
     const order = await this.prisma.order.findUnique({
@@ -380,7 +380,7 @@ export class KdsService {
 
   async updateOrderStatus(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     newStatus: string,
     reason?: string,
@@ -560,7 +560,7 @@ export class KdsService {
   // cancellations; pre-accept rejection remains a direct transition on PLACED.
   async requestCancellation(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     reason: string,
   ) {
@@ -629,7 +629,7 @@ export class KdsService {
   // linked to the order_conversation so admin/analytics can trace the origin.
   async requestChatCancellation(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     reason: string,
     conversationId: string,
@@ -712,7 +712,7 @@ export class KdsService {
 
   async handleCancelRequest(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     action: "APPROVE" | "DENY",
     adminNotes?: string,
@@ -826,7 +826,7 @@ export class KdsService {
   async assignDriver(
     orderId: string,
     driverUserId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     busyOverride = false,
   ) {
@@ -939,7 +939,7 @@ export class KdsService {
 
   async startDelivery(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
   ) {
     const order = await this.prisma.order.findUnique({
@@ -1024,7 +1024,7 @@ export class KdsService {
 
   async completeDelivery(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     pin?: string,
   ) {
@@ -1193,7 +1193,7 @@ export class KdsService {
    */
   async completeDeliveryWithoutPin(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
   ) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
@@ -1350,7 +1350,7 @@ export class KdsService {
 
   async updateEta(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     estimatedMinutes: number,
     source: string,
   ) {
@@ -1503,7 +1503,7 @@ export class KdsService {
   // new). Status is not modified. Customer detail receives order.eta_updated.
   async adjustEtaDelta(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     deltaMinutes: number,
   ): Promise<{
@@ -1630,7 +1630,7 @@ export class KdsService {
 
   async requestRefund(
     orderId: string,
-    actorUserId: string,
+    actorUserId: string | null,
     locationId: string,
     amountCents: number,
     reason: string,

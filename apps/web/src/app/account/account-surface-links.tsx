@@ -12,9 +12,8 @@ export function AccountSurfaceLinks({
   navLinkArrowClassName: string;
 }) {
   const canOpenAdmin = canAccessSurface(user, "ADMIN_ONLY");
-  const canOpenKds = canAccessSurface(user, "KDS_STAFF_OR_ADMIN");
 
-  if (!canOpenAdmin && !canOpenKds) {
+  if (!canOpenAdmin) {
     return null;
   }
 
@@ -23,12 +22,6 @@ export function AccountSurfaceLinks({
       {canOpenAdmin ? (
         <Link href="/admin" className={navLinkClassName}>
           <span>Admin Panel</span>
-          <span className={navLinkArrowClassName}>{"\u2192"}</span>
-        </Link>
-      ) : null}
-      {canOpenKds ? (
-        <Link href="/kds" className={navLinkClassName}>
-          <span>KDS</span>
           <span className={navLinkArrowClassName}>{"\u2192"}</span>
         </Link>
       ) : null}

@@ -160,7 +160,7 @@ export class RefundService {
   async createForCancelledOrder(params: {
     orderId: string;
     locationId: string;
-    initiatedByUserId: string;
+    initiatedByUserId: string | null;
     reasonText?: string;
   }) {
     return this.prisma.$transaction(async (tx) => {

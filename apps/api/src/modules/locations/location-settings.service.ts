@@ -8,6 +8,7 @@ import {
   isValidTrustedIpEntry,
   normalizeTrustedIpRanges,
 } from "../../common/utils/store-ip";
+import * as bcrypt from "bcryptjs";
 
 @Injectable()
 export class LocationSettingsService {
@@ -19,11 +20,14 @@ export class LocationSettingsService {
     });
 
     if (!settings) {
-      // If none exist, you could create default or throw
       throw new NotFoundException(`Settings for location ${locationId} not found`);
     }
 
-    return settings;
+    const { kdsPasswordHash, ...rest } = settings;
+    return {
+      ...rest,
+      kdsPasswordConfigured: !!kdsPasswordHash,
+    };
   }
 
   async updateSettings(locationId: string, data: Record<string, any>, actorUserId: string) {
@@ -45,11 +49,35 @@ export class LocationSettingsService {
       nextData.trustedIpRanges = normalized;
     }
 
+    if (nextData.kdsPassword !== undefined) {
+      if (nextData.kdsPassword) {
+        if (!/^\d{8}$/.test(nextData.kdsPassword)) {
+          throw new BadRequestException("KDS password must be exactly 8 digits");
+        }
+        nextData.kdsPasswordHash = await bcrypt.hash(nextData.kdsPassword, 10);
+      } else {
+        nextData.kdsPasswordHash = null;
+      }
+      delete nextData.kdsPassword;
+      delete nextData.kdsPasswordConfigured;
+    } else if (nextData.kdsPasswordConfigured !== undefined) {
+      // Do not allow kdsPasswordConfigured to be directly updated
+      delete nextData.kdsPasswordConfigured;
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.locationSettings.update({
         where: { locationId },
         data: nextData,
       });
+
+      // If kdsPasswordHash was updated, revoke all active kds sessions
+      if ("kdsPasswordHash" in nextData) {
+        await tx.kdsStationSession.updateMany({
+          where: { locationId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
 
       await tx.adminAuditLog.create({
         data: {
@@ -59,13 +87,17 @@ export class LocationSettingsService {
           actionKey: "location_settings.update",
           entityType: "LocationSettings",
           entityId: locationId,
-          payloadJson: nextData,
+          payloadJson: { ...nextData, kdsPasswordHash: undefined }, // Don't log hash
         },
       });
 
       return result;
     });
 
-    return updated;
+    const { kdsPasswordHash, ...rest } = updated;
+    return {
+      ...rest,
+      kdsPasswordConfigured: !!kdsPasswordHash,
+    };
   }
 }

@@ -24,7 +24,7 @@ import type { Request } from "express";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
-import { KDS_STAFF, Roles } from "../../common/decorators/roles.decorator";
+import { Public } from "../../common/decorators/roles.decorator";
 import { BusyModeService } from "./busy-mode.service";
 import { DeliveryPinService } from "./delivery-pin.service";
 import { KdsHeartbeatService } from "./kds-heartbeat.service";
@@ -192,6 +192,7 @@ class BusyModeHistoryQueryDto {
 }
 
 @Controller("kds")
+@Public()
 @UseGuards(LocationScopeGuard, StoreNetworkGuard, KdsStationGuard)
 export class KdsController {
   constructor(
@@ -203,17 +204,15 @@ export class KdsController {
 
   // PRD §11.2: busy mode status + toggle + history.
   @Get("busy-mode")
-  @Roles(KDS_STAFF, "ADMIN")
   async getBusyMode(@Req() req: Request) {
     return this.busyMode.getCurrent(req.locationId!);
   }
 
   @Post("busy-mode")
-  @Roles(KDS_STAFF, "ADMIN")
   async setBusyMode(@Body() body: BusyModeSetDto, @Req() req: Request) {
     return this.busyMode.setState(
       req.locationId!,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       body.enabled,
       body.prep_minutes,
       body.note,
@@ -221,7 +220,6 @@ export class KdsController {
   }
 
   @Get("busy-mode/history")
-  @Roles(KDS_STAFF, "ADMIN")
   async getBusyModeHistory(
     @Query() query: BusyModeHistoryQueryDto,
     @Req() req: Request,
@@ -237,7 +235,6 @@ export class KdsController {
   // PRD §11.1B: KDS posts a heartbeat periodically so the auto-accept worker
   // can decide whether to auto-accept or flag manual-review at timeout.
   @Post("heartbeat")
-  @Roles(KDS_STAFF, "ADMIN")
   async heartbeat(@Body() body: HeartbeatDto, @Req() req: Request) {
     return this.heartbeatService.recordHeartbeat({
       locationId: req.locationId!,
@@ -247,7 +244,6 @@ export class KdsController {
   }
 
   @Get("orders/history")
-  @Roles(KDS_STAFF, "ADMIN")
   async getOrderHistory(
     @Query() query: KdsHistoryQueryDto,
     @Req() req: Request,
@@ -263,7 +259,6 @@ export class KdsController {
   }
 
   @Get("orders")
-  @Roles(KDS_STAFF, "ADMIN")
   async getOrders(@Query() query: KdsOrdersQueryDto, @Req() req: Request) {
     const statuses = query.statuses
       ? query.statuses.split(",").map((s) => s.trim())
@@ -272,16 +267,14 @@ export class KdsController {
   }
 
   @Post("orders/:id/accept")
-  @Roles(KDS_STAFF, "ADMIN")
   async acceptOrder(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
-    return this.kdsService.acceptOrder(id, req.user!.userId, req.locationId!);
+    return this.kdsService.acceptOrder(id, (req.user?.userId ?? null), req.locationId!);
   }
 
   @Post("orders/:id/status")
-  @Roles(KDS_STAFF, "ADMIN")
   async updateStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: UpdateStatusDto,
@@ -289,7 +282,7 @@ export class KdsController {
   ) {
     return this.kdsService.updateOrderStatus(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.status,
       body.reason,
@@ -299,7 +292,6 @@ export class KdsController {
   // PRD §7.5: post-accept cancellation is a REQUEST that Admin approves, not
   // a direct state change. KDS pre-accept rejection still uses /status.
   @Post("orders/:id/request-cancellation")
-  @Roles(KDS_STAFF, "ADMIN")
   async requestCancellation(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: RequestCancellationDto,
@@ -307,7 +299,7 @@ export class KdsController {
   ) {
     return this.kdsService.requestCancellation(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.reason,
     );
@@ -317,7 +309,6 @@ export class KdsController {
   // order_conversation id so the cancellation_request is linked back to the
   // chat thread for admin traceability.
   @Post("orders/:id/request-chat-cancellation")
-  @Roles(KDS_STAFF, "ADMIN")
   async requestChatCancellation(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: RequestChatCancellationDto,
@@ -325,7 +316,7 @@ export class KdsController {
   ) {
     return this.kdsService.requestChatCancellation(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.reason,
       body.conversation_id,
@@ -333,7 +324,6 @@ export class KdsController {
   }
 
   @Post("orders/:id/cancel-request")
-  @Roles(KDS_STAFF, "ADMIN")
   async handleCancelRequest(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: HandleCancelRequestDto,
@@ -341,7 +331,7 @@ export class KdsController {
   ) {
     return this.kdsService.handleCancelRequest(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.action,
       body.admin_notes,
@@ -349,7 +339,6 @@ export class KdsController {
   }
 
   @Post("orders/:id/assign-driver")
-  @Roles(KDS_STAFF, "ADMIN")
   async assignDriver(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: AssignDriverDto,
@@ -358,23 +347,21 @@ export class KdsController {
     return this.kdsService.assignDriver(
       id,
       body.driver_user_id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.busy_override ?? false,
     );
   }
 
   @Post("orders/:id/start-delivery")
-  @Roles(KDS_STAFF, "ADMIN")
   async startDelivery(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
-    return this.kdsService.startDelivery(id, req.user!.userId, req.locationId!);
+    return this.kdsService.startDelivery(id, (req.user?.userId ?? null), req.locationId!);
   }
 
   @Post("orders/:id/complete-delivery")
-  @Roles(KDS_STAFF, "ADMIN")
   async completeDelivery(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: CompleteDeliveryDto,
@@ -382,7 +369,7 @@ export class KdsController {
   ) {
     return this.kdsService.completeDelivery(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.pin,
     );
@@ -393,7 +380,6 @@ export class KdsController {
   // hints the correct "N attempts left" count for the first submit even
   // when an older session already burned some attempts on this order.
   @Get("orders/:id/pin-status")
-  @Roles(KDS_STAFF, "ADMIN")
   async pinStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: Request,
@@ -408,7 +394,6 @@ export class KdsController {
   // tells the client to ask the customer for the fresh PIN instead of
   // pretending the challenge is locked out.
   @Post("orders/:id/verify-pin")
-  @Roles(KDS_STAFF, "ADMIN")
   async verifyPin(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: VerifyPinDto,
@@ -421,8 +406,8 @@ export class KdsController {
     const result = await this.deliveryPin.verify({
       orderId: id,
       locationId: req.locationId!,
-      actorUserId: req.user!.userId,
-      driverUserId: order.assignedDriverUserId ?? req.user!.userId,
+      actorUserId: (req.user?.userId ?? null),
+      driverUserId: order.assignedDriverUserId ?? (req.user?.userId ?? null),
       pin: body.pin,
     });
     if (result.ok) {
@@ -441,14 +426,13 @@ export class KdsController {
   // can still hand off the food but the delivery is closed as
   // NO_PIN_DELIVERY (distinct from DELIVERED) so ops keeps an audit trail.
   @Post("orders/:id/complete-delivery-without-pin")
-  @Roles(KDS_STAFF, "ADMIN")
   async completeDeliveryWithoutPin(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     return this.kdsService.completeDeliveryWithoutPin(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
     );
   }
@@ -456,7 +440,6 @@ export class KdsController {
   // PRD §7.8.5: admin-only bypass (e.g., customer lost PIN). Records
   // bypass_by and bypass_reason; subsequent complete-delivery succeeds.
   @Post("orders/:id/pin/bypass")
-  @Roles("ADMIN")
   async bypassPin(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: PinBypassDto,
@@ -466,8 +449,8 @@ export class KdsController {
     await this.deliveryPin.bypass({
       orderId: id,
       locationId: req.locationId!,
-      actorUserId: req.user!.userId,
-      driverUserId: order.assignedDriverUserId ?? req.user!.userId,
+      actorUserId: (req.user?.userId ?? null),
+      driverUserId: order.assignedDriverUserId ?? (req.user?.userId ?? null),
       reason: body.reason,
     });
     return { ok: true };
@@ -476,7 +459,6 @@ export class KdsController {
   // PRD §7.8.5: regenerate PIN (e.g., after lockout). Resets attempts and
   // returns the new plaintext to the caller so the customer can be notified.
   @Post("orders/:id/pin/regenerate")
-  @Roles("ADMIN")
   async regeneratePin(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: Request,
@@ -485,13 +467,12 @@ export class KdsController {
     return this.deliveryPin.regenerate({
       orderId: id,
       locationId: req.locationId!,
-      actorUserId: req.user!.userId,
+      actorUserId: (req.user?.userId ?? null),
       expiryMinutes: expiry ?? DEFAULT_PIN_EXPIRY_MINUTES,
     });
   }
 
   @Post("orders/:id/eta")
-  @Roles(KDS_STAFF, "ADMIN")
   async updateEta(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: UpdateEtaDto,
@@ -499,14 +480,13 @@ export class KdsController {
   ) {
     return this.kdsService.updateEta(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       body.estimated_minutes,
       body.source,
     );
   }
 
   @Post("orders/:id/eta-delta")
-  @Roles(KDS_STAFF, "ADMIN")
   async adjustEtaDelta(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: EtaDeltaDto,
@@ -514,14 +494,13 @@ export class KdsController {
   ) {
     return this.kdsService.adjustEtaDelta(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.delta_minutes,
     );
   }
 
   @Post("orders/:id/refund-request")
-  @Roles(KDS_STAFF, "ADMIN")
   async requestRefund(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: RefundRequestDto,
@@ -529,7 +508,7 @@ export class KdsController {
   ) {
     return this.kdsService.requestRefund(
       id,
-      req.user!.userId,
+      (req.user?.userId ?? null),
       req.locationId!,
       body.amount_cents,
       body.reason,

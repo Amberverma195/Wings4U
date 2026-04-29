@@ -10,6 +10,7 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  GoneException,
 } from "@nestjs/common";
 import { IsEmail, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from "class-validator";
 import type { Request, Response } from "express";
@@ -422,25 +423,12 @@ export class AuthController {
   @Post("kds/login")
   @HttpCode(HttpStatus.OK)
   async kdsLogin(
-    @Body() body: KdsLoginDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
+    @Body() _body: KdsLoginDto,
+    @Req() _req: Request,
+    @Res({ passthrough: true }) _res: Response,
   ) {
-    const result = await this.authService.kdsLogin(
-      body.employee_code,
-      body.location_id,
-      extractClientIp(req),
-      body.device_id,
+    throw new GoneException(
+      "KDS now uses station password login at /api/v1/kds/auth/login",
     );
-
-    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
-
-    return {
-      user: result.user,
-      employee: {
-        role: result.employeeRole,
-        location_id: result.locationId,
-      },
-    };
   }
 }

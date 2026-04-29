@@ -12,10 +12,12 @@ import { KdsController } from "./kds.controller";
 import { KdsHeartbeatService } from "./kds-heartbeat.service";
 import { KdsService } from "./kds.service";
 import { OverdueDeliveryWorker } from "./overdue-delivery.worker";
+import { KdsAuthService } from "./kds-auth.service";
+import { KdsAuthController } from "./kds-auth.controller";
 
 @Module({
   imports: [ChatModule, SupportModule, RefundModule, RewardsModule],
-  controllers: [KdsController],
+  controllers: [KdsController, KdsAuthController],
   providers: [
     KdsService,
     KdsHeartbeatService,
@@ -25,7 +27,8 @@ import { OverdueDeliveryWorker } from "./overdue-delivery.worker";
     KdsStationGuard,
     StoreNetworkGuard,
     OverdueDeliveryWorker,
+    KdsAuthService,
   ],
-  exports: [KdsService, KdsHeartbeatService, BusyModeService, DeliveryPinService],
+  exports: [KdsService, KdsHeartbeatService, BusyModeService, DeliveryPinService, KdsAuthService],
 })
 export class KdsModule {}

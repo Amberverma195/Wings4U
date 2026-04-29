@@ -14,9 +14,8 @@ import type { Request } from "express";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
-import { Roles } from "../../common/decorators/roles.decorator";
+import { Public, Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
-import { POLICIES } from "../../common/policies/permission-matrix";
 import { DriversService } from "./drivers.service";
 
 class UpdateAvailabilityDto {
@@ -33,10 +32,10 @@ export class DriversController {
    * Used by the KDS surface to pick a driver to assign. It follows the
    * same in-store station rule as KDS itself: ADMIN session or KDS PIN
    * station session for STAFF.
-   */
+  */
   @Get("available")
+  @Public()
   @UseGuards(StoreNetworkGuard, KdsStationGuard)
-  @Roles(POLICIES.KDS_STAFF_OR_ADMIN)
   async getAvailable(@Req() req: Request) {
     return this.driversService.getAvailableDrivers(req.locationId!);
   }

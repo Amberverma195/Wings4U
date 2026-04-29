@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
-import { useSession, withSilentRefresh } from "@/lib/session";
-import type { SessionState } from "@/lib/session";
 import { OrderChat } from "@/components/order-chat";
 
 /* ------------------------------------------------------------------ */
@@ -88,7 +86,8 @@ type KdsDriver = {
   vehicle_identifier?: string | null;
 };
 
-type KdsSessionControls = Pick<SessionState, "refresh" | "clear">;
+type KdsSessionControls = Record<string, never>;
+const KDS_SESSION_CONTROLS: KdsSessionControls = {};
 
 type KdsApiEnvelope<T> = {
   data?: T;
@@ -176,15 +175,11 @@ function getPlacedEtaSecondsRemaining(order: KdsOrder, nowMs: number): number | 
 /* ------------------------------------------------------------------ */
 
 async function kdsJson<T>(
-  session: KdsSessionControls,
+  _session: KdsSessionControls,
   path: string,
   init: RequestInit & { locationId?: string } = {},
 ): Promise<T> {
-  const res = await withSilentRefresh(
-    () => apiFetch(path, init),
-    session.refresh,
-    session.clear,
-  );
+  const res = await apiFetch(path, init);
   const body = (await res.json().catch(() => null)) as KdsApiEnvelope<T> | null;
 
   if (!res.ok) {
@@ -1642,7 +1637,7 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
 /*  KDS Station Login Screen                                           */
 /* ------------------------------------------------------------------ */
 
-const KDS_PIN_LENGTH = 5;
+const KDS_PIN_LENGTH = 8;
 const KDS_KEYPAD_ROWS = [
   ["1", "2", "3"],
   ["4", "5", "6"],
@@ -1721,7 +1716,7 @@ function KdsStatusScreen({
   );
 }
 
-function KdsLoginScreen({ session }: { session: SessionState }) {
+function KdsLoginScreen({ onLogin }: { onLogin: () => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1734,11 +1729,11 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
       setError(null);
 
       try {
-        const res = await apiFetch("/api/v1/auth/kds/login", {
+        const res = await apiFetch("/api/v1/kds/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            employee_code: nextCode,
+            password: nextCode,
             location_id: DEFAULT_LOCATION_ID,
           }),
         });
@@ -1747,7 +1742,7 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
           throw new Error(getApiErrorMessage(body, `Request failed (${res.status})`));
         }
         setCode("");
-        await session.refresh();
+        onLogin();
       } catch (err) {
         setCode("");
         setError(err instanceof Error ? err.message : "Could not sign in");
@@ -1755,7 +1750,7 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
         setBusy(false);
       }
     },
-    [busy, session],
+    [busy, onLogin],
   );
 
   const appendDigit = useCallback(
@@ -1807,7 +1802,7 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
 
   return (
     <KdsFrame>
-      <section className="kds-gate" aria-label="KDS employee login">
+      <section className="kds-gate" aria-label="KDS station login">
         <div className="kds-modal-card">
           <p
             className="kds-login-eyebrow"
@@ -1830,10 +1825,10 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
               color: "#141008",
             }}
           >
-            Enter employee PIN
+            Enter Station Password
           </h1>
           <p className="kds-modal-copy">
-            Store network verified. Use the store&apos;s 5-digit employee code
+            Store network verified. Use the store&apos;s 8-digit KDS password
             to unlock the kitchen display.
           </p>
 
@@ -1976,18 +1971,8 @@ function KdsLoginScreen({ session }: { session: SessionState }) {
 /*  Main KDS Client                                                    */
 /* ------------------------------------------------------------------ */
 
-function canAccessKds(session: SessionState): boolean {
-  if (!session.authenticated || !session.user) return false;
-  if (session.user.role === "ADMIN") return true;
-  return (
-    session.user.role === "STAFF" &&
-    !session.isPosSession &&
-    session.stationLocationId === DEFAULT_LOCATION_ID
-  );
-}
-
 export function KdsClient() {
-  const session = useSession();
+  const [stationAuth, setStationAuth] = useState<"LOADING" | "AUTHENTICATED" | "NEEDS_PIN">("LOADING");
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1995,16 +1980,23 @@ export function KdsClient() {
   const [detailOrder, setDetailOrder] = useState<KdsOrder | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const socketRef = useRef<ReturnType<typeof createOrdersSocket> | null>(null);
-  const sessionControls = useMemo<KdsSessionControls>(
-    () => ({
-      refresh: session.refresh,
-      clear: session.clear,
-    }),
-    [session.clear, session.refresh],
-  );
+  const sessionControls = KDS_SESSION_CONTROLS;
 
-  const canUseBoard = session.loaded && canAccessKds(session);
-  const needsPin = session.loaded && !canUseBoard;
+  useEffect(() => {
+    apiFetch(`/api/v1/kds/auth/status?location_id=${encodeURIComponent(DEFAULT_LOCATION_ID)}`)
+      .then(r => r.json())
+      .then((body) =>
+        setStationAuth(
+          body?.data?.authenticated === true || body?.authenticated === true
+            ? "AUTHENTICATED"
+            : "NEEDS_PIN",
+        ),
+      )
+      .catch(() => setStationAuth("NEEDS_PIN"));
+  }, []);
+
+  const canUseBoard = stationAuth === "AUTHENTICATED";
+  const needsPin = stationAuth === "NEEDS_PIN";
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -2026,16 +2018,16 @@ export function KdsClient() {
   const logout = useCallback(async () => {
     setLogoutBusy(true);
     try {
-      await apiFetch("/api/v1/auth/logout", { method: "POST" });
+      await apiFetch("/api/v1/kds/auth/logout", { method: "POST" });
     } catch {
-      // best-effort; local clear still returns the station to the PIN screen
+      // best-effort; local clear still returns the station to the password screen
     }
     setOrders([]);
     setDetailOrder(null);
     setOptionsOpen(false);
-    session.clear();
+    setStationAuth("NEEDS_PIN");
     setLogoutBusy(false);
-  }, [session]);
+  }, []);
 
   // Initial load — only if session is good
   useEffect(() => {
@@ -2056,7 +2048,7 @@ export function KdsClient() {
   useEffect(() => {
     if (!canUseBoard) return;
 
-    const socket = createOrdersSocket();
+    const socket = createOrdersSocket({ preferKdsStation: true });
     socketRef.current = socket;
 
     const refresh = () => void loadOrdersRef.current();
@@ -2087,9 +2079,9 @@ export function KdsClient() {
     };
   }, [canUseBoard]);
 
-  /* ---- Gate: show loading / PIN / customer-deny ---- */
+  /* ---- Gate: show loading / station password ---- */
 
-  if (!session.loaded) {
+  if (stationAuth === "LOADING") {
     return (
       <KdsStatusScreen
         title="Checking session"
@@ -2099,23 +2091,11 @@ export function KdsClient() {
   }
 
   if (needsPin) {
-    // If the user has a CUSTOMER session, deny them instead of showing PIN
-    if (
-      session.authenticated &&
-      session.user?.role === "CUSTOMER"
-    ) {
-      return (
-        <KdsStatusScreen
-          title="KDS unavailable"
-          message="This station is reserved for authorized staff on the configured store network."
-        />
-      );
-    }
-    // No session or wrong session — show PIN unlock
-    return <KdsLoginScreen session={session} />;
+    // No session or wrong session - show station password unlock
+    return <KdsLoginScreen onLogin={() => setStationAuth("AUTHENTICATED")} />;
   }
 
-  /* ---- Authenticated ADMIN / STAFF — render KDS board ---- */
+  /* ---- Authenticated KDS station - render KDS board ---- */
 
   return (
     <section className="kds-page">

@@ -21,13 +21,14 @@ import { getRealtimeOrigin } from "./env";
  *     useEffects typically connect during mount and disconnect during
  *     cleanup (handles React StrictMode double-mount cleanly).
  */
-export function createOrdersSocket(): Socket {
+export function createOrdersSocket(options: { preferKdsStation?: boolean } = {}): Socket {
   const origin = getRealtimeOrigin();
   return io(origin, {
     path: "/ws",
     transports: ["websocket", "polling"],
     autoConnect: false,
     withCredentials: true,
+    auth: options.preferKdsStation ? { surface: "kds" } : undefined,
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 500,

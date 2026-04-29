@@ -13,5 +13,10 @@ declare module "express-serve-static-core" {
       isPosSession: boolean;
       sessionId: string;
     };
+    kdsStationSession?: {
+      id: string;
+      locationId: string;
+      sessionKey: string;
+    };
   }
 }

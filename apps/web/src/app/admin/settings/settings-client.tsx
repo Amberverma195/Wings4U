@@ -29,6 +29,7 @@ type Settings = {
   overdueDeliveryGraceMinutes: number;
   addItemsAutoApproveEnabled: boolean;
   trustedIpRanges: string[];
+  kdsPasswordConfigured?: boolean;
 };
 
 type FieldDef = {
@@ -238,6 +239,9 @@ export function SettingsClient() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [allowedIpDraft, setAllowedIpDraft] = useState("");
   const [editingAllowedIp, setEditingAllowedIp] = useState(false);
+  const [kdsPasswordDraft, setKdsPasswordDraft] = useState("");
+  const [editingKdsPassword, setEditingKdsPassword] = useState(false);
+  const [removingKdsPassword, setRemovingKdsPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,6 +276,10 @@ export function SettingsClient() {
       setDraft(seeded);
       setAllowedIpDraft(getAllowedIp(settings));
       setEditingAllowedIp(false);
+      setKdsPasswordDraft("");
+      setEditingKdsPassword(false);
+      setRemovingKdsPassword(false);
+      setRemovingKdsPassword(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -285,7 +293,9 @@ export function SettingsClient() {
 
   const dirty = data
     ? FIELDS.some((f) => valueToInput(data[f.key], f.kind) !== draft[f.key]) ||
-      getAllowedIp(data) !== allowedIpDraft.trim()
+      getAllowedIp(data) !== allowedIpDraft.trim() ||
+      (editingKdsPassword && kdsPasswordDraft !== "") ||
+      removingKdsPassword
     : false;
   const configuredAllowedIp = getAllowedIp(data);
   const hasAllowedIp = allowedIpDraft.trim().length > 0;
@@ -316,6 +326,15 @@ export function SettingsClient() {
       }
       if (getAllowedIp(data) !== normalizedAllowedIp) {
         payload.trustedIpRanges = normalizedAllowedIp ? [normalizedAllowedIp] : [];
+      }
+      if (editingKdsPassword && kdsPasswordDraft.length > 0 && !/^\d{8}$/.test(kdsPasswordDraft)) {
+        throw new Error("KDS password must be exactly 8 digits.");
+      }
+      if (editingKdsPassword && kdsPasswordDraft.length > 0) {
+        payload.kdsPassword = kdsPasswordDraft;
+      }
+      if (removingKdsPassword) {
+        payload.kdsPassword = "";
       }
       if (Object.keys(payload).length === 0) {
         setSaving(false);
@@ -348,6 +367,8 @@ export function SettingsClient() {
       setDraft(seeded);
       setAllowedIpDraft(getAllowedIp(settings));
       setEditingAllowedIp(false);
+      setKdsPasswordDraft("");
+      setEditingKdsPassword(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -456,6 +477,187 @@ export function SettingsClient() {
               </div>
             </section>
           ))}
+
+          <section
+            className="surface-card"
+            style={{ padding: "1rem", marginBottom: "1rem" }}
+          >
+            <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
+              KDS Password
+            </h2>
+            <p
+              className="surface-muted"
+              style={{ marginTop: 0, marginBottom: "0.9rem" }}
+            >
+              Configure an 8-digit password for the Kitchen Display System. Changes apply and revoke current KDS sessions when you save the page.
+            </p>
+
+            {!editingKdsPassword && !data.kdsPasswordConfigured ? (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!isAdmin}
+                style={{ width: "auto" }}
+                onClick={() => {
+                  setRemovingKdsPassword(false);
+                  setEditingKdsPassword(true);
+                }}
+              >
+                Set KDS password
+              </button>
+            ) : null}
+
+            {editingKdsPassword ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(260px, 420px)",
+                  gap: "0.75rem",
+                }}
+              >
+                <label style={{ display: "block", fontSize: "0.85rem" }}>
+                  <span style={{ fontWeight: 600 }}>8-Digit Password</span>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={kdsPasswordDraft}
+                    onChange={(e) => setKdsPasswordDraft(e.target.value.replace(/\D/g, ""))}
+                    disabled={!isAdmin}
+                    placeholder="e.g. 12345678"
+                    style={{
+                      display: "block",
+                      marginTop: "0.25rem",
+                      padding: "0.4rem 0.5rem",
+                      borderRadius: "0.375rem",
+                      border: "1px solid #d4d4d4",
+                      width: "100%",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </label>
+
+                <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!isAdmin}
+                    style={{ width: "auto" }}
+                    onClick={() => setEditingKdsPassword(false)}
+                  >
+                    Done
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!isAdmin}
+                    style={{ width: "auto" }}
+                    onClick={() => {
+                      setKdsPasswordDraft("");
+                      setEditingKdsPassword(false);
+                      setRemovingKdsPassword(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : removingKdsPassword ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                    Current status
+                  </div>
+                  <code
+                    style={{
+                      display: "inline-block",
+                      marginTop: "0.25rem",
+                      padding: "0.3rem 0.45rem",
+                      borderRadius: "0.35rem",
+                      background: "#fff7ed",
+                      color: "#9a3412",
+                    }}
+                  >
+                    Will be removed on save
+                  </code>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!isAdmin}
+                  style={{ width: "auto" }}
+                  onClick={() => setRemovingKdsPassword(false)}
+                >
+                  Undo
+                </button>
+              </div>
+            ) : data.kdsPasswordConfigured ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                    Current status
+                  </div>
+                  <code
+                    style={{
+                      display: "inline-block",
+                      marginTop: "0.25rem",
+                      padding: "0.3rem 0.45rem",
+                      borderRadius: "0.35rem",
+                      background: "#e8f5e9",
+                      color: "#1b5e20"
+                    }}
+                  >
+                    Configured
+                  </code>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!isAdmin}
+                    style={{ width: "auto" }}
+                    onClick={() => {
+                      setRemovingKdsPassword(false);
+                      setEditingKdsPassword(true);
+                    }}
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!isAdmin}
+                    style={{ width: "auto" }}
+                    onClick={() => {
+                      setKdsPasswordDraft("");
+                      setEditingKdsPassword(false);
+                      setRemovingKdsPassword(true);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
 
           <section
             className="surface-card"

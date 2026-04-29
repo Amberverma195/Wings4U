@@ -1,5 +1,5 @@
 /**
- * Kitchen Display (KDS) — staff-only surface.
+ * Kitchen Display (KDS) - station surface.
  * The site shell uses light text on #0a0a0a; KDS reuses “surface-*” classes meant for
  * cream pages, so we scope a warm light panel + dark body text here.
  */

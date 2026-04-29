@@ -239,8 +239,8 @@ export class DeliveryPinService {
   async verify(params: {
     orderId: string;
     locationId: string;
-    actorUserId: string;
-    driverUserId: string;
+    actorUserId: string | null;
+    driverUserId: string | null;
     pin: string;
   }): Promise<
     | { ok: true }
@@ -327,8 +327,8 @@ export class DeliveryPinService {
   async bypass(params: {
     orderId: string;
     locationId: string;
-    actorUserId: string;
-    driverUserId: string;
+    actorUserId: string | null;
+    driverUserId: string | null;
     reason: string;
   }) {
     if (!params.reason || params.reason.trim().length === 0) {
@@ -356,7 +356,7 @@ export class DeliveryPinService {
   async regenerate(params: {
     orderId: string;
     locationId: string;
-    actorUserId: string;
+    actorUserId: string | null;
     expiryMinutes: number;
   }) {
     const order = await this.prisma.order.findUnique({
@@ -394,7 +394,7 @@ export class DeliveryPinService {
   }
 
   private async logPinEvent(
-    params: { orderId: string; locationId: string; actorUserId: string; driverUserId: string },
+    params: { orderId: string; locationId: string; actorUserId: string | null; driverUserId: string | null },
     eventType: string,
     note?: string,
   ) {
