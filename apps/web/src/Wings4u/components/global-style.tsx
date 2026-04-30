@@ -4650,15 +4650,15 @@ export function WingKingsGlobalStyle() {
       .cart-back-to-menu-link {
         display: inline-flex;
         align-items: center;
-        margin-top: 14px;
-        padding: 0.5rem 1.15rem 0.5rem 0.95rem;
+        margin-top: 0;
+        padding: 0.75rem 1.6rem 0.75rem 1.4rem;
         border-radius: 999px;
         font-family: 'DM Sans', sans-serif;
         font-weight: 700;
-        font-size: clamp(14px, 1.4vw, 16px);
+        font-size: 1.05rem;
         letter-spacing: 0.03em;
-        color: #0c0300;
-        background: rgba(255, 255, 255, 0.5);
+        color: #EA580C;
+        background: #FFFFFF;
         border: 2px solid rgba(194, 73, 20, 0.38);
         box-shadow: 0 2px 10px rgba(12, 3, 0, 0.08);
         text-decoration: none;
@@ -4670,10 +4670,20 @@ export function WingKingsGlobalStyle() {
       }
 
       .cart-back-to-menu-link:hover {
-        background: rgba(255, 255, 255, 0.78);
-        border-color: rgba(245, 166, 35, 0.55);
+        background: #ffedd5;
+        border-color: #fed7aa;
         transform: translateY(-1px);
-        box-shadow: 0 4px 16px rgba(12, 3, 0, 0.1);
+        box-shadow: 0 4px 6px -1px rgba(234, 88, 12, 0.1);
+      }
+
+      .cart-back-arrow {
+        display: inline-block;
+        margin-right: 6px;
+        transition: transform 0.2s ease;
+      }
+
+      .cart-back-to-menu-link:hover .cart-back-arrow {
+        transform: translateX(-3px);
       }
 
       .cart-back-to-menu-link:focus-visible {

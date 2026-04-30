@@ -15,6 +15,7 @@ import {
   parseRemovedIngredients,
   type RemovedIngredientInput,
 } from "../shared/pricing";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 import {
   assertMenuItemOrderable,
   assertModifierOptionAllowedForItem,
@@ -152,10 +153,13 @@ function serializePosOrder(order: Record<string, unknown>) {
 
 @Injectable()
 export class PosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeGateway,
+  ) {}
 
   async createPosOrder(params: CreatePosOrderParams) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Resolve customer user
       let customerUserId: string;
       let customerName: string;
@@ -563,8 +567,9 @@ export class PosService {
       const now = new Date();
       const fulfillmentType = params.fulfillmentType as "PICKUP" | "DELIVERY";
 
-      // POS orders are auto-accepted
-      const initialStatus: OrderStatus = "ACCEPTED";
+      // POS orders are auto-accepted and move straight to PREPARING so they
+      // appear in the "Preparing" column on the KDS board immediately.
+      const initialStatus: OrderStatus = "PREPARING";
 
       const pricingSnapshot = {
         item_subtotal_cents: itemSubtotalCents,
@@ -643,6 +648,13 @@ export class PosService {
                 fromStatus: "PLACED",
                 toStatus: "ACCEPTED",
                 eventType: "POS_AUTO_ACCEPT",
+                actorUserId: params.actorUserId ?? null,
+              },
+              {
+                locationId: params.locationId,
+                fromStatus: "ACCEPTED",
+                toStatus: "PREPARING",
+                eventType: "POS_AUTO_PREPARING",
                 actorUserId: params.actorUserId ?? null,
               },
             ],
@@ -847,6 +859,33 @@ export class PosService {
         drawer_action: drawerAction,
       };
     });
+
+    // 9. Emit realtime events so KDS boards refresh immediately
+    this.realtime.emitOrderEvent(
+      params.locationId,
+      result.id,
+      "order.accepted",
+      {
+        order_id: result.id,
+        order_number: Number(result.order_number),
+        from_status: "PLACED",
+        to_status: "ACCEPTED",
+      },
+    );
+
+    this.realtime.emitOrderEvent(
+      params.locationId,
+      result.id,
+      "order.status_changed",
+      {
+        order_id: result.id,
+        order_number: Number(result.order_number),
+        from_status: "ACCEPTED",
+        to_status: "PREPARING",
+      },
+    );
+
+    return result;
   }
 
   async listPosOrders(locationId: string) {

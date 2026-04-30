@@ -2,11 +2,32 @@
 
 import { useSession } from "@/lib/session";
 import { AccountSkeleton } from "@/components/account-skeleton";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 import styles from "../support.module.css";
 
 export default function HelpPage() {
   const session = useSession();
+  const [assistModalOpen, setAssistModalOpen] = useState(false);
+  const [assistView, setAssistView] = useState<"main" | "orders">("main");
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  useEffect(() => {
+    if (assistModalOpen && assistView === "orders" && session.loaded) {
+      setLoadingOrders(true);
+      apiFetch("/api/v1/orders/customer?limit=1")
+        .then((res) => setOrders(res.orders || []))
+        .catch(() => {})
+        .finally(() => setLoadingOrders(false));
+    }
+  }, [assistModalOpen, assistView, session.loaded]);
+
+  const closeAssist = () => {
+    setAssistModalOpen(false);
+    setAssistView("main");
+  };
 
   if (!session.loaded) {
     return <AccountSkeleton />;
@@ -70,6 +91,28 @@ export default function HelpPage() {
                 <p className={styles.subtitle}>
                   Browse our frequently asked questions or reach out to our team for assistance.
                 </p>
+
+                <div className={styles.helpHeaderCards}>
+                  <div className={styles.contactCard}>
+                    <h3>Need more help?</h3>
+                    <p>Our support team is available daily from 11 AM to 10 PM.</p>
+                    <button 
+                      type="button" 
+                      className={styles.supportBtn}
+                      onClick={() => setAssistModalOpen(true)}
+                    >
+                      HELP
+                    </button>
+                  </div>
+
+                  <div className={styles.contactCardSecondary}>
+                    <h4>Store Contact</h4>
+                    <p>For immediate order issues, please call the store directly.</p>
+                    <a href="tel:5551234567" style={{ color: '#f97316', textDecoration: 'none', fontWeight: 800 }}>
+                    (555) 123-4567
+                  </a>
+                  </div>
+                </div>
               </div>
             </header>
 
@@ -85,26 +128,72 @@ export default function HelpPage() {
                   ))}
                 </div>
               </section>
-
-              <div className={styles.contactSidebar}>
-                <div className={styles.contactCard}>
-                  <h3>Need more help?</h3>
-                  <p>Our support team is available daily from 11 AM to 10 PM.</p>
-                  <Link href="/account/support" className={styles.supportBtn}>
-                    Open a Support Ticket
-                  </Link>
-                </div>
-
-                <div className={styles.contactCardSecondary}>
-                  <h4>Store Contact</h4>
-                  <p>For immediate order issues, please call the store directly.</p>
-                  <strong style={{ color: '#f97316' }}>(555) 123-4567</strong>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       </main>
+
+      {assistModalOpen && (
+        <div className={styles.assistModalOverlay} onMouseDown={closeAssist}>
+          <div className={styles.assistModalCard} onMouseDown={(e) => e.stopPropagation()}>
+            <header className={styles.assistModalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {assistView !== "main" && (
+                  <button className={styles.assistBackBtn} onClick={() => setAssistView("main")}>←</button>
+                )}
+                <h2>{assistView === "main" ? "How can we Assist You?" : "Select an Order"}</h2>
+              </div>
+              <button className={styles.assistModalClose} onClick={closeAssist}>✕</button>
+            </header>
+
+            <div className={styles.assistContent}>
+              {assistView === "main" ? (
+                <div className={styles.assistOptions}>
+                  <button 
+                    type="button" 
+                    className={styles.assistOption} 
+                    onClick={() => setAssistView("orders")}
+                    style={{ width: '100%', textAlign: 'left', border: '1px solid #f3f4f6' }}
+                  >
+                    <span className={styles.assistOptionLabel}>Orders</span>
+                  </button>
+                  {/* More options can go here */}
+                </div>
+              ) : (
+                <div className={styles.assistOrdersView}>
+                  {loadingOrders ? (
+                    <div className={styles.assistLoading}>Loading orders...</div>
+                  ) : orders.length === 0 ? (
+                    <div className={styles.assistEmpty}>No recent orders</div>
+                  ) : (
+                    <div className={styles.assistOrderList}>
+                      {orders.map((order) => (
+                        <Link 
+                          key={order.id} 
+                          href={`/account/support?new=true&topic=orders&orderId=${order.id}`}
+                          className={styles.assistOrderCard}
+                        >
+                          <div className={styles.assistOrderTop}>
+                            <span className={styles.assistOrderNumber}>#{order.id.slice(-6).toUpperCase()}</span>
+                            <span className={styles.assistOrderDate}>
+                              {new Date(order.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className={styles.assistOrderMeta}>
+                            <span>{order.items?.length || 0} items</span>
+                            <span className={styles.assistOrderTotal}>${(order.total_price / 100).toFixed(2)}</span>
+                          </div>
+                          <div className={styles.assistOrderAction}>Get help with this order →</div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

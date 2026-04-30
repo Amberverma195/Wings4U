@@ -108,7 +108,7 @@ type StatusColumn = {
 
 const COLUMNS: StatusColumn[] = [
   { key: "placed", label: "New", statuses: ["PLACED"], color: "#e74c3c" },
-  { key: "preparing", label: "Preparing", statuses: ["PREPARING"], color: "#f39c12" },
+  { key: "preparing", label: "Preparing", statuses: ["ACCEPTED", "PREPARING"], color: "#f39c12" },
   { key: "ready", label: "Ready", statuses: ["READY"], color: "#2ecc71" },
   { key: "out", label: "Out for Delivery", statuses: ["OUT_FOR_DELIVERY"], color: "#3498db" },
 ];
@@ -904,10 +904,20 @@ function KdsOrderCard({
     );
   }
 
-  if (order.status === "PREPARING") {
+  if (order.status === "ACCEPTED" || order.status === "PREPARING") {
     actions.push(
       <button key="ready" className="btn-primary" onClick={setReady} disabled={actionBusy}>
         Mark Ready
+      </button>,
+    );
+    actions.push(
+      <button
+        key="cancel"
+        className="btn-danger"
+        onClick={() => setCancelModal("request-cancellation")}
+        disabled={actionBusy}
+      >
+        Request Cancellation
       </button>,
     );
   }

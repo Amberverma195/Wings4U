@@ -500,13 +500,16 @@ export function CheckoutClient() {
 
   return (
     <section className="surface-card checkout-page-panel">
+      <div className="checkout-page-header-bubble">
+        <h1 className="checkout-page-title">CHECKOUT</h1>
+      </div>
+
       <div className="checkout-page-back-row">
         <Link href="/cart" className="cart-back-to-menu-link">
-          ← Back to cart
+          <span className="cart-back-arrow">←</span> Back to cart
         </Link>
       </div>
-      <h1 className="checkout-page-title">CHECKOUT</h1>
-      <p className="checkout-page-lede">Review Your Order Below</p>
+
 
       <div className="checkout-schedule-summary">
         <div className="checkout-schedule-summary-row checkout-schedule-summary-row--primary">
@@ -597,7 +600,7 @@ export function CheckoutClient() {
       </div>
 
       {quote && (
-        <div className="quote-summary" style={{ marginTop: 0 }}>
+        <div className="quote-summary">
           <div className="quote-row">
             <span>Subtotal</span>
             <span>{cents(quote.item_subtotal_cents)}</span>
@@ -638,7 +641,7 @@ export function CheckoutClient() {
             </div>
           )}
           <div className="quote-row">
-            <span>Tax (13%)</span>
+            <span>Tax(13%)</span>
             <span>{cents(quote.tax_cents)}</span>
           </div>
           <div className="quote-row quote-total">

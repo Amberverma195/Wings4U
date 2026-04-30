@@ -6,7 +6,10 @@ import { PosAuthService } from "./pos-auth.service";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { PosStationGuard } from "../../common/guards/pos-station.guard";
 
+import { RealtimeModule } from "../realtime/realtime.module";
+
 @Module({
+  imports: [RealtimeModule],
   controllers: [PosController, PosAuthController],
   providers: [
     PosService,

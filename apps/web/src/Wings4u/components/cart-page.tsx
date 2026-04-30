@@ -425,7 +425,7 @@ export function CartPage() {
                 href={`/order?fulfillment_type=${cart.fulfillmentType}`}
                 className="cart-back-to-menu-link"
               >
-                ← Back to the menu
+                <span className="cart-back-arrow">←</span> Back to the menu
               </Link>
             </header>
             <div
