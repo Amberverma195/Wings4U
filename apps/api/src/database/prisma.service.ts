@@ -26,6 +26,10 @@ function createPrismaClientOptions(): ConstructorParameters<typeof PrismaClient>
     adapter: new PrismaPg({
       connectionString: getConnectionString(),
     }),
+    transactionOptions: {
+      maxWait: 10_000,
+      timeout: 20_000,
+    },
   };
 }
 

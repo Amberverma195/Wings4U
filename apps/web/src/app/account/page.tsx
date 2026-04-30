@@ -102,6 +102,8 @@ export default function AccountPage() {
     router.replace("/");
   }, [session, router]);
 
+
+
   if (!session.loaded || isLoggingOut) {
     return <AccountSkeleton isLoggingOut={isLoggingOut} />;
   }
@@ -129,10 +131,10 @@ export default function AccountPage() {
                   navLinkClassName={styles.navLink}
                   navLinkArrowClassName={styles.navLinkArrow}
                 />
-                <Link href="/account" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
                   <span>My Account</span>
                   <span className={styles.navLinkArrow}>→</span>
-                </Link>
+                </div>
                 <Link href="/account/orders" className={styles.navLink}>
                   <span>Order History</span>
                   <span className={styles.navLinkArrow}>→</span>

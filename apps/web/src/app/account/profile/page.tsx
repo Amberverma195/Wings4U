@@ -115,6 +115,7 @@ export default function ProfilePage() {
   const [hubTab, setHubTab] = useState<"rewards" | "coupons">("rewards");
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
+
   useEffect(() => {
     if (session.loaded && !session.authenticated) {
       router.push("/auth/login");
@@ -205,6 +206,8 @@ export default function ProfilePage() {
     router.replace("/");
   }, [session, router]);
 
+
+
   const initials = useMemo(() => getInitials(session.user?.displayName), [session.user?.displayName]);
 
   // Progress ring math: r=52, stroke=10 inside 120-vbox keeps a comfortable padding for the cap.
@@ -262,10 +265,10 @@ export default function ProfilePage() {
 
               
               <nav className={styles.navLinks}>
-                <Link href="/account/profile" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
                   <span>My Profile</span>
                   <span className={styles.navLinkArrow}>→</span>
-                </Link>
+                </div>
                 <AccountSurfaceLinks
                   user={session.user}
                   navLinkClassName={styles.navLink}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import Link from "next/link";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -45,6 +46,11 @@ export function OrdersListClient() {
     session.clear();
     router.replace("/");
   }, [session, router]);
+
+
+
+
+
 
   const fetchOrders = useCallback(
     async (nextCursor?: string) => {
@@ -175,10 +181,10 @@ export function OrdersListClient() {
                   <span>My Account</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <Link href="/account/orders" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
                   <span>Order History</span>
                   <span className={styles.navLinkArrow}>→</span>
-                </Link>
+                </div>
                 <Link href="/account/addresses" className={styles.navLink}>
                   <span>My Addresses</span>
                   <span className={styles.navLinkArrow}>→</span>

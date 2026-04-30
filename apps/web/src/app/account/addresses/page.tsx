@@ -65,6 +65,11 @@ function AddressesContent() {
     router.replace("/");
   }, [session, router]);
 
+
+
+
+
+
   useEffect(() => {
     if (session.loaded) {
       setDeliveryAddressAuthState(session.authenticated);
@@ -122,10 +127,10 @@ function AddressesContent() {
                   <span>Order History</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <Link href="/account/addresses" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
                   <span>My Addresses</span>
                   <span className={styles.navLinkArrow}>→</span>
-                </Link>
+                </div>
                 <Link href="/account/cards" className={styles.navLink}>
                   <span>My Cards</span>
                   <span className={styles.navLinkArrow}>→</span>

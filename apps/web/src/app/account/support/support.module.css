@@ -85,7 +85,7 @@
   transition: all 0.2s ease;
 }
 
-.navLink:hover {
+.navLink:not(.navLinkActive):hover {
   background: #fff7ed;
   color: #f97316;
 }
@@ -93,6 +93,12 @@
 .navLinkActive {
   background: #fff7ed;
   color: #f97316;
+  cursor: default;
+}
+
+.navLinkBack {
+  justify-content: flex-start !important;
+  gap: 0.5rem;
 }
 
 .navLinkArrow {
@@ -101,7 +107,18 @@
   transition: all 0.2s ease;
 }
 
-.navLink:hover .navLinkArrow {
+.navLink:not(.navLinkActive):hover .navLinkArrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.navLinkArrowLeft {
+  opacity: 0;
+  transform: translateX(5px);
+  transition: all 0.2s ease;
+}
+
+.navLink:not(.navLinkActive):hover .navLinkArrowLeft {
   opacity: 1;
   transform: translateX(0);
 }
@@ -733,5 +750,122 @@
 
   .messageBubbleAdmin {
     margin-right: 0;
+  }
+}
+
+.helpGrid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 3rem;
+  margin-top: 1rem;
+}
+
+.faqSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.faqList {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.faqItem {
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 2rem;
+}
+
+.faqItem:last-child {
+  border-bottom: none;
+}
+
+.faqQuestion {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 0.75rem;
+}
+
+.faqAnswer {
+  color: #6b7280;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.contactSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.contactCard {
+  background: #fff7ed;
+  padding: 1.75rem;
+  border-radius: 20px;
+  border: 1px solid #ffedd5;
+}
+
+.contactCard h3 {
+  font-weight: 800;
+  color: #f97316;
+  margin-bottom: 0.75rem;
+}
+
+.contactCard p {
+  font-size: 0.9rem;
+  color: #c2410c;
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+
+.supportBtn {
+  display: inline-block;
+  background: #f97316;
+  color: white;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 12px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.supportBtn:hover {
+  background: #ea580c;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.2);
+}
+
+.contactCardSecondary {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 20px;
+  border: 1px solid #f3f4f6;
+}
+
+.contactCardSecondary h4 {
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+.contactCardSecondary p {
+  font-size: 0.85rem;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .helpGrid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+  
+  .contactSidebar {
+    order: -1;
   }
 }

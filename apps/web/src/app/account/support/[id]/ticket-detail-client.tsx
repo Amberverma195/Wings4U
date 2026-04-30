@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+
 import Link from "next/link";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -137,24 +137,15 @@ function formatPhoneNumber(phone?: string | null) {
 
 export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   const session = useSession();
-  const router = useRouter();
+
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = useCallback(async () => {
-    setIsLoggingOut(true);
-    try {
-      await apiFetch("/api/v1/auth/logout", { method: "POST" });
-    } catch {
-      // best-effort
-    }
-    session.clear();
-    router.replace("/");
-  }, [session, router]);
+
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -215,8 +206,8 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     }
   };
 
-  if (!session.loaded || isLoggingOut) {
-    return <AccountSkeleton isLoggingOut={isLoggingOut} />;
+  if (!session.loaded) {
+    return <AccountSkeleton />;
   }
 
   if (loading && !ticket) {
@@ -235,6 +226,10 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                   <Link href="/account/support" className={styles.navLink}>
                     <span>Tickets</span>
                     <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
+                    <span className={styles.navLinkArrowLeft}>←</span>
+                    <span>Back to Account</span>
                   </Link>
                 </nav>
               </div>
@@ -289,14 +284,14 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                   <span>Tickets</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <Link href="/account" className={styles.navLink}>
-                  <span>← Back to Account</span>
+                <Link href="/account/support/help" className={styles.navLink}>
+                  <span>Help</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <button onClick={handleLogout} className={styles.navLink} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <span style={{ color: '#ef4444' }}>Logout</span>
-                  <span className={styles.navLinkArrow} style={{ color: '#ef4444' }}>→</span>
-                </button>
+                <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
+                  <span className={styles.navLinkArrowLeft}>←</span>
+                  <span>Back to Account</span>
+                </Link>
               </nav>
             </div>
           </aside>

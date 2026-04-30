@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+
 import Link from "next/link";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -78,23 +78,18 @@ function formatPhoneNumber(phone?: string | null) {
 
 export function SupportClient() {
   const session = useSession();
-  const router = useRouter();
+
+
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = useCallback(async () => {
-    setIsLoggingOut(true);
-    try {
-      await apiFetch("/api/v1/auth/logout", { method: "POST" });
-    } catch {
-      // best-effort
-    }
-    session.clear();
-    router.replace("/");
-  }, [session, router]);
+
+
+
+
+
 
   const fetchTickets = useCallback(
     async (nextCursor?: string) => {
@@ -137,8 +132,8 @@ export function SupportClient() {
 
   const isInitialLoading = loading && tickets.length === 0;
 
-  if (!session.loaded || isLoggingOut) {
-    return <AccountSkeleton isLoggingOut={isLoggingOut} />;
+  if (!session.loaded) {
+    return <AccountSkeleton />;
   }
 
   return (
@@ -155,18 +150,20 @@ export function SupportClient() {
               </div>
 
               <nav className={styles.supportNavLinks}>
-                <Link href="/account/support" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
                   <span>Tickets</span>
                   <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <Link href="/account" className={styles.navLink}>
-                  <span>← Back to Account</span>
+                </div>
+                <Link href="/account/support/help" className={styles.navLink}>
+                  <span>Help</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <button onClick={handleLogout} className={styles.navLink} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <span style={{ color: '#ef4444' }}>Logout</span>
-                  <span className={styles.navLinkArrow} style={{ color: '#ef4444' }}>→</span>
-                </button>
+                <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
+                  <span className={styles.navLinkArrowLeft}>←</span>
+                  <span>Back to Account</span>
+                </Link>
+
+
               </nav>
             </div>
           </aside>

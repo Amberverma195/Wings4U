@@ -132,7 +132,7 @@
   transition: all 0.2s ease;
 }
 
-.navLink:hover {
+.navLink:not(.navLinkActive):hover {
   background: #fff7ed;
   color: #f97316;
 }
@@ -140,6 +140,7 @@
 .navLinkActive {
   background: #fff7ed;
   color: #f97316;
+  cursor: default;
 }
 
 .navLinkArrow {
@@ -148,7 +149,7 @@
   transition: all 0.2s ease;
 }
 
-.navLink:hover .navLinkArrow {
+.navLink:not(.navLinkActive):hover .navLinkArrow {
   opacity: 1;
   transform: translateX(0);
 }

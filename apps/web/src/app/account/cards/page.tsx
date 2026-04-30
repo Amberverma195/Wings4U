@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 import { useSession } from "@/lib/session";
 import { apiFetch } from "@/lib/api";
 import { AccountSkeleton } from "@/components/account-skeleton";
@@ -71,6 +72,8 @@ function CardsContent() {
     router.replace("/");
   }, [session, router]);
 
+
+
   if (!session.loaded || isLoggingOut) {
     return <AccountSkeleton isLoggingOut={isLoggingOut} />;
   }
@@ -125,10 +128,10 @@ function CardsContent() {
                   <span>My Addresses</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <Link href="/account/cards" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
                   <span>My Cards</span>
                   <span className={styles.navLinkArrow}>→</span>
-                </Link>
+                </div>
                 <Link href="/account/support" className={styles.navLink}>
                   <span>Support</span>
                   <span className={styles.navLinkArrow}>→</span>
