@@ -430,6 +430,7 @@ export class CatalogService {
         busy_mode: settings?.busyModeEnabled ?? false,
         estimated_prep_minutes: prepMinutes,
         delivery_fee_cents: settings?.deliveryFeeCents ?? 0,
+        tax_rate_bps: settings?.taxRateBps ?? 1300,
         free_delivery_threshold_cents: settings?.freeDeliveryThresholdCents ?? null,
         minimum_delivery_subtotal_cents: settings?.minimumDeliverySubtotalCents ?? 0,
         pickup_min_minutes: settings?.defaultPickupMinMinutes ?? 30,

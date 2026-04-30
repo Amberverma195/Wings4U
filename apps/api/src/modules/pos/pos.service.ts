@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import type { OrderStatus, PaymentTenderMethod } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 
 interface PosOrderItem {
@@ -366,10 +367,7 @@ export class PosService {
       }
 
       // 6. Generate order number
-      const orderCount = await tx.order.count({
-        where: { locationId: params.locationId },
-      });
-      const orderNumber = BigInt(orderCount + 1001);
+      const orderNumber = await allocateNextOrderNumber(tx, params.locationId);
 
       const now = new Date();
       const fulfillmentType = params.fulfillmentType as "PICKUP" | "DELIVERY";

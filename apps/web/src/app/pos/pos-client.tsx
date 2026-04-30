@@ -50,7 +50,7 @@ type MenuCategory = {
 
 type MenuResponse = {
   categories: MenuCategory[];
-  location: { name: string };
+  location: { name: string; tax_rate_bps?: number };
 };
 
 type CartLine = {
@@ -606,7 +606,8 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     }, 0);
   }, [cart]);
 
-  const estimatedTaxCents = Math.round(subtotalCents * 0.13);
+  const taxRateBps = menu?.location.tax_rate_bps ?? 1300;
+  const estimatedTaxCents = Math.round((subtotalCents * taxRateBps) / 10_000);
   const estimatedTotalCents = subtotalCents + estimatedTaxCents;
 
   const changeDueCents = useMemo(() => {

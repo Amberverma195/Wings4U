@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
+import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -842,8 +843,7 @@ export class CheckoutService {
         policy,
       );
 
-      const orderCount = await tx.order.count({ where: { locationId: params.locationId } });
-      const orderNumber = BigInt(orderCount + 1001);
+      const orderNumber = await allocateNextOrderNumber(tx, params.locationId);
 
       const prepMinutes =
         settings.busyModeEnabled && settings.busyModePrepTimeMinutes
