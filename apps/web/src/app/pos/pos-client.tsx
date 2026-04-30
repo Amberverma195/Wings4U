@@ -3,75 +3,55 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ComboBuilder } from "@/components/combo-builder";
+import { ItemCustomizationOverlay } from "@/components/item-customization-overlay";
+import { ItemModal } from "@/components/item-modal";
+import { LegacySizePickerModal } from "@/components/legacy-size-picker-modal";
+import { LunchSpecialBuilder } from "@/components/lunch-special-builder";
+import { WingsBuilder } from "@/components/wings-builder";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import { CartContext, type CartContextValue } from "@/lib/cart";
+import {
+  getCartItemUnitPrice,
+  getRemovedIngredientsForApi,
+} from "@/lib/cart-item-utils";
+import { buildLineSummary } from "@/lib/cart-line-summary";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
+import {
+  canQuickAddMenuItem,
+  isComboBuilderItem,
+  isLunchSpecialBuilderItem,
+  isWingBuilderItem,
+  shouldUseCustomizationOverlay,
+} from "@/lib/menu-item-customization";
+import { DEFAULT_SCHEDULING_CONFIG } from "@/lib/order-scheduling";
+import {
+  buildDisplayMenuCategories,
+  type DisplayMenuItem,
+  type LegacySizePickerGroup,
+} from "@/Wings4u/menu-display";
+import type {
+  CartItem,
+  FulfillmentType,
+  MenuCategory,
+  MenuItem,
+} from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-type ModifierOption = {
-  id: string;
-  name: string;
-  price_delta_cents: number;
-  is_default: boolean;
-};
-
-type ModifierGroup = {
-  id: string;
-  name: string;
-  display_label: string | null;
-  selection_mode: "SINGLE" | "MULTI" | string;
-  min_select: number;
-  max_select: number;
-  is_required: boolean;
-  sort_order: number;
-  options: ModifierOption[];
-};
-
-type MenuItem = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  base_price_cents: number;
-  is_available: boolean;
-  stock_status: string;
-  builder_type: string | null;
-  modifier_groups: ModifierGroup[];
-};
-
-type MenuCategory = {
-  id: string;
-  name: string;
-  slug: string;
-  items: MenuItem[];
-};
-
 type MenuResponse = {
   categories: MenuCategory[];
-  location: { name: string; tax_rate_bps?: number };
-};
-
-type CartLine = {
-  /** Local-only id for React reconciliation. */
-  localId: string;
-  menuItemId: string;
-  name: string;
-  unitBaseCents: number;
-  quantity: number;
-  modifiers: {
-    modifierOptionId: string;
-    groupName: string;
-    optionName: string;
-    priceDeltaCents: number;
-  }[];
-  specialInstructions?: string;
+  location: {
+    name: string;
+    timezone?: string;
+    tax_rate_bps?: number;
+  };
 };
 
 type PaymentMethod = "EXACT_CASH" | "CASH" | "CARD_TERMINAL";
-type FulfillmentType = "PICKUP" | "DELIVERY";
 type OrderSource = "POS" | "PHONE";
 
 type PosOrder = {
@@ -130,6 +110,20 @@ async function posJson<T>(
     throw new Error("Request succeeded without a response body");
   }
   return body.data;
+}
+
+function makePosCartKey(menuItemId: string): string {
+  return `${menuItemId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function sameQuickAddLine(line: CartItem, item: MenuItem): boolean {
+  return (
+    line.menu_item_id === item.id &&
+    line.modifier_selections.length === 0 &&
+    !line.builder_payload &&
+    !line.removed_ingredients?.length &&
+    !line.special_instructions
+  );
 }
 
 /* ================================================================== */
@@ -411,7 +405,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
 
   const [diningOption, setDiningOption] = useState<
     "EAT_IN" | "TO_GO" | "DELIVERY"
@@ -426,8 +420,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [orderNotes, setOrderNotes] = useState("");
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
 
-  const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
-  const [editingLine, setEditingLine] = useState<CartLine | null>(null);
+  const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+  const [editingLine, setEditingLine] = useState<CartItem | null>(null);
+  const [legacyPickerGroup, setLegacyPickerGroup] =
+    useState<LegacySizePickerGroup | null>(null);
 
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [showEmployeeDiscountModal, setShowEmployeeDiscountModal] = useState(false);
@@ -478,6 +474,24 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
   useEffect(() => {
     void loadMenu();
+  }, [loadMenu]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void loadMenu();
+    }, 30_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadMenu();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [loadMenu]);
 
   /* ---------- Staff fetch ---------- */
@@ -549,89 +563,99 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   /* ---------- Cart management ---------- */
 
   const addSimpleItem = useCallback((item: MenuItem) => {
-    if (item.builder_type) {
-      alert(
-        "Wings & wing-combo builders are not available in POS mode yet. Use the customer app to build these items.",
-      );
-      return;
-    }
-    if (item.modifier_groups.length > 0) {
+    if (!canQuickAddMenuItem(item)) {
+      setPickerItem(item);
       return;
     }
     setCurrentOrderId(
       (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
     );
     setCart((prev) => {
-      const existing = prev.find(
-        (l) => l.menuItemId === item.id && l.modifiers.length === 0,
-      );
+      const existing = prev.find((line) => sameQuickAddLine(line, item));
       if (existing) {
-        return prev.map((l) =>
-          l === existing ? { ...l, quantity: l.quantity + 1 } : l,
+        return prev.map((line) =>
+          line.key === existing.key
+            ? { ...line, quantity: line.quantity + 1 }
+            : line,
         );
       }
       return [
         ...prev,
         {
-          localId: `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          menuItemId: item.id,
+          key: makePosCartKey(item.id),
+          menu_item_id: item.id,
+          menu_item_slug: item.slug,
           name: item.name,
-          unitBaseCents: item.base_price_cents,
+          image_url: item.image_url,
+          base_price_cents: item.base_price_cents,
           quantity: 1,
-          modifiers: [],
+          modifier_selections: [],
+          special_instructions: "",
         },
       ];
     });
   }, []);
 
-  const openModifierPicker = useCallback((item: MenuItem, line?: CartLine) => {
-    if (item.builder_type) {
-      alert("Wings/combos use the customer app builder.");
-      return;
-    }
-    setEditingLine(line ?? null);
-    setModifierItem(item);
+  const addCartItem = useCallback((incoming: Omit<CartItem, "key">) => {
+    setCurrentOrderId(
+      (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+    );
+    setCart((prev) => [
+      ...prev,
+      {
+        ...incoming,
+        key: makePosCartKey(incoming.menu_item_id),
+        removed_ingredients: incoming.removed_ingredients ?? [],
+      },
+    ]);
   }, []);
 
-  const addConfiguredItem = useCallback(
-    (line: CartLine) => {
+  const replaceCartItem = useCallback(
+    (existingKey: string, incoming: Omit<CartItem, "key">) => {
       setCurrentOrderId(
         (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
       );
-      setCart((prev) => {
-        if (editingLine) {
-          return prev.map((l) =>
-            l.localId === editingLine.localId
-              ? {
-                ...line,
-                localId: editingLine.localId,
-                quantity: editingLine.quantity,
+      setCart((prev) =>
+        prev.map((line) =>
+          line.key === existingKey
+            ? {
+                ...incoming,
+                key: existingKey,
+                removed_ingredients: incoming.removed_ingredients ?? [],
               }
-              : l,
-          );
-        }
-        return [...prev, line];
-      });
-      setModifierItem(null);
-      setEditingLine(null);
+            : line,
+        ),
+      );
     },
-    [editingLine],
+    [],
   );
 
-  const adjustQuantity = useCallback((localId: string, delta: number) => {
+  const setCartItemQuantity = useCallback((key: string, quantity: number) => {
     setCart((prev) =>
       prev
-        .map((l) =>
-          l.localId === localId
-            ? { ...l, quantity: Math.max(0, l.quantity + delta) }
-            : l,
+        .map((line) =>
+          line.key === key
+            ? { ...line, quantity: Math.max(0, quantity) }
+            : line,
         )
-        .filter((l) => l.quantity > 0),
+        .filter((line) => line.quantity > 0),
     );
   }, []);
 
-  const removeLine = useCallback((localId: string) => {
-    setCart((prev) => prev.filter((l) => l.localId !== localId));
+  const adjustQuantity = useCallback((key: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((line) =>
+          line.key === key
+            ? { ...line, quantity: Math.max(0, line.quantity + delta) }
+            : line,
+        )
+        .filter((line) => line.quantity > 0),
+    );
+  }, []);
+
+  const removeLine = useCallback((key: string) => {
+    setCart((prev) => prev.filter((line) => line.key !== key));
   }, []);
 
   const updatePhone = useCallback((val: string) => {
@@ -648,24 +672,39 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   }, []);
 
   const copyOrderToCart = useCallback((order: PosOrder) => {
-    const lines: CartLine[] = (order.items ?? []).map((item: any) => {
-      const modTotal = (item.modifiers ?? []).reduce(
-        (s: number, m: any) => s + m.price_delta_cents,
-        0,
-      );
+    const lines: CartItem[] = (order.items ?? []).map((item: any) => {
+      const modifiers = (item.modifiers ?? [])
+        .filter((m: any) => m.modifier_kind !== "REMOVE_INGREDIENT")
+        .map((m: any) => ({
+          modifier_option_id: m.modifier_option_id,
+          group_name: m.modifier_group_name_snapshot,
+          option_name: m.modifier_name_snapshot,
+          price_delta_cents: m.price_delta_cents,
+        }))
+        .filter((m: any) => typeof m.modifier_option_id === "string");
+      const builderPayload = item.builder_payload_json as
+        | CartItem["builder_payload"]
+        | undefined;
+      const removedIngredients =
+        builderPayload?.builder_type === "ITEM_CUSTOMIZATION"
+          ? builderPayload.removed_ingredients
+          : [];
+
       return {
-        localId: `${item.menu_item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        menuItemId: item.menu_item_id,
+        key: makePosCartKey(item.menu_item_id),
+        menu_item_id: item.menu_item_id,
+        menu_item_slug: null,
         name: item.product_name_snapshot,
-        unitBaseCents: item.unit_price_cents - modTotal,
+        image_url: null,
+        base_price_cents: item.unit_price_cents - modifiers.reduce(
+          (sum: number, m: any) => sum + m.price_delta_cents,
+          0,
+        ),
         quantity: item.quantity,
-        modifiers: (item.modifiers ?? []).map((m: any) => ({
-          modifierOptionId: m.modifier_option_id,
-          groupName: m.modifier_group_name_snapshot,
-          optionName: m.modifier_name_snapshot,
-          priceDeltaCents: m.price_delta_cents,
-        })),
-        specialInstructions: item.special_instructions,
+        modifier_selections: modifiers,
+        removed_ingredients: removedIngredients,
+        special_instructions: item.special_instructions ?? "",
+        builder_payload: builderPayload,
       };
     });
 
@@ -699,11 +738,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
   const subtotalCents = useMemo(() => {
     return cart.reduce((acc, line) => {
-      const modDelta = line.modifiers.reduce(
-        (sum, m) => sum + m.priceDeltaCents,
-        0,
-      );
-      return acc + (line.unitBaseCents + modDelta) * line.quantity;
+      return acc + getCartItemUnitPrice(line) * line.quantity;
     }, 0);
   }, [cart]);
 
@@ -731,14 +766,23 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
   /* ---------- Place order ---------- */
 
-  const placeOrder = useCallback(async () => {
+  const placeOrder = useCallback(async (overrides?: {
+    paymentMethod?: "CASH" | "CARD_TERMINAL";
+    amountTenderedCents?: number;
+  }) => {
     if (cart.length === 0) return;
     setPlacing(true);
     setPlaceError(null);
     setPlaceSuccess(null);
 
-    let finalPaymentMethod = overrides?.paymentMethod ?? (paymentMethod as string);
+    const finalPaymentMethod = overrides?.paymentMethod ?? paymentMethod;
     let finalAmountTenderedCents = overrides?.amountTenderedCents;
+
+    if (!finalPaymentMethod) {
+      setPlacing(false);
+      setPlaceError("Choose a payment method first.");
+      return;
+    }
 
     if (!overrides && paymentMethod === "CASH" && amountTendered) {
       finalAmountTenderedCents = Math.round(
@@ -752,13 +796,17 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         order_source: orderSource,
         payment_method: finalPaymentMethod,
         items: cart.map((l) => ({
-          menu_item_id: l.menuItemId,
+          menu_item_id: l.menu_item_id,
           quantity: l.quantity,
-          modifier_selections: l.modifiers.map((m) => ({
-            modifier_option_id: m.modifierOptionId,
+          modifier_selections: l.modifier_selections.map((m) => ({
+            modifier_option_id: m.modifier_option_id,
           })),
-          ...(l.specialInstructions
-            ? { special_instructions: l.specialInstructions }
+          removed_ingredients: getRemovedIngredientsForApi(l),
+          ...(l.builder_payload
+            ? { builder_payload: l.builder_payload }
+            : {}),
+          ...(l.special_instructions
+            ? { special_instructions: l.special_instructions }
             : {}),
         })),
       };
@@ -769,6 +817,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
       }
       if (customerName.trim()) payload.customer_name = customerName.trim();
       if (customerPhone.trim()) payload.customer_phone = customerPhone.trim();
+      if (customerFound) payload.customer_id = customerFound.id;
       if (
         finalAmountTenderedCents != null &&
         Number.isFinite(finalAmountTenderedCents)
@@ -792,8 +841,8 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         data.change_due_cents != null
           ? `Order #${data.order_number} placed • ${cents(data.final_payable_cents)} • Change ${cents(data.change_due_cents)}`
           : `Order #${data.order_number} placed • ${cents(data.final_payable_cents)}`;
-      setPlaceSuccess(msg);
       startNewOrder();
+      setPlaceSuccess(msg);
       void loadOrders();
     } catch (err) {
       setPlaceError(
@@ -804,9 +853,12 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     }
   }, [
     amountTendered,
+    appliedDiscount,
     cart,
     customerName,
     customerPhone,
+    customerFound,
+    discountCents,
     fulfillmentType,
     loadOrders,
     orderNotes,
@@ -829,16 +881,75 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
   /* ---------- Render ---------- */
 
-  const activeCategory = useMemo(() => {
-    if (!menu) return null;
+  const posCartContextValue = useMemo<CartContextValue>(
+    () => ({
+      items: cart,
+      hasCommittedOrderContext: true,
+      fulfillmentType,
+      locationId: DEFAULT_LOCATION_ID,
+      locationTimezone: menu?.location.timezone ?? "America/Toronto",
+      scheduledFor: null,
+      schedulingConfig: DEFAULT_SCHEDULING_CONFIG,
+      cartAddNonce: cart.length,
+      driverTipPercent: "none",
+      cartExpiresAt: null,
+      isGuestCart: false,
+      isCartHydrated: true,
+      isCartHydrating: false,
+      addItem: addCartItem,
+      removeItem: removeLine,
+      updateQuantity: setCartItemQuantity,
+      replaceItem: replaceCartItem,
+      commitOrderContext: ({ fulfillmentType: nextFulfillmentType }) =>
+        setFulfillmentType(nextFulfillmentType),
+      setLocationTimezone: () => undefined,
+      setFulfillmentType,
+      setScheduledFor: () => undefined,
+      setSchedulingConfig: () => undefined,
+      resetOrderContext: () => undefined,
+      setDriverTipPercent: () => undefined,
+      clear: clearCart,
+      itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+    }),
+    [
+      addCartItem,
+      cart,
+      clearCart,
+      fulfillmentType,
+      menu?.location.timezone,
+      removeLine,
+      replaceCartItem,
+      setCartItemQuantity,
+    ],
+  );
+
+  const displayCategories = useMemo(
+    () => (menu ? buildDisplayMenuCategories(menu.categories) : []),
+    [menu],
+  );
+
+  const activeDisplayCategory = useMemo(() => {
+    if (!displayCategories.length) return null;
     return (
-      menu.categories.find((c) => c.id === activeCategoryId) ??
-      menu.categories[0] ??
+      displayCategories.find((c) => c.id === activeCategoryId) ??
+      displayCategories[0] ??
       null
     );
-  }, [activeCategoryId, menu]);
+  }, [activeCategoryId, displayCategories]);
+
+  const handleSelectDisplayItem = useCallback(
+    (displayItem: DisplayMenuItem) => {
+      if (displayItem.kind === "legacy-group") {
+        setLegacyPickerGroup(displayItem.group);
+        return;
+      }
+      addSimpleItem(displayItem.item);
+    },
+    [addSimpleItem],
+  );
 
   return (
+    <CartContext.Provider value={posCartContextValue}>
     <div className="pos-root" data-testid="pos-shell">
       <header className="pos-topbar">
         <div className="pos-brand">
@@ -1068,31 +1179,28 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
           ) : (
             <div className="pos-cart-list">
               {cart.map((line) => {
-                const unitCents =
-                  line.unitBaseCents +
-                  line.modifiers.reduce((s, m) => s + m.priceDeltaCents, 0);
+                const unitCents = getCartItemUnitPrice(line);
+                const summaryLines = buildLineSummary(line);
+                const lineMenuItem = menu?.categories
+                  .flatMap((c) => c.items)
+                  .find((item) => item.id === line.menu_item_id);
                 return (
-                  <div key={line.localId} className="pos-cart-line">
+                  <div key={line.key} className="pos-cart-line">
                     <div className="pos-cart-line-body">
                       <div className="pos-cart-line-name">
                         <span>{line.name}</span>
                         <span>{cents(unitCents * line.quantity)}</span>
                       </div>
-                      {line.modifiers.length > 0 ? (
+                      {summaryLines.length > 0 ? (
                         <div className="pos-cart-line-mods">
-                          {line.modifiers
-                            .map(
-                              (m) =>
-                                `${m.optionName}${m.priceDeltaCents ? ` (+${cents(m.priceDeltaCents)})` : ""}`,
-                            )
-                            .join(", ")}
+                          {summaryLines.join(", ")}
                         </div>
                       ) : null}
                       <div className="pos-qty">
                         <button
                           type="button"
                           aria-label="Decrease"
-                          onClick={() => adjustQuantity(line.localId, -1)}
+                          onClick={() => adjustQuantity(line.key, -1)}
                         >
                           −
                         </button>
@@ -1100,31 +1208,29 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                         <button
                           type="button"
                           aria-label="Increase"
-                          onClick={() => adjustQuantity(line.localId, +1)}
+                          onClick={() => adjustQuantity(line.key, +1)}
                         >
                           +
                         </button>
 
-                        <button
-                          type="button"
-                          className="pos-cart-edit-btn"
-                          onClick={() => {
-                            const item = menu?.categories
-                              .flatMap((c) => c.items)
-                              .find((i) => i.id === line.menuItemId);
-                            if (item) {
-                              openModifierPicker(item, line);
-                            }
-                          }}
-                        >
-                          Edit
-                        </button>
+                        {lineMenuItem && !canQuickAddMenuItem(lineMenuItem) ? (
+                          <button
+                            type="button"
+                            className="pos-cart-edit-btn"
+                            onClick={() => {
+                              setEditingLine(line);
+                              setPickerItem(lineMenuItem);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
 
                         <button
                           type="button"
                           aria-label="Remove"
                           style={{ marginLeft: "auto", color: "#b91c1c" }}
-                          onClick={() => removeLine(line.localId)}
+                          onClick={() => removeLine(line.key)}
                         >
                           ×
                         </button>
@@ -1242,15 +1348,15 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         <section className="pos-left">
           <div className="pos-menu-content">
             <div className="pos-tabs" role="tablist">
-              {(menu?.categories ?? []).map((cat) => (
+              {displayCategories.map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
                   role="tab"
-                  aria-selected={cat.id === activeCategory?.id}
+                  aria-selected={cat.id === activeDisplayCategory?.id}
                   className={
                     "pos-tab" +
-                    (cat.id === activeCategory?.id ? " pos-tab--active" : "")
+                    (cat.id === activeDisplayCategory?.id ? " pos-tab--active" : "")
                   }
                   onClick={() => setActiveCategoryId(cat.id)}
                 >
@@ -1263,39 +1369,48 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
               <p className="pos-empty">{menuError}</p>
             ) : !menu ? (
               <p className="pos-empty">Loading menu…</p>
-            ) : !activeCategory || activeCategory.items.length === 0 ? (
+            ) : !activeDisplayCategory || activeDisplayCategory.items.length === 0 ? (
               <p className="pos-empty">No items in this category.</p>
             ) : (
               <div className="pos-items-grid">
-                {activeCategory.items.map((item) => {
-                  const isBuilder = Boolean(item.builder_type);
-                  const hasMods = item.modifier_groups.length > 0;
-                  const outOfStock =
-                    !item.is_available ||
-                    item.stock_status === "SOLD_OUT" ||
-                    item.stock_status === "UNAVAILABLE";
+                {activeDisplayCategory.items.map((displayItem) => {
+                  const item =
+                    displayItem.kind === "item"
+                      ? displayItem.item
+                      : displayItem.group.options[0]?.item;
+                  if (!item) return null;
+                  const isBuilder =
+                    displayItem.kind === "item" &&
+                    (isWingBuilderItem(item) ||
+                      isComboBuilderItem(item) ||
+                      isLunchSpecialBuilderItem(item));
+                  const hasMods =
+                    displayItem.kind === "item" &&
+                    shouldUseCustomizationOverlay(item);
+                  const outOfStock = displayItem.stockStatus === "UNAVAILABLE";
                   return (
                     <button
-                      key={item.id}
+                      key={displayItem.key}
                       type="button"
                       className="pos-item-card"
-                      disabled={outOfStock || isBuilder}
-                      onClick={() =>
-                        hasMods ? openModifierPicker(item) : addSimpleItem(item)
-                      }
+                      disabled={outOfStock}
+                      onClick={() => handleSelectDisplayItem(displayItem)}
                     >
-                      <div className="pos-item-name">{item.name}</div>
+                      <div className="pos-item-name">{displayItem.displayName}</div>
                       <div className="pos-item-price">
-                        {cents(item.base_price_cents)}
+                        {displayItem.showStartingAt ? "From " : ""}
+                        {cents(displayItem.displayPriceCents)}
                       </div>
                       <div className="pos-item-meta">
-                        {isBuilder
-                          ? "Use customer app"
-                          : outOfStock
+                        {outOfStock
                             ? "Unavailable"
-                            : hasMods
-                              ? `${item.modifier_groups.length} mod group${item.modifier_groups.length === 1 ? "" : "s"}`
-                              : "Tap to add"}
+                            : isBuilder
+                              ? "Build item"
+                              : hasMods
+                                ? "Customize"
+                                : displayItem.kind === "legacy-group"
+                                  ? "Choose size"
+                                  : "Tap to add"}
                       </div>
                     </button>
                   );
@@ -1637,15 +1752,68 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         />
       )}
 
-      {modifierItem && (
-        <ModifierPicker
-          item={modifierItem}
-          existingLine={editingLine}
-          onClose={() => {
-            setModifierItem(null);
-            setEditingLine(null);
-          }}
-          onAdd={addConfiguredItem}
+      {pickerItem &&
+        (isWingBuilderItem(pickerItem) ? (
+          <WingsBuilder
+            item={pickerItem}
+            saladMenuItems={
+              menu?.categories.find((category) => category.slug === "salads")
+                ?.items ?? []
+            }
+            editingLine={editingLine ?? undefined}
+            onClose={() => {
+              setPickerItem(null);
+              setEditingLine(null);
+            }}
+          />
+        ) : isComboBuilderItem(pickerItem) ? (
+          <ComboBuilder
+            item={pickerItem}
+            editingLine={editingLine ?? undefined}
+            onClose={() => {
+              setPickerItem(null);
+              setEditingLine(null);
+            }}
+          />
+        ) : isLunchSpecialBuilderItem(pickerItem) ? (
+          <LunchSpecialBuilder
+            item={pickerItem}
+            childItems={
+              menu?.categories.find(
+                (category) =>
+                  category.slug ===
+                  (pickerItem.slug === "lunch-burger" ? "burgers" : "wraps"),
+              )?.items ?? []
+            }
+            editingLine={editingLine ?? undefined}
+            onClose={() => {
+              setPickerItem(null);
+              setEditingLine(null);
+            }}
+          />
+        ) : shouldUseCustomizationOverlay(pickerItem) ? (
+          <ItemCustomizationOverlay
+            item={pickerItem}
+            editingLine={editingLine ?? undefined}
+            onClose={() => {
+              setPickerItem(null);
+              setEditingLine(null);
+            }}
+          />
+        ) : (
+          <ItemModal
+            item={pickerItem}
+            onClose={() => {
+              setPickerItem(null);
+              setEditingLine(null);
+            }}
+          />
+        ))}
+
+      {legacyPickerGroup && (
+        <LegacySizePickerModal
+          group={legacyPickerGroup}
+          onClose={() => setLegacyPickerGroup(null)}
         />
       )}
 
@@ -1679,6 +1847,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         />
       )}
     </div>
+    </CartContext.Provider>
   );
 }
 
@@ -1694,8 +1863,8 @@ function ModifierPicker({
 }: {
   item: MenuItem;
   onClose: () => void;
-  onAdd: (line: CartLine) => void;
-  existingLine?: CartLine | null;
+  onAdd: (line: any) => void;
+  existingLine?: any;
 }) {
   const initialSelection = useMemo<Record<string, string[]>>(() => {
     if (existingLine) {
@@ -1725,7 +1894,7 @@ function ModifierPicker({
     useState<Record<string, string[]>>(initialSelection);
   const [notes, setNotes] = useState(existingLine?.specialInstructions ?? "");
 
-  const toggle = useCallback((group: ModifierGroup, optionId: string) => {
+  const toggle = useCallback((group: any, optionId: string) => {
     setSelection((prev) => {
       const current = prev[group.id] ?? [];
       if (group.selection_mode === "SINGLE") {
@@ -1776,7 +1945,7 @@ function ModifierPicker({
 
   const submit = useCallback(() => {
     if (!ok) return;
-    const modifiers: CartLine["modifiers"] = [];
+    const modifiers: any[] = [];
     for (const g of item.modifier_groups) {
       for (const optId of selection[g.id] ?? []) {
         const opt = g.options.find((o) => o.id === optId);

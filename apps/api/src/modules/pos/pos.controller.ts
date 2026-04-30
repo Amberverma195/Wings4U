@@ -13,6 +13,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -35,6 +36,14 @@ class PosModifierSelectionDto {
   modifier_option_id!: string;
 }
 
+class PosRemovedIngredientDto {
+  @IsUUID()
+  id!: string;
+
+  @IsString()
+  name!: string;
+}
+
 class PosOrderItemDto {
   @IsUUID()
   menu_item_id!: string;
@@ -48,6 +57,16 @@ class PosOrderItemDto {
   @ValidateNested({ each: true })
   @Type(() => PosModifierSelectionDto)
   modifier_selections?: PosModifierSelectionDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PosRemovedIngredientDto)
+  removed_ingredients?: PosRemovedIngredientDto[];
+
+  @IsOptional()
+  @IsObject()
+  builder_payload?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()
@@ -75,6 +94,10 @@ class CreatePosOrderDto {
   @IsString()
   customer_name?: string;
 
+  @IsOptional()
+  @IsUUID()
+  customer_id?: string;
+
   @IsIn(["CASH", "CARD_TERMINAL", "STORE_CREDIT"])
   payment_method!: string;
 
@@ -82,6 +105,17 @@ class CreatePosOrderDto {
   @IsInt()
   @Min(0)
   amount_tendered?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100_00)
+  discount_amount_cents?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  discount_reason?: string;
 
   @IsOptional()
   @IsString()
@@ -138,12 +172,17 @@ export class PosController {
         modifierSelections: i.modifier_selections?.map((s) => ({
           modifierOptionId: s.modifier_option_id,
         })),
+        removedIngredients: i.removed_ingredients,
+        builderPayload: i.builder_payload ?? undefined,
         specialInstructions: i.special_instructions,
       })),
       customerPhone: body.customer_phone,
       customerName: body.customer_name,
+      customerId: body.customer_id,
       paymentMethod: body.payment_method,
       amountTendered: body.amount_tendered,
+      discountAmountCents: body.discount_amount_cents,
+      discountReason: body.discount_reason,
       specialInstructions: body.special_instructions,
     });
   }

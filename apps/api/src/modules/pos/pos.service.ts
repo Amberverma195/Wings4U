@@ -9,11 +9,26 @@ import type { OrderStatus, PaymentTenderMethod } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
+import {
+  getBuilderPriceDelta,
+  getSaladCustomization,
+  parseRemovedIngredients,
+  type RemovedIngredientInput,
+} from "../shared/pricing";
+import {
+  assertMenuItemOrderable,
+  assertModifierOptionAllowedForItem,
+  assertWingFlavoursOrderable,
+  collectWingFlavourRefs,
+  loadWingFlavourMapForRefs,
+} from "../shared/order-validation";
 
 interface PosOrderItem {
   menuItemId: string;
   quantity: number;
   modifierSelections?: Array<{ modifierOptionId: string }>;
+  removedIngredients?: RemovedIngredientInput[];
+  builderPayload?: Record<string, unknown>;
   specialInstructions?: string;
 }
 
@@ -31,8 +46,11 @@ interface CreatePosOrderParams {
   items: PosOrderItem[];
   customerPhone?: string;
   customerName?: string;
+  customerId?: string;
   paymentMethod: string;
   amountTendered?: number;
+  discountAmountCents?: number;
+  discountReason?: string;
   specialInstructions?: string;
 }
 
@@ -80,9 +98,11 @@ function serializePosOrder(order: Record<string, unknown>) {
     unit_price_cents: item.unitPriceCents,
     line_total_cents: item.lineTotalCents,
     special_instructions: item.specialInstructions,
+    builder_payload_json: item.builderPayloadJson,
     modifiers: ((item.modifiers as Record<string, unknown>[]) ?? []).map(
       (mod: Record<string, unknown>) => ({
         id: mod.id,
+        modifier_option_id: mod.modifierOptionId,
         modifier_group_name_snapshot: mod.modifierGroupNameSnapshot,
         modifier_name_snapshot: mod.modifierNameSnapshot,
         modifier_kind: mod.modifierKind,
@@ -141,7 +161,20 @@ export class PosService {
       let customerName: string;
       let customerPhone: string;
 
-      if (params.customerPhone) {
+      if (params.customerId) {
+        const user = await tx.user.findUnique({
+          where: { id: params.customerId },
+        });
+        if (!user) {
+          throw new NotFoundException("Provided customer ID not found");
+        }
+        if (user.role !== "CUSTOMER") {
+          throw new BadRequestException("Provided customer ID is not a customer");
+        }
+        customerUserId = user.id;
+        customerName = params.customerName ?? user.displayName;
+        customerPhone = params.customerPhone ?? "";
+      } else if (params.customerPhone) {
         const phoneE164 = params.customerPhone;
         const existingIdentity = await tx.userIdentity.findUnique({
           where: { phoneE164 },
@@ -232,15 +265,43 @@ export class PosService {
       }
 
       // 3. Validate items against menu
-      const menuItemIds = params.items.map((i) => i.menuItemId);
+      const saladMenuItemIds = params.items
+        .map(
+          (item) =>
+            getSaladCustomization(item.builderPayload)?.saladMenuItemId ?? null,
+        )
+        .filter((menuItemId): menuItemId is string => Boolean(menuItemId));
+      const menuItemIds = Array.from(
+        new Set([...params.items.map((i) => i.menuItemId), ...saladMenuItemIds]),
+      );
       const menuItems = await tx.menuItem.findMany({
         where: { id: { in: menuItemIds }, locationId: params.locationId },
-        include: { category: true },
+        include: {
+          category: true,
+          modifierGroups: { select: { modifierGroupId: true } },
+          removableIngredients: {
+            orderBy: { sortOrder: "asc" },
+            select: { id: true, name: true, sortOrder: true },
+          },
+          schedules: {
+            select: {
+              dayOfWeek: true,
+              timeFrom: true,
+              timeTo: true,
+            },
+          },
+        },
       });
       const menuItemMap = new Map(menuItems.map((mi) => [mi.id, mi]));
 
       const allOptionIds = params.items.flatMap(
-        (i) => i.modifierSelections?.map((s) => s.modifierOptionId) ?? [],
+        (i) => {
+          const standardOpts =
+            i.modifierSelections?.map((s) => s.modifierOptionId) ?? [];
+          const saladOpts =
+            getSaladCustomization(i.builderPayload)?.modifierOptionIds ?? [];
+          return [...standardOpts, ...saladOpts];
+        },
       );
       const modifierOptions =
         allOptionIds.length > 0
@@ -250,6 +311,13 @@ export class PosService {
             })
           : [];
       const optionMap = new Map(modifierOptions.map((o) => [o.id, o]));
+      const wingFlavourMap = await loadWingFlavourMapForRefs({
+        db: tx,
+        locationId: params.locationId,
+        refs: params.items.flatMap((item) =>
+          collectWingFlavourRefs(item.builderPayload),
+        ),
+      });
 
       // 4. Build line items + pricing
       let itemSubtotalCents = 0;
@@ -262,9 +330,10 @@ export class PosService {
         unitPriceCents: number;
         lineTotalCents: number;
         specialInstructions: string | null;
+        builderPayload: Record<string, unknown> | null;
         modifiers: {
-          modifierGroupId: string;
-          modifierOptionId: string;
+          modifierGroupId: string | null;
+          modifierOptionId: string | null;
           modifierGroupNameSnapshot: string;
           modifierNameSnapshot: string;
           modifierKind: string;
@@ -281,15 +350,80 @@ export class PosService {
             field: "items",
           });
         }
-        if (!menuItem.isAvailable) {
-          throw new UnprocessableEntityException({
-            message: `Menu item "${menuItem.name}" is currently unavailable`,
-            field: "items",
+        assertMenuItemOrderable({
+          menuItem,
+          fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
+          specialInstructions: cartItem.specialInstructions,
+        });
+        assertWingFlavoursOrderable({
+          builderPayload: cartItem.builderPayload,
+          wingFlavourMap,
+        });
+
+        const saladCustomization = getSaladCustomization(cartItem.builderPayload);
+        const removedIngredients = cartItem.removedIngredients?.length
+          ? cartItem.removedIngredients
+          : parseRemovedIngredients(cartItem.builderPayload?.removed_ingredients);
+        const allowedIngredientMap = new Map(
+          menuItem.removableIngredients.map((ingredient) => [
+            ingredient.id,
+            ingredient,
+          ]),
+        );
+        const validatedRemovedIngredients = removedIngredients.map(
+          (ingredient) => {
+            const match = allowedIngredientMap.get(ingredient.id);
+            if (!match) {
+              throw new UnprocessableEntityException({
+                message: `Ingredient removal "${ingredient.name}" is not valid for ${menuItem.name}`,
+                field: "items",
+              });
+            }
+            return { id: match.id, name: match.name };
+          },
+        );
+
+        const validatedSaladRemovedIngredients: RemovedIngredientInput[] = [];
+        if (saladCustomization) {
+          const saladMenuItem = menuItemMap.get(saladCustomization.saladMenuItemId);
+          if (!saladMenuItem) {
+            throw new UnprocessableEntityException({
+              message: `Salad menu item ${saladCustomization.saladMenuItemId} not found at this location`,
+              field: "items",
+            });
+          }
+          assertMenuItemOrderable({
+            menuItem: saladMenuItem,
+            fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
+            label: "Salad",
           });
+
+          const allowedSaladIngredientMap = new Map(
+            saladMenuItem.removableIngredients.map((ingredient) => [
+              ingredient.id,
+              ingredient,
+            ]),
+          );
+          for (const ingredient of saladCustomization.removedIngredients) {
+            const match = allowedSaladIngredientMap.get(ingredient.id);
+            if (!match) {
+              throw new UnprocessableEntityException({
+                message: `Ingredient removal "${ingredient.name}" is not valid for ${saladMenuItem.name}`,
+                field: "items",
+              });
+            }
+            validatedSaladRemovedIngredients.push({
+              id: match.id,
+              name: match.name,
+            });
+          }
         }
 
-        let modifierTotalCents = 0;
+        let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload);
         const modifiers: (typeof lineItems)[number]["modifiers"] = [];
+        const saladModifierOptionIds = new Set(
+          saladCustomization?.modifierOptionIds ?? [],
+        );
 
         if (cartItem.modifierSelections) {
           for (let si = 0; si < cartItem.modifierSelections.length; si++) {
@@ -300,6 +434,9 @@ export class PosService {
                 message: `Modifier option ${sel.modifierOptionId} not found or inactive`,
                 field: "items",
               });
+            }
+            if (!saladModifierOptionIds.has(sel.modifierOptionId)) {
+              assertModifierOptionAllowedForItem({ option: opt, menuItem });
             }
             modifierTotalCents += opt.priceDeltaCents;
             modifiers.push({
@@ -314,6 +451,48 @@ export class PosService {
           }
         }
 
+        validatedRemovedIngredients.forEach((ingredient, index) => {
+          modifiers.push({
+            modifierGroupId: null,
+            modifierOptionId: null,
+            modifierGroupNameSnapshot: "Ingredient removal",
+            modifierNameSnapshot: ingredient.name,
+            modifierKind: "REMOVE_INGREDIENT",
+            priceDeltaCents: 0,
+            sortOrder: modifiers.length + index,
+          });
+        });
+        validatedSaladRemovedIngredients.forEach((ingredient, index) => {
+          modifiers.push({
+            modifierGroupId: null,
+            modifierOptionId: null,
+            modifierGroupNameSnapshot: "Ingredient removal",
+            modifierNameSnapshot: ingredient.name,
+            modifierKind: "REMOVE_INGREDIENT",
+            priceDeltaCents: 0,
+            sortOrder: modifiers.length + index,
+          });
+        });
+
+        const builderPayload = cartItem.builderPayload;
+        const builderType =
+          typeof builderPayload?.builder_type === "string"
+            ? String(builderPayload.builder_type)
+            : null;
+        const normalizedBuilderPayload: Record<string, unknown> | null =
+          builderType === "WINGS" ||
+          builderType === "WING_COMBO" ||
+          builderType === "LUNCH_SPECIAL"
+            ? (builderPayload ?? null)
+            : builderType === "ITEM_CUSTOMIZATION" ||
+                validatedRemovedIngredients.length > 0
+              ? {
+                  builder_type: "ITEM_CUSTOMIZATION",
+                  removed_ingredients: validatedRemovedIngredients,
+                  ...(builderPayload ?? {}),
+                }
+              : (builderPayload ?? null);
+
         const unitPriceCents = menuItem.basePriceCents + modifierTotalCents;
         const lineTotalCents = unitPriceCents * cartItem.quantity;
         itemSubtotalCents += lineTotalCents;
@@ -322,22 +501,34 @@ export class PosService {
           menuItemId: menuItem.id,
           productNameSnapshot: menuItem.name,
           categoryNameSnapshot: menuItem.category.name,
-          builderType: menuItem.builderType,
+          builderType:
+            typeof normalizedBuilderPayload?.builder_type === "string"
+              ? String(normalizedBuilderPayload.builder_type)
+              : menuItem.builderType,
           quantity: cartItem.quantity,
           unitPriceCents,
           lineTotalCents,
           specialInstructions: cartItem.specialInstructions ?? null,
+          builderPayload: normalizedBuilderPayload,
           modifiers,
         });
       }
 
       // 5. Compute tax
-      const taxableSubtotalCents = itemSubtotalCents;
+      const orderDiscountCents = Math.min(
+        itemSubtotalCents,
+        Math.max(0, params.discountAmountCents ?? 0),
+      );
+      const discountedSubtotalCents = Math.max(
+        0,
+        itemSubtotalCents - orderDiscountCents,
+      );
+      const taxableSubtotalCents = discountedSubtotalCents;
       const taxCents = Math.max(
         0,
         Math.round((taxableSubtotalCents * settings.taxRateBps) / 10_000),
       );
-      const finalPayableCents = itemSubtotalCents + taxCents;
+      const finalPayableCents = discountedSubtotalCents + taxCents;
 
       // 5b. STORE_CREDIT: validate and debit wallet atomically
       let walletAppliedCents = 0;
@@ -378,8 +569,8 @@ export class PosService {
       const pricingSnapshot = {
         item_subtotal_cents: itemSubtotalCents,
         item_discount_total_cents: 0,
-        order_discount_total_cents: 0,
-        discounted_subtotal_cents: itemSubtotalCents,
+        order_discount_total_cents: orderDiscountCents,
+        discounted_subtotal_cents: discountedSubtotalCents,
         taxable_subtotal_cents: taxableSubtotalCents,
         tax_cents: taxCents,
         tax_rate_bps: settings.taxRateBps,
@@ -405,7 +596,8 @@ export class PosService {
           customerPhoneSnapshot: customerPhone,
           pricingSnapshotJson: pricingSnapshot,
           itemSubtotalCents,
-          discountedSubtotalCents: itemSubtotalCents,
+          orderDiscountTotalCents: orderDiscountCents,
+          discountedSubtotalCents,
           taxableSubtotalCents,
           taxCents,
           taxRateBps: settings.taxRateBps,
@@ -423,6 +615,8 @@ export class PosService {
               unitPriceCents: line.unitPriceCents,
               lineTotalCents: line.lineTotalCents,
               specialInstructions: line.specialInstructions,
+              builderPayloadJson:
+                line.builderPayload as Parameters<typeof tx.orderItem.create>[0]["data"]["builderPayloadJson"],
               modifiers: {
                 create: line.modifiers.map((mod) => ({
                   modifierGroupId: mod.modifierGroupId,
@@ -462,6 +656,117 @@ export class PosService {
           payments: { orderBy: { createdAt: "desc" } },
         },
       });
+
+      for (let index = 0; index < lineItems.length; index++) {
+        const line = lineItems[index];
+        const builderPayload = line.builderPayload;
+        if (
+          !builderPayload ||
+          (line.builderType !== "WINGS" && line.builderType !== "WING_COMBO")
+        ) {
+          continue;
+        }
+
+        const orderItem = createdOrder.orderItems[index];
+        if (!orderItem) continue;
+
+        const wingType = String(builderPayload.wing_type ?? "BONE_IN");
+        const preparation = String(builderPayload.preparation ?? "BREADED");
+        const weightLb = Number(builderPayload.weight_lb ?? 1);
+        const flavourSlots = (builderPayload.flavour_slots ?? []) as Array<{
+          slot_no: number;
+          wing_flavour_id: string;
+          flavour_name: string;
+          placement: string;
+        }>;
+        const saucingMethod = builderPayload.saucing_method
+          ? String(builderPayload.saucing_method)
+          : null;
+        const extraFlavour = builderPayload.extra_flavour as
+          | { wing_flavour_id: string; flavour_name: string; placement: string }
+          | undefined;
+
+        await tx.orderItemWingConfig.create({
+          data: {
+            orderItemId: orderItem.id,
+            wingType: wingType as "BONE_IN" | "BONELESS",
+            preparation: preparation as "BREADED" | "NON_BREADED",
+            weightLb,
+            requiredFlavourCount: flavourSlots.length,
+            saucingMethod,
+            extraFlavourAdded: !!extraFlavour,
+          },
+        });
+
+        for (const slot of flavourSlots) {
+          const flavour = wingFlavourMap.get(slot.wing_flavour_id);
+          await tx.orderItemFlavour.create({
+            data: {
+              orderItemId: orderItem.id,
+              slotNo: slot.slot_no,
+              flavourRole: "STANDARD",
+              wingFlavourId: slot.wing_flavour_id,
+              flavourNameSnapshot: flavour ? flavour.name : slot.flavour_name,
+              heatLevelSnapshot: flavour ? flavour.heatLevel : "",
+              placement: (slot.placement ?? "ON_WINGS") as
+                | "ON_WINGS"
+                | "ON_SIDE"
+                | "MIXED",
+              sortOrder: slot.slot_no,
+            },
+          });
+        }
+
+        if (extraFlavour) {
+          const flavour = wingFlavourMap.get(extraFlavour.wing_flavour_id);
+          await tx.orderItemFlavour.create({
+            data: {
+              orderItemId: orderItem.id,
+              slotNo: 99,
+              flavourRole: "EXTRA",
+              wingFlavourId: extraFlavour.wing_flavour_id,
+              flavourNameSnapshot: flavour
+                ? flavour.name
+                : extraFlavour.flavour_name,
+              heatLevelSnapshot: flavour ? flavour.heatLevel : "",
+              placement: (extraFlavour.placement ?? "ON_SIDE") as
+                | "ON_WINGS"
+                | "ON_SIDE"
+                | "MIXED",
+              sortOrder: 99,
+            },
+          });
+        }
+      }
+
+      if (orderDiscountCents > 0) {
+        await tx.orderDiscount.create({
+          data: {
+            orderId: createdOrder.id,
+            discountType: "MANUAL",
+            discountAmountCents: orderDiscountCents,
+            description: params.discountReason ?? "POS checkout discount",
+            appliedByUserId: params.actorUserId ?? null,
+            reasonText: params.discountReason ?? "POS checkout discount",
+          },
+        });
+
+        await tx.adminAuditLog.create({
+          data: {
+            locationId: params.locationId,
+            actorUserId: params.actorUserId ?? null,
+            actorRoleSnapshot: params.actorUserId ? "STAFF" : "POS_STATION",
+            actionKey: "POS_ORDER_DISCOUNT",
+            entityType: "ORDER",
+            entityId: createdOrder.id,
+            reasonText: params.discountReason ?? "POS checkout discount",
+            payloadJson: {
+              discount_amount_cents: orderDiscountCents,
+              final_payable_cents: finalPayableCents,
+            },
+          },
+        });
+      }
 
       // 8. Create payment record
       const isCash = params.paymentMethod === "CASH";
