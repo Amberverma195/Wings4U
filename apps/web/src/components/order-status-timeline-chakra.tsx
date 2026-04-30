@@ -62,7 +62,7 @@ export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = f
         {events.map((event) => {
           const Icon = timelineIconForStatus(event.to_status);
           const title = getStatusLabel(event.to_status);
-          const when = readable ? statusEventWhenLine(event.created_at) : new Date(event.created_at).toLocaleString();
+          const when = statusEventWhenLine(event.created_at);
           return (
             <Timeline.Item key={event.id}>
               <Timeline.Connector>
@@ -72,12 +72,19 @@ export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = f
                 </Timeline.Indicator>
               </Timeline.Connector>
               <Timeline.Content>
-                <Timeline.Title textStyle={readable ? "md" : "sm"} fontWeight={readable ? "semibold" : undefined}>
+                <Timeline.Title
+                  textStyle={readable ? "md" : "sm"}
+                  fontWeight={readable ? "semibold" : "700"}
+                  fontFamily="'DM Sans', sans-serif"
+                >
                   {title}
                 </Timeline.Title>
                 <Timeline.Description
-                  color={readable ? "fg.muted" : undefined}
-                  textStyle={readable ? "sm" : undefined}
+                  color="fg"
+                  textStyle="sm"
+                  fontWeight="semibold"
+                  fontFamily="'DM Sans', sans-serif"
+                  mt="0.1rem"
                 >
                   {when}
                 </Timeline.Description>

@@ -112,6 +112,7 @@ export default function ProfilePage() {
   const [rewardsError, setRewardsError] = useState("");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [stampsModalOpen, setStampsModalOpen] = useState(false);
+  const [hubTab, setHubTab] = useState<"rewards" | "coupons">("rewards");
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -311,113 +312,202 @@ export default function ProfilePage() {
                  reveal the full stamp history modal. */}
             <section
               className={`${styles.section} ${styles.wingsRewardsSection}`}
-              role="button"
-              tabIndex={0}
-              aria-label="Open wings rewards details"
-              onClick={() => setStampsModalOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setStampsModalOpen(true);
-                }
-              }}
             >
               <header className={styles.sectionHeader}>
-                <span className={styles.eyebrow}>Rewards hub</span>
+                <div style={{ display: "flex", gap: "1.25rem", alignItems: "center", marginBottom: "0.75rem" }}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setHubTab("rewards"); }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: hubTab === "rewards" ? "#f97316" : "#9ca3af",
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.15em",
+                    }}
+                  >
+                    Rewards hub
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setHubTab("coupons"); }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: hubTab === "coupons" ? "#f97316" : "#9ca3af",
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.15em",
+                    }}
+                  >
+                    Coupons
+                  </button>
+                </div>
+                
                 <h2 className={styles.sectionTitle}>
-                  {rewardReady
-                    ? "Your free wings are ready"
-                    : "Free wings stamp card"}
+                  {hubTab === "rewards" 
+                    ? (rewardReady ? "Your free wings are ready" : "Free wings stamp card")
+                    : "Available Coupons"
+                  }
                 </h2>
                 <p className={styles.sectionDesc}>
-                  {rewardReady
-                    ? "You've collected all 8 stamps. Redeem at checkout for 1lb of wings, on us."
-                    : `Earn 1 stamp for every pound of wings you order. Collect ${stampsPerReward} stamps to unlock 1lb of wings free.`}
+                  {hubTab === "rewards"
+                    ? (rewardReady
+                        ? "You've collected all 8 stamps. Redeem at checkout for 1lb of wings, on us."
+                        : `Earn 1 stamp for every pound of wings you order. Collect ${stampsPerReward} stamps to unlock 1lb of wings free.`)
+                    : "Active promotions and special offers currently available for your account."
+                  }
                 </p>
               </header>
 
-              <div className={styles.rewardsGrid}>
-                <div className={styles.pointsCard}>
-                  <span className={styles.pointsNum}>
-                    {availableStamps}
-                    <span className={styles.stampsDenominator}>
-                      /{stampsPerReward}
-                    </span>
-                  </span>
-                  <span className={styles.pointsLabel}>Stamps collected</span>
-                  <span className={styles.pointsCredit}>
-                    {rewardReady
-                      ? "🎉 Ready to redeem"
-                      : `${stampsToNextReward} more to go`}
-                  </span>
-                </div>
-
-                <div
-                  className={styles.progressRing}
-                  role="img"
-                  aria-label={`${availableStamps} of ${stampsPerReward} stamps collected`}
-                >
-                  <svg viewBox="0 0 120 120">
-                    <defs>
-                      <linearGradient id="profile-ring-gradient-v2" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#f97316" />
-                        <stop offset="100%" stopColor="#fb923c" />
-                      </linearGradient>
-                    </defs>
-                    <circle cx="60" cy="60" r={ringRadius} className={styles.ringTrack} />
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r={ringRadius}
-                      className={styles.ringProgress}
-                      strokeDasharray={`${ringDash} ${ringCircumference}`}
-                    />
-                  </svg>
-                  <div className={styles.ringText}>
-                    <strong style={{ fontSize: "1.75rem" }} aria-hidden>
-                      {rewardReady ? "🎁" : "🍗"}
-                    </strong>
-                    <span>
-                      {availableStamps}/{stampsPerReward}
-                    </span>
-                  </div>
-                </div>
-
-                <div className={`${styles.pointsCard} ${styles.pointsBlockSecondary}`}>
-                  <span
-                    className={styles.pointsNum}
-                    style={{ fontSize: "2rem", color: "#6b7280" }}
-                  >
-                    {formatPoints(lifetimeRedemptions)}
-                  </span>
-                  <span className={styles.pointsLabel}>Free pounds unlocked</span>
-                  <span className={styles.pointsCredit}>
-                    {lifetimeStamps} stamps earned all-time
-                  </span>
-                </div>
-              </div>
-
-              {/* 8-slot stamp card (fills left-to-right as stamps accrue). */}
-              <div className={styles.stampRow} aria-hidden>
-                {Array.from({ length: stampsPerReward }).map((_, idx) => {
-                  const filled = idx < availableStamps;
-                  return (
-                    <div
-                      key={idx}
-                      className={`${styles.stampSlot} ${
-                        filled ? styles.stampSlotFilled : ""
-                      }`}
-                    >
-                      {filled ? "🍗" : idx + 1}
+              {hubTab === "rewards" ? (
+                <>
+                  <div className={styles.rewardsGrid}>
+                    <div className={styles.pointsCard}>
+                      <span className={styles.pointsNum}>
+                        {availableStamps}
+                        <span className={styles.stampsDenominator}>
+                          /{stampsPerReward}
+                        </span>
+                      </span>
+                      <span className={styles.pointsLabel}>Stamps collected</span>
+                      <span className={styles.pointsCredit}>
+                        {rewardReady
+                          ? "🎉 Ready to redeem"
+                          : `${stampsToNextReward} more to go`}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
 
-              <p className={styles.sectionTapHint}>
-                Tap for stamp history
-                <span aria-hidden>  →</span>
-              </p>
+                    <div
+                      className={styles.progressRing}
+                      role="img"
+                      aria-label={`${availableStamps} of ${stampsPerReward} stamps collected`}
+                    >
+                      <svg viewBox="0 0 120 120">
+                        <defs>
+                          <linearGradient id="profile-ring-gradient-v2" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#f97316" />
+                            <stop offset="100%" stopColor="#fb923c" />
+                          </linearGradient>
+                        </defs>
+                        <circle cx="60" cy="60" r={ringRadius} className={styles.ringTrack} />
+                        <circle
+                          cx="60"
+                          cy="60"
+                          r={ringRadius}
+                          className={styles.ringProgress}
+                          strokeDasharray={`${ringDash} ${ringCircumference}`}
+                        />
+                      </svg>
+                      <div className={styles.ringText}>
+                        <strong style={{ fontSize: "1.75rem" }} aria-hidden>
+                          {rewardReady ? "🎁" : "🍗"}
+                        </strong>
+                        <span>
+                          {availableStamps}/{stampsPerReward}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={`${styles.pointsCard} ${styles.pointsBlockSecondary}`}>
+                      <span
+                        className={styles.pointsNum}
+                        style={{ fontSize: "2rem", color: "#6b7280" }}
+                      >
+                        {formatPoints(lifetimeRedemptions)}
+                      </span>
+                      <span className={styles.pointsLabel}>Free pounds unlocked</span>
+                      <span className={styles.pointsCredit}>
+                        {lifetimeStamps} stamps earned all-time
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={styles.stampRow} aria-hidden>
+                    {Array.from({ length: stampsPerReward }).map((_, idx) => {
+                      const filled = idx < availableStamps;
+                      return (
+                        <div
+                          key={idx}
+                          className={`${styles.stampSlot} ${
+                            filled ? styles.stampSlotFilled : ""
+                          }`}
+                        >
+                          {filled ? "🍗" : idx + 1}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button 
+                    type="button"
+                    className={styles.sectionTapHint}
+                    onClick={() => setStampsModalOpen(true)}
+                    style={{ 
+                      background: "none", 
+                      border: "none", 
+                      width: "100%", 
+                      textAlign: "right",
+                      cursor: "pointer",
+                      padding: "1rem 0 0 0"
+                    }}
+                  >
+                    Tap for stamp history
+                    <span aria-hidden>  →</span>
+                  </button>
+                </>
+              ) : (
+                <div style={{ marginTop: "1rem" }}>
+                  {rewardsLoading ? (
+                    <p className={styles.emptyState}>Loading coupons...</p>
+                  ) : promos.length === 0 ? (
+                    <div className={styles.stampEmptyState}>
+                      <div className={styles.stampEmptyIcon} aria-hidden>🏷️</div>
+                      <p className={styles.stampEmptyTitle}>No coupons yet</p>
+                      <p className={styles.stampEmptyDesc}>Check back later for special offers and discounts.</p>
+                    </div>
+                  ) : (
+                    <ul className={styles.stampHistoryList}>
+                      {promos.map((promo) => (
+                        <li key={promo.id} className={styles.stampHistoryItem}>
+                          <div className={`${styles.stampHistoryIcon} ${styles.stampHistoryIconEarn}`} aria-hidden>
+                            🏷️
+                          </div>
+                          <div className={styles.stampHistoryBody}>
+                            <strong className={styles.stampHistoryBodyTitle} style={{ fontSize: "1.1rem" }}>{promo.code}</strong>
+                            <span className={styles.stampHistoryReason}>{promo.name}</span>
+                            {promo.minSubtotalCents > 0 && (
+                              <span className={styles.stampHistoryReason} style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                                Min order: ${(promo.minSubtotalCents / 100).toFixed(2)}
+                              </span>
+                            )}
+                            {promo.endsAt && (
+                              <span className={styles.stampHistoryReason} style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                                Ends: {new Date(promo.endsAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <div className={styles.stampHistoryDelta}>
+                            <strong className={styles.stampHistoryDeltaEarn} style={{ fontSize: "1rem" }}>
+                              {promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`}
+                              {promo.discountType === "FIXED_AMOUNT" && `$${(promo.discountValue / 100).toFixed(2)} OFF`}
+                              {promo.discountType === "FREE_DELIVERY" && `FREE DELIVERY`}
+                              {promo.discountType === "BXGY" && `BOGO`}
+                            </strong>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Bottom Grid */}
@@ -543,48 +633,6 @@ export default function ProfilePage() {
               })}
             </div>
 
-            <section className={styles.stampHistorySection} style={{ borderTop: "1px solid #e5e7eb", paddingTop: "1.5rem", marginTop: "1.5rem" }}>
-              <h3 className={styles.stampHistoryTitle}>Available Promos</h3>
-              {rewardsLoading ? (
-                <p className={styles.emptyState}>Loading promos...</p>
-              ) : promos.length === 0 ? (
-                <div className={styles.stampEmptyState} style={{ padding: "1rem" }}>
-                  <p className={styles.stampEmptyDesc}>No active promotions at the moment.</p>
-                </div>
-              ) : (
-                <ul className={styles.stampHistoryList}>
-                  {promos.map((promo) => (
-                    <li key={promo.id} className={styles.stampHistoryItem}>
-                      <div className={`${styles.stampHistoryIcon} ${styles.stampHistoryIconEarn}`} aria-hidden>
-                        🏷️
-                      </div>
-                      <div className={styles.stampHistoryBody}>
-                        <strong className={styles.stampHistoryBodyTitle} style={{ fontSize: "1.1rem" }}>{promo.code}</strong>
-                        <span className={styles.stampHistoryReason}>{promo.name}</span>
-                        {promo.minSubtotalCents > 0 && (
-                          <span className={styles.stampHistoryReason} style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.2rem" }}>
-                            Min order: ${(promo.minSubtotalCents / 100).toFixed(2)}
-                          </span>
-                        )}
-                        {promo.endsAt && (
-                          <span className={styles.stampHistoryReason} style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: "0.2rem" }}>
-                            Ends: {new Date(promo.endsAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                      <div className={styles.stampHistoryDelta}>
-                        <strong className={styles.stampHistoryDeltaEarn} style={{ fontSize: "1rem" }}>
-                          {promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`}
-                          {promo.discountType === "FIXED_AMOUNT" && `$${(promo.discountValue / 100).toFixed(2)} OFF`}
-                          {promo.discountType === "FREE_DELIVERY" && `FREE DELIVERY`}
-                          {promo.discountType === "BXGY" && `BOGO`}
-                        </strong>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
 
             <section className={styles.stampHistorySection}>
               <h3 className={styles.stampHistoryTitle}>Stamp history</h3>

@@ -369,7 +369,6 @@
 /* Entire section is a button — show a subtle affordance so users know it
    opens a modal. Hover + focus lifts the card and reveals the tap hint. */
 .wingsRewardsSection {
-  cursor: pointer;
   transition: transform 150ms ease, box-shadow 150ms ease;
 }
 .wingsRewardsSection:hover,

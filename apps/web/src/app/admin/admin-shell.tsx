@@ -44,7 +44,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <p className="surface-eyebrow" style={{ margin: 0 }}>
             Admin
           </p>
-          <h2 className="admin-sidebar-title">Command center</h2>
+
           <nav aria-label="Admin sections">
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {SECTIONS.map((s) => {

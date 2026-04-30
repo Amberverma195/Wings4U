@@ -1,21 +1,10 @@
-import { MenuPage } from "@/Wings4u/components/menu-page";
-import type { FulfillmentType } from "@/lib/types";
+import { Suspense } from "react";
+import { MenuRouteContent } from "./menu-route-content";
 
-export default async function MenuRoutePage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = searchParams ? await searchParams : {};
-  const rawFulfillment = params.fulfillment_type;
-  const ft = Array.isArray(rawFulfillment) ? rawFulfillment[0] : rawFulfillment;
-  const requestedFulfillmentType: FulfillmentType | null =
-    ft === "DELIVERY" || ft === "PICKUP" ? ft : null;
-
+export default function MenuRoutePage() {
   return (
-    <MenuPage
-      key={`menu-${requestedFulfillmentType ?? "session"}`}
-      requestedFulfillmentType={requestedFulfillmentType}
-    />
+    <Suspense fallback={null}>
+      <MenuRouteContent routeKey="menu" />
+    </Suspense>
   );
 }

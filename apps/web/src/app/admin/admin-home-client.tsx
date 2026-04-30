@@ -131,10 +131,7 @@ export function AdminHomeClient() {
               Operations dashboard
             </p>
             <h1>Today at the store</h1>
-            <p className="surface-muted">
-              Live widget snapshot of every operational queue. Refreshes
-              automatically every minute.
-            </p>
+
           </div>
           <div className="admin-section-lead__actions">
             {refreshedAt && (

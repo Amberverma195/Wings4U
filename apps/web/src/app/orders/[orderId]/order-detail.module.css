@@ -22,8 +22,9 @@
 /* ── Top bar: back button + order title ───────────────── */
 .topBar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 1.25rem;
   margin-bottom: 2rem;
 }

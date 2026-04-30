@@ -1531,7 +1531,17 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: "1rem", marginBottom: "1rem" }}>
           <div>
             <h2 style={{ margin: "0 0 0.25rem" }}>Order #{order.order_number} <span style={{ fontSize: "1rem", color: "var(--text-muted)", fontWeight: "normal" }}>({order.id})</span></h2>
-            <p style={{ margin: 0, fontSize: "0.95rem" }}>
+            <p style={{ 
+              margin: 0, 
+              fontSize: "0.95rem",
+              background: "#fef3c7",
+              padding: "0.5rem 0.85rem",
+              borderRadius: "12px",
+              border: "1px solid rgba(217, 119, 6, 0.2)",
+              color: "#111827",
+              fontWeight: 600,
+              display: "inline-block"
+            }}>
               {order.customer_name_snapshot ?? "Guest"} {order.customer_phone_snapshot ? `| ${formatKdsOrderPhone(order.customer_phone_snapshot)}` : ""} | {order.fulfillment_type} | {order.status} | Placed: {placedDate.toLocaleTimeString()} | ETA: {formatKitchenTime(order.estimated_ready_at)}
             </p>
           </div>
@@ -2111,7 +2121,7 @@ export function KdsClient() {
             onClick={() => setOptionsOpen(true)}
             style={{ fontWeight: "bold" }}
           >
-            Options
+            Orders
           </button>
           <BusyModeControl session={sessionControls} />
           <button

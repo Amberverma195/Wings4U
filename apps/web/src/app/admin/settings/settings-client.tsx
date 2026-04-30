@@ -379,7 +379,7 @@ export function SettingsClient() {
   return (
     <>
       <section className="surface-card" style={{ marginBottom: "1rem" }}>
-        <p className="surface-eyebrow" style={{ margin: 0 }}>Governance</p>
+
         <h1 style={{ margin: "0.2rem 0 0" }}>Store settings</h1>
         <p className="surface-muted" style={{ margin: "0.4rem 0 0" }}>
           Operational thresholds and toggles for this location.

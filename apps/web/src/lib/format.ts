@@ -18,12 +18,14 @@ export function shortDate(iso: string): string {
   });
 }
 
-/** Compact line for status history lists, e.g. "Apr 28 · 6:06 pm" */
+/** Compact line for status history lists, e.g. "28 Apr · 18:06" */
 export function statusEventWhenLine(iso: string): string {
   const d = new Date(iso);
-  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${date} · ${time}`;
+  const day = d.getDate();
+  const month = d.toLocaleDateString(undefined, { month: "short" });
+  const hours = d.getHours().toString().padStart(2, "0");
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  return `${day} ${month} · ${hours}:${minutes}`;
 }
 
 export function relativeTime(iso: string): string {

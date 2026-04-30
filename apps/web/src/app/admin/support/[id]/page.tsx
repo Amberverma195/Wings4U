@@ -1,11 +1,13 @@
+"use client";
+
+import { useParams } from "next/navigation";
 import { SupportDetailClient } from "./support-detail-client";
 
-export default async function AdminSupportDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+export default function AdminSupportDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const ticketId = typeof id === "string" ? id : "";
 
-  return <SupportDetailClient ticketId={id} />;
+  if (!ticketId) return null;
+
+  return <SupportDetailClient ticketId={ticketId} />;
 }

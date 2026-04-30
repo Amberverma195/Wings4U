@@ -415,10 +415,7 @@ export function ApprovalsClient() {
       <section className="surface-card" style={{ marginBottom: "1rem" }}>
         <p className="surface-eyebrow" style={{ margin: 0 }}>Approvals</p>
         <h1 style={{ margin: "0.2rem 0 0" }}>Pending decisions</h1>
-        <p className="surface-muted" style={{ margin: "0.4rem 0 0.75rem" }}>
-          KDS / chat-initiated cancellations and refund requests waiting on
-          admin review.
-        </p>
+
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {(["cancellations", "refunds"] as const).map((t) => (
             <button

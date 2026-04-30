@@ -766,19 +766,22 @@ function PosShell({ session }: { session: SessionState }) {
 
       <div className="pos-workspace">
         <section className="pos-cart" aria-label="Cart">
-          {todayOrders.length > 0 && (
+          {todayOrders.filter((o) => o.order_source === "POS").length > 0 && (
             <div className="pos-recent-pills">
-              {todayOrders.slice(0, 12).map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  className="pos-order-pill"
-                  onClick={() => copyOrderToCart(o)}
-                  title={`Re-order #${o.order_number}`}
-                >
-                  #{o.order_number}
-                </button>
-              ))}
+              {todayOrders
+                .filter((o) => o.order_source === "POS")
+                .slice(0, 12)
+                .map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    className="pos-order-pill"
+                    onClick={() => copyOrderToCart(o)}
+                    title={`Re-order #${o.order_number}`}
+                  >
+                    #{o.order_number}
+                  </button>
+                ))}
             </div>
           )}
           <div className="pos-dining-selector">

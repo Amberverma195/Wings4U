@@ -66,7 +66,7 @@ export function AuditLogClient() {
   return (
     <>
       <section className="surface-card" style={{ marginBottom: "1rem" }}>
-        <p className="surface-eyebrow" style={{ margin: 0 }}>Governance</p>
+
         <h1 style={{ margin: "0.2rem 0 0" }}>Audit log</h1>
         <p className="surface-muted" style={{ margin: "0.4rem 0 0" }}>
           Every admin-driven mutation (decisions, credits, settings changes,
