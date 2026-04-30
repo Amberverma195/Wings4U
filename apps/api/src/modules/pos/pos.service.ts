@@ -17,7 +17,13 @@ interface PosOrderItem {
 }
 
 interface CreatePosOrderParams {
-  actorUserId: string;
+  /**
+   * `null` for station-originated POS orders (the default after the
+   * "detach POS into a station-password surface" change). Kept on the
+   * type so future callers (e.g. a future admin override) can still pass
+   * an actor user id when one genuinely exists.
+   */
+  actorUserId: string | null;
   locationId: string;
   fulfillmentType: string;
   orderSource: "POS" | "PHONE";
@@ -32,10 +38,26 @@ interface CreatePosOrderParams {
 interface ApplyManualDiscountParams {
   orderId: string;
   locationId: string;
-  actorUserId: string;
+  actorUserId: string | null;
   discountAmountCents: number;
   reason: string;
   description?: string;
+}
+
+/**
+ * Synthetic walk-in customer per location. The Order model requires a
+ * non-null `customer_user_id`, so when a POS station order is rung up
+ * without a customer phone we route it to a deterministic per-location
+ * walk-in user instead of attaching it to a staff/admin actor (which we
+ * no longer have on station-only POS).
+ *
+ * The user is created lazily and reused via the unique
+ * `(provider, providerSubject)` index on `user_identities`.
+ */
+const POS_WALKIN_PROVIDER_SUBJECT_PREFIX = "pos-walkin:";
+
+function posWalkinSubject(locationId: string): string {
+  return `${POS_WALKIN_PROVIDER_SUBJECT_PREFIX}${locationId}`;
 }
 
 function serializePosOrder(order: Record<string, unknown>) {
@@ -152,8 +174,45 @@ export class PosService {
           customerName = newUser.displayName;
           customerPhone = phoneE164;
         }
-      } else {
+      } else if (params.actorUserId) {
+        // Legacy fallback retained for any future caller that still has a
+        // real actor — current station-only callers always pass null.
         customerUserId = params.actorUserId;
+        customerName = params.customerName ?? "Walk-in";
+        customerPhone = "";
+      } else {
+        // Station-originated walk-in: lazily create / reuse the synthetic
+        // per-location walk-in customer so the order has a stable
+        // `customer_user_id` without inventing fake phone identities.
+        const subject = posWalkinSubject(params.locationId);
+        const walkinIdentity = await tx.userIdentity.findUnique({
+          where: {
+            provider_providerSubject: {
+              provider: "EMAIL",
+              providerSubject: subject,
+            },
+          },
+        });
+        if (walkinIdentity) {
+          customerUserId = walkinIdentity.userId;
+        } else {
+          const walkinUser = await tx.user.create({
+            data: {
+              role: "CUSTOMER",
+              displayName: "POS Walk-in",
+              identities: {
+                create: {
+                  provider: "EMAIL",
+                  providerSubject: subject,
+                  isPrimary: true,
+                  isVerified: false,
+                },
+              },
+              customerProfile: { create: {} },
+            },
+          });
+          customerUserId = walkinUser.id;
+        }
         customerName = params.customerName ?? "Walk-in";
         customerPhone = "";
       }
@@ -282,8 +341,6 @@ export class PosService {
       // 5b. STORE_CREDIT: validate and debit wallet atomically
       let walletAppliedCents = 0;
       if (params.paymentMethod === "STORE_CREDIT") {
-        // Lock before checking balance so concurrent POS store-credit orders
-        // cannot both pass against the same pre-debit wallet value.
         const balance = await lockAndReadWalletBalanceCents(tx, customerUserId);
         if (balance < finalPayableCents) {
           throw new BadRequestException(
@@ -303,7 +360,7 @@ export class PosService {
             amountCents: -walletAppliedCents,
             balanceAfterCents: updatedWallet.balanceCents,
             reasonText: "POS order wallet debit",
-            createdByUserId: params.actorUserId,
+            createdByUserId: params.actorUserId ?? null,
           },
         });
       }
@@ -387,14 +444,14 @@ export class PosService {
                 locationId: params.locationId,
                 toStatus: "PLACED",
                 eventType: "POS_CHECKOUT",
-                actorUserId: params.actorUserId,
+                actorUserId: params.actorUserId ?? null,
               },
               {
                 locationId: params.locationId,
                 fromStatus: "PLACED",
                 toStatus: "ACCEPTED",
                 eventType: "POS_AUTO_ACCEPT",
-                actorUserId: params.actorUserId,
+                actorUserId: params.actorUserId ?? null,
               },
             ],
           },
@@ -430,8 +487,8 @@ export class PosService {
           transactionStatus,
           signedAmountCents: finalPayableCents,
           currency: "CAD",
-          createdByUserId: params.actorUserId,
-          initiatedByUserId: params.actorUserId,
+          createdByUserId: params.actorUserId ?? null,
+          initiatedByUserId: params.actorUserId ?? null,
         },
       });
 
@@ -536,7 +593,7 @@ export class PosService {
         discountType: "MANUAL",
         discountAmountCents: params.discountAmountCents,
         description: params.description ?? `Manual discount`,
-        appliedByUserId: params.actorUserId,
+        appliedByUserId: params.actorUserId ?? null,
         reasonText: params.reason,
       },
     });
@@ -557,12 +614,12 @@ export class PosService {
       },
     });
 
-    // Audit log
+    // Audit log — POS station discounts have no individual actor.
     await this.prisma.adminAuditLog.create({
       data: {
         locationId: params.locationId,
-        actorUserId: params.actorUserId,
-        actorRoleSnapshot: "STAFF",
+        actorUserId: params.actorUserId ?? null,
+        actorRoleSnapshot: params.actorUserId ? "STAFF" : "POS_STATION",
         actionKey: "POS_MANUAL_DISCOUNT",
         entityType: "ORDER",
         entityId: params.orderId,
@@ -582,7 +639,7 @@ export class PosService {
       discount_amount_cents: params.discountAmountCents,
       reason: params.reason,
       description: discount.description,
-      applied_by_user_id: params.actorUserId,
+      applied_by_user_id: params.actorUserId ?? null,
       applied_at: discount.appliedAt,
       new_final_payable_cents: newFinalPayable,
     };

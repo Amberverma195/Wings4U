@@ -26,6 +26,8 @@ function skipCsrf(path: string): boolean {
   if (path.startsWith("/api/v1/auth/kds/login")) return true;
   if (path.startsWith("/api/v1/kds/auth/login")) return true;
   if (path.startsWith("/api/v1/kds/auth/logout")) return true;
+  if (path.startsWith("/api/v1/pos/auth/login")) return true;
+  if (path.startsWith("/api/v1/pos/auth/logout")) return true;
   if (path.startsWith("/api/v1/auth/check-signup")) return true;
   // Public quote endpoint. Saved-cart mutations are intentionally NOT
   // allowlisted here because they become authenticated user-cart writes once

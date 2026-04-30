@@ -25,8 +25,8 @@ import { Type } from "class-transformer";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
-import { Roles } from "../../common/decorators/roles.decorator";
-import { POLICIES } from "../../common/policies/permission-matrix";
+import { PosStationGuard } from "../../common/guards/pos-station.guard";
+import { Public } from "../../common/decorators/roles.decorator";
 import { PosService } from "./pos.service";
 
 class PosModifierSelectionDto {
@@ -103,16 +103,31 @@ class ApplyManualDiscountDto {
   description?: string;
 }
 
+/**
+ * POS business endpoints.
+ *
+ * POS is a station-gated surface, not an account-gated one — `@Public()`
+ * tells the global `AuthGuard` not to require an `access_token` cookie,
+ * and the layered guards below enforce:
+ *   1. `LocationScopeGuard`  - requires `X-Location-Id` header.
+ *   2. `StoreNetworkGuard`   - request originates from the configured store IP.
+ *   3. `PosStationGuard`     - valid `w4u_pos_session` cookie for that location.
+ *
+ * Because POS no longer has manager/admin identity, station-originated POS
+ * actions (including manual discounts) pass `actorUserId: null` into the
+ * service layer; audit rows attribute the action to "POS_STATION" via
+ * `actor_role_snapshot` rather than a user id.
+ */
 @Controller("pos")
-@UseGuards(LocationScopeGuard, StoreNetworkGuard)
+@Public()
+@UseGuards(LocationScopeGuard, StoreNetworkGuard, PosStationGuard)
 export class PosController {
   constructor(private readonly posService: PosService) {}
 
   @Post("orders")
-  @Roles(POLICIES.ANY_STAFF)
   async createOrder(@Body() body: CreatePosOrderDto, @Req() req: Request) {
     return this.posService.createPosOrder({
-      actorUserId: req.user!.userId,
+      actorUserId: null,
       locationId: req.locationId!,
       fulfillmentType: body.fulfillment_type,
       orderSource: body.order_source as "POS" | "PHONE",
@@ -133,16 +148,11 @@ export class PosController {
   }
 
   @Get("orders")
-  @Roles(POLICIES.ANY_STAFF)
   async listOrders(@Req() req: Request) {
     return this.posService.listPosOrders(req.locationId!);
   }
 
   @Post("orders/:id/discounts")
-  @Roles(
-    { userRoles: ["STAFF"], employeeRoles: ["MANAGER"] },
-    "ADMIN",
-  )
   async applyManualDiscount(
     @Param("id") orderId: string,
     @Body() body: ApplyManualDiscountDto,
@@ -151,7 +161,7 @@ export class PosController {
     return this.posService.applyManualDiscount({
       orderId,
       locationId: req.locationId!,
-      actorUserId: req.user!.userId,
+      actorUserId: null,
       discountAmountCents: body.discount_amount_cents,
       reason: body.reason,
       description: body.description,

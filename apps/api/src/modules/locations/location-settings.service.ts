@@ -71,9 +71,15 @@ export class LocationSettingsService {
         data: nextData,
       });
 
-      // If kdsPasswordHash was updated, revoke all active kds sessions
+      // If kdsPasswordHash was updated, revoke all active KDS *and* POS
+      // station sessions — both surfaces are unlocked by the same shared
+      // password, so a password rotation must invalidate both.
       if ("kdsPasswordHash" in nextData) {
         await tx.kdsStationSession.updateMany({
+          where: { locationId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        await tx.posStationSession.updateMany({
           where: { locationId, revokedAt: null },
           data: { revokedAt: new Date() },
         });

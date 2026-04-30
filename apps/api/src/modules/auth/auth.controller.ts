@@ -17,7 +17,6 @@ import type { Request, Response } from "express";
 import { Public } from "../../common/decorators/roles.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
-import { POLICIES } from "../../common/policies/permission-matrix";
 import { extractClientIp } from "../../common/utils/store-ip";
 import { AuthService } from "./auth.service";
 
@@ -355,7 +354,7 @@ export class AuthController {
     return this.authService.getSession(req.user);
   }
 
-  @Roles(POLICIES.ANY_STAFF)
+  @Public()
   @Get("pos/network-status")
   async posNetworkStatus(
     @Query() query: PosNetworkStatusDto,

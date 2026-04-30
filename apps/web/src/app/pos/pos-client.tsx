@@ -5,8 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
-import { useSession, withSilentRefresh } from "@/lib/session";
-import type { SessionState } from "@/lib/session";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -95,15 +93,13 @@ type PosOrder = {
 
 type Envelope<T> = { data?: T; errors?: { message: string }[] | null };
 
-type SessionControls = Pick<SessionState, "refresh" | "clear">;
-
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   CASH: "Cash",
   CARD_TERMINAL: "Card",
   STORE_CREDIT: "Store Credit",
 };
 
-const POS_PIN_LENGTH = 5;
+const POS_PASSWORD_LENGTH = 8;
 const POS_KEYPAD_ROWS = [
   ["1", "2", "3"],
   ["4", "5", "6"],
@@ -112,34 +108,19 @@ const POS_KEYPAD_ROWS = [
 ] as const;
 
 /* ------------------------------------------------------------------ */
-/*  Role helpers                                                       */
-/* ------------------------------------------------------------------ */
-
-function canEnterPos(session: SessionState): boolean {
-  if (!session.authenticated || !session.user) return false;
-  return session.user.role === "ADMIN" || session.user.role === "STAFF";
-}
-
-function canApplyDiscount(session: SessionState): boolean {
-  if (!session.authenticated || !session.user) return false;
-  if (session.user.role === "ADMIN") return true;
-  return session.user.role === "STAFF" && session.user.employeeRole === "MANAGER";
-}
-
-/* ------------------------------------------------------------------ */
-/*  Fetch helper — one-time silent refresh on 401                      */
+/*  Fetch helper                                                       */
+/*                                                                     */
+/*  POS is station-gated, not account-gated, so we do NOT wrap calls   */
+/*  in the silent-refresh helper used elsewhere — there is no main-    */
+/*  site session to refresh and a 401 from a POS endpoint just means   */
+/*  the station password screen needs to come back up.                 */
 /* ------------------------------------------------------------------ */
 
 async function posJson<T>(
-  controls: SessionControls,
   path: string,
   init: RequestInit & { locationId?: string } = {},
 ): Promise<T> {
-  const res = await withSilentRefresh(
-    () => apiFetch(path, init),
-    controls.refresh,
-    controls.clear,
-  );
+  const res = await apiFetch(path, init);
   const body = (await res.json().catch(() => null)) as Envelope<T> | null;
   if (!res.ok) {
     throw new Error(getApiErrorMessage(body, `Request failed (${res.status})`));
@@ -151,7 +132,7 @@ async function posJson<T>(
 }
 
 /* ================================================================== */
-/*  Root                                                               */
+/*  Frame + status screens                                             */
 /* ================================================================== */
 
 function PosFrame({ children }: { children: ReactNode }) {
@@ -172,14 +153,10 @@ function PosStatusScreen({
   eyebrow = "STATION ACCESS",
   title,
   message,
-  actionLabel,
-  onAction,
 }: {
   eyebrow?: string;
   title: string;
   message: string;
-  actionLabel?: string;
-  onAction?: () => void;
 }) {
   return (
     <PosFrame>
@@ -187,92 +164,110 @@ function PosStatusScreen({
         <p className="pos-login-eyebrow">{eyebrow}</p>
         <h1 className="pos-login-title">{title}</h1>
         <p className="pos-login-sub">{message}</p>
-        {actionLabel && onAction ? (
-          <button
-            type="button"
-            className="pos-btn pos-btn--primary pos-login-submit"
-            onClick={onAction}
-          >
-            {actionLabel}
-          </button>
-        ) : null}
       </section>
     </PosFrame>
   );
 }
 
-export function PosClient() {
-  const session = useSession();
+/* ================================================================== */
+/*  Root                                                               */
+/* ================================================================== */
 
-  if (!session.loaded) {
+type StationAuth =
+  | { state: "loading" }
+  | { state: "locked" }
+  | { state: "unlocked" };
+
+export function PosClient() {
+  const [auth, setAuth] = useState<StationAuth>({ state: "loading" });
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch(
+        `/api/v1/pos/auth/status?location_id=${DEFAULT_LOCATION_ID}`,
+      );
+      const body = (await res.json().catch(() => null)) as
+        | Envelope<{ authenticated: boolean }>
+        | null;
+      const authenticated = body?.data?.authenticated === true;
+      setAuth({ state: authenticated ? "unlocked" : "locked" });
+    } catch {
+      setAuth({ state: "locked" });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
+
+  if (auth.state === "loading") {
     return (
       <PosStatusScreen
-        title="Checking session"
+        title="Checking station"
         message="Loading POS access..."
       />
     );
   }
 
-  if (!session.authenticated || !canEnterPos(session)) {
-    return (
-      <PosStatusScreen
-        title="POS unavailable"
-        message="This station is reserved for authorized staff on the configured store IP."
-      />
-    );
+  if (auth.state === "locked") {
+    return <PosLoginScreen onUnlocked={() => setAuth({ state: "unlocked" })} />;
   }
 
-  if (session.user?.role === "STAFF" && !session.isPosSession) {
-    return <PosLoginScreen session={session} />;
-  }
-
-  return <PosShell session={session} />;
+  return <PosShell onLocked={() => setAuth({ state: "locked" })} />;
 }
 
-function PosLoginScreen({ session }: { session: SessionState }) {
+/* ================================================================== */
+/*  Station password gate                                              */
+/* ================================================================== */
+
+function PosLoginScreen({ onUnlocked }: { onUnlocked: () => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submitCode = useCallback(
     async (nextCode: string) => {
-      if (busy || nextCode.length !== POS_PIN_LENGTH) return;
+      if (busy || nextCode.length !== POS_PASSWORD_LENGTH) return;
 
       setBusy(true);
       setError(null);
 
       try {
-        const res = await apiFetch("/api/v1/auth/pos/login", {
+        const res = await apiFetch("/api/v1/pos/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            employee_code: nextCode,
+            password: nextCode,
             location_id: DEFAULT_LOCATION_ID,
           }),
         });
-        const body = (await res.json().catch(() => null)) as Envelope<unknown> | null;
+        const body = (await res.json().catch(() => null)) as
+          | Envelope<unknown>
+          | null;
         if (!res.ok) {
-          throw new Error(getApiErrorMessage(body, `Request failed (${res.status})`));
+          throw new Error(
+            getApiErrorMessage(body, `Request failed (${res.status})`),
+          );
         }
         setCode("");
-        await session.refresh();
+        onUnlocked();
       } catch (err) {
         setCode("");
-        setError(err instanceof Error ? err.message : "Could not sign in");
+        setError(err instanceof Error ? err.message : "Could not unlock POS");
       } finally {
         setBusy(false);
       }
     },
-    [busy, session],
+    [busy, onUnlocked],
   );
 
   const appendDigit = useCallback(
     (digit: string) => {
-      if (busy || code.length >= POS_PIN_LENGTH) return;
+      if (busy || code.length >= POS_PASSWORD_LENGTH) return;
       const nextCode = `${code}${digit}`;
       setCode(nextCode);
       setError(null);
-      if (nextCode.length === POS_PIN_LENGTH) {
+      if (nextCode.length === POS_PASSWORD_LENGTH) {
         void submitCode(nextCode);
       }
     },
@@ -315,16 +310,20 @@ function PosLoginScreen({ session }: { session: SessionState }) {
 
   return (
     <PosFrame>
-      <section className="pos-login-card" aria-label="POS employee login">
+      <section
+        className="pos-login-card"
+        aria-label="POS station password"
+        data-testid="pos-login-card"
+      >
         <p className="pos-login-eyebrow">STATION ACCESS</p>
-        <h1 className="pos-login-title">Enter employee PIN</h1>
+        <h1 className="pos-login-title">Enter station password</h1>
         <p className="pos-login-sub">
-          Store network verified. Use the store&apos;s 5-digit employee code to
-          unlock the register.
+          Store network verified. Use the shared 8-digit KDS and POS password
+          to unlock the register.
         </p>
 
-        <div className="pos-pin-display" aria-label="Entered PIN">
-          {Array.from({ length: POS_PIN_LENGTH }, (_, index) => (
+        <div className="pos-pin-display" aria-label="Entered password">
+          {Array.from({ length: POS_PASSWORD_LENGTH }, (_, index) => (
             <div
               key={index}
               className={
@@ -337,7 +336,7 @@ function PosLoginScreen({ session }: { session: SessionState }) {
           ))}
         </div>
 
-        <div className="pos-keypad" role="group" aria-label="PIN keypad">
+        <div className="pos-keypad" role="group" aria-label="Password keypad">
           {POS_KEYPAD_ROWS.flat().map((key) => {
             if (key === "clear") {
               return (
@@ -347,6 +346,7 @@ function PosLoginScreen({ session }: { session: SessionState }) {
                   className="pos-key pos-key--action"
                   onClick={clearCode}
                   disabled={busy}
+                  data-testid="pos-keypad-clear"
                 >
                   Clear
                 </button>
@@ -361,6 +361,7 @@ function PosLoginScreen({ session }: { session: SessionState }) {
                   onClick={backspace}
                   disabled={busy || code.length === 0}
                   aria-label="Backspace"
+                  data-testid="pos-keypad-backspace"
                 >
                   Delete
                 </button>
@@ -373,6 +374,7 @@ function PosLoginScreen({ session }: { session: SessionState }) {
                 className="pos-key"
                 onClick={() => appendDigit(key)}
                 disabled={busy}
+                data-testid={`pos-keypad-${key}`}
               >
                 {key}
               </button>
@@ -384,12 +386,17 @@ function PosLoginScreen({ session }: { session: SessionState }) {
           type="button"
           className="pos-btn pos-btn--primary pos-login-submit"
           onClick={() => void submitCode(code)}
-          disabled={busy || code.length !== POS_PIN_LENGTH}
+          disabled={busy || code.length !== POS_PASSWORD_LENGTH}
+          data-testid="pos-login-submit"
         >
-          {busy ? "Signing in..." : "Unlock register"}
+          {busy ? "Unlocking..." : "Unlock register"}
         </button>
 
-        {error ? <p className="pos-login-error">{error}</p> : null}
+        {error ? (
+          <p className="pos-login-error" data-testid="pos-login-error">
+            {error}
+          </p>
+        ) : null}
       </section>
     </PosFrame>
   );
@@ -399,14 +406,17 @@ function PosLoginScreen({ session }: { session: SessionState }) {
 /*  Main POS shell                                                     */
 /* ================================================================== */
 
-function PosShell({ session }: { session: SessionState }) {
+function PosShell({ onLocked }: { onLocked: () => void }) {
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
 
-  const [diningOption, setDiningOption] = useState<"EAT_IN" | "TO_GO" | "DELIVERY">("EAT_IN");
-  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>("PICKUP");
+  const [diningOption, setDiningOption] = useState<
+    "EAT_IN" | "TO_GO" | "DELIVERY"
+  >("EAT_IN");
+  const [fulfillmentType, setFulfillmentType] =
+    useState<FulfillmentType>("PICKUP");
   const [orderSource, setOrderSource] = useState<OrderSource>("POS");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -428,17 +438,11 @@ function PosShell({ session }: { session: SessionState }) {
   const [ordersSearchQuery, setOrdersSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null);
 
-  const controls: SessionControls = useMemo(
-    () => ({ refresh: session.refresh, clear: session.clear }),
-    [session.refresh, session.clear],
-  );
-
   /* ---------- Menu fetch ---------- */
 
   const loadMenu = useCallback(async () => {
     try {
       const data = await posJson<MenuResponse>(
-        controls,
         `/api/v1/menu?location_id=${DEFAULT_LOCATION_ID}&fulfillment_type=${fulfillmentType}`,
         { locationId: DEFAULT_LOCATION_ID },
       );
@@ -452,7 +456,7 @@ function PosShell({ session }: { session: SessionState }) {
     } catch (err) {
       setMenuError(err instanceof Error ? err.message : "Failed to load menu");
     }
-  }, [controls, fulfillmentType]);
+  }, [fulfillmentType]);
 
   useEffect(() => {
     void loadMenu();
@@ -462,14 +466,14 @@ function PosShell({ session }: { session: SessionState }) {
 
   const loadOrders = useCallback(async () => {
     try {
-      const data = await posJson<PosOrder[]>(controls, "/api/v1/pos/orders", {
+      const data = await posJson<PosOrder[]>("/api/v1/pos/orders", {
         locationId: DEFAULT_LOCATION_ID,
       });
       setTodayOrders(data);
     } catch {
       // Non-fatal; the strip just stays empty.
     }
-  }, [controls]);
+  }, []);
 
   useEffect(() => {
     void loadOrders();
@@ -479,22 +483,18 @@ function PosShell({ session }: { session: SessionState }) {
 
   const addSimpleItem = useCallback((item: MenuItem) => {
     if (item.builder_type) {
-      // POS does not render the in-app wing builder; direct staff to the
-      // customer-facing flow for those products.
       alert(
         "Wings & wing-combo builders are not available in POS mode yet. Use the customer app to build these items.",
       );
       return;
     }
     if (item.modifier_groups.length > 0) {
-      // Handled via modifier modal.
       return;
     }
     setCurrentOrderId(
       (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
     );
     setCart((prev) => {
-      // Merge into existing identical simple line.
       const existing = prev.find(
         (l) => l.menuItemId === item.id && l.modifiers.length === 0,
       );
@@ -525,16 +525,13 @@ function PosShell({ session }: { session: SessionState }) {
     setModifierItem(item);
   }, []);
 
-  const addConfiguredItem = useCallback(
-    (line: CartLine) => {
-      setCurrentOrderId(
-        (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      );
-      setCart((prev) => [...prev, line]);
-      setModifierItem(null);
-    },
-    [],
-  );
+  const addConfiguredItem = useCallback((line: CartLine) => {
+    setCurrentOrderId(
+      (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+    );
+    setCart((prev) => [...prev, line]);
+    setModifierItem(null);
+  }, []);
 
   const adjustQuantity = useCallback((localId: string, delta: number) => {
     setCart((prev) =>
@@ -597,7 +594,7 @@ function PosShell({ session }: { session: SessionState }) {
     setCurrentOrderId(`ORD-${Math.floor(1000 + Math.random() * 9000)}`);
   }, [clearCart]);
 
-  /* ---------- Pricing preview (client-side estimate) ---------- */
+  /* ---------- Pricing preview ---------- */
 
   const subtotalCents = useMemo(() => {
     return cart.reduce((acc, line) => {
@@ -609,8 +606,6 @@ function PosShell({ session }: { session: SessionState }) {
     }, 0);
   }, [cart]);
 
-  // Estimated 13% tax for display only; backend recomputes from the
-  // location's configured tax rate and that's what actually gets charged.
   const estimatedTaxCents = Math.round(subtotalCents * 0.13);
   const estimatedTotalCents = subtotalCents + estimatedTaxCents;
 
@@ -663,7 +658,7 @@ function PosShell({ session }: { session: SessionState }) {
         order_number: number;
         final_payable_cents: number;
         change_due_cents?: number;
-      }>(controls, "/api/v1/pos/orders", {
+      }>("/api/v1/pos/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -678,7 +673,9 @@ function PosShell({ session }: { session: SessionState }) {
       clearCart();
       void loadOrders();
     } catch (err) {
-      setPlaceError(err instanceof Error ? err.message : "Could not place order");
+      setPlaceError(
+        err instanceof Error ? err.message : "Could not place order",
+      );
     } finally {
       setPlacing(false);
     }
@@ -686,7 +683,6 @@ function PosShell({ session }: { session: SessionState }) {
     amountTendered,
     cart,
     clearCart,
-    controls,
     customerName,
     customerPhone,
     fulfillmentType,
@@ -696,19 +692,17 @@ function PosShell({ session }: { session: SessionState }) {
     paymentMethod,
   ]);
 
-  /* ---------- Sign out ---------- */
+  /* ---------- Sign out (POS station only) ---------- */
 
   const signOut = useCallback(async () => {
     try {
-      await apiFetch("/api/v1/auth/logout", { method: "POST" });
+      await apiFetch("/api/v1/pos/auth/logout", { method: "POST" });
     } catch {
-      // Best effort: fall back to a local clear if the network request fails.
+      // Best effort: even if the network call fails we still re-lock
+      // locally so the next action will require the password.
     }
-    session.clear();
-    if (typeof window !== "undefined") {
-      window.location.assign("/auth/login");
-    }
-  }, [session]);
+    onLocked();
+  }, [onLocked]);
 
   /* ---------- Render ---------- */
 
@@ -722,15 +716,15 @@ function PosShell({ session }: { session: SessionState }) {
   }, [activeCategoryId, menu]);
 
   return (
-    <div className="pos-root">
+    <div className="pos-root" data-testid="pos-shell">
       <header className="pos-topbar">
-
         <div className="pos-topbar-right">
           <div className="pos-topbar-nav">
             <button
               type="button"
               className="pos-btn pos-nav-btn"
               onClick={startNewOrder}
+              data-testid="pos-new-order-btn"
             >
               New Order
             </button>
@@ -738,6 +732,7 @@ function PosShell({ session }: { session: SessionState }) {
               type="button"
               className="pos-btn pos-nav-btn"
               onClick={() => setShowOrdersModal(true)}
+              data-testid="pos-orders-btn"
             >
               Orders
             </button>
@@ -750,14 +745,15 @@ function PosShell({ session }: { session: SessionState }) {
             </button>
           </div>
           <div className="pos-user-chip">
-            <strong>{session.user?.displayName ?? "Employee"}</strong>
-            <span>{session.user?.employeeRole ?? session.user?.role ?? "STAFF"}</span>
+            <strong>POS Station</strong>
+            <span>STATION</span>
           </div>
           <button
             type="button"
             className="pos-btn pos-btn--ghost"
             style={{ fontSize: "0.75rem", padding: "0.4rem 0.6rem" }}
             onClick={() => void signOut()}
+            data-testid="pos-signout-btn"
           >
             Sign out
           </button>
@@ -821,7 +817,9 @@ function PosShell({ session }: { session: SessionState }) {
           </div>
           {currentOrderId && (
             <div className="pos-order-id-display">
-              <span>Order ID: <strong>{currentOrderId}</strong></span>
+              <span>
+                Order ID: <strong>{currentOrderId}</strong>
+              </span>
               <button
                 type="button"
                 className="pos-modal-close"
@@ -957,7 +955,11 @@ function PosShell({ session }: { session: SessionState }) {
               </div>
             </div>
 
-            <div className="pos-payments" role="radiogroup" aria-label="Payment method">
+            <div
+              className="pos-payments"
+              role="radiogroup"
+              aria-label="Payment method"
+            >
               {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
                 <button
                   key={m}
@@ -974,7 +976,10 @@ function PosShell({ session }: { session: SessionState }) {
             </div>
 
             {paymentMethod === "CASH" ? (
-              <div className="pos-customer-fields" style={{ marginTop: "0.75rem" }}>
+              <div
+                className="pos-customer-fields"
+                style={{ marginTop: "0.75rem" }}
+              >
                 <label className="pos-field">
                   Amount tendered
                   <input
@@ -1005,6 +1010,7 @@ function PosShell({ session }: { session: SessionState }) {
               className="pos-btn pos-btn--primary pos-place-btn"
               onClick={() => void placeOrder()}
               disabled={placing || cart.length === 0}
+              data-testid="pos-place-order-btn"
             >
               {placing
                 ? "Placing…"
@@ -1026,7 +1032,9 @@ function PosShell({ session }: { session: SessionState }) {
           {showOrdersModal && (
             <div className="pos-orders-overlay">
               <div className="pos-orders-header">
-                <h2 style={{ fontSize: "1.5rem", fontWeight: 800 }}>Daily Orders</h2>
+                <h2 style={{ fontSize: "1.5rem", fontWeight: 800 }}>
+                  Daily Orders
+                </h2>
                 <button
                   type="button"
                   className="pos-modal-close"
@@ -1050,7 +1058,16 @@ function PosShell({ session }: { session: SessionState }) {
 
               <div className="pos-orders-content">
                 <div className="pos-orders-sidebar">
-                  <div className="pos-orders-list-scroll" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div
+                    className="pos-orders-list-scroll"
+                    style={{
+                      flex: 1,
+                      overflowY: "auto",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.75rem",
+                    }}
+                  >
                     {todayOrders
                       .filter((o) => {
                         const q = ordersSearchQuery.toLowerCase();
@@ -1109,14 +1126,17 @@ function PosShell({ session }: { session: SessionState }) {
                     <>
                       <div className="pos-order-detail-header">
                         <div className="pos-detail-hero">
-                          <span className="pos-detail-label">Order Reference</span>
+                          <span className="pos-detail-label">
+                            Order Reference
+                          </span>
                           <h3>#{selectedOrder.order_number}</h3>
                         </div>
                         <div className="pos-order-detail-grid">
                           <div className="pos-detail-group">
                             <label>Customer</label>
                             <span>
-                              {selectedOrder.customer_name_snapshot || "Walk-in"}
+                              {selectedOrder.customer_name_snapshot ||
+                                "Walk-in"}
                             </span>
                           </div>
                           <div className="pos-detail-group">
@@ -1147,27 +1167,37 @@ function PosShell({ session }: { session: SessionState }) {
                           <div className="pos-detail-group">
                             <label>Placed At</label>
                             <span>
-                              {new Date(selectedOrder.placed_at).toLocaleTimeString()}
+                              {new Date(
+                                selectedOrder.placed_at,
+                              ).toLocaleTimeString()}
                             </span>
                           </div>
                         </div>
                       </div>
 
                       <div className="pos-order-detail-items">
-                        <div className="pos-detail-section-title">Order Items</div>
+                        <div className="pos-detail-section-title">
+                          Order Items
+                        </div>
                         {(selectedOrder as any).items?.map(
                           (item: any, idx: number) => (
-                            <div key={idx} className="pos-detail-item-row">
+                            <div
+                              key={idx}
+                              className="pos-detail-item-row"
+                            >
                               <div className="pos-detail-item-info">
                                 <div className="pos-detail-item-name">
-                                  <span className="pos-detail-qty">{item.quantity}×</span>
+                                  <span className="pos-detail-qty">
+                                    {item.quantity}×
+                                  </span>
                                   {item.product_name_snapshot}
                                 </div>
                                 {item.modifiers?.length > 0 && (
                                   <div className="pos-detail-item-mods">
                                     {item.modifiers
                                       .map(
-                                        (m: any) => m.modifier_name_snapshot,
+                                        (m: any) =>
+                                          m.modifier_name_snapshot,
                                       )
                                       .join(", ")}
                                   </div>
@@ -1185,7 +1215,9 @@ function PosShell({ session }: { session: SessionState }) {
                         <div className="pos-order-price-summary">
                           <div className="pos-price-row">
                             <span>Subtotal</span>
-                            <span>{cents(selectedOrder.item_subtotal_cents)}</span>
+                            <span>
+                              {cents(selectedOrder.item_subtotal_cents)}
+                            </span>
                           </div>
                           <div className="pos-price-row">
                             <span>Tax</span>
@@ -1194,7 +1226,9 @@ function PosShell({ session }: { session: SessionState }) {
                           {selectedOrder.delivery_fee_cents > 0 && (
                             <div className="pos-price-row">
                               <span>Delivery Fee</span>
-                              <span>{cents(selectedOrder.delivery_fee_cents)}</span>
+                              <span>
+                                {cents(selectedOrder.delivery_fee_cents)}
+                              </span>
                             </div>
                           )}
                           <div className="pos-price-row pos-price-row--total">
@@ -1277,10 +1311,7 @@ function PosShell({ session }: { session: SessionState }) {
               })}
             </div>
           )}
-
         </section>
-
-
       </div>
 
       {modifierItem ? (
@@ -1294,7 +1325,6 @@ function PosShell({ session }: { session: SessionState }) {
       {discountOrder ? (
         <ManualDiscountModal
           order={discountOrder}
-          controls={controls}
           onClose={() => setDiscountOrder(null)}
           onApplied={() => {
             setDiscountOrder(null);
@@ -1319,9 +1349,6 @@ function ModifierPicker({
   onClose: () => void;
   onAdd: (line: CartLine) => void;
 }) {
-  // Initialise required SINGLE-select groups with their default / first
-  // option so the "Add" button reflects backend requirements without
-  // forcing staff through a redundant tap.
   const initialSelection = useMemo<Record<string, string[]>>(() => {
     const out: Record<string, string[]> = {};
     for (const group of item.modifier_groups) {
@@ -1345,10 +1372,12 @@ function ModifierPicker({
         return { ...prev, [group.id]: [optionId] };
       }
       if (current.includes(optionId)) {
-        return { ...prev, [group.id]: current.filter((id) => id !== optionId) };
+        return {
+          ...prev,
+          [group.id]: current.filter((id) => id !== optionId),
+        };
       }
       if (group.max_select && current.length >= group.max_select) {
-        // Swap oldest for newest so we stay within max_select.
         return { ...prev, [group.id]: [...current.slice(1), optionId] };
       }
       return { ...prev, [group.id]: [...current, optionId] };
@@ -1513,97 +1542,12 @@ function ModifierPicker({
             onClick={submit}
             disabled={!ok}
           >
-            {ok ? `Add to Order • ${cents(addCents)}` : (reason ?? "Select options")}
+            {ok
+              ? `Add to Order • ${cents(addCents)}`
+              : (reason ?? "Select options")}
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  Today's orders strip                                               */
-/* ================================================================== */
-
-function OrdersStrip({
-  orders,
-  canDiscount,
-  onRefresh,
-  onDiscount,
-}: {
-  orders: PosOrder[];
-  canDiscount: boolean;
-  onRefresh: () => void;
-  onDiscount: (order: PosOrder) => void;
-}) {
-  return (
-    <div className="pos-orders-strip">
-      <div className="pos-orders-strip-header">
-        <h3>TODAY'S POS / PHONE ORDERS ({orders.length})</h3>
-        <button
-          type="button"
-          className="pos-btn pos-btn--ghost"
-          style={{ padding: "0.35rem 0.7rem", fontSize: "0.75rem" }}
-          onClick={onRefresh}
-        >
-          Refresh
-        </button>
-      </div>
-      {orders.length === 0 ? (
-        <p className="pos-empty" style={{ padding: "0.8rem 0" }}>
-          No POS or phone orders yet today.
-        </p>
-      ) : (
-        <div className="pos-orders-list">
-          {orders.map((o) => {
-            const time = new Date(o.placed_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-            const isPhone = o.order_source === "PHONE";
-            return (
-              <div key={o.id} className="pos-order-row">
-                <span className="pos-order-num">#{o.order_number}</span>
-                <span>
-                  <span
-                    className={
-                      "pos-order-badge" +
-                      (isPhone ? " pos-order-badge--phone" : "")
-                    }
-                  >
-                    {isPhone ? "Phone" : "Walk-in"}
-                  </span>
-                  <span
-                    style={{
-                      marginLeft: "0.5rem",
-                      color: "rgba(247,233,200,0.6)",
-                    }}
-                  >
-                    {o.customer_name_snapshot || "—"} • {time}
-                  </span>
-                </span>
-                <span className="pos-order-pay">
-                  {o.payment_status_summary ?? "—"}
-                </span>
-                <span className="pos-order-total">
-                  {cents(o.final_payable_cents)}
-                </span>
-                {canDiscount ? (
-                  <button
-                    type="button"
-                    className="pos-btn pos-btn--ghost"
-                    onClick={() => onDiscount(o)}
-                  >
-                    Discount
-                  </button>
-                ) : (
-                  <span />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -1614,12 +1558,10 @@ function OrdersStrip({
 
 function ManualDiscountModal({
   order,
-  controls,
   onClose,
   onApplied,
 }: {
   order: PosOrder;
-  controls: SessionControls;
   onClose: () => void;
   onApplied: () => void;
 }) {
@@ -1654,27 +1596,23 @@ function ManualDiscountModal({
     setBusy(true);
     setError(null);
     try {
-      await posJson<unknown>(
-        controls,
-        `/api/v1/pos/orders/${order.id}/discounts`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            discount_amount_cents: cents100,
-            reason: reason.trim(),
-            description: desc.trim() || undefined,
-          }),
-          locationId: DEFAULT_LOCATION_ID,
-        },
-      );
+      await posJson<unknown>(`/api/v1/pos/orders/${order.id}/discounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          discount_amount_cents: cents100,
+          reason: reason.trim(),
+          description: desc.trim() || undefined,
+        }),
+        locationId: DEFAULT_LOCATION_ID,
+      });
       onApplied();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not apply discount");
     } finally {
       setBusy(false);
     }
-  }, [amount, controls, desc, onApplied, order.id, reason]);
+  }, [amount, desc, onApplied, order.id, reason]);
 
   return (
     <div
@@ -1714,7 +1652,11 @@ function ManualDiscountModal({
           </label>
           <label className="pos-field">
             Current total
-            <input type="text" readOnly value={cents(order.final_payable_cents)} />
+            <input
+              type="text"
+              readOnly
+              value={cents(order.final_payable_cents)}
+            />
           </label>
           <label className="pos-field" style={{ gridColumn: "1 / -1" }}>
             Reason (required)

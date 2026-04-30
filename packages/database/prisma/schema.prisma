@@ -50,6 +50,7 @@ model Location {
   orders                   Order[]
   promoCodes               PromoCode[]
   posLoginAttempts         PosLoginAttempt[]
+  posStationSessions       PosStationSession[]
   refundRequests           RefundRequest[]
   registerSessions         RegisterSession[]
   registers                Register[]
@@ -1936,4 +1937,22 @@ model KdsStationSession {
   @@index([locationId], map: "idx_kds_station_sessions_loc_active")
   @@index([sessionKey], map: "idx_kds_station_sessions_key")
   @@map("kds_station_sessions")
+}
+
+model PosStationSession {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId String    @map("location_id") @db.Uuid
+  sessionKey String    @unique @map("session_key")
+  tokenHash  String    @map("token_hash")
+  clientIp   String    @map("client_ip") @db.Inet
+  deviceId   String?   @map("device_id")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  location   Location  @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([locationId], map: "idx_pos_station_sessions_loc_active")
+  @@index([sessionKey], map: "idx_pos_station_sessions_key")
+  @@map("pos_station_sessions")
 }

@@ -328,7 +328,7 @@ export function SettingsClient() {
         payload.trustedIpRanges = normalizedAllowedIp ? [normalizedAllowedIp] : [];
       }
       if (editingKdsPassword && kdsPasswordDraft.length > 0 && !/^\d{8}$/.test(kdsPasswordDraft)) {
-        throw new Error("KDS password must be exactly 8 digits.");
+        throw new Error("KDS and POS password must be exactly 8 digits.");
       }
       if (editingKdsPassword && kdsPasswordDraft.length > 0) {
         payload.kdsPassword = kdsPasswordDraft;
@@ -483,13 +483,13 @@ export function SettingsClient() {
             style={{ padding: "1rem", marginBottom: "1rem" }}
           >
             <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
-              KDS Password
+              KDS and POS Password
             </h2>
             <p
               className="surface-muted"
               style={{ marginTop: 0, marginBottom: "0.9rem" }}
             >
-              Configure an 8-digit password for the Kitchen Display System. Changes apply and revoke current KDS sessions when you save the page.
+              Configure an 8-digit password used for both the Kitchen Display System and the POS register. Changes apply and revoke current KDS and POS station sessions when you save the page.
             </p>
 
             {!editingKdsPassword && !data.kdsPasswordConfigured ? (
@@ -503,7 +503,7 @@ export function SettingsClient() {
                   setEditingKdsPassword(true);
                 }}
               >
-                Set KDS password
+                Set KDS and POS password
               </button>
             ) : null}
 

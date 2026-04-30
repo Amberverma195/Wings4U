@@ -18,5 +18,10 @@ declare module "express-serve-static-core" {
       locationId: string;
       sessionKey: string;
     };
+    posStationSession?: {
+      id: string;
+      locationId: string;
+      sessionKey: string;
+    };
   }
 }
