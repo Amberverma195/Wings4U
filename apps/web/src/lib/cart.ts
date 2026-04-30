@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import {
   DEFAULT_SCHEDULING_CONFIG,
   normalizeSchedulingConfig,
@@ -38,6 +39,19 @@ import {
 } from "./saved-cart-api";
 import { useSession } from "./session";
 import type { CartItem, CartModifierSelection, FulfillmentType } from "./types";
+
+/** Coalesce rapid +/- quantity taps into one toast. */
+let cartQtyToastTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleCartQuantityUpdatedToast() {
+  if (typeof window === "undefined") return;
+  if (cartQtyToastTimer) clearTimeout(cartQtyToastTimer);
+  cartQtyToastTimer = setTimeout(() => {
+    toast.message("Cart updated", {
+      description: "Your cart has been saved.",
+    });
+    cartQtyToastTimer = null;
+  }, 450);
+}
 
 /** Driver tip % for delivery; stored on the cart so it survives cart ↔ checkout navigation. */
 export type DriverTipPercent = "none" | 10 | 15 | 20;
@@ -502,24 +516,39 @@ export function useCartState(locationId: string): CartContextValue {
         ];
       });
       setCartAddNonce((n) => n + 1);
+      toast.success("Added to cart", { description: incoming.name });
     },
     [],
   );
 
-  const removeItem = useCallback(
-    (key: string) => setItems((prev) => prev.filter((item) => item.key !== key)),
-    [],
-  );
+  const removeItem = useCallback((key: string) => {
+    let removedName: string | undefined;
+    setItems((prev) => {
+      removedName = prev.find((item) => item.key === key)?.name;
+      return prev.filter((item) => item.key !== key);
+    });
+    if (removedName) {
+      toast.message("Removed from cart", { description: removedName });
+    }
+  }, []);
 
-  const updateQuantity = useCallback(
-    (key: string, quantity: number) =>
-      setItems((prev) =>
-        quantity <= 0
-          ? prev.filter((item) => item.key !== key)
-          : prev.map((item) => (item.key === key ? { ...item, quantity } : item)),
-      ),
-    [],
-  );
+  const updateQuantity = useCallback((key: string, quantity: number) => {
+    if (quantity <= 0) {
+      let removedName: string | undefined;
+      setItems((prev) => {
+        removedName = prev.find((item) => item.key === key)?.name;
+        return prev.filter((item) => item.key !== key);
+      });
+      if (removedName) {
+        toast.message("Removed from cart", { description: removedName });
+      }
+      return;
+    }
+    setItems((prev) =>
+      prev.map((item) => (item.key === key ? { ...item, quantity } : item)),
+    );
+    scheduleCartQuantityUpdatedToast();
+  }, []);
 
   /**
    * Phase 13: replace an existing cart line with a freshly built one. The
@@ -572,6 +601,9 @@ export function useCartState(locationId: string): CartContextValue {
         const next = [...without];
         next.splice(originalIndex, 0, replacement);
         return next;
+      });
+      toast.success("Cart updated", {
+        description: `${incoming.name} saved in your cart.`,
       });
     },
     [],

@@ -18,6 +18,7 @@ export default async function AdminLayout({
   children: ReactNode;
 }) {
   await requireSurfaceAccess("ADMIN_ONLY", {
+    notFoundOnUnauthenticated: true,
     notFoundOnForbidden: true,
   });
   return <AdminShell>{children}</AdminShell>;

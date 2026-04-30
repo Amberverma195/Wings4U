@@ -4457,3 +4457,25 @@ main {
     transform: none !important;
   }
 }
+
+/* Sonner (shadcn-style) — match Wing Kings toast treatment */
+.wk-sonner-toast-root {
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 188, 0, 0.35) !important;
+  background: rgba(14, 12, 10, 0.94) !important;
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
+  font-family: Outfit, Poppins, system-ui, sans-serif !important;
+}
+
+.wk-sonner-title {
+  color: #ffbc00 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.wk-sonner-description {
+  color: rgba(255, 244, 230, 0.82) !important;
+  font-weight: 500 !important;
+}

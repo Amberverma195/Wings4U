@@ -18,13 +18,9 @@ export function AccountSurfaceLinks({
   }
 
   return (
-    <>
-      {canOpenAdmin ? (
-        <Link href="/admin" className={navLinkClassName}>
-          <span>Admin Panel</span>
-          <span className={navLinkArrowClassName}>{"\u2192"}</span>
-        </Link>
-      ) : null}
-    </>
+    <Link href="/admin" className={navLinkClassName}>
+      <span>My Admin</span>
+      <span className={navLinkArrowClassName}>{"\u2192"}</span>
+    </Link>
   );
 }

@@ -826,20 +826,25 @@ export function CartPage() {
             aria-labelledby="coupons-modal-title"
           >
             <header style={styles.couponsModalHeader}>
-              <div>
-                <p style={styles.couponsModalEyebrow}>Coupons & rewards</p>
-                <h2 id="coupons-modal-title" style={styles.couponsModalTitle}>
-                  Available coupons
-                </h2>
+              <p style={styles.couponsModalEyebrow}>Coupons</p>
+              <div style={styles.couponsModalTitleRow}>
+                <div style={styles.couponsModalTitleBlock}>
+                  <h2 id="coupons-modal-title" style={styles.couponsModalTitle}>
+                    Available Coupons
+                  </h2>
+                  <p style={styles.couponsModalSubtitle}>
+                    Active promotions and special offers currently available for your account.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  style={styles.couponsModalClose}
+                  onClick={() => setCouponsModalOpen(false)}
+                  aria-label="Close coupons"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                style={styles.couponsModalClose}
-                onClick={() => setCouponsModalOpen(false)}
-                aria-label="Close coupons"
-              >
-                ✕
-              </button>
             </header>
 
             {showWingsRewardCard ? (
@@ -914,11 +919,12 @@ export function CartPage() {
 
             {!showWingsRewardCard && activePromos.length === 0 ? (
               <div style={styles.couponsEmpty}>
-                <div style={styles.couponsEmptyIcon} aria-hidden>🎁</div>
-                <p style={styles.couponsEmptyTitle}>No rewards yet</p>
+                <div style={styles.couponsEmptyIcon} aria-hidden>
+                  🏷️
+                </div>
+                <p style={styles.couponsEmptyTitle}>No coupons yet</p>
                 <p style={styles.couponsEmptyDesc}>
-                  Collect 8 wings-stamps (1 per pound ordered) to unlock a
-                  free pound of wings right here.
+                  Check back later for special offers and discounts.
                 </p>
               </div>
             ) : null}

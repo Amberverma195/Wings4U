@@ -24,12 +24,15 @@ export class KdsAuthService {
     clientIp: string,
     deviceId?: string,
   ) {
+    console.log("[KdsAuthService] login attempt:", { locationId, clientIp, deviceId });
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
       select: { kdsPasswordHash: true, trustedIpRanges: true },
     });
+    console.log("[KdsAuthService] settings found:", !!settings);
 
     if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
+      console.log("[KdsAuthService] IP blocked:", clientIp, "Allowed:", settings?.trustedIpRanges);
       throw new ForbiddenException(
         "KDS access is restricted to in-store network only",
       );
@@ -59,6 +62,7 @@ export class KdsAuthService {
     }
 
     const match = await bcrypt.compare(passwordPlain, settings.kdsPasswordHash);
+    console.log("[KdsAuthService] match:", match);
     if (!match) {
       await this.recordAttempt(locationId, clientIp, deviceId, false);
       throw new UnauthorizedException("Invalid KDS password");
@@ -74,6 +78,7 @@ export class KdsAuthService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 12);
 
+    console.log("[KdsAuthService] creating session...");
     await this.prisma.kdsStationSession.create({
       data: {
         locationId,
@@ -84,6 +89,7 @@ export class KdsAuthService {
         expiresAt,
       },
     });
+    console.log("[KdsAuthService] session created");
 
     return { sessionKey, token, expiresAt };
   }

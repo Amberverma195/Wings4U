@@ -1838,10 +1838,6 @@ function KdsLoginScreen({ onLogin }: { onLogin: () => void }) {
           >
             Enter Station Password
           </h1>
-          <p className="kds-modal-copy">
-            Store network verified. Use the store&apos;s 8-digit KDS password
-            to unlock the kitchen display.
-          </p>
 
           <div
             className="kds-pin-display"

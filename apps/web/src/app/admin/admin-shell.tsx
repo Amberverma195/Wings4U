@@ -47,6 +47,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
           <nav aria-label="Admin sections">
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              <li style={{ marginBottom: "0.75rem" }}>
+                <Link
+                  href="/account/profile"
+                  className={`admin-nav-link${isActive(pathname, "/account/profile") ? " admin-nav-link--active" : ""}`}
+                >
+                  <span className="admin-nav-link-label">My profile</span>
+                  <span className="admin-nav-link-desc surface-muted">
+                    Customer account & rewards
+                  </span>
+                </Link>
+              </li>
               {SECTIONS.map((s) => {
                 const active = isActive(pathname, s.href);
                 return (

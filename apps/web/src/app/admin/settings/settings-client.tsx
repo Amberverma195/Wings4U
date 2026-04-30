@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -245,7 +246,6 @@ export function SettingsClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const isAdmin = session.user?.role === "ADMIN";
 
@@ -307,7 +307,6 @@ export function SettingsClient() {
     }
     setSaving(true);
     setError(null);
-    setSuccess(null);
     try {
       const normalizedAllowedIp = allowedIpDraft.trim();
       if (!isValidAllowedIp(normalizedAllowedIp)) {
@@ -357,7 +356,9 @@ export function SettingsClient() {
           json?.errors?.[0]?.message ?? `Save failed (${res.status})`,
         );
       }
-      setSuccess("Settings saved.");
+      toast.success("Settings saved", {
+        description: "Store settings were updated for this location.",
+      });
       const settings = json.data as Settings;
       setData(settings);
       const seeded: Record<string, string> = {};
@@ -370,7 +371,9 @@ export function SettingsClient() {
       setKdsPasswordDraft("");
       setEditingKdsPassword(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      const message = e instanceof Error ? e.message : "Save failed";
+      setError(message);
+      toast.error("Could not save settings", { description: message });
     } finally {
       setSaving(false);
     }
@@ -393,9 +396,6 @@ export function SettingsClient() {
       </section>
 
       {error && <p className="surface-error">{error}</p>}
-      {success && (
-        <p style={{ color: "#166534", marginBottom: "1rem" }}>{success}</p>
-      )}
 
       {!data && loading ? (
         <p className="surface-muted">Loading settings…</p>

@@ -7,7 +7,8 @@ import { isAuthorizedForSurface, policyForPath } from "./src/lib/surface-policy"
  * Edge-runtime prefilter for protected Next surfaces.
  *
  * Scope is intentionally narrow:
- *   - Signed-out / invalid / expired JWT -> redirect to `/auth/login`.
+ *   - Signed-out / invalid / expired JWT -> allow the request through to
+ *     the server layout, which hides `/admin` as a 404.
  *   - Valid JWT whose role/employeeRole claim fails the surface policy ->
  *     allow the request through to the authoritative server layout, which
  *     can fail closed as a 404 using the current DB-backed session.
@@ -34,10 +35,7 @@ export async function middleware(req: NextRequest) {
   const session = await resolveSession(accessToken);
 
   if (!session) {
-    // KDS handles its own auth (network gate + PIN screen), so we don't
-    // redirect to /auth/login. For /admin, we still do.
-    const loginUrl = new URL("/auth/login", req.url);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.next();
   }
 
   if (!isAuthorizedForSurface(session, policyId)) {

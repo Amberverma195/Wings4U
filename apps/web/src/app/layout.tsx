@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { CartProvider } from "@/components/cart-provider";
 import { ConnectivityProvider } from "@/components/connectivity-provider";
 import { DeliveryAddressProvider } from "@/components/delivery-address-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/lib/session";
 import { WingKingsShell } from "@/components/wingkings-shell";
 import "./globals.css";
@@ -35,6 +36,7 @@ export default function RootLayout({
             </CartProvider>
           </ConnectivityProvider>
         </SessionProvider>
+        <Toaster />
       </body>
     </html>
   );

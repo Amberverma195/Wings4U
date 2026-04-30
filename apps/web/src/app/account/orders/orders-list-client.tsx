@@ -166,6 +166,11 @@ export function OrdersListClient() {
                   <span>My Profile</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
+                <AccountSurfaceLinks
+                  user={session.user}
+                  navLinkClassName={styles.navLink}
+                  navLinkArrowClassName={styles.navLinkArrow}
+                />
                 <Link href="/account" className={styles.navLink}>
                   <span>My Account</span>
                   <span className={styles.navLinkArrow}>→</span>
@@ -182,11 +187,6 @@ export function OrdersListClient() {
                   <span>My Cards</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <AccountSurfaceLinks
-                  user={session.user}
-                  navLinkClassName={styles.navLink}
-                  navLinkArrowClassName={styles.navLinkArrow}
-                />
                 <Link href="/account/support" className={styles.navLink}>
                   <span>Support</span>
                   <span className={styles.navLinkArrow}>→</span>
