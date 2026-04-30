@@ -7,6 +7,11 @@ node_modules/
 .env.*
 **/.env
 **/.env.*
+# ...but example/template files are checked in for onboarding.
+!.env.example
+!.env.local.example
+!**/.env.example
+!**/.env.local.example
 
 # Build outputs
 .next/
