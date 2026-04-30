@@ -642,4 +642,64 @@ export class PosService {
       new_final_payable_cents: newFinalPayable,
     };
   }
+
+  async listStaff(locationId: string) {
+    const staff = await this.prisma.employeeProfile.findMany({
+      where: {
+        locationId,
+        isActiveEmployee: true,
+        archivedAt: null,
+      },
+      include: {
+        user: {
+          select: {
+            displayName: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: { user: { displayName: "asc" } },
+    });
+
+    return staff.map((s) => ({
+      user_id: s.userId,
+      display_name: s.user.displayName,
+      first_name: s.user.firstName,
+      last_name: s.user.lastName,
+      role: s.role,
+    }));
+  }
+
+  async lookupCustomer(phone: string) {
+    const digits = phone.replace(/\D/g, "");
+    if (!digits) return null;
+
+    // Search multiple possible formats to be resilient to data entry variations
+    const identities = await this.prisma.userIdentity.findMany({
+      where: {
+        OR: [
+          { phoneE164: digits },
+          { phoneE164: `+1${digits}` },
+          { phoneE164: `+${digits}` },
+        ],
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    const identity = identities.find((id) => id.user?.role === "CUSTOMER");
+
+    if (identity?.user) {
+      return {
+        id: identity.user.id,
+        display_name: identity.user.displayName,
+        first_name: identity.user.firstName,
+        last_name: identity.user.lastName,
+        phone: identity.phoneE164,
+      };
+    }
+    return null;
+  }
 }

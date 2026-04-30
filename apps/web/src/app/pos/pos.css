@@ -3,6 +3,7 @@
 /*                                                                     */
 /*  A refined dark theme using soft charcoal and the brand yellow.      */
 /*  High contrast for readability with a professional brand look.      */
+/*  (File cleaned to resolve encoding issues)                          */
 /* ------------------------------------------------------------------ */
 
 :root {
@@ -16,6 +17,10 @@
   --pos-border: #333333;
   --pos-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
   --pos-radius: 10px;
+}
+
+.pos-accent {
+  color: var(--pos-accent) !important;
 }
 
 .pos-root {
@@ -42,8 +47,6 @@
   background: #222222;
   border-bottom: 1px solid var(--pos-border);
 }
-
-
 
 .pos-empty {
   flex: 1;
@@ -112,7 +115,7 @@
   background: transparent;
   border: 2px solid var(--pos-accent);
   color: var(--pos-accent);
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.65rem;
   font-size: 0.9rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -157,7 +160,7 @@
 .pos-workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: 480px minmax(0, 1fr);
+  grid-template-columns: 500px minmax(0, 1fr);
   gap: 0.75rem;
   padding: 0.75rem;
   min-height: 0;
@@ -172,6 +175,7 @@
   border-radius: var(--pos-radius);
   padding: 1rem;
   box-shadow: var(--pos-shadow);
+  min-height: 0;
 }
 
 .pos-cart-header {
@@ -183,8 +187,8 @@
 
 .pos-dining-selector {
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .pos-recent-pills {
@@ -223,13 +227,13 @@
 
 .pos-dining-btn {
   flex: 1;
-  padding: 0.6rem 0.4rem;
+  padding: 0.3rem 0.35rem;
   background: #2a2a2a;
   border: 1px solid #333;
   border-radius: 10px;
   color: #aaa;
   font-weight: 800;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -262,6 +266,89 @@
   border: 1px solid #333;
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
+}
+
+.pos-customer-profile-card {
+  grid-column: span 2;
+  background: #1a1a1a;
+  border: 1px solid var(--pos-accent);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  animation: pos-slide-up 0.3s ease-out;
+}
+
+.pos-customer-profile-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-customer-profile-info strong {
+  color: var(--pos-accent);
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.pos-customer-profile-info span {
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+.pos-customer-change-btn {
+  background: #333;
+  border: none;
+  color: #fff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.pos-customer-change-btn:hover {
+  background: #444;
+}
+
+@keyframes pos-slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pos-cart-employee-info {
+  position: relative;
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px dashed var(--pos-accent);
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  color: var(--pos-accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pos-cart-employee-info-close {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.6rem;
+  background: none;
+  border: none;
+  color: var(--pos-accent);
+  cursor: pointer;
+  font-size: 1.75rem;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.pos-cart-employee-info-close:hover {
+  opacity: 1;
 }
 
 .pos-cart-line-name {
@@ -302,6 +389,29 @@
   color: #000;
 }
 
+.pos-cart-edit-btn {
+  background: #222;
+  border: 1px solid #444;
+  color: var(--pos-accent);
+  padding: 0.25rem 1.25rem;
+  font-size: 0.7rem;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-left: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pos-cart-edit-btn:hover {
+  background: #2a2a2a;
+  border-color: var(--pos-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 166, 35, 0.15);
+}
+
 .pos-qty-value {
   font-weight: 700;
   min-width: 24px;
@@ -318,27 +428,27 @@
 
 .pos-cart-totals {
   background: #2a2a2a;
-  padding: 0.75rem;
+  padding: 0.6rem;
   border-radius: 10px;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.25rem;
 }
 
 .pos-cart-totals-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #bbb;
 }
 
 .pos-cart-totals-row--emph {
   color: #fff;
   font-weight: 800;
-  font-size: 1.15rem;
+  font-size: 1rem;
   border-top: 1px solid #444;
-  padding-top: 0.75rem;
-  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  margin-top: 0.15rem;
 }
 
 .pos-payments {
@@ -356,6 +466,14 @@
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pos-payment-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  filter: grayscale(1);
+  border-color: #222;
 }
 
 .pos-payment-btn[aria-pressed="true"] {
@@ -425,8 +543,8 @@
 .pos-bottom-navbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
+  justify-content: flex-end;
+  gap: 1rem;
   padding: 0.6rem 1.25rem;
   background: #222222;
   border-top: 1px solid var(--pos-border);
@@ -523,8 +641,8 @@
 .pos-field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  font-size: 0.75rem;
+  gap: 0.25rem;
+  font-size: 0.65rem;
   font-weight: 800;
   color: var(--pos-accent);
   text-transform: uppercase;
@@ -535,10 +653,10 @@
   background: #111;
   border: 1px solid #333;
   border-radius: 8px;
-  padding: 0.5rem 0.6rem;
+  padding: 0.35rem 0.6rem;
   color: #fff;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .pos-field input:focus {
@@ -569,6 +687,29 @@
 .pos-segmented button[aria-pressed="true"] {
   background: #333;
   color: #fff;
+}
+
+.pos-segmented--small {
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.pos-segmented--small button {
+  padding: 0.25rem 1.15rem;
+  font-size: 0.7rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.pos-order-id-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #2a2a2a;
+  padding: 0.4rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #333;
+  margin-bottom: 0.75rem;
 }
 
 /* --- Orders Overlay --- */
@@ -728,19 +869,6 @@
   border-top: 1px solid #333;
   padding-top: 1rem;
   margin-top: 0.5rem;
-}
-
-.pos-order-id-display {
-  background: #262626;
-  border: 1px solid var(--pos-accent);
-  border-radius: 10px;
-  padding: 0.75rem 1.25rem;
-  color: var(--pos-accent);
-  font-weight: 800;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.25rem;
 }
 
 .pos-modal-close {
@@ -935,6 +1063,10 @@
   max-width: 500px;
 }
 
+.pos-modal--medium {
+  max-width: 700px;
+}
+
 @keyframes posModalPop {
   from { opacity: 0; transform: scale(0.95) translateY(20px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
@@ -1091,14 +1223,13 @@
   border-top: 1px solid #333;
 }
 
-/* --- Login Stage (KDS-Inspired Dark Theme) --- */
 .pos-login-stage {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: #0f0f0f; /* Slightly deeper than main bg for focus */
+  background: #0f0f0f;
 }
 
 .pos-login-card {
@@ -1243,4 +1374,45 @@
   padding: 1rem;
   border-radius: 12px;
   border: 1px solid rgba(255, 77, 77, 0.2);
+}
+
+.pos-staff-opt {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 1.25rem;
+  background: #2a2a2a;
+  border: 1px solid #333;
+  color: #fff;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.pos-staff-opt:hover {
+  background: #333;
+  border-color: var(--pos-accent);
+  transform: translateX(4px);
+}
+
+.pos-employee-btn {
+  padding: 1.25rem 0.75rem;
+  background: #2a2a2a;
+  border: 1px solid #333;
+  color: #fff;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.pos-employee-btn:hover {
+  background: var(--pos-accent);
+  color: #000;
+  border-color: var(--pos-accent);
 }

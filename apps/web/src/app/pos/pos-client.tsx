@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
@@ -420,12 +421,24 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [orderSource, setOrderSource] = useState<OrderSource>("POS");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [amountTendered, setAmountTendered] = useState<string>("");
   const [orderNotes, setOrderNotes] = useState("");
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
 
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+  const [editingLine, setEditingLine] = useState<CartLine | null>(null);
+
+  const [showStaffModal, setShowStaffModal] = useState(false);
+  const [showEmployeeDiscountModal, setShowEmployeeDiscountModal] = useState(false);
+  const [showCustomDiscountModal, setShowCustomDiscountModal] = useState(false);
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [appliedDiscount, setAppliedDiscount] = useState<{
+    label: string;
+    percent: number;
+    fixedAmountCents?: number;
+    employeeName?: string;
+  } | null>(null);
 
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
@@ -438,6 +451,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [ordersSearchQuery, setOrdersSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null);
   const [showCustomerLookupModal, setShowCustomerLookupModal] = useState(false);
+  const [showSpecialInstructionsModal, setShowSpecialInstructionsModal] = useState(false);
+  const [staff, setStaff] = useState<Array<{ user_id: string; display_name: string }>>([]);
+  const [customerFound, setCustomerFound] = useState<any | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
   /* ---------- Menu fetch ---------- */
 
@@ -463,6 +480,23 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     void loadMenu();
   }, [loadMenu]);
 
+  /* ---------- Staff fetch ---------- */
+
+  const loadStaff = useCallback(async () => {
+    try {
+      const data = await posJson<any[]>("/api/v1/pos/staff", {
+        locationId: DEFAULT_LOCATION_ID,
+      });
+      setStaff(data);
+    } catch (err) {
+      console.error("Failed to load staff", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStaff();
+  }, [loadStaff]);
+
   /* ---------- Today's orders fetch ---------- */
 
   const loadOrders = useCallback(async () => {
@@ -480,7 +514,39 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     void loadOrders();
   }, [loadOrders]);
 
-  /* ---------- Cart ops ---------- */
+  /* ---------- Customer Lookup ---------- */
+
+  const performLookup = useCallback(async (phone: string) => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      setCustomerFound(null);
+      setLookupError(null);
+      return;
+    }
+    try {
+      const data = await posJson<any>(
+        `/api/v1/pos/customer-lookup?phone=${encodeURIComponent(phone)}`,
+        { locationId: DEFAULT_LOCATION_ID },
+      );
+      if (data) {
+        setCustomerFound(data);
+        setCustomerName(data.display_name);
+        setLookupError(null);
+      } else {
+        setCustomerFound(null);
+        setLookupError("No User");
+      }
+    } catch (err) {
+      console.error("Lookup failed", err);
+      setLookupError(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void performLookup(customerPhone);
+  }, [customerPhone, performLookup]);
+
+  /* ---------- Cart management ---------- */
 
   const addSimpleItem = useCallback((item: MenuItem) => {
     if (item.builder_type) {
@@ -518,21 +584,39 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     });
   }, []);
 
-  const openModifierPicker = useCallback((item: MenuItem) => {
+  const openModifierPicker = useCallback((item: MenuItem, line?: CartLine) => {
     if (item.builder_type) {
       alert("Wings/combos use the customer app builder.");
       return;
     }
+    setEditingLine(line ?? null);
     setModifierItem(item);
   }, []);
 
-  const addConfiguredItem = useCallback((line: CartLine) => {
-    setCurrentOrderId(
-      (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-    );
-    setCart((prev) => [...prev, line]);
-    setModifierItem(null);
-  }, []);
+  const addConfiguredItem = useCallback(
+    (line: CartLine) => {
+      setCurrentOrderId(
+        (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+      );
+      setCart((prev) => {
+        if (editingLine) {
+          return prev.map((l) =>
+            l.localId === editingLine.localId
+              ? {
+                ...line,
+                localId: editingLine.localId,
+                quantity: editingLine.quantity,
+              }
+              : l,
+          );
+        }
+        return [...prev, line];
+      });
+      setModifierItem(null);
+      setEditingLine(null);
+    },
+    [editingLine],
+  );
 
   const adjustQuantity = useCallback((localId: string, delta: number) => {
     setCart((prev) =>
@@ -548,6 +632,19 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
   const removeLine = useCallback((localId: string) => {
     setCart((prev) => prev.filter((l) => l.localId !== localId));
+  }, []);
+
+  const updatePhone = useCallback((val: string) => {
+    const digits = (val ?? "").replace(/\D/g, "").slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) {
+      formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    } else if (digits.length > 3) {
+      formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    } else if (digits.length > 0) {
+      formatted = `(${digits}`;
+    }
+    setCustomerPhone(formatted);
   }, []);
 
   const copyOrderToCart = useCallback((order: PosOrder) => {
@@ -576,8 +673,8 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setCurrentOrderId(`ORD-${order.order_number}-RE`);
     setFulfillmentType(order.fulfillment_type as FulfillmentType);
     setCustomerName(order.customer_name_snapshot ?? "");
-    setCustomerPhone(order.customer_phone_snapshot ?? "");
-  }, []);
+    updatePhone(order.customer_phone_snapshot ?? "");
+  }, [updatePhone]);
 
   const clearCart = useCallback(() => {
     setCart([]);
@@ -585,6 +682,9 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setOrderNotes("");
     setCustomerName("");
     setCustomerPhone("");
+    setCustomerFound(null);
+    setLookupError(null);
+    setAppliedDiscount(null);
     setPlaceError(null);
     setPlaceSuccess(null);
     setCurrentOrderId(null);
@@ -607,9 +707,18 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     }, 0);
   }, [cart]);
 
+  const discountCents = useMemo(() => {
+    if (!appliedDiscount) return 0;
+    if (appliedDiscount.fixedAmountCents) return appliedDiscount.fixedAmountCents;
+    return Math.round((subtotalCents * appliedDiscount.percent) / 100);
+  }, [appliedDiscount, subtotalCents]);
+
   const taxRateBps = menu?.location.tax_rate_bps ?? 1300;
-  const estimatedTaxCents = Math.round((subtotalCents * taxRateBps) / 10_000);
-  const estimatedTotalCents = subtotalCents + estimatedTaxCents;
+  const subtotalAfterDiscount = subtotalCents - discountCents;
+  const estimatedTaxCents = Math.round(
+    (subtotalAfterDiscount * taxRateBps) / 10_000,
+  );
+  const estimatedTotalCents = subtotalAfterDiscount + estimatedTaxCents;
 
   const changeDueCents = useMemo(() => {
     if (paymentMethod !== "CASH") return null;
@@ -628,14 +737,13 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setPlaceError(null);
     setPlaceSuccess(null);
 
-    let finalPaymentMethod = paymentMethod as string;
-    let finalAmountTenderedCents = undefined;
+    let finalPaymentMethod = overrides?.paymentMethod ?? (paymentMethod as string);
+    let finalAmountTenderedCents = overrides?.amountTenderedCents;
 
-    if (paymentMethod === "EXACT_CASH") {
-      finalPaymentMethod = "CASH";
-      finalAmountTenderedCents = estimatedTotalCents;
-    } else if (paymentMethod === "CASH" && amountTendered) {
-      finalAmountTenderedCents = Math.round(Number.parseFloat(amountTendered) * 100);
+    if (!overrides && paymentMethod === "CASH" && amountTendered) {
+      finalAmountTenderedCents = Math.round(
+        Number.parseFloat(amountTendered) * 100,
+      );
     }
 
     try {
@@ -654,6 +762,11 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
             : {}),
         })),
       };
+
+      if (appliedDiscount) {
+        payload.discount_amount_cents = discountCents;
+        payload.discount_reason = `${appliedDiscount.label}${appliedDiscount.employeeName ? `: ${appliedDiscount.employeeName}` : ""}`;
+      }
       if (customerName.trim()) payload.customer_name = customerName.trim();
       if (customerPhone.trim()) payload.customer_phone = customerPhone.trim();
       if (
@@ -680,7 +793,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
           ? `Order #${data.order_number} placed • ${cents(data.final_payable_cents)} • Change ${cents(data.change_due_cents)}`
           : `Order #${data.order_number} placed • ${cents(data.final_payable_cents)}`;
       setPlaceSuccess(msg);
-      clearCart();
+      startNewOrder();
       void loadOrders();
     } catch (err) {
       setPlaceError(
@@ -692,7 +805,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   }, [
     amountTendered,
     cart,
-    clearCart,
     customerName,
     customerPhone,
     fulfillmentType,
@@ -700,6 +812,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     orderNotes,
     orderSource,
     paymentMethod,
+    startNewOrder,
   ]);
 
   /* ---------- Sign out (POS station only) ---------- */
@@ -736,7 +849,15 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
           <button
             type="button"
             className="pos-btn pos-nav-btn"
-            onClick={startNewOrder}
+            onClick={() => {
+              if (currentOrderId) {
+                toast.error("Order already opened", {
+                  description: "Finish or clear the current order first.",
+                });
+                return;
+              }
+              startNewOrder();
+            }}
             data-testid="pos-new-order-btn"
           >
             New Order
@@ -752,7 +873,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
           <button
             type="button"
             className="pos-btn pos-nav-btn"
-            onClick={() => alert("Employee functions placeholder")}
+            onClick={() => setShowStaffModal(true)}
           >
             Staff
           </button>
@@ -818,28 +939,124 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
             >
               To-Go
             </button>
-            <button
-              type="button"
-              className="pos-dining-btn"
-              aria-pressed={diningOption === "DELIVERY"}
-              onClick={() => {
-                setDiningOption("DELIVERY");
-                setFulfillmentType("DELIVERY");
-              }}
-            >
-              Delivery
-            </button>
+            {orderSource === "PHONE" && (
+              <button
+                type="button"
+                className="pos-dining-btn"
+                aria-pressed={diningOption === "DELIVERY"}
+                onClick={() => {
+                  setDiningOption("DELIVERY");
+                  setFulfillmentType("DELIVERY");
+                }}
+              >
+                Delivery
+              </button>
+            )}
+          </div>
+
+          <div className="pos-customer-fields" style={{ marginBottom: "0.75rem" }}>
+            {customerFound ? (
+              <div className="pos-customer-profile-card">
+                <div className="pos-customer-profile-info">
+                  <strong>{customerFound.display_name}</strong>
+                  <span>{customerPhone}</span>
+                </div>
+                <button
+                  type="button"
+                  className="pos-customer-change-btn"
+                  onClick={() => {
+                    setCustomerFound(null);
+                    setCustomerName("");
+                    setCustomerPhone("");
+                    setLookupError(null);
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="pos-field">
+                  CUSTOMER NAME
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Optional"
+                    autoComplete="off"
+                  />
+                </label>
+                {orderSource === "PHONE" && (
+                  <label className="pos-field">
+                    PHONE{" "}
+                    {lookupError && (
+                      <span
+                        style={{
+                          color: "var(--pos-accent)",
+                          fontSize: "0.7rem",
+                          marginLeft: "0.5rem",
+                          fontWeight: 900,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        ({lookupError})
+                      </span>
+                    )}
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={customerPhone}
+                      onChange={(e) => updatePhone(e.target.value)}
+                      placeholder="(519) 000-0000"
+                      autoComplete="off"
+                    />
+                  </label>
+                )}
+              </>
+            )}
           </div>
           {currentOrderId && (
             <div className="pos-order-id-display">
-              <span>
-                Order ID: <strong>{currentOrderId}</strong>
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span className="pos-accent" style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                  ID: {currentOrderId}
+                </span>
+                <div className="pos-segmented pos-segmented--small">
+                  <button
+                    type="button"
+                    aria-pressed={orderSource === "POS"}
+                    onClick={() => {
+                      setOrderSource("POS");
+                      if (diningOption === "DELIVERY") {
+                        setDiningOption("TO_GO");
+                        setFulfillmentType("PICKUP");
+                      }
+                    }}
+                  >
+                    Walk-in
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={orderSource === "PHONE"}
+                    onClick={() => setOrderSource("PHONE")}
+                  >
+                    Phone
+                  </button>
+                </div>
+              </div>
               <button
                 type="button"
                 className="pos-modal-close"
-                style={{ fontSize: "1.1rem", padding: "0 0.25rem" }}
-                onClick={() => setCurrentOrderId(null)}
+                style={{ fontSize: "1.2rem", padding: "0 0.25rem", opacity: 0.6 }}
+                onClick={() => {
+                  if (cart.length > 0) {
+                    toast.error("Remove all items first", {
+                      description: "Please clear the cart before closing the order session.",
+                    });
+                    return;
+                  }
+                  setCurrentOrderId(null);
+                }}
               >
                 ×
               </button>
@@ -871,7 +1088,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                             .join(", ")}
                         </div>
                       ) : null}
-                      <div className="pos-qty" style={{ marginTop: "0.45rem" }}>
+                      <div className="pos-qty">
                         <button
                           type="button"
                           aria-label="Decrease"
@@ -887,6 +1104,22 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                         >
                           +
                         </button>
+
+                        <button
+                          type="button"
+                          className="pos-cart-edit-btn"
+                          onClick={() => {
+                            const item = menu?.categories
+                              .flatMap((c) => c.items)
+                              .find((i) => i.id === line.menuItemId);
+                            if (item) {
+                              openModifierPicker(item, line);
+                            }
+                          }}
+                        >
+                          Edit
+                        </button>
+
                         <button
                           type="button"
                           aria-label="Remove"
@@ -900,66 +1133,41 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                   </div>
                 );
               })}
+              {appliedDiscount?.employeeName && (
+                <div className="pos-cart-employee-info">
+                  <button
+                    type="button"
+                    className="pos-cart-employee-info-close"
+                    onClick={() => setAppliedDiscount(null)}
+                  >
+                    ×
+                  </button>
+                  Employee Discount: {appliedDiscount.employeeName} ({appliedDiscount.percent}%)
+                </div>
+              )}
             </div>
           )}
 
           <div className="pos-cart-footer">
-            <div className="pos-customer-fields">
-              <label className="pos-field">
-                Source
-                <div className="pos-segmented">
-                  <button
-                    type="button"
-                    aria-pressed={orderSource === "POS"}
-                    onClick={() => setOrderSource("POS")}
-                  >
-                    Walk-in
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={orderSource === "PHONE"}
-                    onClick={() => setOrderSource("PHONE")}
-                  >
-                    Phone
-                  </button>
-                </div>
-              </label>
-              <label className="pos-field">
-                Customer name
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Optional"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="pos-field">
-                Phone
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="+1 519 ..."
-                  autoComplete="off"
-                />
-              </label>
-              <label className="pos-field" style={{ gridColumn: "1 / -1" }}>
-                Notes
-                <textarea
-                  value={orderNotes}
-                  onChange={(e) => setOrderNotes(e.target.value)}
-                  placeholder="Special instructions for the kitchen"
-                  rows={2}
-                />
-              </label>
-            </div>
-
             <div className="pos-cart-totals">
               <div className="pos-cart-totals-row">
                 <span>Subtotal</span>
                 <span>{cents(subtotalCents)}</span>
               </div>
+              {appliedDiscount && (
+                <div
+                  className="pos-cart-totals-row"
+                  style={{ color: "var(--pos-accent)" }}
+                >
+                  <span>
+                    Discount{" "}
+                    {appliedDiscount.fixedAmountCents
+                      ? ""
+                      : `(${appliedDiscount.percent}%)`}
+                  </span>
+                  <span>-{cents(discountCents)}</span>
+                </div>
+              )}
               <div className="pos-cart-totals-row">
                 <span>Tax (est.)</span>
                 <span>{cents(estimatedTaxCents)}</span>
@@ -975,34 +1183,50 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
               role="radiogroup"
               aria-label="Payment method"
             >
-              {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-pressed={paymentMethod === m}
-                  aria-checked={paymentMethod === m}
-                  className="pos-payment-btn"
-                  onClick={() => setPaymentMethod(m)}
-                >
-                  {PAYMENT_LABELS[m]}
-                </button>
-              ))}
+              <button
+                type="button"
+                className="pos-payment-btn"
+                disabled={cart.length === 0 || placing}
+                onClick={() => {
+                  setPaymentMethod("CASH");
+                  setAmountTendered((estimatedTotalCents / 100).toString());
+                  void placeOrder({
+                    paymentMethod: "CASH",
+                    amountTenderedCents: estimatedTotalCents,
+                  });
+                }}
+              >
+                Exact Amount
+              </button>
+              <button
+                type="button"
+                className="pos-payment-btn"
+                disabled={cart.length === 0 || placing}
+                aria-pressed={showCashModal}
+                onClick={() => {
+                  setPaymentMethod("CASH");
+                  setShowCashModal(true);
+                }}
+              >
+                Cash
+              </button>
+              <button
+                type="button"
+                className="pos-payment-btn"
+                disabled={cart.length === 0 || placing}
+                aria-pressed={paymentMethod === "CARD_TERMINAL"}
+                onClick={() => {
+                  setPaymentMethod("CARD_TERMINAL");
+                  void placeOrder({ paymentMethod: "CARD_TERMINAL" });
+                }}
+              >
+                Card
+              </button>
             </div>
 
 
 
-            <button
-              type="button"
-              className="pos-btn pos-btn--primary pos-place-btn"
-              onClick={() => void placeOrder()}
-              disabled={placing || cart.length === 0}
-              data-testid="pos-place-order-btn"
-            >
-              {placing
-                ? "Placing…"
-                : `Place Order • ${cents(estimatedTotalCents)}`}
-            </button>
+
 
             {placeError ? (
               <div className="pos-cart-message">{placeError}</div>
@@ -1083,9 +1307,32 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
             <button
               type="button"
               className="pos-btn pos-nav-btn"
-              onClick={() => setShowCustomerLookupModal(true)}
+              onClick={() => {
+                if (cart.length === 0) {
+                  toast.error("No open order", {
+                    description: "Add items to the cart first.",
+                  });
+                  return;
+                }
+                setShowCustomerLookupModal(true);
+              }}
             >
-              Customer Lookup
+              CUST Lookup
+            </button>
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={() => {
+                if (cart.length === 0) {
+                  toast.error("No open order", {
+                    description: "Add items to the cart first.",
+                  });
+                  return;
+                }
+                setShowSpecialInstructionsModal(true);
+              }}
+            >
+              SPC INS
             </button>
           </div>
         </section>
@@ -1173,7 +1420,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                         data-paid={
                           o.final_payable_cents > 0 &&
                           o.final_payable_cents <=
-                            (o as any).total_paid_cents
+                          (o as any).total_paid_cents
                         }
                       >
                         {cents(o.final_payable_cents)}
@@ -1207,14 +1454,14 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                           style={{
                             color:
                               selectedOrder.final_payable_cents > 0 &&
-                              selectedOrder.final_payable_cents <=
+                                selectedOrder.final_payable_cents <=
                                 selectedOrder.total_paid_cents
                                 ? "#4caf50"
                                 : "#f44336",
                           }}
                         >
                           {selectedOrder.final_payable_cents > 0 &&
-                          selectedOrder.final_payable_cents <=
+                            selectedOrder.final_payable_cents <=
                             selectedOrder.total_paid_cents
                             ? "PAID"
                             : "NOT PAID"}
@@ -1312,13 +1559,95 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         </div>
       )}
 
-      {modifierItem ? (
+      {showStaffModal && (
+        <StaffModal
+          onClose={() => setShowStaffModal(false)}
+          onOpenDrawer={() => {
+            alert("Cash drawer opened.");
+            setShowStaffModal(false);
+          }}
+          onEmployeeDiscount={() => {
+            if (cart.length === 0) {
+              toast.error("No open order", {
+                description: "Add items to the cart first.",
+              });
+              return;
+            }
+            setShowStaffModal(false);
+            setShowEmployeeDiscountModal(true);
+          }}
+          onCustomDiscount={() => {
+            if (cart.length === 0) {
+              toast.error("No open order", {
+                description: "Add items to the cart first.",
+              });
+              return;
+            }
+            setShowStaffModal(false);
+            setShowCustomDiscountModal(true);
+          }}
+        />
+      )}
+
+      {showCustomDiscountModal && (
+        <CustomDiscountModal
+          onClose={() => setShowCustomDiscountModal(false)}
+          onApply={(type, val, reason) => {
+            if (type === "PERCENT") {
+              setAppliedDiscount({
+                label: reason || "Custom Discount",
+                percent: val,
+              });
+            } else {
+              setAppliedDiscount({
+                label: reason || "Custom Discount",
+                percent: 0,
+                fixedAmountCents: Math.round(val * 100),
+              });
+            }
+            setShowCustomDiscountModal(false);
+          }}
+        />
+      )}
+
+      {showEmployeeDiscountModal && (
+        <EmployeeDiscountModal
+          onClose={() => setShowEmployeeDiscountModal(false)}
+          employees={staff}
+          onSelect={(name) => {
+            setAppliedDiscount({
+              label: `Emp: ${name}`,
+              percent: 50,
+              employeeName: name,
+            });
+            setShowEmployeeDiscountModal(false);
+          }}
+        />
+      )}
+
+      {showCashModal && (
+        <CashPaymentModal
+          totalDueCents={estimatedTotalCents}
+          onCancel={() => setShowCashModal(false)}
+          onDone={(tendered) => {
+            setShowCashModal(false);
+            setAmountTendered((tendered / 100).toString());
+            void placeOrder({ paymentMethod: "CASH", amountTenderedCents: tendered });
+          }}
+        />
+      )}
+
+      {modifierItem && (
         <ModifierPicker
           item={modifierItem}
-          onClose={() => setModifierItem(null)}
+          existingLine={editingLine}
+          onClose={() => {
+            setModifierItem(null);
+            setEditingLine(null);
+          }}
           onAdd={addConfiguredItem}
         />
-      ) : null}
+      )}
 
       {discountOrder ? (
         <ManualDiscountModal
@@ -1330,9 +1659,23 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
           }}
         />
       ) : null}
+
       {showCustomerLookupModal && (
         <CustomerLookupModal
           onClose={() => setShowCustomerLookupModal(false)}
+          onSelect={(c) => {
+            setCustomerFound(c);
+            setCustomerName(c.display_name);
+            setCustomerPhone(c.phone);
+            setLookupError(null);
+          }}
+        />
+      )}
+      {showSpecialInstructionsModal && (
+        <SpecialInstructionsModal
+          notes={orderNotes}
+          onSave={setOrderNotes}
+          onClose={() => setShowSpecialInstructionsModal(false)}
         />
       )}
     </div>
@@ -1347,12 +1690,26 @@ function ModifierPicker({
   item,
   onClose,
   onAdd,
+  existingLine,
 }: {
   item: MenuItem;
   onClose: () => void;
   onAdd: (line: CartLine) => void;
+  existingLine?: CartLine | null;
 }) {
   const initialSelection = useMemo<Record<string, string[]>>(() => {
+    if (existingLine) {
+      const out: Record<string, string[]> = {};
+      for (const mod of existingLine.modifiers) {
+        for (const group of item.modifier_groups) {
+          if (group.options.some((o) => o.id === mod.modifierOptionId)) {
+            out[group.id] = [...(out[group.id] || []), mod.modifierOptionId];
+            break;
+          }
+        }
+      }
+      return out;
+    }
     const out: Record<string, string[]> = {};
     for (const group of item.modifier_groups) {
       if (group.selection_mode === "SINGLE" && group.is_required) {
@@ -1362,11 +1719,11 @@ function ModifierPicker({
       }
     }
     return out;
-  }, [item]);
+  }, [item, existingLine]);
 
   const [selection, setSelection] =
     useState<Record<string, string[]>>(initialSelection);
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(existingLine?.specialInstructions ?? "");
 
   const toggle = useCallback((group: ModifierGroup, optionId: string) => {
     setSelection((prev) => {
@@ -1433,7 +1790,7 @@ function ModifierPicker({
       }
     }
     onAdd({
-      localId: `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      localId: existingLine?.localId ?? `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       menuItemId: item.id,
       name: item.name,
       unitBaseCents: item.base_price_cents,
@@ -1703,9 +2060,14 @@ function ManualDiscountModal({
 /*  Customer Lookup Modal                                              */
 /* ================================================================== */
 
-function CustomerLookupModal({ onClose }: { onClose: () => void }) {
+function CustomerLookupModal({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (c: any) => void;
+}) {
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1729,11 +2091,18 @@ function CustomerLookupModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      // Logic for actual search would go here
-      alert(`Searching for customer: ${displayPhone} ${email ? `(${email})` : ""}`);
-      onClose();
+      const data = await posJson<any>(
+        `/api/v1/pos/customer-lookup?phone=${encodeURIComponent(phone)}`,
+        { locationId: DEFAULT_LOCATION_ID },
+      );
+      if (data) {
+        onSelect(data);
+        onClose();
+      } else {
+        setError("No customer found with this number");
+      }
     } catch (err) {
-      setError("Search failed");
+      setError(err instanceof Error ? err.message : "Search failed. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -1765,15 +2134,7 @@ function CustomerLookupModal({ onClose }: { onClose: () => void }) {
               value={displayPhone}
               onChange={(e) => handlePhoneChange(e.target.value)}
               placeholder="(519) 000-0000"
-            />
-          </div>
-          <div className="pos-field pos-field--centered">
-            <label>Email (Optional)</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="customer@example.com"
+              autoFocus
             />
           </div>
 
@@ -1789,10 +2150,373 @@ function CustomerLookupModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {error ? (
-            <div className="pos-cart-message" style={{ marginTop: "0.5rem" }}>
+            <div
+              className="pos-cart-message"
+              style={{ marginTop: "0.5rem", color: "#ef4444" }}
+            >
               {error}
             </div>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  Special Instructions Modal                                         */
+/* ================================================================== */
+
+function SpecialInstructionsModal({
+  notes,
+  onSave,
+  onClose,
+}: {
+  notes: string;
+  onSave: (val: string) => void;
+  onClose: () => void;
+}) {
+  const [val, setVal] = useState(notes);
+
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="pos-modal pos-modal--small">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Kitchen Instructions</h3>
+          <button
+            type="button"
+            className="pos-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="pos-modal-body pos-modal-body--centered">
+          <div className="pos-field pos-field--centered">
+            <label>Notes for Kitchen</label>
+            <textarea
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              placeholder="e.g. No onions, extra spicy, well done wings..."
+              rows={5}
+              style={{ width: "100%", padding: "1rem", fontSize: "1.1rem" }}
+            />
+          </div>
+
+          <div className="pos-modal-actions">
+            <button
+              type="button"
+              className="pos-btn pos-btn--primary pos-btn--rounded pos-btn--small"
+              onClick={() => {
+                onSave(val);
+                onClose();
+              }}
+            >
+              Save Instructions
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+/* ================================================================== */
+/*  Staff Functions Modal                                              */
+/* ================================================================== */
+
+function StaffModal({
+  onClose,
+  onOpenDrawer,
+  onEmployeeDiscount,
+  onCustomDiscount,
+}: {
+  onClose: () => void;
+  onOpenDrawer: () => void;
+  onEmployeeDiscount: () => void;
+  onCustomDiscount: () => void;
+}) {
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="pos-modal">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Staff Functions</h3>
+          <button type="button" className="pos-modal-close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <div
+          className="pos-modal-body"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: "1.5rem",
+            padding: "2rem",
+          }}
+        >
+          <button className="pos-staff-opt" onClick={onOpenDrawer}>
+            <span style={{ fontSize: "1.5rem" }}>💰</span>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <strong>Open Drawer</strong>
+              <small style={{ opacity: 0.6, fontSize: "0.8rem" }}>
+                Access cash register
+              </small>
+            </div>
+          </button>
+          <button className="pos-staff-opt" onClick={onEmployeeDiscount}>
+            <span style={{ fontSize: "1.5rem" }}>👥</span>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <strong>Employee Discount</strong>
+              <small style={{ opacity: 0.6, fontSize: "0.8rem" }}>
+                Apply 50% reduction
+              </small>
+            </div>
+          </button>
+          <button className="pos-staff-opt" onClick={onCustomDiscount}>
+            <span style={{ fontSize: "1.5rem" }}>🎟️</span>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <strong>Apply Discount</strong>
+              <small style={{ opacity: 0.6, fontSize: "0.8rem" }}>
+                Custom $ or % off
+              </small>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeDiscountModal({
+  onClose,
+  onSelect,
+  employees,
+}: {
+  onClose: () => void;
+  onSelect: (name: string) => void;
+  employees: Array<{ user_id: string; display_name: string }>;
+}) {
+
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="pos-modal pos-modal--small">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Select Employee</h3>
+          <button type="button" className="pos-modal-close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <div
+          className="pos-modal-body"
+          style={{
+            maxHeight: "450px",
+            overflowY: "auto",
+            padding: "1rem",
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "0.75rem",
+          }}
+        >
+          {employees.length === 0 ? (
+            <div style={{ gridColumn: "span 2", textAlign: "center", color: "#666", padding: "2rem" }}>
+              No staff members found.
+            </div>
+          ) : (
+            employees.map((emp) => (
+              <button
+                key={emp.user_id}
+                className="pos-employee-btn"
+                onClick={() => onSelect(emp.display_name)}
+              >
+                {emp.display_name}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+/* ================================================================== */
+/*  Custom Discount Modal                                              */
+/* ================================================================== */
+
+function CustomDiscountModal({
+  onClose,
+  onApply,
+}: {
+  onClose: () => void;
+  onApply: (type: "PERCENT" | "DOLLAR", val: number, reason: string) => void;
+}) {
+  const [type, setType] = useState<"PERCENT" | "DOLLAR">("PERCENT");
+  const [value, setValue] = useState("");
+  const [reason, setReason] = useState("");
+
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="pos-modal pos-modal--small">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Apply Discount</h3>
+          <button type="button" className="pos-modal-close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <div
+          className="pos-modal-body"
+          style={{
+            padding: "1.5rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.5rem",
+          }}
+        >
+          <div className="pos-segmented">
+            <button
+              type="button"
+              aria-pressed={type === "PERCENT"}
+              onClick={() => setType("PERCENT")}
+            >
+              % Percent
+            </button>
+            <button
+              type="button"
+              aria-pressed={type === "DOLLAR"}
+              onClick={() => setType("DOLLAR")}
+            >
+              $ Fixed
+            </button>
+          </div>
+
+          <div className="pos-field">
+            <label>{type === "PERCENT" ? "Percent (%)" : "Amount ($)"}</label>
+            <input
+              type="number"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={type === "PERCENT" ? "e.g. 10" : "e.g. 5.00"}
+              autoFocus
+            />
+          </div>
+
+          <div className="pos-field">
+            <label>Reason / Note</label>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Manager Special"
+            />
+          </div>
+
+          <button
+            type="button"
+            className="pos-btn pos-btn--primary"
+            style={{ marginTop: "1rem" }}
+            disabled={!value || isNaN(parseFloat(value))}
+            onClick={() => onApply(type, parseFloat(value), reason.trim())}
+          >
+            Apply Discount
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function CashPaymentModal({
+  totalDueCents,
+  onCancel,
+  onDone,
+}: {
+  totalDueCents: number;
+  onCancel: () => void;
+  onDone: (tenderedCents: number) => void;
+}) {
+  const [totalStr, setTotalStr] = useState(totalDueCents.toString());
+  const [tenderedStr, setTenderedStr] = useState("");
+
+  const total = parseInt(totalStr) || 0;
+  const tendered = parseInt(tenderedStr) || 0;
+  const change = Math.max(0, tendered - total);
+
+  const handleNumericInput = (val: string, setter: (v: string) => void) => {
+    const digits = val.replace(/\D/g, "");
+    setter(digits);
+  };
+
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="pos-modal pos-modal--small">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Cash Payment</h3>
+        </div>
+        <div className="pos-modal-body pos-modal-body--centered">
+          <label className="pos-field pos-field--centered">
+            Amount Due (Cents)
+            <input
+              type="text"
+              inputMode="numeric"
+              value={totalStr}
+              onChange={(e) => handleNumericInput(e.target.value, setTotalStr)}
+              placeholder="0"
+            />
+          </label>
+
+          <label className="pos-field pos-field--centered">
+            Cash Received (Cents)
+            <input
+              type="text"
+              inputMode="numeric"
+              value={tenderedStr}
+              autoFocus
+              onChange={(e) =>
+                handleNumericInput(e.target.value, setTenderedStr)
+              }
+              placeholder="0"
+            />
+          </label>
+
+          <label className="pos-field pos-field--centered">
+            Change Due (Cents)
+            <input
+              type="text"
+              readOnly
+              value={change.toString()}
+              style={{ opacity: 0.8, background: "#111" }}
+            />
+          </label>
+
+          <div className="pos-modal-actions" style={{ marginTop: "1rem", gap: "1rem" }}>
+            <button
+              type="button"
+              className="pos-btn pos-btn--secondary pos-btn--small"
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="pos-btn pos-btn--primary pos-btn--small"
+              onClick={() => onDone(tendered)}
+            >
+              Done
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -150,6 +151,16 @@ export class PosController {
   @Get("orders")
   async listOrders(@Req() req: Request) {
     return this.posService.listPosOrders(req.locationId!);
+  }
+
+  @Get("staff")
+  async listStaff(@Req() req: Request) {
+    return this.posService.listStaff(req.locationId!);
+  }
+
+  @Get("customer-lookup")
+  async lookupCustomer(@Query("phone") phone: string) {
+    return this.posService.lookupCustomer(phone);
   }
 
   @Post("orders/:id/discounts")
