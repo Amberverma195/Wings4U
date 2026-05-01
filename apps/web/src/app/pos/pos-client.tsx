@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ComboBuilder } from "@/components/combo-builder";
 import { ItemCustomizationOverlay } from "@/components/item-customization-overlay";
@@ -522,6 +522,9 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         locationId: DEFAULT_LOCATION_ID,
       });
       setTodayOrders(data);
+      setSelectedOrder((current) =>
+        current ? data.find((order) => order.id === current.id) ?? current : current,
+      );
     } catch {
       // Non-fatal; the strip just stays empty.
     }
@@ -531,31 +534,44 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     void loadOrders();
   }, [loadOrders]);
 
+  const loadOrdersRef = useRef(loadOrders);
+  useEffect(() => {
+    loadOrdersRef.current = loadOrders;
+  }, [loadOrders]);
+
   /* ---------- Realtime updates ---------- */
 
   useEffect(() => {
-    const socket = createOrdersSocket();
+    const socket = createOrdersSocket({ preferPosStation: true });
 
-    const handleStatusUpdate = (data: any) => {
-      const orderId = data.order_id;
-      const nextStatus = data.to_status;
-      if (!orderId || !nextStatus) return;
+    const refreshOrders = (event?: { payload?: Record<string, unknown> }) => {
+      const payload = event?.payload ?? {};
+      const orderId = typeof payload.order_id === "string" ? payload.order_id : null;
+      const nextStatus =
+        typeof payload.to_status === "string" ? payload.to_status : null;
 
-      setTodayOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId ? { ...o, status: nextStatus } : o,
-        ),
-      );
-      setSelectedOrder((prev) =>
-        prev && prev.id === orderId
-          ? { ...prev, status: nextStatus }
-          : prev,
-      );
+      if (orderId && nextStatus) {
+        setTodayOrders((prev) =>
+          prev.map((order) =>
+            order.id === orderId ? { ...order, status: nextStatus } : order,
+          ),
+        );
+        setSelectedOrder((prev) =>
+          prev && prev.id === orderId
+            ? { ...prev, status: nextStatus }
+            : prev,
+        );
+      }
+
+      void loadOrdersRef.current();
     };
 
-    socket.on("order.status_changed", handleStatusUpdate);
-    socket.on("order.accepted", handleStatusUpdate);
-    socket.on("order.cancelled", handleStatusUpdate);
+    socket.on("order.placed", refreshOrders);
+    socket.on("order.accepted", refreshOrders);
+    socket.on("order.status_changed", refreshOrders);
+    socket.on("order.cancelled", refreshOrders);
+    socket.on("cancellation.requested", refreshOrders);
+    socket.on("cancellation.decided", refreshOrders);
 
     const disposeSubscription = subscribeToChannels(socket, [
       `orders:${DEFAULT_LOCATION_ID}`,

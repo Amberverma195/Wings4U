@@ -17,6 +17,10 @@ import {
   KDS_STATION_COOKIE_NAME,
   KdsAuthService,
 } from "../kds/kds-auth.service";
+import {
+  POS_STATION_COOKIE_NAME,
+  PosAuthService,
+} from "../pos/pos-auth.service";
 
 type RealtimeEventName =
   | "order.placed"
@@ -47,7 +51,7 @@ const UUID_RE =
 
 interface SocketUser {
   userId: string;
-  role: "CUSTOMER" | "STAFF" | "ADMIN" | "KDS_STATION";
+  role: "CUSTOMER" | "STAFF" | "ADMIN" | "KDS_STATION" | "POS_STATION";
   employeeRole?: "MANAGER" | "CASHIER" | "KITCHEN" | "DRIVER";
   locationId?: string;
   stationLocationId?: string;
@@ -85,6 +89,7 @@ export class RealtimeGateway
     private readonly sessionValidator: SessionValidator,
     private readonly prisma: PrismaService,
     private readonly kdsAuthService: KdsAuthService,
+    private readonly posAuthService: PosAuthService,
   ) {}
 
   @WebSocketServer()
@@ -104,8 +109,11 @@ export class RealtimeGateway
     }
 
     const cookies = parseCookies(cookieHeader);
-    const preferKdsStation = socket.handshake.auth?.surface === "kds";
-    const resolved = await this.resolveSocketUserFromCookies(cookies, preferKdsStation);
+    const preferredStationSurface = this.readPreferredStationSurface(socket);
+    const resolved = await this.resolveSocketUserFromCookies(
+      cookies,
+      preferredStationSurface,
+    );
     if (!resolved) {
       this.logger.warn(`Connection rejected - no valid session cookie (${socket.id})`);
       socket.emit("error", { message: "Invalid or expired session" });
@@ -115,7 +123,8 @@ export class RealtimeGateway
 
     socket.data.accessToken = resolved.accessToken;
     socket.data.kdsSessionCookie = resolved.kdsSessionCookie;
-    socket.data.preferKdsStation = preferKdsStation;
+    socket.data.posSessionCookie = resolved.posSessionCookie;
+    socket.data.preferredStationSurface = preferredStationSurface;
     socket.data.user = resolved.user;
     this.trackSessionSocket(resolved.user.sessionId, socket.id);
     this.logger.log(
@@ -268,17 +277,29 @@ export class RealtimeGateway
     }
   }
 
+  private readPreferredStationSurface(socket: Socket): "kds" | "pos" | null {
+    return socket.handshake.auth?.surface === "kds" ||
+      socket.handshake.auth?.surface === "pos"
+      ? socket.handshake.auth.surface
+      : null;
+  }
+
   private async resolveSocketUserFromCookies(
     cookies: Record<string, string>,
-    preferKdsStation = false,
+    preferredStationSurface: "kds" | "pos" | null = null,
   ): Promise<{
     user: SocketUser;
     accessToken?: string;
     kdsSessionCookie?: string;
+    posSessionCookie?: string;
   } | null> {
-    if (preferKdsStation) {
+    if (preferredStationSurface === "kds") {
       const kdsUser = await this.resolveKdsStationSocketUser(cookies);
       if (kdsUser) return kdsUser;
+    }
+    if (preferredStationSurface === "pos") {
+      const posUser = await this.resolvePosStationSocketUser(cookies);
+      if (posUser) return posUser;
     }
 
     const accessToken = cookies["access_token"];
@@ -300,7 +321,10 @@ export class RealtimeGateway
       }
     }
 
-    return this.resolveKdsStationSocketUser(cookies);
+    return (
+      (await this.resolveKdsStationSocketUser(cookies)) ??
+      this.resolvePosStationSocketUser(cookies)
+    );
   }
 
   private async resolveKdsStationSocketUser(cookies: Record<string, string>): Promise<{
@@ -328,6 +352,31 @@ export class RealtimeGateway
     return null;
   }
 
+  private async resolvePosStationSocketUser(cookies: Record<string, string>): Promise<{
+    user: SocketUser;
+    posSessionCookie: string;
+  } | null> {
+    const posSessionCookie = cookies[POS_STATION_COOKIE_NAME];
+    if (posSessionCookie) {
+      const session = await this.posAuthService.validateSession(posSessionCookie);
+      if (session) {
+        return {
+          posSessionCookie,
+          user: {
+            userId: `pos-station:${session.sessionKey}`,
+            role: "POS_STATION",
+            locationId: session.locationId,
+            stationLocationId: session.locationId,
+            isPosSession: true,
+            sessionId: `pos:${session.sessionKey}`,
+          },
+        };
+      }
+    }
+
+    return null;
+  }
+
   private async revalidateSocketUser(socket: Socket): Promise<SocketUser | null> {
     const cookies: Record<string, string> = {};
     const cookieHeader = socket.handshake.headers.cookie;
@@ -341,11 +390,18 @@ export class RealtimeGateway
     if (typeof socket.data.kdsSessionCookie === "string") {
       cookies[KDS_STATION_COOKIE_NAME] = socket.data.kdsSessionCookie as string;
     }
+    if (typeof socket.data.posSessionCookie === "string") {
+      cookies[POS_STATION_COOKIE_NAME] = socket.data.posSessionCookie as string;
+    }
 
-    const preferKdsStation = socket.data.preferKdsStation === true;
+    const preferredStationSurface =
+      socket.data.preferredStationSurface === "kds" ||
+      socket.data.preferredStationSurface === "pos"
+        ? socket.data.preferredStationSurface
+        : null;
     const resolved = await this.resolveSocketUserFromCookies(
       cookies,
-      preferKdsStation,
+      preferredStationSurface,
     );
     if (!resolved) {
       socket.emit("error", { message: "Invalid or expired session" });
@@ -358,6 +414,7 @@ export class RealtimeGateway
 
     socket.data.accessToken = resolved.accessToken;
     socket.data.kdsSessionCookie = resolved.kdsSessionCookie;
+    socket.data.posSessionCookie = resolved.posSessionCookie;
     socket.data.user = user;
     if (!existing || existing.sessionId !== user.sessionId) {
       if (existing) {
@@ -381,6 +438,8 @@ export class RealtimeGateway
         return this.authorizeOrderChannel(subject, user);
 
       case "orders":
+        return this.authorizeStationLocationChannel(subject, user, socket);
+
       case "drivers":
         return this.authorizeKdsLocationChannel(subject, user, socket);
 
@@ -418,10 +477,10 @@ export class RealtimeGateway
       return null;
     }
 
-    if (user.role === "KDS_STATION") {
+    if (user.role === "KDS_STATION" || user.role === "POS_STATION") {
       return user.stationLocationId === order.locationId
         ? null
-        : "Insufficient permissions - wrong KDS station location";
+        : "Insufficient permissions - wrong station location";
     }
 
     if (user.role === "CUSTOMER") {
@@ -475,6 +534,49 @@ export class RealtimeGateway
 
     if (user.isPosSession || user.stationLocationId !== locationId) {
       return "KDS access requires KDS station access";
+    }
+
+    return null;
+  }
+
+  private async authorizeStationLocationChannel(
+    locationId: string,
+    user: SocketUser,
+    socket: Socket,
+  ): Promise<string | null> {
+    if (!UUID_RE.test(locationId)) {
+      return "Invalid location id";
+    }
+
+    const settings = await this.prisma.locationSettings.findUnique({
+      where: { locationId },
+      select: { trustedIpRanges: true },
+    });
+    const clientIp = this.extractSocketClientIp(socket);
+    if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
+      return "Store access is restricted to in-store network only";
+    }
+
+    if (user.role === "ADMIN") {
+      return null;
+    }
+
+    if (user.role === "KDS_STATION" || user.role === "POS_STATION") {
+      return user.stationLocationId === locationId
+        ? null
+        : "Insufficient permissions - wrong station location";
+    }
+
+    if (user.role !== "STAFF") {
+      return "Insufficient permissions - STAFF or ADMIN required";
+    }
+
+    if (!user.locationId || user.locationId !== locationId) {
+      return "Insufficient permissions - wrong location";
+    }
+
+    if (user.stationLocationId !== locationId) {
+      return "Station access is required for this orders channel";
     }
 
     return null;
