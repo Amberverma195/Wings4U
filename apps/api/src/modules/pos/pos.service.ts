@@ -22,7 +22,40 @@ import {
   assertWingFlavoursOrderable,
   collectWingFlavourRefs,
   loadWingFlavourMapForRefs,
+  type ValidationMenuItem,
 } from "../shared/order-validation";
+
+type RemovableIngredientRow = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+function menuItemRowToValidationPayload(row: {
+  id: string;
+  name: string;
+  slug: string;
+  isAvailable: boolean;
+  archivedAt: Date | null;
+  allowedFulfillmentType: string;
+  requiresSpecialInstructions: boolean;
+  category: { slug: string } | null;
+  schedules: Array<{ dayOfWeek: number; timeFrom: Date; timeTo: Date }>;
+  modifierGroups: Array<{ modifierGroupId: string }>;
+}): ValidationMenuItem {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    isAvailable: row.isAvailable,
+    archivedAt: row.archivedAt,
+    allowedFulfillmentType: row.allowedFulfillmentType,
+    requiresSpecialInstructions: row.requiresSpecialInstructions,
+    category: row.category ? { slug: row.category.slug } : null,
+    schedules: row.schedules,
+    modifierGroups: row.modifierGroups,
+  };
+}
 
 interface PosOrderItem {
   menuItemId?: string; // Optional for custom "Open Food" items
@@ -282,36 +315,48 @@ export class PosService {
         )
         .filter((menuItemId): menuItemId is string => Boolean(menuItemId));
       const menuItemIds = Array.from(
-        new Set([...params.items.map((i) => i.menuItemId), ...saladMenuItemIds]),
+        new Set([
+          ...params.items
+            .map((i) => i.menuItemId)
+            .filter((id): id is string => Boolean(id)),
+          ...saladMenuItemIds,
+        ]),
       );
-      const menuItems = await tx.menuItem.findMany({
-        where: { id: { in: menuItemIds }, locationId: params.locationId },
-        include: {
-          category: true,
-          modifierGroups: { select: { modifierGroupId: true } },
-          removableIngredients: {
-            orderBy: { sortOrder: "asc" },
-            select: { id: true, name: true, sortOrder: true },
-          },
-          schedules: {
-            select: {
-              dayOfWeek: true,
-              timeFrom: true,
-              timeTo: true,
-            },
-          },
-        },
-      });
+      const menuItems =
+        menuItemIds.length === 0
+          ? []
+          : await tx.menuItem.findMany({
+              where: { id: { in: menuItemIds }, locationId: params.locationId },
+              include: {
+                category: true,
+                modifierGroups: { select: { modifierGroupId: true } },
+                removableIngredients: {
+                  orderBy: { sortOrder: "asc" },
+                  select: { id: true, name: true, sortOrder: true },
+                },
+                schedules: {
+                  select: {
+                    dayOfWeek: true,
+                    timeFrom: true,
+                    timeTo: true,
+                  },
+                },
+              },
+            });
       const menuItemMap = new Map(menuItems.map((mi) => [mi.id, mi]));
 
-      const allOptionIds = params.items.flatMap(
-        (i) => {
-          const standardOpts =
-            i.modifierSelections?.map((s) => s.modifierOptionId) ?? [];
-          const saladOpts =
-            getSaladCustomization(i.builderPayload)?.modifierOptionIds ?? [];
-          return [...standardOpts, ...saladOpts];
-        },
+      const allOptionIds = Array.from(
+        new Set(
+          params.items.flatMap((i) => {
+            const standardOpts = (i.modifierSelections ?? [])
+              .map((s) => s.modifierOptionId)
+              .filter((id): id is string => Boolean(id));
+            const saladOpts = (
+              getSaladCustomization(i.builderPayload)?.modifierOptionIds ?? []
+            ).filter((id): id is string => Boolean(id));
+            return [...standardOpts, ...saladOpts];
+          }),
+        ),
       );
       const modifierOptions =
         allOptionIds.length > 0
@@ -332,7 +377,7 @@ export class PosService {
       // 4. Build line items + pricing
       let itemSubtotalCents = 0;
       const lineItems: {
-        menuItemId: string;
+        menuItemId: string | null;
         productNameSnapshot: string;
         categoryNameSnapshot: string;
         builderType: string | null;
@@ -361,36 +406,36 @@ export class PosService {
             field: "items",
           });
         }
-          if (menuItem) {
-            assertMenuItemOrderable({
-              menuItem,
-              fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
-              specialInstructions: cartItem.specialInstructions,
-            });
-          }
-          assertWingFlavoursOrderable({
-            builderPayload: cartItem.builderPayload,
-            wingFlavourMap,
+        if (menuItem) {
+          assertMenuItemOrderable({
+            menuItem: menuItemRowToValidationPayload(menuItem),
+            fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
+            specialInstructions: cartItem.specialInstructions,
           });
+        }
+        assertWingFlavoursOrderable({
+          builderPayload: cartItem.builderPayload,
+          wingFlavourMap,
+        });
 
         const saladCustomization = getSaladCustomization(cartItem.builderPayload);
         const removedIngredients = cartItem.removedIngredients?.length
           ? cartItem.removedIngredients
           : parseRemovedIngredients(cartItem.builderPayload?.removed_ingredients);
-          const allowedIngredientMap = menuItem
-            ? new Map(
-                menuItem.removableIngredients.map((ingredient) => [
-                  ingredient.id,
-                  ingredient,
-                ]),
-              )
-            : new Map<string, any>();
+        const allowedIngredientMap = menuItem
+          ? new Map<string, RemovableIngredientRow>(
+              menuItem.removableIngredients.map((ingredient) => [
+                ingredient.id,
+                ingredient,
+              ]),
+            )
+          : new Map<string, RemovableIngredientRow>();
         const validatedRemovedIngredients = removedIngredients.map(
           (ingredient) => {
             const match = allowedIngredientMap.get(ingredient.id);
             if (!match) {
               throw new UnprocessableEntityException({
-                message: `Ingredient removal "${ingredient.name}" is not valid for ${menuItem.name}`,
+                message: `Ingredient removal "${ingredient.name}" is not valid for ${menuItem?.name ?? cartItem.name ?? "this item"}`,
                 field: "items",
               });
             }
@@ -408,12 +453,15 @@ export class PosService {
             });
           }
           assertMenuItemOrderable({
-            menuItem: saladMenuItem,
+            menuItem: menuItemRowToValidationPayload(saladMenuItem),
             fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
             label: "Salad",
           });
 
-          const allowedSaladIngredientMap = new Map(
+          const allowedSaladIngredientMap = new Map<
+            string,
+            RemovableIngredientRow
+          >(
             saladMenuItem.removableIngredients.map((ingredient) => [
               ingredient.id,
               ingredient,
@@ -469,7 +517,10 @@ export class PosService {
               });
             }
             if (menuItem && !saladModifierOptionIds.has(sel.modifierOptionId)) {
-              assertModifierOptionAllowedForItem({ option: opt, menuItem });
+              assertModifierOptionAllowedForItem({
+                option: opt,
+                menuItem: menuItemRowToValidationPayload(menuItem),
+              });
             }
             modifierTotalCents += opt.priceDeltaCents;
             modifiers.push({

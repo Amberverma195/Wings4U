@@ -420,6 +420,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [amountTendered, setAmountTendered] = useState<string>("");
   const [orderNotes, setOrderNotes] = useState("");
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [amountAlreadyPaidCents, setAmountAlreadyPaidCents] = useState(0);
 
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [editingLine, setEditingLine] = useState<CartItem | null>(null);
@@ -535,21 +536,26 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   useEffect(() => {
     const socket = createOrdersSocket();
 
-    socket.on(
-      "order.status_changed",
-      (data: { order_id: string; status: string }) => {
-        setTodayOrders((prev) =>
-          prev.map((o) =>
-            o.id === data.order_id ? { ...o, status: data.status } : o,
-          ),
-        );
-        setSelectedOrder((prev) =>
-          prev && prev.id === data.order_id
-            ? { ...prev, status: data.status }
-            : prev,
-        );
-      },
-    );
+    const handleStatusUpdate = (data: any) => {
+      const orderId = data.order_id;
+      const nextStatus = data.to_status;
+      if (!orderId || !nextStatus) return;
+
+      setTodayOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, status: nextStatus } : o,
+        ),
+      );
+      setSelectedOrder((prev) =>
+        prev && prev.id === orderId
+          ? { ...prev, status: nextStatus }
+          : prev,
+      );
+    };
+
+    socket.on("order.status_changed", handleStatusUpdate);
+    socket.on("order.accepted", handleStatusUpdate);
+    socket.on("order.cancelled", handleStatusUpdate);
 
     const disposeSubscription = subscribeToChannels(socket, [
       `orders:${DEFAULT_LOCATION_ID}`,
@@ -744,6 +750,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
     setCart(lines);
     setCurrentOrderId(`ORD-${order.order_number}-RE`);
+    setAmountAlreadyPaidCents(order.total_paid_cents);
     setFulfillmentType(order.fulfillment_type as FulfillmentType);
     setCustomerName(order.customer_name_snapshot ?? "");
     updatePhone(order.customer_phone_snapshot ?? "");
@@ -761,6 +768,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setPlaceError(null);
     setPlaceSuccess(null);
     setCurrentOrderId(null);
+    setAmountAlreadyPaidCents(0);
   }, []);
 
   const startNewOrder = useCallback(() => {
@@ -833,14 +841,18 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     (subtotalAfterDiscount * taxRateBps) / 10_000,
   );
   const estimatedTotalCents = subtotalAfterDiscount + estimatedTaxCents;
+  const remainingBalanceCents = Math.max(
+    0,
+    estimatedTotalCents - amountAlreadyPaidCents,
+  );
 
   const changeDueCents = useMemo(() => {
     if (paymentMethod !== "CASH") return null;
     const num = Number.parseFloat(amountTendered);
     if (!Number.isFinite(num) || num <= 0) return null;
     const tenderedCents = Math.round(num * 100);
-    if (tenderedCents < estimatedTotalCents) return null;
-    return tenderedCents - estimatedTotalCents;
+    if (tenderedCents < remainingBalanceCents) return null;
+    return tenderedCents - remainingBalanceCents;
   }, [amountTendered, estimatedTotalCents, paymentMethod]);
 
   /* ---------- Place order ---------- */
@@ -855,7 +867,8 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setPlaceSuccess(null);
 
     const finalPaymentMethod = overrides?.paymentMethod ?? paymentMethod;
-    let finalAmountTenderedCents = overrides?.amountTenderedCents;
+    let finalAmountTenderedCents =
+      overrides?.amountTenderedCents ?? remainingBalanceCents;
 
     if (!finalPaymentMethod) {
       setPlacing(false);
@@ -1244,13 +1257,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                   className="pos-modal-close"
                   style={{ fontSize: "1.2rem", padding: "0 0.25rem", opacity: 0.6 }}
                   onClick={() => {
-                    if (cart.length > 0) {
-                      toast.error("Remove all items first", {
-                        description: "Please clear the cart before closing the order session.",
-                      });
-                      return;
-                    }
-                    setCurrentOrderId(null);
+                    clearCart();
                   }}
                 >
                   ×
@@ -1366,6 +1373,28 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                   <span>Total</span>
                   <span>{cents(estimatedTotalCents)}</span>
                 </div>
+                {amountAlreadyPaidCents > 0 && (
+                  <>
+                    <div
+                      className="pos-cart-totals-row"
+                      style={{ color: "#4caf50" }}
+                    >
+                      <span>Paid</span>
+                      <span>-{cents(amountAlreadyPaidCents)}</span>
+                    </div>
+                    <div
+                      className="pos-cart-totals-row pos-cart-totals-row--emph"
+                      style={{ borderTop: "2px solid var(--pos-accent)" }}
+                    >
+                      <span>Amount Due</span>
+                      <span>
+                        {cents(
+                          Math.max(0, estimatedTotalCents - amountAlreadyPaidCents),
+                        )}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div
@@ -1376,13 +1405,13 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 <button
                   type="button"
                   className="pos-payment-btn"
-                  disabled={cart.length === 0 || placing}
+                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0}
                   onClick={() => {
                     setPaymentMethod("CASH");
-                    setAmountTendered((estimatedTotalCents / 100).toString());
+                    setAmountTendered((remainingBalanceCents / 100).toString());
                     void placeOrder({
                       paymentMethod: "CASH",
-                      amountTenderedCents: estimatedTotalCents,
+                      amountTenderedCents: remainingBalanceCents,
                     });
                   }}
                 >
@@ -1391,7 +1420,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 <button
                   type="button"
                   className="pos-payment-btn"
-                  disabled={cart.length === 0 || placing}
+                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0}
                   aria-pressed={showCashModal}
                   onClick={() => {
                     setPaymentMethod("CASH");
@@ -1403,7 +1432,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 <button
                   type="button"
                   className="pos-payment-btn"
-                  disabled={cart.length === 0 || placing}
+                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0}
                   aria-pressed={paymentMethod === "CARD_TERMINAL"}
                   onClick={() => {
                     setPaymentMethod("CARD_TERMINAL");

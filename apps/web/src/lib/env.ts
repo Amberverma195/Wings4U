@@ -3,7 +3,8 @@
  * - Browser: empty string -> same-origin `/api/...` (Next rewrites to the Nest API in dev).
  * - If `NEXT_PUBLIC_API_ORIGIN` is set (e.g. `http://127.0.0.1:3001`), the browser calls the API
  *   directly and skips the dev proxy. Use when the proxy returns plain-text 500 while the API is up.
- * - Server (RSC): `INTERNAL_API_URL` (direct to Nest).
+ * - Server (RSC): `INTERNAL_API_URL` (direct to Nest), or in development
+ *   `http://127.0.0.1:${PORT}` through Next's `/api/*` rewrite when unset.
  */
 export function getPublicApiBase(): string {
   if (typeof window !== "undefined") {
@@ -11,7 +12,16 @@ export function getPublicApiBase(): string {
     if (direct) return direct.replace(/\/$/, "");
     return "";
   }
-  return process.env.INTERNAL_API_URL ?? "http://127.0.0.1:3001";
+  const internal = process.env.INTERNAL_API_URL?.trim();
+  if (internal) return internal.replace(/\/$/, "");
+  // In `next dev`, route SSR fetches through this app's `/api/*` rewrites (see
+  // `next.config.ts`) instead of hard-coding the Nest port. That keeps behavior
+  // aligned with the browser and avoids extra binding quirks between hosts.
+  if (process.env.NODE_ENV === "development") {
+    const port = process.env.PORT ?? "3000";
+    return `http://127.0.0.1:${port}`;
+  }
+  return "http://127.0.0.1:3001";
 }
 
 /**

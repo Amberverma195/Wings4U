@@ -76,10 +76,20 @@ interface TokenBundle {
   needsProfileCompletion?: boolean;
 }
 
-/** A customer profile is complete when the display name is a real name, not a phone placeholder. */
-function isProfileComplete(user: { role: string; displayName: string }): boolean {
+/** A customer profile is complete only after the profile form has stored a real name. */
+function isProfileComplete(user: {
+  role: string;
+  displayName: string;
+  firstName?: string | null;
+}): boolean {
   if (user.role !== "CUSTOMER") return true;
-  return !/^\+[1-9]\d{1,14}$/.test(user.displayName);
+  const displayName = user.displayName.trim();
+  const firstName = user.firstName?.trim();
+  return (
+    displayName.length >= 4 &&
+    !/^\+[1-9]\d{1,14}$/.test(displayName) &&
+    Boolean(firstName)
+  );
 }
 
 interface SessionInfo {
@@ -136,12 +146,12 @@ export class AuthService {
 
     const phoneIdentity = await this.prisma.userIdentity.findUnique({
       where: { phoneE164 },
-      include: { user: { select: { role: true, displayName: true } } },
+      include: { user: { select: { role: true, displayName: true, firstName: true } } },
     });
 
-    // Phone "exists" only when the user behind it has a completed profile
-    // (i.e. displayName is NOT the E.164 placeholder). If they never
-    // finished signup we let them re-enter the flow.
+    // Phone "exists" only when the user behind it has completed the profile
+    // form. POS-created/walk-in customer rows can have a display name but no
+    // firstName, so those still re-enter signup profile completion.
     const phoneExists =
       !!phoneIdentity && isProfileComplete(phoneIdentity.user);
 
@@ -858,7 +868,7 @@ export class AuthService {
   async isCustomerProfileComplete(userId: string): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true, displayName: true },
+      select: { role: true, displayName: true, firstName: true },
     });
     if (!user) return false;
     return isProfileComplete(user);

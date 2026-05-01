@@ -1364,7 +1364,13 @@ function BusyModeControl({ session }: { session: KdsSessionControls }) {
         className={state.enabled ? "btn-secondary" : "btn-primary"}
         onClick={toggle}
         disabled={busy}
-        style={{ fontSize: "0.8rem" }}
+        style={{
+          fontSize: "0.8rem",
+          background: "linear-gradient(180deg, #ff4b2b 0%, #ff416c 100%)",
+          color: "white",
+          fontWeight: "bold",
+          border: "none",
+        }}
       >
         {state.enabled ? "Turn off busy mode" : "Turn on busy mode"}
       </button>
@@ -1390,7 +1396,6 @@ function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; on
   const [history, setHistory] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const load = useCallback(async (append = false) => {
@@ -2125,7 +2130,12 @@ export function KdsClient() {
             type="button"
             className="btn-secondary"
             onClick={() => setOptionsOpen(true)}
-            style={{ fontWeight: "bold" }}
+            style={{
+              fontWeight: "bold",
+              background: "linear-gradient(180deg, #ff4b2b 0%, #ff416c 100%)",
+              color: "white",
+              border: "none",
+            }}
           >
             Orders
           </button>
@@ -2134,6 +2144,12 @@ export function KdsClient() {
             type="button"
             className="kds-refresh-btn"
             onClick={() => void loadOrders()}
+            style={{
+              background: "linear-gradient(180deg, #ff4b2b 0%, #ff416c 100%)",
+              color: "white",
+              fontWeight: "bold",
+              border: "none",
+            }}
           >
             Refresh
           </button>
@@ -2142,7 +2158,12 @@ export function KdsClient() {
             className="btn-secondary"
             onClick={() => void logout()}
             disabled={logoutBusy}
-            style={{ fontWeight: "bold" }}
+            style={{
+              fontWeight: "bold",
+              background: "linear-gradient(180deg, #ff4b2b 0%, #ff416c 100%)",
+              color: "white",
+              border: "none",
+            }}
           >
             {logoutBusy ? "Logging out..." : "Logout"}
           </button>

@@ -441,61 +441,70 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
               : "Log into your account"}
         </AuthHeading>
 
-        {isSignup && (
-          <>
-            <div style={s.field}>
-              <label style={s.label}>Full name</label>
-              <input
-                style={s.input}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Jane Doe"
-              />
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>Email (optional)</label>
-              <input
-                style={s.input}
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="jane@example.com"
-              />
-            </div>
-          </>
-        )}
-
-        <div style={s.field}>
-          <label style={s.label}>Phone number</label>
-          <input
-            style={s.input}
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            value={phone}
-            onChange={(e) => {
-              const digits = e.target.value.replace(/\D/g, "");
-              let formatted = digits;
-              if (digits.length > 6) {
-                formatted = `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-              } else if (digits.length > 3) {
-                formatted = `(${digits.slice(0, 3)})-${digits.slice(3)}`;
-              }
-              setPhone(formatted);
-            }}
-            placeholder="(123)-456-7890"
-            maxLength={14}
-          />
-        </div>
-
-        {error && <p style={s.error}>{error}</p>}
-
-        <button
-          style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
-          onClick={handlePhoneSubmit}
+        <form
+          style={{ display: "contents" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy) void handlePhoneSubmit();
+          }}
         >
-          {busy ? "Sending..." : "Send verification code"}
-        </button>
+          {isSignup && (
+            <>
+              <div style={s.field}>
+                <label style={s.label}>Full name</label>
+                <input
+                  style={s.input}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Jane Doe"
+                />
+              </div>
+              <div style={s.field}>
+                <label style={s.label}>Email (optional)</label>
+                <input
+                  style={s.input}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="jane@example.com"
+                />
+              </div>
+            </>
+          )}
+
+          <div style={s.field}>
+            <label style={s.label}>Phone number</label>
+            <input
+              style={s.input}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "");
+                let formatted = digits;
+                if (digits.length > 6) {
+                  formatted = `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+                } else if (digits.length > 3) {
+                  formatted = `(${digits.slice(0, 3)})-${digits.slice(3)}`;
+                }
+                setPhone(formatted);
+              }}
+              placeholder="(123)-456-7890"
+              maxLength={14}
+            />
+          </div>
+
+          {error && <p style={s.error}>{error}</p>}
+
+          <button
+            type="submit"
+            style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
+            disabled={busy}
+          >
+            {busy ? "Sending..." : "Send verification code"}
+          </button>
+        </form>
 
         {mode === "login" && (
           <p style={s.subtitle}>
@@ -625,36 +634,45 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       <AuthHeading>Complete your profile</AuthHeading>
       <p style={s.subtitle}>We need your name to finalize your account.</p>
 
-      <div style={s.field}>
-        <label style={s.label}>Full name</label>
-        <input
-          style={s.input}
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder="Jane Doe"
-          autoFocus
-        />
-      </div>
-
-      <div style={s.field}>
-        <label style={s.label}>Email (optional)</label>
-        <input
-          style={s.input}
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="jane@example.com"
-        />
-      </div>
-
-      {error && <p style={s.error}>{error}</p>}
-
-      <button
-        style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
-        onClick={handleProfileSubmit}
+      <form
+        style={{ display: "contents" }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!busy) void handleProfileSubmit();
+        }}
       >
-        {busy ? "Saving..." : "Save and continue"}
-      </button>
+        <div style={s.field}>
+          <label style={s.label}>Full name</label>
+          <input
+            style={s.input}
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Jane Doe"
+            autoFocus
+          />
+        </div>
+
+        <div style={s.field}>
+          <label style={s.label}>Email (optional)</label>
+          <input
+            style={s.input}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="jane@example.com"
+          />
+        </div>
+
+        {error && <p style={s.error}>{error}</p>}
+
+        <button
+          type="submit"
+          style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
+          disabled={busy}
+        >
+          {busy ? "Saving..." : "Save and continue"}
+        </button>
+      </form>
     </div>
   );
 }
