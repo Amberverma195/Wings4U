@@ -60,6 +60,10 @@ export function createOrdersSocket(options: { preferKdsStation?: boolean } = {})
 export function subscribeToChannels(
   socket: Socket,
   channels: readonly string[],
+  options?: {
+    /** Fires when the server rejects a channel subscribe (wrong user, stale session, etc.). */
+    onDenied?: (channel: string, error?: string) => void;
+  },
 ): () => void {
   const subscribe = () => {
     for (const channel of channels) {
@@ -77,6 +81,7 @@ export function subscribeToChannels(
               channel,
               ack.error ?? "(no reason)",
             );
+            options?.onDenied?.(channel, ack.error);
           }
         },
       );

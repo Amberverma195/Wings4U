@@ -114,7 +114,7 @@ export type MenuResponse = {
 export type FulfillmentType = "PICKUP" | "DELIVERY";
 
 export type CartModifierSelection = {
-  modifier_option_id: string;
+  modifier_option_id?: string;
   group_name: string;
   option_name: string;
   price_delta_cents: number;

@@ -17,7 +17,7 @@ import {
 } from "@/lib/cart-item-utils";
 import { buildLineSummary } from "@/lib/cart-line-summary";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
-import { cents } from "@/lib/format";
+import { cents, statusLabel } from "@/lib/format";
 import {
   canQuickAddMenuItem,
   isComboBuilderItem,
@@ -26,6 +26,7 @@ import {
   shouldUseCustomizationOverlay,
 } from "@/lib/menu-item-customization";
 import { DEFAULT_SCHEDULING_CONFIG } from "@/lib/order-scheduling";
+import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import {
   buildDisplayMenuCategories,
   type DisplayMenuItem,
@@ -428,6 +429,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [showEmployeeDiscountModal, setShowEmployeeDiscountModal] = useState(false);
   const [showCustomDiscountModal, setShowCustomDiscountModal] = useState(false);
+  const [showOpenFoodModal, setShowOpenFoodModal] = useState(false);
   const [showCashModal, setShowCashModal] = useState(false);
   const [appliedDiscount, setAppliedDiscount] = useState<{
     label: string;
@@ -528,6 +530,38 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     void loadOrders();
   }, [loadOrders]);
 
+  /* ---------- Realtime updates ---------- */
+
+  useEffect(() => {
+    const socket = createOrdersSocket();
+
+    socket.on(
+      "order.status_changed",
+      (data: { order_id: string; status: string }) => {
+        setTodayOrders((prev) =>
+          prev.map((o) =>
+            o.id === data.order_id ? { ...o, status: data.status } : o,
+          ),
+        );
+        setSelectedOrder((prev) =>
+          prev && prev.id === data.order_id
+            ? { ...prev, status: data.status }
+            : prev,
+        );
+      },
+    );
+
+    const disposeSubscription = subscribeToChannels(socket, [
+      `orders:${DEFAULT_LOCATION_ID}`,
+    ]);
+    socket.connect();
+
+    return () => {
+      disposeSubscription();
+      socket.disconnect();
+    };
+  }, []);
+
   /* ---------- Customer Lookup ---------- */
 
   const performLookup = useCallback(async (phone: string) => {
@@ -619,10 +653,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         prev.map((line) =>
           line.key === existingKey
             ? {
-                ...incoming,
-                key: existingKey,
-                removed_ingredients: incoming.removed_ingredients ?? [],
-              }
+              ...incoming,
+              key: existingKey,
+              removed_ingredients: incoming.removed_ingredients ?? [],
+            }
             : line,
         ),
       );
@@ -734,6 +768,51 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setCurrentOrderId(`ORD-${Math.floor(1000 + Math.random() * 9000)}`);
   }, [clearCart]);
 
+  const handleOpenFood = useCallback((desc: string, amount: number) => {
+    const amountCents = Math.round(amount * 100);
+    setCurrentOrderId(
+      (prev) => prev ?? `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+    );
+    setCart((prev) => {
+      // Per user request: "add desc under last added item in cart wiht price as well"
+      // If we have items, add it as a custom modifier to the last one.
+      // If no items, add it as a standalone "Open Food" line.
+      if (prev.length > 0) {
+        const lastIndex = prev.length - 1;
+        const lastItem = prev[lastIndex];
+        const updatedItem = {
+          ...lastItem,
+          modifier_selections: [
+            ...lastItem.modifier_selections,
+            {
+              group_name: "Open Food",
+              option_name: desc,
+              price_delta_cents: amountCents,
+            },
+          ],
+        };
+        const next = [...prev];
+        next[lastIndex] = updatedItem;
+        return next;
+      }
+
+      // No items: standalone
+      return [
+        ...prev,
+        {
+          key: makePosCartKey("open-food"),
+          menu_item_id: "open-food",
+          name: desc,
+          base_price_cents: amountCents,
+          quantity: 1,
+          modifier_selections: [],
+          special_instructions: "",
+        },
+      ];
+    });
+    setShowOpenFoodModal(false);
+  }, []);
+
   /* ---------- Pricing preview ---------- */
 
   const subtotalCents = useMemo(() => {
@@ -796,10 +875,15 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         order_source: orderSource,
         payment_method: finalPaymentMethod,
         items: cart.map((l) => ({
-          menu_item_id: l.menu_item_id,
+          menu_item_id: l.menu_item_id === "open-food" ? undefined : l.menu_item_id,
+          name: l.menu_item_id === "open-food" ? l.name : undefined,
+          unit_price_cents:
+            l.menu_item_id === "open-food" ? l.base_price_cents : undefined,
           quantity: l.quantity,
-          modifier_selections: l.modifier_selections.map((m) => ({
-            modifier_option_id: m.modifier_option_id,
+          modifier_selections: l.modifier_selections.map((s) => ({
+            modifier_option_id: s.modifier_option_id,
+            name: s.option_name,
+            price_delta_cents: s.price_delta_cents,
           })),
           removed_ingredients: getRemovedIngredientsForApi(l),
           ...(l.builder_payload
@@ -950,459 +1034,459 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
   return (
     <CartContext.Provider value={posCartContextValue}>
-    <div className="pos-root" data-testid="pos-shell">
-      <header className="pos-topbar">
-        <div className="pos-brand">
-          WINGS 4U <span className="pos-brand-badge">POS</span>
-        </div>
-
-        <div className="pos-topbar-nav">
-          <button
-            type="button"
-            className="pos-btn pos-nav-btn"
-            onClick={() => {
-              if (currentOrderId) {
-                toast.error("Order already opened", {
-                  description: "Finish or clear the current order first.",
-                });
-                return;
-              }
-              startNewOrder();
-            }}
-            data-testid="pos-new-order-btn"
-          >
-            New Order
-          </button>
-          <button
-            type="button"
-            className="pos-btn pos-nav-btn"
-            onClick={() => setShowOrdersModal(true)}
-            data-testid="pos-orders-btn"
-          >
-            Orders
-          </button>
-          <button
-            type="button"
-            className="pos-btn pos-nav-btn"
-            onClick={() => setShowStaffModal(true)}
-          >
-            Staff
-          </button>
-        </div>
-
-        <div className="pos-topbar-right">
-          <div className="pos-user-chip">
-            <strong>POS Station</strong>
-            <span>STATION</span>
+      <div className="pos-root" data-testid="pos-shell">
+        <header className="pos-topbar">
+          <div className="pos-brand">
+            WINGS 4U <span className="pos-brand-badge">POS</span>
           </div>
-          <button
-            type="button"
-            className="pos-btn pos-btn--ghost"
-            style={{ fontSize: "0.75rem", padding: "0.4rem 0.6rem" }}
-            onClick={() => void signOut()}
-            data-testid="pos-signout-btn"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
 
-      <div className="pos-workspace">
-        <section className="pos-cart" aria-label="Cart">
-          {todayOrders.filter((o) => o.order_source === "POS").length > 0 && (
-            <div className="pos-recent-pills">
-              {todayOrders
-                .filter((o) => o.order_source === "POS")
-                .slice(0, 12)
-                .map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    className="pos-order-pill"
-                    onClick={() => copyOrderToCart(o)}
-                    title={`Re-order #${o.order_number}`}
-                  >
-                    #{o.order_number}
-                  </button>
-                ))}
+          <div className="pos-topbar-nav">
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={() => {
+                if (currentOrderId) {
+                  toast.error("Order already opened", {
+                    description: "Finish or clear the current order first.",
+                  });
+                  return;
+                }
+                startNewOrder();
+              }}
+              data-testid="pos-new-order-btn"
+            >
+              New Order
+            </button>
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={() => setShowOrdersModal(true)}
+              data-testid="pos-orders-btn"
+            >
+              Orders
+            </button>
+            <button
+              type="button"
+              className="pos-btn pos-nav-btn"
+              onClick={() => setShowStaffModal(true)}
+            >
+              Staff
+            </button>
+          </div>
+
+          <div className="pos-topbar-right">
+            <div className="pos-user-chip">
+              <strong>POS Station</strong>
+              <span>STATION</span>
             </div>
-          )}
-          <div className="pos-dining-selector">
             <button
               type="button"
-              className="pos-dining-btn"
-              aria-pressed={diningOption === "EAT_IN"}
-              onClick={() => {
-                setDiningOption("EAT_IN");
-                setFulfillmentType("PICKUP");
-              }}
+              className="pos-btn pos-btn--ghost"
+              style={{ fontSize: "0.75rem", padding: "0.4rem 0.6rem" }}
+              onClick={() => void signOut()}
+              data-testid="pos-signout-btn"
             >
-              Eat-in
+              Sign out
             </button>
-            <button
-              type="button"
-              className="pos-dining-btn"
-              aria-pressed={diningOption === "TO_GO"}
-              onClick={() => {
-                setDiningOption("TO_GO");
-                setFulfillmentType("PICKUP");
-              }}
-            >
-              To-Go
-            </button>
-            {orderSource === "PHONE" && (
+          </div>
+        </header>
+
+        <div className="pos-workspace">
+          <section className="pos-cart" aria-label="Cart">
+            {todayOrders.filter((o) => o.order_source === "POS").length > 0 && (
+              <div className="pos-recent-pills">
+                {todayOrders
+                  .filter((o) => o.order_source === "POS")
+                  .slice(0, 12)
+                  .map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className="pos-order-pill"
+                      onClick={() => copyOrderToCart(o)}
+                      title={`Re-order #${o.order_number}`}
+                    >
+                      #{o.order_number}
+                    </button>
+                  ))}
+              </div>
+            )}
+            <div className="pos-dining-selector">
               <button
                 type="button"
                 className="pos-dining-btn"
-                aria-pressed={diningOption === "DELIVERY"}
+                aria-pressed={diningOption === "EAT_IN"}
                 onClick={() => {
-                  setDiningOption("DELIVERY");
-                  setFulfillmentType("DELIVERY");
+                  setDiningOption("EAT_IN");
+                  setFulfillmentType("PICKUP");
                 }}
               >
-                Delivery
+                Eat-in
               </button>
-            )}
-          </div>
-
-          <div className="pos-customer-fields" style={{ marginBottom: "0.75rem" }}>
-            {customerFound ? (
-              <div className="pos-customer-profile-card">
-                <div className="pos-customer-profile-info">
-                  <strong>{customerFound.display_name}</strong>
-                  <span>{customerPhone}</span>
-                </div>
+              <button
+                type="button"
+                className="pos-dining-btn"
+                aria-pressed={diningOption === "TO_GO"}
+                onClick={() => {
+                  setDiningOption("TO_GO");
+                  setFulfillmentType("PICKUP");
+                }}
+              >
+                To-Go
+              </button>
+              {orderSource === "PHONE" && (
                 <button
                   type="button"
-                  className="pos-customer-change-btn"
+                  className="pos-dining-btn"
+                  aria-pressed={diningOption === "DELIVERY"}
                   onClick={() => {
-                    setCustomerFound(null);
-                    setCustomerName("");
-                    setCustomerPhone("");
-                    setLookupError(null);
+                    setDiningOption("DELIVERY");
+                    setFulfillmentType("DELIVERY");
                   }}
                 >
-                  Change
+                  Delivery
                 </button>
-              </div>
-            ) : (
-              <>
-                <label className="pos-field">
-                  CUSTOMER NAME
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Optional"
-                    autoComplete="off"
-                  />
-                </label>
-                {orderSource === "PHONE" && (
+              )}
+            </div>
+
+            <div className="pos-customer-fields" style={{ marginBottom: "0.75rem" }}>
+              {customerFound ? (
+                <div className="pos-customer-profile-card">
+                  <div className="pos-customer-profile-info">
+                    <strong>{customerFound.display_name}</strong>
+                    <span>{customerPhone}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="pos-customer-change-btn"
+                    onClick={() => {
+                      setCustomerFound(null);
+                      setCustomerName("");
+                      setCustomerPhone("");
+                      setLookupError(null);
+                    }}
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <>
                   <label className="pos-field">
-                    PHONE{" "}
-                    {lookupError && (
-                      <span
-                        style={{
-                          color: "var(--pos-accent)",
-                          fontSize: "0.7rem",
-                          marginLeft: "0.5rem",
-                          fontWeight: 900,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        ({lookupError})
-                      </span>
-                    )}
+                    CUSTOMER NAME
                     <input
-                      type="tel"
-                      inputMode="tel"
-                      value={customerPhone}
-                      onChange={(e) => updatePhone(e.target.value)}
-                      placeholder="(519) 000-0000"
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Optional"
                       autoComplete="off"
                     />
                   </label>
-                )}
-              </>
-            )}
-          </div>
-          {currentOrderId && (
-            <div className="pos-order-id-display">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span className="pos-accent" style={{ fontWeight: 800, fontSize: '0.95rem' }}>
-                  ID: {currentOrderId}
-                </span>
-                <div className="pos-segmented pos-segmented--small">
-                  <button
-                    type="button"
-                    aria-pressed={orderSource === "POS"}
-                    onClick={() => {
-                      setOrderSource("POS");
-                      if (diningOption === "DELIVERY") {
-                        setDiningOption("TO_GO");
-                        setFulfillmentType("PICKUP");
-                      }
-                    }}
-                  >
-                    Walk-in
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={orderSource === "PHONE"}
-                    onClick={() => setOrderSource("PHONE")}
-                  >
-                    Phone
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="pos-modal-close"
-                style={{ fontSize: "1.2rem", padding: "0 0.25rem", opacity: 0.6 }}
-                onClick={() => {
-                  if (cart.length > 0) {
-                    toast.error("Remove all items first", {
-                      description: "Please clear the cart before closing the order session.",
-                    });
-                    return;
-                  }
-                  setCurrentOrderId(null);
-                }}
-              >
-                ×
-              </button>
+                  {orderSource === "PHONE" && (
+                    <label className="pos-field">
+                      PHONE{" "}
+                      {lookupError && (
+                        <span
+                          style={{
+                            color: "var(--pos-accent)",
+                            fontSize: "0.7rem",
+                            marginLeft: "0.5rem",
+                            fontWeight: 900,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          ({lookupError})
+                        </span>
+                      )}
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        value={customerPhone}
+                        onChange={(e) => updatePhone(e.target.value)}
+                        placeholder="(519) 000-0000"
+                        autoComplete="off"
+                      />
+                    </label>
+                  )}
+                </>
+              )}
             </div>
-          )}
+            {currentOrderId && (
+              <div className="pos-order-id-display">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <span className="pos-accent" style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                    ID: {currentOrderId}
+                  </span>
+                  <div className="pos-segmented pos-segmented--small">
+                    <button
+                      type="button"
+                      aria-pressed={orderSource === "POS"}
+                      onClick={() => {
+                        setOrderSource("POS");
+                        if (diningOption === "DELIVERY") {
+                          setDiningOption("TO_GO");
+                          setFulfillmentType("PICKUP");
+                        }
+                      }}
+                    >
+                      Walk-in
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={orderSource === "PHONE"}
+                      onClick={() => setOrderSource("PHONE")}
+                    >
+                      Phone
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="pos-modal-close"
+                  style={{ fontSize: "1.2rem", padding: "0 0.25rem", opacity: 0.6 }}
+                  onClick={() => {
+                    if (cart.length > 0) {
+                      toast.error("Remove all items first", {
+                        description: "Please clear the cart before closing the order session.",
+                      });
+                      return;
+                    }
+                    setCurrentOrderId(null);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
-          {cart.length === 0 ? (
-            <div className="pos-empty" />
-          ) : (
-            <div className="pos-cart-list">
-              {cart.map((line) => {
-                const unitCents = getCartItemUnitPrice(line);
-                const summaryLines = buildLineSummary(line);
-                const lineMenuItem = menu?.categories
-                  .flatMap((c) => c.items)
-                  .find((item) => item.id === line.menu_item_id);
-                return (
-                  <div key={line.key} className="pos-cart-line">
-                    <div className="pos-cart-line-body">
-                      <div className="pos-cart-line-name">
-                        <span>{line.name}</span>
-                        <span>{cents(unitCents * line.quantity)}</span>
-                      </div>
-                      {summaryLines.length > 0 ? (
-                        <div className="pos-cart-line-mods">
-                          {summaryLines.join(", ")}
+            {cart.length === 0 ? (
+              <div className="pos-empty" />
+            ) : (
+              <div className="pos-cart-list">
+                {cart.map((line) => {
+                  const unitCents = getCartItemUnitPrice(line);
+                  const summaryLines = buildLineSummary(line);
+                  const lineMenuItem = menu?.categories
+                    .flatMap((c) => c.items)
+                    .find((item) => item.id === line.menu_item_id);
+                  return (
+                    <div key={line.key} className="pos-cart-line">
+                      <div className="pos-cart-line-body">
+                        <div className="pos-cart-line-name">
+                          <span>{line.name}</span>
+                          <span>{cents(unitCents * line.quantity)}</span>
                         </div>
-                      ) : null}
-                      <div className="pos-qty">
-                        <button
-                          type="button"
-                          aria-label="Decrease"
-                          onClick={() => adjustQuantity(line.key, -1)}
-                        >
-                          −
-                        </button>
-                        <span className="pos-qty-value">{line.quantity}</span>
-                        <button
-                          type="button"
-                          aria-label="Increase"
-                          onClick={() => adjustQuantity(line.key, +1)}
-                        >
-                          +
-                        </button>
-
-                        {lineMenuItem && !canQuickAddMenuItem(lineMenuItem) ? (
+                        {summaryLines.length > 0 ? (
+                          <div className="pos-cart-line-mods">
+                            {summaryLines.join(", ")}
+                          </div>
+                        ) : null}
+                        <div className="pos-qty">
                           <button
                             type="button"
-                            className="pos-cart-edit-btn"
-                            onClick={() => {
-                              setEditingLine(line);
-                              setPickerItem(lineMenuItem);
-                            }}
+                            aria-label="Decrease"
+                            onClick={() => adjustQuantity(line.key, -1)}
                           >
-                            Edit
+                            −
                           </button>
-                        ) : null}
+                          <span className="pos-qty-value">{line.quantity}</span>
+                          <button
+                            type="button"
+                            aria-label="Increase"
+                            onClick={() => adjustQuantity(line.key, +1)}
+                          >
+                            +
+                          </button>
 
-                        <button
-                          type="button"
-                          aria-label="Remove"
-                          style={{ marginLeft: "auto", color: "#b91c1c" }}
-                          onClick={() => removeLine(line.key)}
-                        >
-                          ×
-                        </button>
+                          {lineMenuItem && !canQuickAddMenuItem(lineMenuItem) ? (
+                            <button
+                              type="button"
+                              className="pos-cart-edit-btn"
+                              onClick={() => {
+                                setEditingLine(line);
+                                setPickerItem(lineMenuItem);
+                              }}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            aria-label="Remove"
+                            style={{ marginLeft: "auto", color: "#b91c1c" }}
+                            onClick={() => removeLine(line.key)}
+                          >
+                            ×
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-              {appliedDiscount?.employeeName && (
-                <div className="pos-cart-employee-info">
-                  <button
-                    type="button"
-                    className="pos-cart-employee-info-close"
-                    onClick={() => setAppliedDiscount(null)}
-                  >
-                    ×
-                  </button>
-                  Employee Discount: {appliedDiscount.employeeName} ({appliedDiscount.percent}%)
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="pos-cart-footer">
-            <div className="pos-cart-totals">
-              <div className="pos-cart-totals-row">
-                <span>Subtotal</span>
-                <span>{cents(subtotalCents)}</span>
-              </div>
-              {appliedDiscount && (
-                <div
-                  className="pos-cart-totals-row"
-                  style={{ color: "var(--pos-accent)" }}
-                >
-                  <span>
-                    Discount{" "}
-                    {appliedDiscount.fixedAmountCents
-                      ? ""
-                      : `(${appliedDiscount.percent}%)`}
-                  </span>
-                  <span>-{cents(discountCents)}</span>
-                </div>
-              )}
-              <div className="pos-cart-totals-row">
-                <span>Tax (est.)</span>
-                <span>{cents(estimatedTaxCents)}</span>
-              </div>
-              <div className="pos-cart-totals-row pos-cart-totals-row--emph">
-                <span>Total</span>
-                <span>{cents(estimatedTotalCents)}</span>
-              </div>
-            </div>
-
-            <div
-              className="pos-payments"
-              role="radiogroup"
-              aria-label="Payment method"
-            >
-              <button
-                type="button"
-                className="pos-payment-btn"
-                disabled={cart.length === 0 || placing}
-                onClick={() => {
-                  setPaymentMethod("CASH");
-                  setAmountTendered((estimatedTotalCents / 100).toString());
-                  void placeOrder({
-                    paymentMethod: "CASH",
-                    amountTenderedCents: estimatedTotalCents,
-                  });
-                }}
-              >
-                Exact Amount
-              </button>
-              <button
-                type="button"
-                className="pos-payment-btn"
-                disabled={cart.length === 0 || placing}
-                aria-pressed={showCashModal}
-                onClick={() => {
-                  setPaymentMethod("CASH");
-                  setShowCashModal(true);
-                }}
-              >
-                Cash
-              </button>
-              <button
-                type="button"
-                className="pos-payment-btn"
-                disabled={cart.length === 0 || placing}
-                aria-pressed={paymentMethod === "CARD_TERMINAL"}
-                onClick={() => {
-                  setPaymentMethod("CARD_TERMINAL");
-                  void placeOrder({ paymentMethod: "CARD_TERMINAL" });
-                }}
-              >
-                Card
-              </button>
-            </div>
-
-
-
-
-
-            {placeError ? (
-              <div className="pos-cart-message">{placeError}</div>
-            ) : null}
-            {placeSuccess ? (
-              <div className="pos-cart-message pos-cart-message--ok">
-                {placeSuccess}
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="pos-left">
-          <div className="pos-menu-content">
-            <div className="pos-tabs" role="tablist">
-              {displayCategories.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={cat.id === activeDisplayCategory?.id}
-                  className={
-                    "pos-tab" +
-                    (cat.id === activeDisplayCategory?.id ? " pos-tab--active" : "")
-                  }
-                  onClick={() => setActiveCategoryId(cat.id)}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-
-            {menuError ? (
-              <p className="pos-empty">{menuError}</p>
-            ) : !menu ? (
-              <p className="pos-empty">Loading menu…</p>
-            ) : !activeDisplayCategory || activeDisplayCategory.items.length === 0 ? (
-              <p className="pos-empty">No items in this category.</p>
-            ) : (
-              <div className="pos-items-grid">
-                {activeDisplayCategory.items.map((displayItem) => {
-                  const item =
-                    displayItem.kind === "item"
-                      ? displayItem.item
-                      : displayItem.group.options[0]?.item;
-                  if (!item) return null;
-                  const isBuilder =
-                    displayItem.kind === "item" &&
-                    (isWingBuilderItem(item) ||
-                      isComboBuilderItem(item) ||
-                      isLunchSpecialBuilderItem(item));
-                  const hasMods =
-                    displayItem.kind === "item" &&
-                    shouldUseCustomizationOverlay(item);
-                  const outOfStock = displayItem.stockStatus === "UNAVAILABLE";
-                  return (
+                  );
+                })}
+                {appliedDiscount?.employeeName && (
+                  <div className="pos-cart-employee-info">
                     <button
-                      key={displayItem.key}
                       type="button"
-                      className="pos-item-card"
-                      disabled={outOfStock}
-                      onClick={() => handleSelectDisplayItem(displayItem)}
+                      className="pos-cart-employee-info-close"
+                      onClick={() => setAppliedDiscount(null)}
                     >
-                      <div className="pos-item-name">{displayItem.displayName}</div>
-                      <div className="pos-item-price">
-                        {displayItem.showStartingAt ? "From " : ""}
-                        {cents(displayItem.displayPriceCents)}
-                      </div>
-                      <div className="pos-item-meta">
-                        {outOfStock
+                      ×
+                    </button>
+                    Employee Discount: {appliedDiscount.employeeName} ({appliedDiscount.percent}%)
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="pos-cart-footer">
+              <div className="pos-cart-totals">
+                <div className="pos-cart-totals-row">
+                  <span>Subtotal</span>
+                  <span>{cents(subtotalCents)}</span>
+                </div>
+                {appliedDiscount && (
+                  <div
+                    className="pos-cart-totals-row"
+                    style={{ color: "var(--pos-accent)" }}
+                  >
+                    <span>
+                      Discount{" "}
+                      {appliedDiscount.fixedAmountCents
+                        ? ""
+                        : `(${appliedDiscount.percent}%)`}
+                    </span>
+                    <span>-{cents(discountCents)}</span>
+                  </div>
+                )}
+                <div className="pos-cart-totals-row">
+                  <span>Tax (est.)</span>
+                  <span>{cents(estimatedTaxCents)}</span>
+                </div>
+                <div className="pos-cart-totals-row pos-cart-totals-row--emph">
+                  <span>Total</span>
+                  <span>{cents(estimatedTotalCents)}</span>
+                </div>
+              </div>
+
+              <div
+                className="pos-payments"
+                role="radiogroup"
+                aria-label="Payment method"
+              >
+                <button
+                  type="button"
+                  className="pos-payment-btn"
+                  disabled={cart.length === 0 || placing}
+                  onClick={() => {
+                    setPaymentMethod("CASH");
+                    setAmountTendered((estimatedTotalCents / 100).toString());
+                    void placeOrder({
+                      paymentMethod: "CASH",
+                      amountTenderedCents: estimatedTotalCents,
+                    });
+                  }}
+                >
+                  Exact Amount
+                </button>
+                <button
+                  type="button"
+                  className="pos-payment-btn"
+                  disabled={cart.length === 0 || placing}
+                  aria-pressed={showCashModal}
+                  onClick={() => {
+                    setPaymentMethod("CASH");
+                    setShowCashModal(true);
+                  }}
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  className="pos-payment-btn"
+                  disabled={cart.length === 0 || placing}
+                  aria-pressed={paymentMethod === "CARD_TERMINAL"}
+                  onClick={() => {
+                    setPaymentMethod("CARD_TERMINAL");
+                    void placeOrder({ paymentMethod: "CARD_TERMINAL" });
+                  }}
+                >
+                  Card
+                </button>
+              </div>
+
+
+
+
+
+              {placeError ? (
+                <div className="pos-cart-message">{placeError}</div>
+              ) : null}
+              {placeSuccess ? (
+                <div className="pos-cart-message pos-cart-message--ok">
+                  {placeSuccess}
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="pos-left">
+            <div className="pos-menu-content">
+              <div className="pos-tabs" role="tablist">
+                {displayCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={cat.id === activeDisplayCategory?.id}
+                    className={
+                      "pos-tab" +
+                      (cat.id === activeDisplayCategory?.id ? " pos-tab--active" : "")
+                    }
+                    onClick={() => setActiveCategoryId(cat.id)}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+
+              {menuError ? (
+                <p className="pos-empty">{menuError}</p>
+              ) : !menu ? (
+                <p className="pos-empty">Loading menu…</p>
+              ) : !activeDisplayCategory || activeDisplayCategory.items.length === 0 ? (
+                <p className="pos-empty">No items in this category.</p>
+              ) : (
+                <div className="pos-items-grid">
+                  {activeDisplayCategory.items.map((displayItem) => {
+                    const item =
+                      displayItem.kind === "item"
+                        ? displayItem.item
+                        : displayItem.group.options[0]?.item;
+                    if (!item) return null;
+                    const isBuilder =
+                      displayItem.kind === "item" &&
+                      (isWingBuilderItem(item) ||
+                        isComboBuilderItem(item) ||
+                        isLunchSpecialBuilderItem(item));
+                    const hasMods =
+                      displayItem.kind === "item" &&
+                      shouldUseCustomizationOverlay(item);
+                    const outOfStock = displayItem.stockStatus === "UNAVAILABLE";
+                    return (
+                      <button
+                        key={displayItem.key}
+                        type="button"
+                        className="pos-item-card"
+                        disabled={outOfStock}
+                        onClick={() => handleSelectDisplayItem(displayItem)}
+                      >
+                        <div className="pos-item-name">{displayItem.displayName}</div>
+                        <div className="pos-item-price">
+                          {displayItem.showStartingAt ? "From " : ""}
+                          {cents(displayItem.displayPriceCents)}
+                        </div>
+                        <div className="pos-item-meta">
+                          {outOfStock
                             ? "Unavailable"
                             : isBuilder
                               ? "Build item"
@@ -1411,442 +1495,472 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                                 : displayItem.kind === "legacy-group"
                                   ? "Choose size"
                                   : "Tap to add"}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <div className="pos-bottom-navbar">
-            <button
-              type="button"
-              className="pos-btn pos-nav-btn"
-              onClick={() => {
-                if (cart.length === 0) {
-                  toast.error("No open order", {
-                    description: "Add items to the cart first.",
-                  });
-                  return;
-                }
-                setShowCustomerLookupModal(true);
-              }}
-            >
-              CUST Lookup
-            </button>
-            <button
-              type="button"
-              className="pos-btn pos-nav-btn"
-              onClick={() => {
-                if (cart.length === 0) {
-                  toast.error("No open order", {
-                    description: "Add items to the cart first.",
-                  });
-                  return;
-                }
-                setShowSpecialInstructionsModal(true);
-              }}
-            >
-              SPC INS
-            </button>
-          </div>
-        </section>
-      </div>
-
-      {showOrdersModal && (
-        <div className="pos-orders-overlay">
-          <div className="pos-orders-header">
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 800 }}>
-              Daily Orders
-            </h2>
-            <button
-              type="button"
-              className="pos-modal-close"
-              onClick={() => {
-                setShowOrdersModal(false);
-                setSelectedOrder(null);
-              }}
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="pos-orders-search">
-            <input
-              type="text"
-              placeholder="Search by Order ID or Customer Name..."
-              value={ordersSearchQuery}
-              onChange={(e) => setOrdersSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="pos-orders-content">
-            <div className="pos-orders-sidebar">
-              <div
-                className="pos-orders-list-scroll"
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.75rem",
-                }}
-              >
-                {todayOrders
-                  .filter((o) => {
-                    const q = ordersSearchQuery.toLowerCase();
-                    return (
-                      o.order_number.toString().includes(q) ||
-                      (o.customer_name_snapshot ?? "")
-                        .toLowerCase()
-                        .includes(q) ||
-                      (o.customer_phone_snapshot ?? "").includes(q)
+                        </div>
+                      </button>
                     );
-                  })
-                  .map((o) => (
-                    <button
-                      key={o.id}
-                      type="button"
-                      className={
-                        "pos-order-item" +
-                        (selectedOrder?.id === o.id
-                          ? " pos-order-item--active"
-                          : "")
-                      }
-                      onClick={() => setSelectedOrder(o)}
-                    >
-                      <span className="pos-order-item-id">
-                        #{o.order_number}
-                      </span>
-                      <div className="pos-order-customer">
-                        {o.customer_name_snapshot || "Walk-in"}
-                      </div>
-                      <div className="pos-order-phone">
-                        {o.customer_phone_snapshot || "No phone"}
-                      </div>
-                      <div className="pos-order-time">
-                        {new Date(o.placed_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                      <span
-                        className="pos-order-item-total"
-                        data-paid={
-                          o.final_payable_cents > 0 &&
-                          o.final_payable_cents <=
-                          (o as any).total_paid_cents
-                        }
-                      >
-                        {cents(o.final_payable_cents)}
-                      </span>
-                    </button>
-                  ))}
-              </div>
-            </div>
-
-            <div className="pos-orders-detail-view">
-              {selectedOrder ? (
-                <>
-                  <div className="pos-order-detail-header">
-                    <div className="pos-detail-hero">
-                      <span className="pos-detail-label">
-                        Order Reference
-                      </span>
-                      <h3>#{selectedOrder.order_number}</h3>
-                    </div>
-                    <div className="pos-order-detail-grid">
-                      <div className="pos-detail-group">
-                        <label>Customer</label>
-                        <span>
-                          {selectedOrder.customer_name_snapshot ||
-                            "Walk-in"}
-                        </span>
-                      </div>
-                      <div className="pos-detail-group">
-                        <label>Payment Status</label>
-                        <span
-                          style={{
-                            color:
-                              selectedOrder.final_payable_cents > 0 &&
-                                selectedOrder.final_payable_cents <=
-                                selectedOrder.total_paid_cents
-                                ? "#4caf50"
-                                : "#f44336",
-                          }}
-                        >
-                          {selectedOrder.final_payable_cents > 0 &&
-                            selectedOrder.final_payable_cents <=
-                            selectedOrder.total_paid_cents
-                            ? "PAID"
-                            : "NOT PAID"}
-                        </span>
-                      </div>
-                      <div className="pos-detail-group">
-                        <label>Phone Number</label>
-                        <span>
-                          {selectedOrder.customer_phone_snapshot || "—"}
-                        </span>
-                      </div>
-                      <div className="pos-detail-group">
-                        <label>Placed At</label>
-                        <span>
-                          {new Date(
-                            selectedOrder.placed_at,
-                          ).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pos-order-detail-items">
-                    <div className="pos-detail-section-title">
-                      Order Items
-                    </div>
-                    {(selectedOrder as any).items?.map(
-                      (item: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="pos-detail-item-row"
-                        >
-                          <div className="pos-detail-item-info">
-                            <div className="pos-detail-item-name">
-                              <span className="pos-detail-qty">
-                                {item.quantity}×
-                              </span>
-                              {item.product_name_snapshot}
-                            </div>
-                            {item.modifiers?.length > 0 && (
-                              <div className="pos-detail-item-mods">
-                                {item.modifiers
-                                  .map(
-                                    (m: any) =>
-                                      m.modifier_name_snapshot,
-                                  )
-                                  .join(", ")}
-                              </div>
-                            )}
-                          </div>
-                          <div className="pos-detail-item-price">
-                            {cents(item.line_total_cents)}
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>
-
-                  <div className="pos-order-detail-footer">
-                    <div className="pos-order-price-summary">
-                      <div className="pos-price-row">
-                        <span>Subtotal</span>
-                        <span>
-                          {cents(selectedOrder.item_subtotal_cents)}
-                        </span>
-                      </div>
-                      <div className="pos-price-row">
-                        <span>Tax</span>
-                        <span>{cents(selectedOrder.tax_cents)}</span>
-                      </div>
-                      {selectedOrder.delivery_fee_cents > 0 && (
-                        <div className="pos-price-row">
-                          <span>Delivery Fee</span>
-                          <span>
-                            {cents(selectedOrder.delivery_fee_cents)}
-                          </span>
-                        </div>
-                      )}
-                      <div className="pos-price-row pos-price-row--total">
-                        <span>Total Amount</span>
-                        <strong>
-                          {cents(selectedOrder.final_payable_cents)}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="pos-empty">
-                  Select an order to view details
+                  })}
                 </div>
               )}
             </div>
-          </div>
+            <div className="pos-bottom-navbar">
+              <button
+                type="button"
+                className="pos-btn pos-nav-btn"
+                onClick={() => {
+                  if (cart.length === 0) {
+                    toast.error("No open order", {
+                      description: "Add items to the cart first.",
+                    });
+                    return;
+                  }
+                  setShowCustomerLookupModal(true);
+                }}
+              >
+                CUST Lookup
+              </button>
+              <button
+                type="button"
+                className="pos-btn pos-nav-btn"
+                onClick={() => {
+                  if (cart.length === 0) {
+                    toast.error("No open order", {
+                      description: "Add items to the cart first.",
+                    });
+                    return;
+                  }
+                  setShowSpecialInstructionsModal(true);
+                }}
+              >
+                SPC INS
+              </button>
+            </div>
+          </section>
         </div>
-      )}
 
-      {showStaffModal && (
-        <StaffModal
-          onClose={() => setShowStaffModal(false)}
-          onOpenDrawer={() => {
-            alert("Cash drawer opened.");
-            setShowStaffModal(false);
-          }}
-          onEmployeeDiscount={() => {
-            if (cart.length === 0) {
-              toast.error("No open order", {
-                description: "Add items to the cart first.",
-              });
-              return;
-            }
-            setShowStaffModal(false);
-            setShowEmployeeDiscountModal(true);
-          }}
-          onCustomDiscount={() => {
-            if (cart.length === 0) {
-              toast.error("No open order", {
-                description: "Add items to the cart first.",
-              });
-              return;
-            }
-            setShowStaffModal(false);
-            setShowCustomDiscountModal(true);
-          }}
-        />
-      )}
+        {showOrdersModal && (
+          <div className="pos-orders-overlay">
+            <div className="pos-orders-header">
+              <h2 style={{ fontSize: "1.5rem", fontWeight: 800 }}>
+                Daily Orders
+              </h2>
+              <button
+                type="button"
+                className="pos-modal-close"
+                onClick={() => {
+                  setShowOrdersModal(false);
+                  setSelectedOrder(null);
+                }}
+              >
+                ×
+              </button>
+            </div>
 
-      {showCustomDiscountModal && (
-        <CustomDiscountModal
-          onClose={() => setShowCustomDiscountModal(false)}
-          onApply={(type, val, reason) => {
-            if (type === "PERCENT") {
+            <div className="pos-orders-search">
+              <input
+                type="text"
+                placeholder="Search by Order ID or Customer Name..."
+                value={ordersSearchQuery}
+                onChange={(e) => setOrdersSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="pos-orders-content">
+              <div className="pos-orders-sidebar">
+                <div
+                  className="pos-orders-list-scroll"
+                  style={{
+                    flex: 1,
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.75rem",
+                  }}
+                >
+                  {todayOrders
+                    .filter((o) => {
+                      const q = ordersSearchQuery.toLowerCase();
+                      return (
+                        o.order_number.toString().includes(q) ||
+                        (o.customer_name_snapshot ?? "")
+                          .toLowerCase()
+                          .includes(q) ||
+                        (o.customer_phone_snapshot ?? "").includes(q)
+                      );
+                    })
+                    .map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        className={
+                          "pos-order-item" +
+                          (selectedOrder?.id === o.id
+                            ? " pos-order-item--active"
+                            : "")
+                        }
+                        onClick={() => setSelectedOrder(o)}
+                      >
+                        <span className="pos-order-item-id">
+                          #{o.order_number}
+                        </span>
+                        <div className="pos-order-customer">
+                          {o.customer_name_snapshot || "Walk-in"}
+                        </div>
+                        <div className="pos-order-phone">
+                          {o.customer_phone_snapshot || "No phone"}
+                        </div>
+                        <div className="pos-order-time">
+                          {new Date(o.placed_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                        <span
+                          className="pos-order-item-total"
+                          data-paid={
+                            o.final_payable_cents > 0 &&
+                            o.final_payable_cents <=
+                            (o as any).total_paid_cents
+                          }
+                        >
+                          {cents(o.final_payable_cents)}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              <div className="pos-orders-detail-view">
+                {selectedOrder ? (
+                  <>
+                    <div className="pos-order-detail-header">
+                      <div className="pos-detail-hero">
+                        <span className="pos-detail-label">
+                          Order Reference
+                        </span>
+                        <h3>#{selectedOrder.order_number}</h3>
+                      </div>
+                      <div className="pos-order-detail-grid">
+                        <div className="pos-detail-group">
+                          <label>Customer</label>
+                          <span>
+                            {selectedOrder.customer_name_snapshot ||
+                              "Walk-in"}
+                          </span>
+                        </div>
+                        <div className="pos-detail-group">
+                          <label>Phone Number</label>
+                          <span>
+                            {selectedOrder.customer_phone_snapshot || "—"}
+                          </span>
+                        </div>
+                        <div className="pos-detail-group">
+                          <label>Order Type</label>
+                          <span style={{ fontWeight: "bold", color: "#fff" }}>
+                            {selectedOrder.order_source === "POS"
+                              ? "Walk-in"
+                              : "Phone Order"}
+                          </span>
+                        </div>
+                        <div className="pos-detail-group">
+                          <label>Payment Status</label>
+                          <span
+                            style={{
+                              color:
+                                selectedOrder.final_payable_cents > 0 &&
+                                  selectedOrder.final_payable_cents <=
+                                  selectedOrder.total_paid_cents
+                                  ? "#4caf50"
+                                  : "#f44336",
+                            }}
+                          >
+                            {selectedOrder.final_payable_cents > 0 &&
+                              selectedOrder.final_payable_cents <=
+                              selectedOrder.total_paid_cents
+                              ? "PAID"
+                              : "NOT PAID"}
+                          </span>
+                        </div>
+                        <div className="pos-detail-group">
+                          <label>Order Status</label>
+                          <span
+                            style={{
+                              color: "var(--pos-accent)",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {statusLabel(selectedOrder.status)}
+                          </span>
+                        </div>
+                        <div className="pos-detail-group">
+                          <label>Placed At</label>
+                          <span>
+                            {new Date(
+                              selectedOrder.placed_at,
+                            ).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pos-order-detail-items">
+                      <div className="pos-detail-section-title">
+                        Order Items
+                      </div>
+                      {(selectedOrder as any).items?.map(
+                        (item: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="pos-detail-item-row"
+                          >
+                            <div className="pos-detail-item-info">
+                              <div className="pos-detail-item-name">
+                                <span className="pos-detail-qty">
+                                  {item.quantity}×
+                                </span>
+                                {item.product_name_snapshot}
+                              </div>
+                              {item.modifiers?.length > 0 && (
+                                <div className="pos-detail-item-mods">
+                                  {item.modifiers
+                                    .map(
+                                      (m: any) =>
+                                        m.modifier_name_snapshot,
+                                    )
+                                    .join(", ")}
+                                </div>
+                              )}
+                            </div>
+                            <div className="pos-detail-item-price">
+                              {cents(item.line_total_cents)}
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+
+                    <div className="pos-order-detail-footer">
+                      <div className="pos-order-price-summary">
+                        <div className="pos-price-row">
+                          <span>Subtotal</span>
+                          <span>
+                            {cents(selectedOrder.item_subtotal_cents)}
+                          </span>
+                        </div>
+                        <div className="pos-price-row">
+                          <span>Tax</span>
+                          <span>{cents(selectedOrder.tax_cents)}</span>
+                        </div>
+                        {selectedOrder.delivery_fee_cents > 0 && (
+                          <div className="pos-price-row">
+                            <span>Delivery Fee</span>
+                            <span>
+                              {cents(selectedOrder.delivery_fee_cents)}
+                            </span>
+                          </div>
+                        )}
+                        <div className="pos-price-row pos-price-row--total">
+                          <span>Total Amount</span>
+                          <strong>
+                            {cents(selectedOrder.final_payable_cents)}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="pos-empty">
+                    Select an order to view details
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showStaffModal && (
+          <StaffModal
+            onClose={() => setShowStaffModal(false)}
+            onOpenDrawer={() => {
+              alert("Cash drawer opened.");
+              setShowStaffModal(false);
+            }}
+            onEmployeeDiscount={() => {
+              if (cart.length === 0) {
+                toast.error("No open order", {
+                  description: "Add items to the cart first.",
+                });
+                return;
+              }
+              setShowStaffModal(false);
+              setShowEmployeeDiscountModal(true);
+            }}
+            onCustomDiscount={() => {
+              if (cart.length === 0) {
+                toast.error("No open order", {
+                  description: "Add items to the cart first.",
+                });
+                return;
+              }
+              setShowStaffModal(false);
+              setShowCustomDiscountModal(true);
+            }}
+            onOpenFood={() => {
+              setShowStaffModal(false);
+              setShowOpenFoodModal(true);
+            }}
+          />
+        )}
+
+        {showOpenFoodModal && (
+          <OpenFoodModal
+            onClose={() => setShowOpenFoodModal(false)}
+            onDone={handleOpenFood}
+          />
+        )}
+
+        {showCustomDiscountModal && (
+          <CustomDiscountModal
+            onClose={() => setShowCustomDiscountModal(false)}
+            onApply={(type, val, reason) => {
+              if (type === "PERCENT") {
+                setAppliedDiscount({
+                  label: reason || "Custom Discount",
+                  percent: val,
+                });
+              } else {
+                setAppliedDiscount({
+                  label: reason || "Custom Discount",
+                  percent: 0,
+                  fixedAmountCents: Math.round(val * 100),
+                });
+              }
+              setShowCustomDiscountModal(false);
+            }}
+          />
+        )}
+
+        {showEmployeeDiscountModal && (
+          <EmployeeDiscountModal
+            onClose={() => setShowEmployeeDiscountModal(false)}
+            employees={staff}
+            onSelect={(name) => {
               setAppliedDiscount({
-                label: reason || "Custom Discount",
-                percent: val,
+                label: `Emp: ${name}`,
+                percent: 50,
+                employeeName: name,
               });
-            } else {
-              setAppliedDiscount({
-                label: reason || "Custom Discount",
-                percent: 0,
-                fixedAmountCents: Math.round(val * 100),
-              });
-            }
-            setShowCustomDiscountModal(false);
-          }}
-        />
-      )}
-
-      {showEmployeeDiscountModal && (
-        <EmployeeDiscountModal
-          onClose={() => setShowEmployeeDiscountModal(false)}
-          employees={staff}
-          onSelect={(name) => {
-            setAppliedDiscount({
-              label: `Emp: ${name}`,
-              percent: 50,
-              employeeName: name,
-            });
-            setShowEmployeeDiscountModal(false);
-          }}
-        />
-      )}
-
-      {showCashModal && (
-        <CashPaymentModal
-          totalDueCents={estimatedTotalCents}
-          onCancel={() => setShowCashModal(false)}
-          onDone={(tendered) => {
-            setShowCashModal(false);
-            setAmountTendered((tendered / 100).toString());
-            void placeOrder({ paymentMethod: "CASH", amountTenderedCents: tendered });
-          }}
-        />
-      )}
-
-      {pickerItem &&
-        (isWingBuilderItem(pickerItem) ? (
-          <WingsBuilder
-            item={pickerItem}
-            saladMenuItems={
-              menu?.categories.find((category) => category.slug === "salads")
-                ?.items ?? []
-            }
-            editingLine={editingLine ?? undefined}
-            onClose={() => {
-              setPickerItem(null);
-              setEditingLine(null);
+              setShowEmployeeDiscountModal(false);
             }}
           />
-        ) : isComboBuilderItem(pickerItem) ? (
-          <ComboBuilder
-            item={pickerItem}
-            editingLine={editingLine ?? undefined}
-            onClose={() => {
-              setPickerItem(null);
-              setEditingLine(null);
-            }}
-          />
-        ) : isLunchSpecialBuilderItem(pickerItem) ? (
-          <LunchSpecialBuilder
-            item={pickerItem}
-            childItems={
-              menu?.categories.find(
-                (category) =>
-                  category.slug ===
-                  (pickerItem.slug === "lunch-burger" ? "burgers" : "wraps"),
-              )?.items ?? []
-            }
-            editingLine={editingLine ?? undefined}
-            onClose={() => {
-              setPickerItem(null);
-              setEditingLine(null);
-            }}
-          />
-        ) : shouldUseCustomizationOverlay(pickerItem) ? (
-          <ItemCustomizationOverlay
-            item={pickerItem}
-            editingLine={editingLine ?? undefined}
-            onClose={() => {
-              setPickerItem(null);
-              setEditingLine(null);
-            }}
-          />
-        ) : (
-          <ItemModal
-            item={pickerItem}
-            onClose={() => {
-              setPickerItem(null);
-              setEditingLine(null);
-            }}
-          />
-        ))}
+        )}
 
-      {legacyPickerGroup && (
-        <LegacySizePickerModal
-          group={legacyPickerGroup}
-          onClose={() => setLegacyPickerGroup(null)}
-        />
-      )}
+        {showCashModal && (
+          <CashPaymentModal
+            totalDueCents={estimatedTotalCents}
+            onCancel={() => setShowCashModal(false)}
+            onDone={(tendered) => {
+              setShowCashModal(false);
+              setAmountTendered((tendered / 100).toString());
+              void placeOrder({ paymentMethod: "CASH", amountTenderedCents: tendered });
+            }}
+          />
+        )}
 
-      {discountOrder ? (
-        <ManualDiscountModal
-          order={discountOrder}
-          onClose={() => setDiscountOrder(null)}
-          onApplied={() => {
-            setDiscountOrder(null);
-            void loadOrders();
-          }}
-        />
-      ) : null}
+        {pickerItem &&
+          (isWingBuilderItem(pickerItem) ? (
+            <WingsBuilder
+              item={pickerItem}
+              saladMenuItems={
+                menu?.categories.find((category) => category.slug === "salads")
+                  ?.items ?? []
+              }
+              editingLine={editingLine ?? undefined}
+              onClose={() => {
+                setPickerItem(null);
+                setEditingLine(null);
+              }}
+            />
+          ) : isComboBuilderItem(pickerItem) ? (
+            <ComboBuilder
+              item={pickerItem}
+              editingLine={editingLine ?? undefined}
+              onClose={() => {
+                setPickerItem(null);
+                setEditingLine(null);
+              }}
+            />
+          ) : isLunchSpecialBuilderItem(pickerItem) ? (
+            <LunchSpecialBuilder
+              item={pickerItem}
+              childItems={
+                menu?.categories.find(
+                  (category) =>
+                    category.slug ===
+                    (pickerItem.slug === "lunch-burger" ? "burgers" : "wraps"),
+                )?.items ?? []
+              }
+              editingLine={editingLine ?? undefined}
+              onClose={() => {
+                setPickerItem(null);
+                setEditingLine(null);
+              }}
+            />
+          ) : shouldUseCustomizationOverlay(pickerItem) ? (
+            <ItemCustomizationOverlay
+              item={pickerItem}
+              editingLine={editingLine ?? undefined}
+              onClose={() => {
+                setPickerItem(null);
+                setEditingLine(null);
+              }}
+            />
+          ) : (
+            <ItemModal
+              item={pickerItem}
+              onClose={() => {
+                setPickerItem(null);
+                setEditingLine(null);
+              }}
+            />
+          ))}
 
-      {showCustomerLookupModal && (
-        <CustomerLookupModal
-          onClose={() => setShowCustomerLookupModal(false)}
-          onSelect={(c) => {
-            setCustomerFound(c);
-            setCustomerName(c.display_name);
-            setCustomerPhone(c.phone);
-            setLookupError(null);
-          }}
-        />
-      )}
-      {showSpecialInstructionsModal && (
-        <SpecialInstructionsModal
-          notes={orderNotes}
-          onSave={setOrderNotes}
-          onClose={() => setShowSpecialInstructionsModal(false)}
-        />
-      )}
-    </div>
+        {legacyPickerGroup && (
+          <LegacySizePickerModal
+            group={legacyPickerGroup}
+            onClose={() => setLegacyPickerGroup(null)}
+          />
+        )}
+
+        {discountOrder ? (
+          <ManualDiscountModal
+            order={discountOrder}
+            onClose={() => setDiscountOrder(null)}
+            onApplied={() => {
+              setDiscountOrder(null);
+              void loadOrders();
+            }}
+          />
+        ) : null}
+
+        {showCustomerLookupModal && (
+          <CustomerLookupModal
+            onClose={() => setShowCustomerLookupModal(false)}
+            onSelect={(c) => {
+              setCustomerFound(c);
+              setCustomerName(c.display_name);
+              setCustomerPhone(c.phone);
+              setLookupError(null);
+            }}
+          />
+        )}
+        {showSpecialInstructionsModal && (
+          <SpecialInstructionsModal
+            notes={orderNotes}
+            onSave={setOrderNotes}
+            onClose={() => setShowSpecialInstructionsModal(false)}
+          />
+        )}
+      </div>
     </CartContext.Provider>
   );
 }
@@ -2403,11 +2517,13 @@ function StaffModal({
   onOpenDrawer,
   onEmployeeDiscount,
   onCustomDiscount,
+  onOpenFood,
 }: {
   onClose: () => void;
   onOpenDrawer: () => void;
   onEmployeeDiscount: () => void;
   onCustomDiscount: () => void;
+  onOpenFood: () => void;
 }) {
   return (
     <div
@@ -2454,6 +2570,15 @@ function StaffModal({
               <strong>Apply Discount</strong>
               <small style={{ opacity: 0.6, fontSize: "0.8rem" }}>
                 Custom $ or % off
+              </small>
+            </div>
+          </button>
+          <button className="pos-staff-opt" onClick={onOpenFood}>
+            <span style={{ fontSize: "1.5rem" }}>🍔</span>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <strong>Open Food</strong>
+              <small style={{ opacity: 0.6, fontSize: "0.8rem" }}>
+                Custom upcharge
               </small>
             </div>
           </button>
@@ -2635,38 +2760,51 @@ function CashPaymentModal({
           <h3>Cash Payment</h3>
         </div>
         <div className="pos-modal-body pos-modal-body--centered">
-          <label className="pos-field pos-field--centered">
-            Amount Due (Cents)
+          <label className="pos-field pos-field--centered" style={{ gap: "0.75rem" }}>
+            <span style={{ fontSize: "1.1rem", fontWeight: "bold" }}>Amount Due</span>
             <input
               type="text"
-              inputMode="numeric"
-              value={totalStr}
-              onChange={(e) => handleNumericInput(e.target.value, setTotalStr)}
-              placeholder="0"
+              readOnly
+              value={cents(total)}
+              style={{
+                textAlign: "center",
+                fontSize: "2.5rem",
+                opacity: 0.8,
+                background: "#111",
+                padding: "1rem",
+              }}
             />
           </label>
 
-          <label className="pos-field pos-field--centered">
-            Cash Received (Cents)
+          <label className="pos-field pos-field--centered" style={{ gap: "0.75rem" }}>
+            <span style={{ fontSize: "1.1rem", fontWeight: "bold" }}>Cash Received</span>
             <input
               type="text"
               inputMode="numeric"
-              value={tenderedStr}
+              value={tenderedStr ? (tendered / 100).toFixed(2) : ""}
               autoFocus
               onChange={(e) =>
                 handleNumericInput(e.target.value, setTenderedStr)
               }
-              placeholder="0"
+              placeholder="0.00"
+              style={{ textAlign: "center", fontSize: "2.5rem", padding: "1rem" }}
             />
           </label>
 
-          <label className="pos-field pos-field--centered">
-            Change Due (Cents)
+          <label className="pos-field pos-field--centered" style={{ gap: "0.75rem" }}>
+            <span style={{ fontSize: "1.1rem", fontWeight: "bold" }}>Change Due</span>
             <input
               type="text"
               readOnly
-              value={change.toString()}
-              style={{ opacity: 0.8, background: "#111" }}
+              value={cents(change)}
+              style={{
+                opacity: 0.8,
+                background: "#111",
+                textAlign: "center",
+                fontSize: "2.5rem",
+                color: change > 0 ? "#10b981" : "#fff",
+                padding: "1rem",
+              }}
             />
           </label>
 
@@ -2686,6 +2824,78 @@ function CashPaymentModal({
               Done
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OpenFoodModal({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: (desc: string, amount: number) => void;
+}) {
+  const [desc, setDesc] = useState("");
+  const [amount, setAmount] = useState("");
+
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="pos-modal pos-modal--small">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Open Food</h3>
+          <button
+            type="button"
+            className="pos-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div
+          className="pos-modal-body"
+          style={{
+            padding: "1.5rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.5rem",
+          }}
+        >
+          <div className="pos-field">
+            <label>Description</label>
+            <input
+              type="text"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="e.g. Extra Sauce, Special Request"
+              autoFocus
+            />
+          </div>
+
+          <div className="pos-field">
+            <label>Amount ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+
+          <button
+            type="button"
+            className="pos-btn pos-btn--primary"
+            disabled={!desc || !amount || isNaN(parseFloat(amount))}
+            onClick={() => onDone(desc, parseFloat(amount))}
+          >
+            Add to Order
+          </button>
         </div>
       </div>
     </div>

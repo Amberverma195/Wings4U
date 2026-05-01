@@ -32,8 +32,17 @@ import { Public } from "../../common/decorators/roles.decorator";
 import { PosService } from "./pos.service";
 
 class PosModifierSelectionDto {
+  @IsOptional()
   @IsUUID()
-  modifier_option_id!: string;
+  modifier_option_id?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsInt()
+  price_delta_cents?: number;
 }
 
 class PosRemovedIngredientDto {
@@ -45,8 +54,17 @@ class PosRemovedIngredientDto {
 }
 
 class PosOrderItemDto {
+  @IsOptional()
   @IsUUID()
-  menu_item_id!: string;
+  menu_item_id?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsInt()
+  unit_price_cents?: number;
 
   @IsInt()
   @Min(1)
@@ -168,9 +186,13 @@ export class PosController {
       orderSource: body.order_source as "POS" | "PHONE",
       items: body.items.map((i) => ({
         menuItemId: i.menu_item_id,
+        name: i.name,
+        unitPriceCents: i.unit_price_cents,
         quantity: i.quantity,
         modifierSelections: i.modifier_selections?.map((s) => ({
           modifierOptionId: s.modifier_option_id,
+          name: s.name,
+          priceDeltaCents: s.price_delta_cents,
         })),
         removedIngredients: i.removed_ingredients,
         builderPayload: i.builder_payload ?? undefined,

@@ -25,9 +25,15 @@ import {
 } from "../shared/order-validation";
 
 interface PosOrderItem {
-  menuItemId: string;
+  menuItemId?: string; // Optional for custom "Open Food" items
+  name?: string;       // Required if menuItemId is missing
+  unitPriceCents?: number; // Required if menuItemId is missing
   quantity: number;
-  modifierSelections?: Array<{ modifierOptionId: string }>;
+  modifierSelections?: Array<{
+    modifierOptionId?: string; // Optional for custom modifiers
+    name?: string;             // Required if modifierOptionId is missing
+    priceDeltaCents?: number;  // Required if modifierOptionId is missing
+  }>;
   removedIngredients?: RemovedIngredientInput[];
   builderPayload?: Record<string, unknown>;
   specialInstructions?: string;
@@ -347,33 +353,38 @@ export class PosService {
       }[] = [];
 
       for (const cartItem of params.items) {
-        const menuItem = menuItemMap.get(cartItem.menuItemId);
-        if (!menuItem) {
+        let menuItem = cartItem.menuItemId ? menuItemMap.get(cartItem.menuItemId) : null;
+
+        if (!menuItem && !cartItem.name) {
           throw new UnprocessableEntityException({
-            message: `Menu item ${cartItem.menuItemId} not found at this location`,
+            message: `Menu item ${cartItem.menuItemId} not found and no custom name provided`,
             field: "items",
           });
         }
-        assertMenuItemOrderable({
-          menuItem,
-          fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
-          specialInstructions: cartItem.specialInstructions,
-        });
-        assertWingFlavoursOrderable({
-          builderPayload: cartItem.builderPayload,
-          wingFlavourMap,
-        });
+          if (menuItem) {
+            assertMenuItemOrderable({
+              menuItem,
+              fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
+              specialInstructions: cartItem.specialInstructions,
+            });
+          }
+          assertWingFlavoursOrderable({
+            builderPayload: cartItem.builderPayload,
+            wingFlavourMap,
+          });
 
         const saladCustomization = getSaladCustomization(cartItem.builderPayload);
         const removedIngredients = cartItem.removedIngredients?.length
           ? cartItem.removedIngredients
           : parseRemovedIngredients(cartItem.builderPayload?.removed_ingredients);
-        const allowedIngredientMap = new Map(
-          menuItem.removableIngredients.map((ingredient) => [
-            ingredient.id,
-            ingredient,
-          ]),
-        );
+          const allowedIngredientMap = menuItem
+            ? new Map(
+                menuItem.removableIngredients.map((ingredient) => [
+                  ingredient.id,
+                  ingredient,
+                ]),
+              )
+            : new Map<string, any>();
         const validatedRemovedIngredients = removedIngredients.map(
           (ingredient) => {
             const match = allowedIngredientMap.get(ingredient.id);
@@ -432,6 +443,24 @@ export class PosService {
         if (cartItem.modifierSelections) {
           for (let si = 0; si < cartItem.modifierSelections.length; si++) {
             const sel = cartItem.modifierSelections[si];
+
+            if (!sel.modifierOptionId) {
+              // Custom modifier
+              const customName = sel.name || "Upcharge";
+              const customCents = sel.priceDeltaCents || 0;
+              modifierTotalCents += customCents;
+              modifiers.push({
+                modifierGroupId: null,
+                modifierOptionId: null,
+                modifierGroupNameSnapshot: "Custom",
+                modifierNameSnapshot: customName,
+                modifierKind: "ADDON",
+                priceDeltaCents: customCents,
+                sortOrder: modifiers.length,
+              });
+              continue;
+            }
+
             const opt = optionMap.get(sel.modifierOptionId);
             if (!opt) {
               throw new UnprocessableEntityException({
@@ -439,7 +468,7 @@ export class PosService {
                 field: "items",
               });
             }
-            if (!saladModifierOptionIds.has(sel.modifierOptionId)) {
+            if (menuItem && !saladModifierOptionIds.has(sel.modifierOptionId)) {
               assertModifierOptionAllowedForItem({ option: opt, menuItem });
             }
             modifierTotalCents += opt.priceDeltaCents;
@@ -497,18 +526,20 @@ export class PosService {
                 }
               : (builderPayload ?? null);
 
-        const unitPriceCents = menuItem.basePriceCents + modifierTotalCents;
+        const unitPriceCents = menuItem
+          ? menuItem.basePriceCents + modifierTotalCents
+          : (cartItem.unitPriceCents || 0) + modifierTotalCents;
         const lineTotalCents = unitPriceCents * cartItem.quantity;
         itemSubtotalCents += lineTotalCents;
 
         lineItems.push({
-          menuItemId: menuItem.id,
-          productNameSnapshot: menuItem.name,
-          categoryNameSnapshot: menuItem.category.name,
+          menuItemId: menuItem?.id ?? null,
+          productNameSnapshot: menuItem?.name ?? cartItem.name!,
+          categoryNameSnapshot: menuItem?.category.name ?? "Open Food",
           builderType:
             typeof normalizedBuilderPayload?.builder_type === "string"
               ? String(normalizedBuilderPayload.builder_type)
-              : menuItem.builderType,
+              : menuItem?.builderType ?? null,
           quantity: cartItem.quantity,
           unitPriceCents,
           lineTotalCents,
@@ -861,12 +892,13 @@ export class PosService {
     });
 
     // 9. Emit realtime events so KDS boards refresh immediately
+    const orderId = String(result.id);
     this.realtime.emitOrderEvent(
       params.locationId,
-      result.id,
+      orderId,
       "order.accepted",
       {
-        order_id: result.id,
+        order_id: orderId,
         order_number: Number(result.order_number),
         from_status: "PLACED",
         to_status: "ACCEPTED",
@@ -875,10 +907,10 @@ export class PosService {
 
     this.realtime.emitOrderEvent(
       params.locationId,
-      result.id,
+      orderId,
       "order.status_changed",
       {
-        order_id: result.id,
+        order_id: orderId,
         order_number: Number(result.order_number),
         from_status: "ACCEPTED",
         to_status: "PREPARING",

@@ -202,7 +202,11 @@ function bucketItemCustomizationModifiers(item: CartItem): ItemCustomizationModi
     const g = modifier.group_name.trim();
     const o = modifier.option_name.trim();
     if (!g || !o) continue;
-    const line = `${displayModifierGroupName(item.name, g)}: ${o}`;
+    const line = `${displayModifierGroupName(item.name, g)}: ${o}${
+      g === "Open Food" && modifier.price_delta_cents > 0
+        ? ` (+$${(modifier.price_delta_cents / 100).toFixed(2)})`
+        : ""
+    }`;
     if (isItemCustomizationSizeGroup(item.name, g)) {
       sizeLines.push(line);
     } else {
@@ -223,10 +227,11 @@ function linesFromLabeledModifiers(
     if (shouldSkipWingModifierForSummary(modifier, wingPayloadForMods, selectedSaladName)) {
       continue;
     }
-    const g = modifier.group_name.trim();
-    const o = modifier.option_name.trim();
-    if (!g || !o) continue;
-    out.push(`${displayModifierGroupName(item.name, g)}: ${o}`);
+    const priceSuffix =
+      g === "Open Food" && modifier.price_delta_cents > 0
+        ? ` (+$${(modifier.price_delta_cents / 100).toFixed(2)})`
+        : "";
+    out.push(`${displayModifierGroupName(item.name, g)}: ${o}${priceSuffix}`);
   }
   return out;
 }
@@ -305,7 +310,13 @@ function bucketWingModifiersForDisplay(
     } else if (isDrinkModifierGroup(g)) {
       drinkRows.push({ line: `${g}: ${o}`, order: modifierSlotOrder(g) });
     } else {
-      extraLines.push(`${displayModifierGroupName(item.name, g)}: ${o}`);
+      const priceSuffix =
+        g === "Open Food" && modifier.price_delta_cents > 0
+          ? ` (+$${(modifier.price_delta_cents / 100).toFixed(2)})`
+          : "";
+      extraLines.push(
+        `${displayModifierGroupName(item.name, g)}: ${o}${priceSuffix}`,
+      );
     }
   }
 

@@ -49,6 +49,13 @@ type DeliveryPinResponse = {
   status?: string;
 };
 
+/** Navigates away with a hard load so leftover client/socket state resets after account switch */
+function goToCustomerOrdersHome() {
+  if (typeof window !== "undefined") {
+    window.location.assign("/account/orders");
+  }
+}
+
 export function OrderDetailClient({ orderId }: { orderId: string }) {
   const session = useSession();
   const [order, setOrder] = useState<OrderDetail | null>(null);
@@ -73,6 +80,20 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     setOrderStatusHistoryOpen(false);
   }, [orderId]);
 
+  useEffect(() => {
+    setError(null);
+  }, [session.user?.id]);
+
+  // If another tab swaps the signed-in customer, drop any in-memory order belonging to someone else.
+  useEffect(() => {
+    if (!session.loaded || !session.authenticated || !session.user?.id) return;
+    const uid = session.user.id;
+    setOrder((prev) => {
+      if (!prev || prev.customer_user_id === uid) return prev;
+      return null;
+    });
+  }, [session.loaded, session.authenticated, session.user?.id]);
+
   const fetchOrder = useCallback(async () => {
     try {
       const res = await withSilentRefresh(
@@ -84,17 +105,53 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
         session.clear,
       );
       if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body?.errors?.[0]?.message ?? `Failed to load order (${res.status})`);
+        if (res.status === 403) {
+          goToCustomerOrdersHome();
+          return;
+        }
+        const body = (await res.json().catch(() => null)) as
+          | { errors?: readonly { message?: string }[] }
+          | null;
+        throw new Error(
+          body?.errors?.[0]?.message ?? `Failed to load order (${res.status})`,
+        );
       }
       const body = (await res.json()) as { data?: OrderDetail };
       if (!body.data) {
         throw new Error("Failed to load order");
       }
+
+      const customerIdNow = session.user?.id;
+      if (
+        customerIdNow != null &&
+        body.data.customer_user_id !== customerIdNow &&
+        session.authenticated
+      ) {
+        setOrder(null);
+        setError(null);
+        goToCustomerOrdersHome();
+        return;
+      }
+
       setOrder(body.data);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load order");
+      setOrder(null);
+      const msg =
+        typeof e === "object" &&
+        e !== null &&
+        "message" in e &&
+        typeof (e as Error).message === "string"
+          ? (e as Error).message
+          : null;
+      if (
+        typeof msg === "string" &&
+        msg.toLowerCase().includes("do not have access to this order")
+      ) {
+        goToCustomerOrdersHome();
+        return;
+      }
+      setError(msg ?? "Failed to load order");
     }
   }, [orderId, session]);
 
@@ -164,9 +221,13 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     socket.on("order.change_rejected", refresh);
     socket.on("cancellation.decided", refresh);
 
-    const disposeSubscription = subscribeToChannels(socket, [
-      `order:${orderId}`,
-    ]);
+    const expectChannel = `order:${orderId}`;
+    const disposeSubscription = subscribeToChannels(socket, [expectChannel], {
+      onDenied(channel) {
+        if (channel !== expectChannel) return;
+        goToCustomerOrdersHome();
+      },
+    });
     socket.connect();
 
     return () => {
@@ -252,17 +313,17 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
       <div className={styles.pageShell}>
         <main className={styles.hub}>
           <div className={styles.topBar}>
-            <Link href="/account/orders" className={styles.backBtn}>
+            <a href="/account/orders" className={styles.backBtn}>
               <span className={styles.backArrow}>←</span>
               Back to my orders
-            </Link>
+            </a>
           </div>
           <div className={styles.errorCard}>
             <p className={styles.errorText}>{error}</p>
-            <Link href="/account/orders" className={styles.backBtn}>
+            <a href="/account/orders" className={styles.backBtn}>
               <span className={styles.backArrow}>←</span>
               My orders
-            </Link>
+            </a>
           </div>
         </main>
       </div>
