@@ -8,6 +8,8 @@ import {
   FIRST_ORDER_DEAL_CODE_PREFIX,
   FIRST_ORDER_DEAL_KINDS,
   firstOrderDealCode,
+  isFirstOrderDealCode,
+  normalizeFirstOrderDealPublicCode,
   type FirstOrderDealKind,
 } from "../promotions/first-order-deal";
 
@@ -35,6 +37,7 @@ export type CreateUpdatePromoPayload = {
 };
 
 export type FirstOrderDealPayload = {
+  couponCode?: string | null;
   enabled: boolean;
   freeDelivery: boolean;
   percentOff?: number | null;
@@ -49,6 +52,16 @@ function firstOrderDealName(kind: FirstOrderDealKind): string {
   if (kind === "FREE_DELIVERY") return "First order free delivery";
   if (kind === "PERCENT") return "First order percent off";
   return "First order fixed amount off";
+}
+
+function getFirstOrderDealPublicCode(
+  rulePayloadJson: unknown,
+): string | undefined {
+  if (!rulePayloadJson || typeof rulePayloadJson !== "object") {
+    return undefined;
+  }
+  const payload = rulePayloadJson as { publicCode?: unknown };
+  return typeof payload.publicCode === "string" ? payload.publicCode : undefined;
 }
 
 @Injectable()
@@ -297,8 +310,16 @@ export class AdminPromosService {
     );
     const percent = byCode.get(firstOrderDealCode(locationId, "PERCENT"));
     const fixed = byCode.get(firstOrderDealCode(locationId, "FIXED_AMOUNT"));
+    const publicCode = normalizeFirstOrderDealPublicCode(
+      getFirstOrderDealPublicCode(
+        freeDelivery?.rulePayloadJson ??
+          percent?.rulePayloadJson ??
+          fixed?.rulePayloadJson,
+      ),
+    );
 
     return {
+      couponCode: publicCode,
       enabled: promos.some((promo) => promo.archivedAt == null && promo.isActive),
       freeDelivery: Boolean(freeDelivery && freeDelivery.archivedAt == null),
       percentOff:
@@ -317,6 +338,7 @@ export class AdminPromosService {
       data.percentOff == null ? null : Number(data.percentOff);
     const fixedAmountCents =
       data.fixedAmountCents == null ? null : Math.round(Number(data.fixedAmountCents));
+    const publicCode = normalizeFirstOrderDealPublicCode(data.couponCode);
     const hasPercent = percentOff != null && percentOff > 0;
     const hasFixed = fixedAmountCents != null && fixedAmountCents > 0;
     const hasAnyDeal = Boolean(data.freeDelivery) || hasPercent || hasFixed;
@@ -329,6 +351,25 @@ export class AdminPromosService {
     }
     if (fixedAmountCents != null && fixedAmountCents < 0) {
       throw new BadRequestException("First-order dollar discount cannot be negative");
+    }
+    if (!/^[A-Z0-9_-]{3,32}$/.test(publicCode)) {
+      throw new BadRequestException(
+        "First-order coupon code must be 3-32 letters, numbers, underscores, or dashes",
+      );
+    }
+    if (isFirstOrderDealCode(publicCode)) {
+      throw new BadRequestException("Choose a customer-facing coupon code");
+    }
+    const conflictingPromo = await this.prisma.promoCode.findFirst({
+      where: {
+        code: publicCode,
+        archivedAt: null,
+        NOT: { code: { startsWith: FIRST_ORDER_DEAL_CODE_PREFIX } },
+      },
+      select: { id: true },
+    });
+    if (conflictingPromo) {
+      throw new BadRequestException("Coupon code already exists");
     }
 
     const desired = new Map<
@@ -363,6 +404,7 @@ export class AdminPromosService {
           isFirstOrderOnly: true,
           isActive,
           archivedAt: config.selected ? null : new Date(),
+          rulePayloadJson: { publicCode },
           eligibleFulfillmentType:
             kind === "FREE_DELIVERY" ? "DELIVERY" : "BOTH",
           locationId,

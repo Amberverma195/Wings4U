@@ -673,14 +673,42 @@
   line-height: 1.35;
 }
 
+.stampHistoryDelta {
+  display: flex;
+  align-items: center;
+}
+
 .stampHistoryDelta strong {
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
 .stampHistoryDeltaEarn { color: #10b981; }
 .stampHistoryDeltaRedeem { color: #ef4444; }
+
+.copyBtn {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  border-radius: 8px;
+  margin-left: 0.75rem;
+}
+
+.copyBtn:hover {
+  background: #f3f4f6;
+  color: #f97316;
+}
+
+.copyBtn:active {
+  transform: scale(0.9);
+}
 
 /* Empty-state for "no stamps yet" — mirrors the orders-page empty state
    (large circular icon + subtle copy) so they feel like siblings. */

@@ -97,6 +97,10 @@ class CreateUpdatePromoDto {
 }
 
 class FirstOrderDealDto {
+  @IsOptional()
+  @IsString()
+  couponCode?: string | null;
+
   @IsBoolean()
   enabled!: boolean;
 

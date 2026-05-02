@@ -4,10 +4,10 @@ import { formatUsdFromCents } from "../../common/utils/money";
 import { PrismaService } from "../../database/prisma.service";
 import {
   FIRST_ORDER_DEAL_CODE_PREFIX,
-  FIRST_ORDER_DEAL_DISPLAY_CODE,
   FIRST_ORDER_DEAL_KINDS,
   firstOrderDealCode,
   isFirstOrderDealCode,
+  normalizeFirstOrderDealPublicCode,
 } from "./first-order-deal";
 
 type DbClient = Prisma.TransactionClient | PrismaClient | PrismaService;
@@ -44,6 +44,26 @@ type PromoWithRelations = Prisma.PromoCodeGetPayload<{
 }>;
 
 type FirstOrderPromoRow = Prisma.PromoCodeGetPayload<Record<string, never>>;
+
+function getFirstOrderDealPublicCode(
+  rulePayloadJson: unknown,
+): string | undefined {
+  if (!rulePayloadJson || typeof rulePayloadJson !== "object") {
+    return undefined;
+  }
+  const payload = rulePayloadJson as { publicCode?: unknown };
+  return typeof payload.publicCode === "string" ? payload.publicCode : undefined;
+}
+
+function getFirstOrderDealPublicCodeFromPromos(
+  promos: FirstOrderPromoRow[],
+): string {
+  return normalizeFirstOrderDealPublicCode(
+    promos
+      .map((promo) => getFirstOrderDealPublicCode(promo.rulePayloadJson))
+      .find((code): code is string => Boolean(code)),
+  );
+}
 
 function buildActivePromoWhere(now: Date): Prisma.PromoCodeWhereInput {
   return {
@@ -122,7 +142,7 @@ function serializeFirstOrderDealPromo(
 
   return {
     id: `first-order-deal:${locationId}`,
-    code: FIRST_ORDER_DEAL_DISPLAY_CODE,
+    code: getFirstOrderDealPublicCodeFromPromos(orderedPromos),
     name: "First order deal",
     discountType: primary.discountType,
     discountValue: Number(primary.discountValue),
@@ -452,17 +472,38 @@ export class PromotionsService {
     };
   }
 
-  async evaluateFirstOrderDeal(params: {
+  async isFirstOrderDealPublicCode(params: {
     client?: DbClient;
     locationId: string;
+    code?: string | null;
+  }): Promise<boolean> {
+    const code = params.code?.trim().toUpperCase();
+    if (!code || isFirstOrderDealCode(code)) {
+      return false;
+    }
+
+    const client = params.client ?? this.prisma;
+    const promos = await client.promoCode.findMany({
+      where: {
+        code: {
+          in: FIRST_ORDER_DEAL_KINDS.map((kind) =>
+            firstOrderDealCode(params.locationId, kind),
+          ),
+        },
+        locationId: params.locationId,
+        ...buildActivePromoWhere(new Date()),
+      },
+    });
+
+    return code === getFirstOrderDealPublicCodeFromPromos(promos);
+  }
+
+  async isFirstOrderCustomer(params: {
+    client?: DbClient;
     userId?: string;
-    itemSubtotalCents: number;
-    deliveryFeeCents: number;
-    fulfillmentType: "PICKUP" | "DELIVERY";
-    existingDiscountCents?: number;
-  }): Promise<EvaluatedFirstOrderDeal | null> {
+  }): Promise<boolean> {
     if (!params.userId) {
-      return null;
+      return false;
     }
 
     const client = params.client ?? this.prisma;
@@ -472,7 +513,25 @@ export class PromotionsService {
         status: { not: "CANCELLED" },
       },
     });
-    if (priorOrderCount > 0) {
+
+    return priorOrderCount === 0;
+  }
+
+  async evaluateFirstOrderDeal(params: {
+    client?: DbClient;
+    locationId: string;
+    userId?: string;
+    itemSubtotalCents: number;
+    deliveryFeeCents: number;
+    fulfillmentType: "PICKUP" | "DELIVERY";
+    existingDiscountCents?: number;
+  }): Promise<EvaluatedFirstOrderDeal | null> {
+    const client = params.client ?? this.prisma;
+    const isFirstOrderCustomer = await this.isFirstOrderCustomer({
+      client,
+      userId: params.userId,
+    });
+    if (!isFirstOrderCustomer) {
       return null;
     }
 
@@ -556,7 +615,7 @@ export class PromotionsService {
     }
 
     return {
-      promoCode: FIRST_ORDER_DEAL_DISPLAY_CODE,
+      promoCode: getFirstOrderDealPublicCodeFromPromos(promos),
       discountCents,
       waivesDelivery,
       redemptions,

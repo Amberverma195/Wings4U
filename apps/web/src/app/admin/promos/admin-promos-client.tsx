@@ -25,6 +25,7 @@ export type PromoCode = {
 };
 
 type FirstOrderDeal = {
+  couponCode: string;
   enabled: boolean;
   freeDelivery: boolean;
   percentOff: number | null;
@@ -32,11 +33,28 @@ type FirstOrderDeal = {
 };
 
 const emptyFirstOrderDeal: FirstOrderDeal = {
+  couponCode: "MYFIRSTORDER",
   enabled: false,
   freeDelivery: false,
   percentOff: null,
   fixedAmountCents: null,
 };
+
+function normalizeFirstOrderDeal(
+  deal: Partial<FirstOrderDeal> | null | undefined,
+): FirstOrderDeal {
+  return {
+    couponCode: deal?.couponCode?.trim() || emptyFirstOrderDeal.couponCode,
+    enabled: Boolean(deal?.enabled),
+    freeDelivery: Boolean(deal?.freeDelivery),
+    percentOff:
+      typeof deal?.percentOff === "number" ? deal.percentOff : null,
+    fixedAmountCents:
+      typeof deal?.fixedAmountCents === "number"
+        ? deal.fixedAmountCents
+        : null,
+  };
+}
 
 export function AdminPromosClient() {
   const [promos, setPromos] = useState<PromoCode[]>([]);
@@ -59,7 +77,7 @@ export function AdminPromosClient() {
         adminFetch<FirstOrderDeal>(`${ADMIN_PROMOS_API_BASE}/first-order-deal`),
       ]);
       setPromos(promoData);
-      setFirstOrderDeal(dealData);
+      setFirstOrderDeal(normalizeFirstOrderDeal(dealData));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load promo codes");
     } finally {
@@ -83,7 +101,7 @@ export function AdminPromosClient() {
           body: JSON.stringify(firstOrderDeal),
         },
       );
-      setFirstOrderDeal(saved);
+      setFirstOrderDeal(normalizeFirstOrderDeal(saved));
       setDealMessage("First-order deal saved");
       window.setTimeout(() => setDealMessage(null), 2500);
     } catch (err) {
@@ -152,6 +170,24 @@ export function AdminPromosClient() {
                 />
                 Enable deal
               </label>
+            </div>
+
+            <div className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label htmlFor="first-order-coupon-code">Coupon code</label>
+                <input
+                  id="first-order-coupon-code"
+                  className={styles.formInput}
+                  type="text"
+                  value={firstOrderDeal.couponCode}
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      couponCode: event.target.value.toUpperCase(),
+                    }))
+                  }
+                />
+              </div>
             </div>
 
             <div className={styles.formRow}>

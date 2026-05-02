@@ -366,7 +366,22 @@ export class CartService {
       unitPriceCents: line.unit_price_cents,
     }));
 
-    if (promoCode) {
+    const promoCodeIsFirstOrderDeal =
+      await this.promotionsService.isFirstOrderDealPublicCode({
+        locationId,
+        code: promoCode,
+      });
+    if (
+      promoCodeIsFirstOrderDeal &&
+      !(await this.promotionsService.isFirstOrderCustomer({ userId }))
+    ) {
+      throw new UnprocessableEntityException({
+        message: "Invalid Coupon",
+        field: "promo_code",
+      });
+    }
+
+    if (promoCode && !promoCodeIsFirstOrderDeal) {
       const promoApplication = await this.promotionsService.evaluatePromo({
         locationId,
         code: promoCode,
