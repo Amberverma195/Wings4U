@@ -217,8 +217,10 @@ export function OrderReviews({
   const session = useSession();
   const [reviews, setReviews] = useState<Record<string, ReviewRecord>>({});
   const [loading, setLoading] = useState(true);
+  const [multiItemExpanded, setMultiItemExpanded] = useState(false);
 
   const eligible = orderStatus === "PICKED_UP" || orderStatus === "DELIVERED";
+  const multipleItems = items.length > 1;
 
   const fetchReviews = useCallback(async () => {
     try {
@@ -247,21 +249,21 @@ export function OrderReviews({
   }, [eligible, fetchReviews]);
 
   if (!eligible) return null;
+  if (items.length === 0) return null;
 
-  return (
-    <section className="surface-card" style={{ marginTop: "1rem" }}>
-      <h3 style={{ margin: "0 0 0.75rem" }}>Reviews</h3>
-      {loading && <p className="surface-muted">Loading…</p>}
-      {!loading &&
-        items.map((item) => {
+  const reviewList =
+    multipleItems && !multiItemExpanded ? null : (
+      <>
+        {items.map((item, idx) => {
           const existing = reviews[item.id];
+          const last = idx === items.length - 1;
           return (
             <div
               key={item.id}
               style={{
-                paddingBottom: "0.75rem",
-                marginBottom: "0.75rem",
-                borderBottom: "1px solid #eee",
+                paddingBottom: last ? 0 : "0.75rem",
+                marginBottom: last ? 0 : "0.75rem",
+                borderBottom: last ? "none" : "1px solid #eee",
               }}
             >
               <p style={{ margin: 0, fontWeight: 600 }}>
@@ -282,6 +284,75 @@ export function OrderReviews({
             </div>
           );
         })}
+      </>
+    );
+
+  return (
+    <section className="surface-card" style={{ marginTop: "1rem" }}>
+      <h3 style={{ margin: "0 0 0.75rem" }}>Reviews</h3>
+      {loading && <p className="surface-muted">Loading…</p>}
+      {!loading && multipleItems && !multiItemExpanded && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <div
+            style={{
+              width: "100%",
+              textAlign: "center",
+              padding: "0.65rem 1rem",
+              borderRadius: 9999,
+              boxSizing: "border-box",
+              background: "rgba(255, 255, 255, 0.72)",
+              border: "1px solid rgba(194, 73, 20, 0.22)",
+              color: "#2a1a08",
+              fontWeight: 600,
+              fontSize: "0.95rem",
+              lineHeight: 1.35,
+            }}
+          >
+            Tell us how it did
+          </div>
+          <button
+            type="button"
+            onClick={() => setMultiItemExpanded(true)}
+            style={{
+              width: "100%",
+              padding: "0.65rem 1rem",
+              borderRadius: 12,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: "0.92rem",
+              letterSpacing: "0.02em",
+              color: "#fff",
+              background:
+                "linear-gradient(135deg, #e85d4c 0%, #c23b2e 55%, #a82e24 100%)",
+              boxShadow: "0 8px 18px -10px rgba(168, 46, 36, 0.55)",
+            }}
+          >
+            Review items
+          </button>
+        </div>
+      )}
+      {!loading && multipleItems && multiItemExpanded && (
+        <button
+          type="button"
+          onClick={() => setMultiItemExpanded(false)}
+          className="surface-muted"
+          style={{
+            display: "block",
+            margin: "0 0 0.75rem",
+            padding: 0,
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            fontSize: "0.85rem",
+            textDecoration: "underline",
+            textUnderlineOffset: "2px",
+          }}
+        >
+          Show less
+        </button>
+      )}
+      {!loading && reviewList}
     </section>
   );
 }
