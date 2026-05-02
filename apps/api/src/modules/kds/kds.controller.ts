@@ -258,6 +258,14 @@ export class KdsController {
     );
   }
 
+  @Get("orders/:id")
+  async getOrder(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.kdsService.getKdsOrder(req.locationId!, id);
+  }
+
   @Get("orders")
   async getOrders(@Query() query: KdsOrdersQueryDto, @Req() req: Request) {
     const statuses = query.statuses

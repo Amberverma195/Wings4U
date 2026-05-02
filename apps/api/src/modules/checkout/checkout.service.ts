@@ -241,16 +241,21 @@ export class CheckoutService {
       if (!user || !user.isActive) {
         throw new NotFoundException("User not found or inactive");
       }
-      const identity = await tx.userIdentity.findFirst({
-        where: { userId: params.userId, isPrimary: true },
+      const identities = await tx.userIdentity.findMany({
+        where: { userId: params.userId },
+        orderBy: { isPrimary: "desc" },
         select: {
           phoneE164: true,
           emailNormalized: true,
+          isPrimary: true,
         },
       });
       const customerName = user.displayName;
-      const customerPhone = identity?.phoneE164 ?? "";
-      const customerEmail = identity?.emailNormalized ?? null;
+      const customerPhone =
+        identities.find((identity) => identity.phoneE164)?.phoneE164 ?? "";
+      const customerEmail =
+        identities.find((identity) => identity.emailNormalized)?.emailNormalized ??
+        null;
 
       const location = await tx.location.findUnique({
         where: { id: params.locationId },

@@ -33,14 +33,12 @@ function isTerminal(status: OrderStatus): boolean {
 function cancelStillAllowed(order: OrderDetail): boolean {
   if (!order.cancel_allowed_until) return false;
   if (new Date(order.cancel_allowed_until) <= new Date()) return false;
-  // Even inside the 2-minute self-cancel window, once the kitchen has
-  // marked the order READY the food is plated / bagged for handoff. We
-  // hide the cancel button at that point and route the customer to the
-  // help flow instead. The backend also rejects this case (see
+  // The self-cancel button is only available before kitchen prep starts.
+  // Once KDS moves ACCEPTED -> PREPARING, route customers to Help instead.
+  // The backend also rejects this case (see
   // `customerCancel` in `orders.service.ts`) — the UI check is just to
   // keep the button from being shown at all in the common path.
-  if (order.status === "READY") return false;
-  return true;
+  return order.status === "PLACED" || order.status === "ACCEPTED";
 }
 
 type DeliveryPinResponse = {
@@ -670,9 +668,6 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 Store phone is not available. Please use the order chat below.
               </p>
             )}
-            <p style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: "1rem" }}>
-              You can also message the kitchen directly via the order chat below.
-            </p>
             <button
               type="button"
               className={styles.modalCloseBtn}

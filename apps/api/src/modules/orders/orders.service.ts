@@ -264,19 +264,18 @@ export class OrdersService {
       });
     }
 
-    // Race-condition guard: the kitchen may have finished the order inside
+    // Race-condition guard: the kitchen may start preparing the order inside
     // the customer's self-cancel window (common for fast items like a single
-    // drink). Once the kitchen marks the order READY the food is already
-    // prepared, plated, or bagged for a driver, so self-cancel is no longer
+    // drink). Once KDS moves the order to PREPARING, self-cancel is no longer
     // reasonable — the loss now belongs on the store or support flow, not
     // on a one-click customer action. Applies to both PICKUP and DELIVERY.
-    // The client also hides the button once status=READY, but this check
+    // The client also hides the button once status=PREPARING, but this check
     // has to exist here too because the client's status may be stale by a
     // few seconds vs. KDS.
-    if (order.status === "READY") {
+    if (order.status !== "PLACED" && order.status !== "ACCEPTED") {
       throw new ConflictException({
         message:
-          "Your order is already prepared and can no longer be cancelled. Please use order chat/help if you need assistance.",
+          "Your order is already in preparation and can no longer be cancelled here. Please use order chat/help if you need assistance.",
         field: "status",
       });
     }
