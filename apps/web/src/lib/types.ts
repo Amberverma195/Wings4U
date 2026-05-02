@@ -284,6 +284,8 @@ export type ActivePromo = {
   endsAt: string | null;
   isOneTimePerCustomer: boolean;
   eligibleFulfillmentType: "BOTH" | "PICKUP" | "DELIVERY" | string;
+  autoApply?: boolean;
+  benefitSummary?: string;
   bxgyRule:
     | null
     | {

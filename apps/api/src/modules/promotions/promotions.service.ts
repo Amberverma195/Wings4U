@@ -2,6 +2,13 @@ import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { PrismaService } from "../../database/prisma.service";
+import {
+  FIRST_ORDER_DEAL_CODE_PREFIX,
+  FIRST_ORDER_DEAL_DISPLAY_CODE,
+  FIRST_ORDER_DEAL_KINDS,
+  firstOrderDealCode,
+  isFirstOrderDealCode,
+} from "./first-order-deal";
 
 type DbClient = Prisma.TransactionClient | PrismaClient | PrismaService;
 
@@ -20,11 +27,23 @@ export type EvaluatedPromo = {
   waivesDelivery: boolean;
 };
 
+export type EvaluatedFirstOrderDeal = {
+  promoCode: string;
+  discountCents: number;
+  waivesDelivery: boolean;
+  redemptions: Array<{
+    promoId: string;
+    discountAmountCents: number;
+  }>;
+};
+
 type PromoWithRelations = Prisma.PromoCodeGetPayload<{
   include: {
     bxgyRule: true;
   };
 }>;
+
+type FirstOrderPromoRow = Prisma.PromoCodeGetPayload<Record<string, never>>;
 
 function buildActivePromoWhere(now: Date): Prisma.PromoCodeWhereInput {
   return {
@@ -65,6 +84,56 @@ function serializePromo(promo: PromoWithRelations) {
           maxUsesPerOrder: promo.bxgyRule.maxUsesPerOrder,
         }
       : null,
+  };
+}
+
+function serializeFirstOrderDealPromo(
+  locationId: string,
+  promos: FirstOrderPromoRow[],
+) {
+  const byCode = new Map(
+    promos.map((promo) => [promo.code.toUpperCase(), promo]),
+  );
+  const orderedPromos = FIRST_ORDER_DEAL_KINDS.map((kind) =>
+    byCode.get(firstOrderDealCode(locationId, kind)),
+  ).filter((promo): promo is FirstOrderPromoRow => Boolean(promo));
+
+  if (orderedPromos.length === 0) {
+    return null;
+  }
+
+  const freeDelivery = orderedPromos.find(
+    (promo) => promo.discountType === "FREE_DELIVERY",
+  );
+  const percent = orderedPromos.find(
+    (promo) => promo.discountType === "PERCENT",
+  );
+  const fixed = orderedPromos.find(
+    (promo) => promo.discountType === "FIXED_AMOUNT",
+  );
+  const benefitParts = [
+    freeDelivery ? "Free delivery" : null,
+    percent ? `${Number(percent.discountValue)}% off` : null,
+    fixed
+      ? `${formatUsdFromCents(Math.round(Number(fixed.discountValue)))} off`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+  const primary = percent ?? fixed ?? freeDelivery ?? orderedPromos[0];
+
+  return {
+    id: `first-order-deal:${locationId}`,
+    code: FIRST_ORDER_DEAL_DISPLAY_CODE,
+    name: "First order deal",
+    discountType: primary.discountType,
+    discountValue: Number(primary.discountValue),
+    minSubtotalCents: 0,
+    endsAt: null,
+    startsAt: null,
+    isOneTimePerCustomer: true,
+    eligibleFulfillmentType: "BOTH",
+    bxgyRule: null,
+    autoApply: true,
+    benefitSummary: benefitParts.join(" + "),
   };
 }
 
@@ -160,11 +229,12 @@ function computeBxgyDiscountCents(
 export class PromotionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getActivePromos(locationId: string) {
+  async getActivePromos(locationId: string, userId?: string) {
     const now = new Date();
     const promos = await this.prisma.promoCode.findMany({
       where: {
         ...buildActivePromoWhere(now),
+        NOT: { code: { startsWith: FIRST_ORDER_DEAL_CODE_PREFIX } },
         OR: [
           { locationId },
           { scopeType: "GLOBAL", locationId: null },
@@ -176,7 +246,40 @@ export class PromotionsService {
       orderBy: [{ endsAt: "asc" }, { createdAt: "desc" }],
     });
 
-    return promos.map((promo) => serializePromo(promo));
+    const serializedPromos = promos.map((promo) => serializePromo(promo));
+    if (!userId) {
+      return serializedPromos;
+    }
+
+    const priorOrderCount = await this.prisma.order.count({
+      where: {
+        customerUserId: userId,
+        status: { not: "CANCELLED" },
+      },
+    });
+    if (priorOrderCount > 0) {
+      return serializedPromos;
+    }
+
+    const firstOrderPromos = await this.prisma.promoCode.findMany({
+      where: {
+        code: {
+          in: FIRST_ORDER_DEAL_KINDS.map((kind) =>
+            firstOrderDealCode(locationId, kind),
+          ),
+        },
+        ...buildActivePromoWhere(now),
+        locationId,
+      },
+    });
+    const firstOrderDeal = serializeFirstOrderDealPromo(
+      locationId,
+      firstOrderPromos,
+    );
+
+    return firstOrderDeal
+      ? [firstOrderDeal, ...serializedPromos]
+      : serializedPromos;
   }
 
   async evaluatePromo(params: {
@@ -191,6 +294,13 @@ export class PromotionsService {
   }): Promise<EvaluatedPromo> {
     const client = params.client ?? this.prisma;
     const code = params.code.trim().toUpperCase();
+    if (isFirstOrderDealCode(code)) {
+      throw new UnprocessableEntityException({
+        message: "Invalid or expired promo code",
+        field: "promo_code",
+      });
+    }
+
     const promo = await client.promoCode.findFirst({
       where: {
         code,
@@ -339,6 +449,117 @@ export class PromotionsService {
       discountCents,
       redemptionValueCents,
       waivesDelivery,
+    };
+  }
+
+  async evaluateFirstOrderDeal(params: {
+    client?: DbClient;
+    locationId: string;
+    userId?: string;
+    itemSubtotalCents: number;
+    deliveryFeeCents: number;
+    fulfillmentType: "PICKUP" | "DELIVERY";
+    existingDiscountCents?: number;
+  }): Promise<EvaluatedFirstOrderDeal | null> {
+    if (!params.userId) {
+      return null;
+    }
+
+    const client = params.client ?? this.prisma;
+    const priorOrderCount = await client.order.count({
+      where: {
+        customerUserId: params.userId,
+        status: { not: "CANCELLED" },
+      },
+    });
+    if (priorOrderCount > 0) {
+      return null;
+    }
+
+    const promos = await client.promoCode.findMany({
+      where: {
+        code: {
+          in: FIRST_ORDER_DEAL_KINDS.map((kind) =>
+            firstOrderDealCode(params.locationId, kind),
+          ),
+        },
+        ...buildActivePromoWhere(new Date()),
+        locationId: params.locationId,
+      },
+    });
+    if (promos.length === 0) {
+      return null;
+    }
+
+    let remainingDiscountableCents = Math.max(
+      0,
+      params.itemSubtotalCents - (params.existingDiscountCents ?? 0),
+    );
+    let discountCents = 0;
+    let waivesDelivery = false;
+    const redemptions: EvaluatedFirstOrderDeal["redemptions"] = [];
+
+    for (const promo of promos) {
+      if (
+        promo.eligibleFulfillmentType !== "BOTH" &&
+        promo.eligibleFulfillmentType !== params.fulfillmentType
+      ) {
+        continue;
+      }
+
+      if (promo.discountType === "FREE_DELIVERY") {
+        if (params.fulfillmentType !== "DELIVERY" || params.deliveryFeeCents <= 0) {
+          continue;
+        }
+        waivesDelivery = true;
+        redemptions.push({
+          promoId: promo.id,
+          discountAmountCents: params.deliveryFeeCents,
+        });
+        continue;
+      }
+
+      let candidateDiscountCents = 0;
+      if (promo.discountType === "PERCENT") {
+        candidateDiscountCents = Math.floor(
+          params.itemSubtotalCents * (Number(promo.discountValue) / 100),
+        );
+      } else if (promo.discountType === "FIXED_AMOUNT") {
+        candidateDiscountCents = Math.round(Number(promo.discountValue));
+      }
+
+      if (promo.maxDiscountCents != null) {
+        candidateDiscountCents = Math.min(
+          candidateDiscountCents,
+          promo.maxDiscountCents,
+        );
+      }
+
+      const appliedDiscountCents = Math.min(
+        Math.max(0, candidateDiscountCents),
+        remainingDiscountableCents,
+      );
+      if (appliedDiscountCents <= 0) {
+        continue;
+      }
+
+      remainingDiscountableCents -= appliedDiscountCents;
+      discountCents += appliedDiscountCents;
+      redemptions.push({
+        promoId: promo.id,
+        discountAmountCents: appliedDiscountCents,
+      });
+    }
+
+    if (discountCents <= 0 && !waivesDelivery) {
+      return null;
+    }
+
+    return {
+      promoCode: FIRST_ORDER_DEAL_DISPLAY_CODE,
+      discountCents,
+      waivesDelivery,
+      redemptions,
     };
   }
 }

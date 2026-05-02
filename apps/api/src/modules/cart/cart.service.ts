@@ -357,7 +357,14 @@ export class CartService {
       : 0;
 
     let appliedPromoCode: string | undefined = undefined;
+    const appliedPromoCodes: string[] = [];
     let promoDiscountCents = 0;
+    const promoPricingLines = lineDetails.map((line) => ({
+      menuItemId: line.menu_item_id,
+      categoryId: menuItemMap.get(line.menu_item_id)?.categoryId ?? null,
+      quantity: line.quantity,
+      unitPriceCents: line.unit_price_cents,
+    }));
 
     if (promoCode) {
       const promoApplication = await this.promotionsService.evaluatePromo({
@@ -367,21 +374,37 @@ export class CartService {
         itemSubtotalCents,
         deliveryFeeCents,
         fulfillmentType,
-        lines: lineDetails.map((line) => ({
-          menuItemId: line.menu_item_id,
-          categoryId: menuItemMap.get(line.menu_item_id)?.categoryId ?? null,
-          quantity: line.quantity,
-          unitPriceCents: line.unit_price_cents,
-        })),
+        lines: promoPricingLines,
       });
 
-      appliedPromoCode = promoApplication.promoCode;
+      appliedPromoCodes.push(promoApplication.promoCode);
       promoDiscountCents = promoApplication.discountCents;
       if (promoApplication.waivesDelivery) {
         deliveryFeeWaived = true;
         deliveryFeeCents = 0;
       }
     }
+
+    const firstOrderDeal = await this.promotionsService.evaluateFirstOrderDeal({
+      locationId,
+      userId,
+      itemSubtotalCents,
+      deliveryFeeCents,
+      fulfillmentType,
+      existingDiscountCents: wingsDiscountCents + promoDiscountCents,
+    });
+    if (firstOrderDeal) {
+      appliedPromoCodes.push(firstOrderDeal.promoCode);
+      promoDiscountCents += firstOrderDeal.discountCents;
+      if (firstOrderDeal.waivesDelivery) {
+        deliveryFeeWaived = true;
+        deliveryFeeCents = 0;
+      }
+    }
+
+    appliedPromoCode = appliedPromoCodes.length
+      ? appliedPromoCodes.join(", ")
+      : undefined;
 
     const breakdown = computePricingShared(
       {

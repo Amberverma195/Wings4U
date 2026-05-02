@@ -96,11 +96,40 @@ class CreateUpdatePromoDto {
   categoryTargets?: string[];
 }
 
+class FirstOrderDealDto {
+  @IsBoolean()
+  enabled!: boolean;
+
+  @IsBoolean()
+  freeDelivery!: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  percentOff?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  fixedAmountCents?: number | null;
+}
+
 @Controller("admin/promos")
 @UseGuards(LocationScopeGuard)
 @Roles("ADMIN")
 export class AdminPromosController {
   constructor(private readonly adminPromosService: AdminPromosService) {}
+
+  @Get("first-order-deal")
+  async getFirstOrderDeal(@Req() req: Request) {
+    return this.adminPromosService.getFirstOrderDeal(req.locationId!);
+  }
+
+  @Put("first-order-deal")
+  async updateFirstOrderDeal(
+    @Body() body: FirstOrderDealDto,
+    @Req() req: Request,
+  ) {
+    return this.adminPromosService.updateFirstOrderDeal(req.locationId!, body);
+  }
 
   @Get()
   async listPromos(@Req() req: Request) {

@@ -321,7 +321,12 @@ export function CartPage() {
   }, [couponsModalOpen]);
 
   const wingsReward = quote?.wings_reward;
-  const confirmedPromoCode = quote?.applied_promo_code?.trim().toUpperCase() ?? "";
+  const confirmedPromoCodes = new Set(
+    (quote?.applied_promo_code ?? "")
+      .split(",")
+      .map((code) => code.trim().toUpperCase())
+      .filter(Boolean),
+  );
   /**
    * Whether the "Get 1lb of wings free" reward card should be shown in the
    * Coupons modal. Shown when the customer has collected 8+ stamps, even
@@ -881,13 +886,15 @@ export function CartPage() {
             ) : null}
 
             {activePromos.map((promo) => {
-              const isApplied = confirmedPromoCode === promo.code.toUpperCase();
+              const isApplied = confirmedPromoCodes.has(promo.code.toUpperCase());
+              const isAutomatic = Boolean(promo.autoApply);
               return (
                 <button
                   key={promo.id}
                   type="button"
-                  disabled={isApplied}
+                  disabled={isApplied || isAutomatic}
                   onClick={() => {
+                    if (isAutomatic) return;
                     setPromoInput(promo.code);
                     setPromoApplied(promo.code);
                     setCouponsModalOpen(false);
@@ -903,14 +910,29 @@ export function CartPage() {
                     <strong style={styles.couponCardTitle}>{promo.code}</strong>
                     <span style={styles.couponCardSubtitle}>{promo.name}</span>
                     <span style={styles.couponCardMeta}>
-                      {promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`}
-                      {promo.discountType === "FIXED_AMOUNT" && `$${(promo.discountValue / 100).toFixed(2)} OFF`}
-                      {promo.discountType === "FREE_DELIVERY" && `FREE DELIVERY`}
-                      {promo.discountType === "BXGY" && `Buy X Get Y`}
+                      {promo.benefitSummary ||
+                        (promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`)}
+                      {!promo.benefitSummary &&
+                        promo.discountType === "FIXED_AMOUNT" &&
+                        `$${(promo.discountValue / 100).toFixed(2)} OFF`}
+                      {!promo.benefitSummary &&
+                        promo.discountType === "FREE_DELIVERY" &&
+                        `FREE DELIVERY`}
+                      {!promo.benefitSummary &&
+                        promo.discountType === "BXGY" &&
+                        `Buy X Get Y`}
                       {promo.minSubtotalCents > 0 && ` (Min $${(promo.minSubtotalCents / 100).toFixed(2)})`}
                     </span>
                   </div>
-                  <div style={styles.couponCardAction}>
+                  {isAutomatic ? (
+                    <div style={styles.couponCardAction}>Auto</div>
+                  ) : null}
+                  <div
+                    style={{
+                      ...styles.couponCardAction,
+                      display: isAutomatic ? "none" : undefined,
+                    }}
+                  >
                     {isApplied ? "Applied ✓" : "Apply"}
                   </div>
                 </button>

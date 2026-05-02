@@ -12,6 +12,9 @@ export class PromotionsController {
   @Get("active")
   @Public()
   async getActivePromos(@Req() req: Request) {
-    return this.promotionsService.getActivePromos(req.locationId!);
+    return this.promotionsService.getActivePromos(
+      req.locationId!,
+      req.user?.userId,
+    );
   }
 }

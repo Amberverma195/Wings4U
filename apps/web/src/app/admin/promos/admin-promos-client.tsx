@@ -24,10 +24,28 @@ export type PromoCode = {
   redemptions?: { id: string }[];
 };
 
+type FirstOrderDeal = {
+  enabled: boolean;
+  freeDelivery: boolean;
+  percentOff: number | null;
+  fixedAmountCents: number | null;
+};
+
+const emptyFirstOrderDeal: FirstOrderDeal = {
+  enabled: false,
+  freeDelivery: false,
+  percentOff: null,
+  fixedAmountCents: null,
+};
+
 export function AdminPromosClient() {
   const [promos, setPromos] = useState<PromoCode[]>([]);
+  const [firstOrderDeal, setFirstOrderDeal] =
+    useState<FirstOrderDeal>(emptyFirstOrderDeal);
   const [loading, setLoading] = useState(true);
+  const [savingDeal, setSavingDeal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dealMessage, setDealMessage] = useState<string | null>(null);
 
   const [editPromoId, setEditPromoId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -36,8 +54,12 @@ export function AdminPromosClient() {
     try {
       setLoading(true);
       setError(null);
-      const data = await adminFetch<PromoCode[]>(ADMIN_PROMOS_API_BASE);
-      setPromos(data);
+      const [promoData, dealData] = await Promise.all([
+        adminFetch<PromoCode[]>(ADMIN_PROMOS_API_BASE),
+        adminFetch<FirstOrderDeal>(`${ADMIN_PROMOS_API_BASE}/first-order-deal`),
+      ]);
+      setPromos(promoData);
+      setFirstOrderDeal(dealData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load promo codes");
     } finally {
@@ -48,6 +70,30 @@ export function AdminPromosClient() {
   useEffect(() => {
     loadPromos();
   }, [loadPromos]);
+
+  const saveFirstOrderDeal = async () => {
+    try {
+      setSavingDeal(true);
+      setError(null);
+      setDealMessage(null);
+      const saved = await adminFetch<FirstOrderDeal>(
+        `${ADMIN_PROMOS_API_BASE}/first-order-deal`,
+        {
+          method: "PUT",
+          body: JSON.stringify(firstOrderDeal),
+        },
+      );
+      setFirstOrderDeal(saved);
+      setDealMessage("First-order deal saved");
+      window.setTimeout(() => setDealMessage(null), 2500);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save first-order deal",
+      );
+    } finally {
+      setSavingDeal(false);
+    }
+  };
 
   return (
     <>
@@ -77,6 +123,153 @@ export function AdminPromosClient() {
       </section>
 
       <div className={styles.container}>
+        <section className={`surface-card ${styles.content}`} style={{ gridColumn: "1 / -1" }}>
+          <div className={styles.formSection}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "1rem",
+                alignItems: "flex-start",
+              }}
+            >
+              <div>
+                <h3>First-order deal</h3>
+                <p className="surface-muted" style={{ margin: "0.55rem 0 0" }}>
+                  Automatically applies to signed-in customers with zero non-cancelled orders.
+                </p>
+              </div>
+              <label className={styles.checkbox} style={{ marginTop: "0.15rem" }}>
+                <input
+                  type="checkbox"
+                  checked={firstOrderDeal.enabled}
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      enabled: event.target.checked,
+                    }))
+                  }
+                />
+                Enable deal
+              </label>
+            </div>
+
+            <div className={styles.formRow}>
+              <label className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={firstOrderDeal.freeDelivery}
+                  disabled={!firstOrderDeal.enabled}
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      freeDelivery: event.target.checked,
+                    }))
+                  }
+                />
+                Free delivery
+              </label>
+            </div>
+
+            <div className={styles.formRow}>
+              <label className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={(firstOrderDeal.percentOff ?? 0) > 0}
+                  disabled={!firstOrderDeal.enabled}
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      percentOff: event.target.checked ? deal.percentOff ?? 10 : null,
+                    }))
+                  }
+                />
+                Percent off
+              </label>
+              <div className={styles.formGroup}>
+                <label htmlFor="first-order-percent">Percent</label>
+                <input
+                  id="first-order-percent"
+                  className={styles.formInput}
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  disabled={!firstOrderDeal.enabled || !(firstOrderDeal.percentOff ?? 0)}
+                  value={firstOrderDeal.percentOff ?? ""}
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      percentOff: event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className={styles.formRow}>
+              <label className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={(firstOrderDeal.fixedAmountCents ?? 0) > 0}
+                  disabled={!firstOrderDeal.enabled}
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      fixedAmountCents: event.target.checked
+                        ? deal.fixedAmountCents ?? 500
+                        : null,
+                    }))
+                  }
+                />
+                Dollar amount off
+              </label>
+              <div className={styles.formGroup}>
+                <label htmlFor="first-order-fixed">Amount</label>
+                <input
+                  id="first-order-fixed"
+                  className={styles.formInput}
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  disabled={!firstOrderDeal.enabled || !(firstOrderDeal.fixedAmountCents ?? 0)}
+                  value={
+                    firstOrderDeal.fixedAmountCents
+                      ? (firstOrderDeal.fixedAmountCents / 100).toFixed(2)
+                      : ""
+                  }
+                  onChange={(event) =>
+                    setFirstOrderDeal((deal) => ({
+                      ...deal,
+                      fixedAmountCents: event.target.value
+                        ? Math.round(Number(event.target.value) * 100)
+                        : null,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+              <button
+                type="button"
+                className={styles.leadButtonPrimary}
+                disabled={savingDeal}
+                onClick={saveFirstOrderDeal}
+              >
+                {savingDeal ? "Saving..." : "Save First-Order Deal"}
+              </button>
+              {dealMessage && (
+                <span className="surface-muted" role="status">
+                  {dealMessage}
+                </span>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section className={`surface-card ${styles.content}`} style={{ gridColumn: "1 / -1" }}>
           {error && <div className={styles.error}>{error}</div>}
 

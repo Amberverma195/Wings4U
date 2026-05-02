@@ -4,6 +4,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
+import {
+  FIRST_ORDER_DEAL_CODE_PREFIX,
+  FIRST_ORDER_DEAL_KINDS,
+  firstOrderDealCode,
+  type FirstOrderDealKind,
+} from "../promotions/first-order-deal";
 
 export type CreateUpdatePromoPayload = {
   code: string;
@@ -28,8 +34,21 @@ export type CreateUpdatePromoPayload = {
   categoryTargets?: string[];
 };
 
+export type FirstOrderDealPayload = {
+  enabled: boolean;
+  freeDelivery: boolean;
+  percentOff?: number | null;
+  fixedAmountCents?: number | null;
+};
+
 function normalizePromoCode(code: string): string {
   return code.trim().toUpperCase();
+}
+
+function firstOrderDealName(kind: FirstOrderDealKind): string {
+  if (kind === "FREE_DELIVERY") return "First order free delivery";
+  if (kind === "PERCENT") return "First order percent off";
+  return "First order fixed amount off";
 }
 
 @Injectable()
@@ -60,7 +79,11 @@ export class AdminPromosService {
 
   async listPromos(locationId: string) {
     return this.prisma.promoCode.findMany({
-      where: { locationId, archivedAt: null },
+      where: {
+        locationId,
+        archivedAt: null,
+        NOT: { code: { startsWith: FIRST_ORDER_DEAL_CODE_PREFIX } },
+      },
       orderBy: { createdAt: "desc" },
       include: {
         bxgyRule: true,
@@ -75,7 +98,12 @@ export class AdminPromosService {
 
   async getPromo(locationId: string, id: string) {
     const promo = await this.prisma.promoCode.findFirst({
-      where: { id, locationId, archivedAt: null },
+      where: {
+        id,
+        locationId,
+        archivedAt: null,
+        NOT: { code: { startsWith: FIRST_ORDER_DEAL_CODE_PREFIX } },
+      },
       include: {
         bxgyRule: true,
         productTargets: true,
@@ -155,7 +183,12 @@ export class AdminPromosService {
     this.validatePromoPayload(data);
 
     const promo = await this.prisma.promoCode.findFirst({
-      where: { id, locationId, archivedAt: null },
+      where: {
+        id,
+        locationId,
+        archivedAt: null,
+        NOT: { code: { startsWith: FIRST_ORDER_DEAL_CODE_PREFIX } },
+      },
     });
     if (!promo) throw new NotFoundException("Promo code not found");
 
@@ -238,8 +271,120 @@ export class AdminPromosService {
 
   async deletePromo(locationId: string, id: string) {
     return this.prisma.promoCode.updateMany({
-      where: { id, locationId },
+      where: {
+        id,
+        locationId,
+        NOT: { code: { startsWith: FIRST_ORDER_DEAL_CODE_PREFIX } },
+      },
       data: { archivedAt: new Date(), isActive: false },
     });
+  }
+
+  async getFirstOrderDeal(locationId: string) {
+    const promos = await this.prisma.promoCode.findMany({
+      where: {
+        locationId,
+        code: {
+          in: FIRST_ORDER_DEAL_KINDS.map((kind) =>
+            firstOrderDealCode(locationId, kind),
+          ),
+        },
+      },
+    });
+    const byCode = new Map(promos.map((promo) => [promo.code.toUpperCase(), promo]));
+    const freeDelivery = byCode.get(
+      firstOrderDealCode(locationId, "FREE_DELIVERY"),
+    );
+    const percent = byCode.get(firstOrderDealCode(locationId, "PERCENT"));
+    const fixed = byCode.get(firstOrderDealCode(locationId, "FIXED_AMOUNT"));
+
+    return {
+      enabled: promos.some((promo) => promo.archivedAt == null && promo.isActive),
+      freeDelivery: Boolean(freeDelivery && freeDelivery.archivedAt == null),
+      percentOff:
+        percent && percent.archivedAt == null
+          ? Number(percent.discountValue)
+          : null,
+      fixedAmountCents:
+        fixed && fixed.archivedAt == null
+          ? Math.round(Number(fixed.discountValue))
+          : null,
+    };
+  }
+
+  async updateFirstOrderDeal(locationId: string, data: FirstOrderDealPayload) {
+    const percentOff =
+      data.percentOff == null ? null : Number(data.percentOff);
+    const fixedAmountCents =
+      data.fixedAmountCents == null ? null : Math.round(Number(data.fixedAmountCents));
+    const hasPercent = percentOff != null && percentOff > 0;
+    const hasFixed = fixedAmountCents != null && fixedAmountCents > 0;
+    const hasAnyDeal = Boolean(data.freeDelivery) || hasPercent || hasFixed;
+
+    if (data.enabled && !hasAnyDeal) {
+      throw new BadRequestException("Select at least one first-order deal");
+    }
+    if (hasPercent && (percentOff <= 0 || percentOff > 100)) {
+      throw new BadRequestException("First-order percent must be between 1 and 100");
+    }
+    if (fixedAmountCents != null && fixedAmountCents < 0) {
+      throw new BadRequestException("First-order dollar discount cannot be negative");
+    }
+
+    const desired = new Map<
+      FirstOrderDealKind,
+      { selected: boolean; discountValue: number }
+    >([
+      ["FREE_DELIVERY", { selected: Boolean(data.freeDelivery), discountValue: 0 }],
+      ["PERCENT", { selected: hasPercent, discountValue: percentOff ?? 0 }],
+      ["FIXED_AMOUNT", { selected: hasFixed, discountValue: fixedAmountCents ?? 0 }],
+    ]);
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const kind of FIRST_ORDER_DEAL_KINDS) {
+        const config = desired.get(kind)!;
+        const code = firstOrderDealCode(locationId, kind);
+        const existing = await tx.promoCode.findUnique({ where: { code } });
+        const isActive = data.enabled && config.selected;
+
+        if (!existing && !config.selected) {
+          continue;
+        }
+
+        const promoData = {
+          name: firstOrderDealName(kind),
+          discountType:
+            kind === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : kind,
+          discountValue: config.discountValue,
+          minSubtotalCents: 0,
+          startsAt: null,
+          endsAt: null,
+          isOneTimePerCustomer: false,
+          isFirstOrderOnly: true,
+          isActive,
+          archivedAt: config.selected ? null : new Date(),
+          eligibleFulfillmentType:
+            kind === "FREE_DELIVERY" ? "DELIVERY" : "BOTH",
+          locationId,
+          scopeType: "LOCATION_SCOPED",
+        } as const;
+
+        if (existing) {
+          await tx.promoCode.update({
+            where: { id: existing.id },
+            data: promoData,
+          });
+        } else {
+          await tx.promoCode.create({
+            data: {
+              code,
+              ...promoData,
+            },
+          });
+        }
+      }
+    });
+
+    return this.getFirstOrderDeal(locationId);
   }
 }

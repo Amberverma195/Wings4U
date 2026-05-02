@@ -29,6 +29,45 @@ interface ApiSessionResponse {
   };
 }
 
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/$/, "");
+}
+
+function getSessionFetchUrls(): string[] {
+  const urls: string[] = [];
+  const explicitInternal = process.env.INTERNAL_API_URL?.trim();
+  const proxyTarget = process.env.API_PROXY_TARGET?.trim();
+
+  if (explicitInternal) {
+    urls.push(`${trimTrailingSlash(explicitInternal)}/api/v1/auth/session`);
+  }
+  if (process.env.NODE_ENV === "development") {
+    urls.push(
+      "http://127.0.0.1:3001/api/v1/auth/session",
+      "http://localhost:3001/api/v1/auth/session",
+    );
+  }
+  if (proxyTarget) {
+    urls.push(`${trimTrailingSlash(proxyTarget)}/api/v1/auth/session`);
+  }
+  urls.push(`${getPublicApiBase()}/api/v1/auth/session`);
+
+  return Array.from(new Set(urls));
+}
+
+function describeFetchError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause =
+      error.cause instanceof Error
+        ? `; cause: ${error.cause.message}`
+        : error.cause
+          ? `; cause: ${String(error.cause)}`
+          : "";
+    return `${error.name}: ${error.message}${cause}`;
+  }
+  return String(error);
+}
+
 /**
  * Authoritative server-side surface gate shared by every protected layout
  * (`/admin`, `/kds`, `/pos`). Each of those layouts is a thin wrapper
@@ -71,8 +110,8 @@ export async function requireSurfaceAccess(
   }
 
   const cookieHeader = (await headers()).get("cookie") ?? "";
-  const base = getPublicApiBase();
-  const fetchUrl = `${base}/api/v1/auth/session`;
+  const fetchUrls = getSessionFetchUrls();
+  const fetchUrl = fetchUrls[0];
 
   // Dev-time resilience: the Nest API does incremental recompiles, so
   // there's a ~1–3s window after a file change where port 3001 is closed.
@@ -108,8 +147,7 @@ export async function requireSurfaceAccess(
   }
 
   if (!res) {
-    const cause =
-      lastError instanceof Error ? lastError.message : "unknown error";
+    const cause = lastError ? describeFetchError(lastError) : "unknown error";
     console.error(
       "[requireSurfaceAccess] session fetch failed after retries",
       { fetchUrl, cause },

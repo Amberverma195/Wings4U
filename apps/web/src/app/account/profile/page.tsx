@@ -499,10 +499,17 @@ export default function ProfilePage() {
                           </div>
                           <div className={styles.stampHistoryDelta}>
                             <strong className={styles.stampHistoryDeltaEarn} style={{ fontSize: "1rem" }}>
-                              {promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`}
-                              {promo.discountType === "FIXED_AMOUNT" && `$${(promo.discountValue / 100).toFixed(2)} OFF`}
-                              {promo.discountType === "FREE_DELIVERY" && `FREE DELIVERY`}
-                              {promo.discountType === "BXGY" && `BOGO`}
+                              {promo.benefitSummary ||
+                                (promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`)}
+                              {!promo.benefitSummary &&
+                                promo.discountType === "FIXED_AMOUNT" &&
+                                `$${(promo.discountValue / 100).toFixed(2)} OFF`}
+                              {!promo.benefitSummary &&
+                                promo.discountType === "FREE_DELIVERY" &&
+                                `FREE DELIVERY`}
+                              {!promo.benefitSummary &&
+                                promo.discountType === "BXGY" &&
+                                `BOGO`}
                             </strong>
                           </div>
                         </li>
