@@ -7,6 +7,14 @@ import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ChatResponse, ChatMessage } from "@/lib/types";
 
+const HELPER_TEXTS = [
+  "Where is my order?",
+  "I want to cancel my order",
+  "I want to change my delivery address",
+  "Something is missing from my order",
+  "Other issue",
+];
+
 export function OrderChat({
   orderId,
   locationId,
@@ -26,6 +34,7 @@ export function OrderChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isClosed, setIsClosed] = useState(false);
   const [draft, setDraft] = useState("");
+  const [selectedHelper, setSelectedHelper] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -79,7 +88,8 @@ export function OrderChat({
   }, [messages]);
 
   const send = useCallback(async () => {
-    if (!draft.trim()) return;
+    const messageBody = selectedHelper || draft.trim();
+    if (!messageBody) return;
     setSending(true);
     setError(null);
     try {
@@ -88,7 +98,7 @@ export function OrderChat({
           apiFetch(`/api/v1/orders/${orderId}/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message_body: draft.trim() }),
+            body: JSON.stringify({ message_body: messageBody }),
             locationId,
           }),
         session.refresh,
@@ -99,13 +109,14 @@ export function OrderChat({
         throw new Error(body?.errors?.[0]?.message ?? `Send failed (${res.status})`);
       }
       setDraft("");
+      setSelectedHelper(null);
       await fetchMessages();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed");
     } finally {
       setSending(false);
     }
-  }, [orderId, locationId, draft, fetchMessages, session]);
+  }, [orderId, locationId, draft, selectedHelper, fetchMessages, session]);
 
   const canSend = !isTerminal && !isClosed;
 
@@ -135,27 +146,55 @@ export function OrderChat({
       </div>
 
       {canSend && (
-        <div className="chat-input-row">
-          <input
-            className="chat-input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            placeholder="Type a message…"
-            disabled={sending}
-          />
-          <button
-            className="btn-primary chat-send-btn"
-            disabled={sending || !draft.trim()}
-            onClick={() => void send()}
-          >
-            {sending ? "…" : "Send"}
-          </button>
+        <div style={{ marginTop: "1rem" }}>
+          <div className="chat-helpers" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            {HELPER_TEXTS.map((text) => (
+              <button
+                key={text}
+                type="button"
+                className={`wk-pill ${selectedHelper === text ? "wk-pill-active" : ""} ${selectedHelper && selectedHelper !== text ? "wk-pill-disabled" : ""}`}
+                onClick={() => setSelectedHelper(prev => prev === text ? null : text)}
+                disabled={sending || (!!selectedHelper && selectedHelper !== text)}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+          <div className="chat-input-row">
+            <div className="chat-input-container">
+              <input
+                className="chat-input"
+                style={{ paddingRight: selectedHelper ? "2.5rem" : "0.75rem" }}
+                value={selectedHelper || draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                placeholder="Type a message…"
+                disabled
+              />
+              {selectedHelper && (
+                <button
+                  type="button"
+                  className="chat-input-clear"
+                  onClick={() => setSelectedHelper(null)}
+                  title="Clear selection"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <button
+              className="btn-primary chat-send-btn"
+              disabled={sending || !selectedHelper}
+              onClick={() => void send()}
+            >
+              {sending ? "…" : "Send"}
+            </button>
+          </div>
         </div>
       )}
 

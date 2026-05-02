@@ -225,6 +225,49 @@ export class KdsService {
     });
   }
 
+  async getKdsOrder(locationId: string, orderId: string) {
+    const settings = await this.prisma.locationSettings.findUnique({
+      where: { locationId },
+      select: { kdsAutoAcceptSeconds: true },
+    });
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, locationId },
+      include: {
+        orderItems: {
+          include: { modifiers: true, flavours: true },
+          orderBy: { lineNo: "asc" },
+        },
+        cancellationRequests: {
+          where: { status: "PENDING" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        changeRequests: {
+          where: { status: "PENDING" },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+
+    const unreadCounts = await this.chatService.getUnreadCountsForOrders(
+      [order.id],
+      "STAFF",
+    );
+
+    return {
+      ...serializeKdsOrder(
+        order as unknown as Record<string, unknown>,
+        settings?.kdsAutoAcceptSeconds ?? null,
+      ),
+      unread_customer_chat_count: unreadCounts.get(order.id) ?? 0,
+    };
+  }
+
   async getOrderHistory(
     locationId: string,
     startDate?: string,
@@ -265,8 +308,19 @@ export class KdsService {
         status: true,
         fulfillmentType: true,
         customerNameSnapshot: true,
+        customerPhoneSnapshot: true,
+        deliveryPhoneSnapshot: true,
         placedAt: true,
         finalPayableCents: true,
+        customer: {
+          select: {
+            identities: {
+              where: { phoneE164: { not: null } },
+              orderBy: { isPrimary: "desc" },
+              select: { phoneE164: true },
+            },
+          },
+        },
       },
     });
 
@@ -277,15 +331,25 @@ export class KdsService {
     }
 
     return {
-      items: orders.map((o) => ({
-        id: o.id,
-        order_number: Number(o.orderNumber),
-        status: o.status,
-        fulfillment_type: o.fulfillmentType,
-        customer_name_snapshot: o.customerNameSnapshot,
-        placed_at: o.placedAt,
-        final_payable_cents: o.finalPayableCents,
-      })),
+      items: orders.map((o) => {
+        const identityPhone = o.customer.identities.find(
+          (identity) => identity.phoneE164,
+        )?.phoneE164;
+
+        return {
+          id: o.id,
+          order_number: Number(o.orderNumber),
+          status: o.status,
+          fulfillment_type: o.fulfillmentType,
+          customer_name_snapshot: o.customerNameSnapshot,
+          customer_phone_snapshot: o.customerPhoneSnapshot,
+          delivery_phone_snapshot: o.deliveryPhoneSnapshot,
+          phone_fallback:
+            o.customerPhoneSnapshot || o.deliveryPhoneSnapshot || identityPhone || "",
+          placed_at: o.placedAt,
+          final_payable_cents: o.finalPayableCents,
+        };
+      }),
       next_cursor: nextCursor,
     };
   }

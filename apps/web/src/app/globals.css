@@ -2452,8 +2452,36 @@ main {
   margin-top: 0.75rem;
 }
 
+.chat-input-container {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.chat-input-clear {
+  position: absolute;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.chat-input-clear:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #64748b;
+}
+
 .chat-input {
   flex: 1;
+  width: 100%;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 10px;

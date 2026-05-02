@@ -207,6 +207,13 @@ export class PosService {
       if (params.customerId) {
         const user = await tx.user.findUnique({
           where: { id: params.customerId },
+          include: {
+            identities: {
+              where: { phoneE164: { not: null } },
+              orderBy: { isPrimary: "desc" },
+              select: { phoneE164: true },
+            },
+          },
         });
         if (!user) {
           throw new NotFoundException("Provided customer ID not found");
@@ -216,7 +223,7 @@ export class PosService {
         }
         customerUserId = user.id;
         customerName = params.customerName ?? user.displayName;
-        customerPhone = params.customerPhone ?? "";
+        customerPhone = params.customerPhone ?? user.identities[0]?.phoneE164 ?? "";
       } else if (params.customerPhone) {
         const phoneE164 = params.customerPhone;
         const existingIdentity = await tx.userIdentity.findUnique({

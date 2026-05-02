@@ -78,6 +78,19 @@ type KdsOrder = {
   unread_customer_chat_count: number;
 };
 
+type KdsHistoryOrder = {
+  id: string;
+  order_number: number;
+  status: string;
+  fulfillment_type: string;
+  customer_name_snapshot: string | null;
+  customer_phone_snapshot?: string | null;
+  delivery_phone_snapshot?: string | null;
+  phone_fallback?: string | null;
+  placed_at: string;
+  final_payable_cents: number;
+};
+
 type KdsDriver = {
   user_id: string;
   full_name: string;
@@ -142,6 +155,31 @@ function formatKdsOrderPhone(phone: string): string {
     return `(${a}) ${b}-${c}`;
   }
   return phone.trim();
+}
+
+function getKdsHistoryActiveOrder(
+  order: KdsHistoryOrder,
+  currentOrders: KdsOrder[],
+): KdsOrder | undefined {
+  return currentOrders.find(
+    (current) =>
+      current.id === order.id || current.order_number === order.order_number,
+  );
+}
+
+function getKdsHistoryPhone(
+  order: KdsHistoryOrder,
+  currentOrders: KdsOrder[],
+): string {
+  const activeOrder = getKdsHistoryActiveOrder(order, currentOrders);
+
+  return (
+    order.phone_fallback ||
+    order.customer_phone_snapshot ||
+    order.delivery_phone_snapshot ||
+    activeOrder?.customer_phone_snapshot ||
+    ""
+  ).trim();
 }
 
 function fulfillmentBadge(type: string) {
@@ -1383,7 +1421,17 @@ function BusyModeControl({ session }: { session: KdsSessionControls }) {
 /*  Kds Options Modal                                                  */
 /* ------------------------------------------------------------------ */
 
-function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; onClose: () => void }) {
+function KdsOptionsModal({
+  session,
+  currentOrders,
+  onViewOrder,
+  onClose,
+}: {
+  session: KdsSessionControls;
+  currentOrders: KdsOrder[];
+  onViewOrder: (order: KdsHistoryOrder) => Promise<void>;
+  onClose: () => void;
+}) {
   const [dateStr, setDateStr] = useState(() => {
     const d = new Date();
     // Use local date for default
@@ -1393,8 +1441,9 @@ function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; on
     return `${year}-${month}-${day}`;
   });
   const [status, setStatus] = useState("");
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<KdsHistoryOrder[]>([]);
   const [busy, setBusy] = useState(false);
+  const [viewingOrderId, setViewingOrderId] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
@@ -1413,7 +1462,7 @@ function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; on
       if (status) query.append("status", status);
       if (append && nextCursor) query.append("cursor", nextCursor);
       
-      const res = await kdsJson<{ items: any[]; next_cursor?: string }>(
+      const res = await kdsJson<{ items: KdsHistoryOrder[]; next_cursor?: string }>(
         session,
         `/api/v1/kds/orders/history?${query.toString()}`,
         { method: "GET", locationId: DEFAULT_LOCATION_ID }
@@ -1454,11 +1503,6 @@ function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; on
             <label className="surface-label" style={{ display: "block", marginBottom: "0.25rem" }}>Status</label>
             <select value={status} onChange={(e) => setStatus(e.target.value)} className="kds-modal-input">
               <option value="">All Statuses</option>
-              <option value="PLACED">Placed</option>
-              <option value="ACCEPTED">Accepted</option>
-              <option value="PREPARING">Preparing</option>
-              <option value="READY">Ready</option>
-              <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
               <option value="DELIVERED">Delivered</option>
               <option value="PICKED_UP">Picked Up</option>
               <option value="CANCELLED">Cancelled</option>
@@ -1483,25 +1527,65 @@ function KdsOptionsModal({ session, onClose }: { session: KdsSessionControls; on
                 <th style={{ padding: "0.5rem" }}>Status</th>
                 <th style={{ padding: "0.5rem" }}>Type</th>
                 <th style={{ padding: "0.5rem" }}>Customer</th>
+                <th style={{ padding: "0.5rem" }}>Phone</th>
                 <th style={{ padding: "0.5rem" }}>Placed Time</th>
                 <th style={{ padding: "0.5rem" }}>Total</th>
+                <th style={{ padding: "0.5rem" }}>Stats</th>
               </tr>
             </thead>
             <tbody>
               {busy ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
               ) : history.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", padding: "1rem" }}>No history found</td></tr>
-              ) : history.map((o) => (
-                <tr key={o.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "0.5rem" }}>#{o.order_number}</td>
-                  <td style={{ padding: "0.5rem" }}>{o.status}</td>
-                  <td style={{ padding: "0.5rem" }}>{o.fulfillment_type}</td>
-                  <td style={{ padding: "0.5rem" }}>{o.customer_name_snapshot ?? "Guest"}</td>
-                  <td style={{ padding: "0.5rem" }}>{new Date(o.placed_at).toLocaleTimeString()}</td>
-                  <td style={{ padding: "0.5rem" }}>{cents(o.final_payable_cents)}</td>
-                </tr>
-              ))}
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: "1rem" }}>No history found</td></tr>
+              ) : history.map((o) => {
+                const activeOrder = getKdsHistoryActiveOrder(o, currentOrders);
+                const phone = getKdsHistoryPhone(o, currentOrders);
+
+                return (
+                  <tr key={o.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "0.5rem" }}>#{o.order_number}</td>
+                    <td style={{ padding: "0.5rem" }}>{o.status}</td>
+                    <td style={{ padding: "0.5rem" }}>{o.fulfillment_type}</td>
+                    <td style={{ padding: "0.5rem" }}>{o.customer_name_snapshot ?? "Guest"}</td>
+                    <td style={{ padding: "0.5rem" }}>
+                      {phone ? formatKdsOrderPhone(phone) : "No Phone"}
+                    </td>
+                    <td style={{ padding: "0.5rem" }}>{new Date(o.placed_at).toLocaleTimeString()}</td>
+                    <td style={{ padding: "0.5rem" }}>{cents(o.final_payable_cents)}</td>
+                    <td style={{ padding: "0.5rem" }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ padding: "0.25rem 0.6rem", fontSize: "0.8rem" }}
+                        onClick={async () => {
+                          setViewingOrderId(o.id);
+                          setHistoryError(null);
+                          try {
+                            await onViewOrder(o);
+                          } catch (cause) {
+                            setHistoryError(
+                              cause instanceof Error
+                                ? cause.message
+                                : "Failed to load order card",
+                            );
+                          } finally {
+                            setViewingOrderId(null);
+                          }
+                        }}
+                        disabled={viewingOrderId === o.id}
+                        title={
+                          activeOrder
+                            ? "View active order card"
+                            : "Load order history card"
+                        }
+                      >
+                        {viewingOrderId === o.id ? "Loading..." : "View"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {nextCursor && (
@@ -2234,7 +2318,47 @@ export function KdsClient() {
         })}
       </div>
       {optionsOpen && (
-        <KdsOptionsModal session={sessionControls} onClose={() => setOptionsOpen(false)} />
+        <KdsOptionsModal
+          session={sessionControls}
+          currentOrders={orders}
+          onViewOrder={async (historyOrder) => {
+            const activeOrder = orders.find(
+              (order) =>
+                order.id === historyOrder.id ||
+                order.order_number === historyOrder.order_number,
+            );
+            let order = activeOrder;
+
+            if (!order) {
+              try {
+                order = await kdsJson<KdsOrder>(
+                  sessionControls,
+                  `/api/v1/kds/orders/${historyOrder.id}`,
+                  { method: "GET", locationId: DEFAULT_LOCATION_ID },
+                );
+              } catch {
+                const statusOrders = await kdsJson<KdsOrder[]>(
+                  sessionControls,
+                  `/api/v1/kds/orders?statuses=${encodeURIComponent(historyOrder.status)}`,
+                  { method: "GET", locationId: DEFAULT_LOCATION_ID },
+                );
+                order = statusOrders.find(
+                  (candidate) =>
+                    candidate.id === historyOrder.id ||
+                    candidate.order_number === historyOrder.order_number,
+                );
+              }
+            }
+
+            if (!order) {
+              throw new Error("Order card is not available for this history row");
+            }
+
+            setDetailOrder(order);
+            setOptionsOpen(false);
+          }}
+          onClose={() => setOptionsOpen(false)}
+        />
       )}
       {detailOrder && (
         <KdsOrderDetailModal order={detailOrder} session={sessionControls} onRefresh={loadOrders} onClose={() => setDetailOrder(null)} />
