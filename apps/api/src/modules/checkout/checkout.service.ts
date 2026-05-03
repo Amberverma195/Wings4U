@@ -768,6 +768,13 @@ export class CheckoutService {
         discountsReduceTaxableBase: settings.discountsReduceTaxableBase,
       };
 
+      if (params.promoCode?.trim() && params.applyWingsReward) {
+        throw new UnprocessableEntityException({
+          message: "Only one deal can be applied at a time",
+          field: "promo_code",
+        });
+      }
+
       // Wings-rewards: validate redemption server-side and compute the
       // cheapest-1lb discount. This MUST happen in-transaction so the stamp
       // balance read is consistent with the decrement we apply below — any
@@ -817,6 +824,10 @@ export class CheckoutService {
         categoryId: menuItemMap.get(line.menuItemId)?.categoryId ?? null,
         quantity: line.quantity,
         unitPriceCents: line.unitPriceCents,
+        modifierOptionIds: line.modifiers
+          .map((modifier) => modifier.modifierOptionId)
+          .filter((id): id is string => Boolean(id)),
+        builderPayload: line.builderPayload,
       }));
 
       const promoCodeIsFirstOrderDeal =
@@ -869,6 +880,7 @@ export class CheckoutService {
         deliveryFeeCents,
         fulfillmentType: params.fulfillmentType,
         existingDiscountCents: wingsRewardDiscountCents + promoDiscountCents,
+        explicitlyOptedIn: promoCodeIsFirstOrderDeal,
       });
       if (firstOrderDeal) {
         appliedPromoCodes.push(firstOrderDeal.promoCode);

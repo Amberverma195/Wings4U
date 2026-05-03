@@ -335,6 +335,13 @@ export class CartService {
       discountsReduceTaxableBase: settings.discountsReduceTaxableBase,
     };
 
+    if (promoCode?.trim() && applyWingsReward) {
+      throw new UnprocessableEntityException({
+        message: "Only one deal can be applied at a time",
+        field: "promo_code",
+      });
+    }
+
     // Wings-rewards preview: if the signed-in customer ticked "apply free
     // wings" on the cart, re-validate eligibility against their current
     // stamp balance + cart contents and fold the cheapest-1lb discount
@@ -359,11 +366,16 @@ export class CartService {
     let appliedPromoCode: string | undefined = undefined;
     const appliedPromoCodes: string[] = [];
     let promoDiscountCents = 0;
-    const promoPricingLines = lineDetails.map((line) => ({
+    const promoPricingLines = lineDetails.map((line, index) => ({
       menuItemId: line.menu_item_id,
       categoryId: menuItemMap.get(line.menu_item_id)?.categoryId ?? null,
       quantity: line.quantity,
       unitPriceCents: line.unit_price_cents,
+      modifierOptionIds:
+        items[index].modifier_selections?.map(
+          (selection) => selection.modifier_option_id,
+        ) ?? [],
+      builderPayload: items[index].builder_payload ?? null,
     }));
 
     const promoCodeIsFirstOrderDeal =
@@ -407,6 +419,7 @@ export class CartService {
       deliveryFeeCents,
       fulfillmentType,
       existingDiscountCents: wingsDiscountCents + promoDiscountCents,
+      explicitlyOptedIn: promoCodeIsFirstOrderDeal,
     });
     if (firstOrderDeal) {
       appliedPromoCodes.push(firstOrderDeal.promoCode);

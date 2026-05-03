@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import {
   FIRST_ORDER_DEAL_CODE_PREFIX,
@@ -12,6 +13,19 @@ import {
   normalizeFirstOrderDealPublicCode,
   type FirstOrderDealKind,
 } from "../promotions/first-order-deal";
+import {
+  readBxgyExtras,
+  withBxgyExtras,
+  type BxgyExtras,
+  type BxgySizeFilter,
+} from "../promotions/bxgy-rule-payload";
+
+export type CreateUpdateBxgySizeInput = {
+  kind: "weight_lb" | "modifier_option";
+  weightLb?: number | null;
+  modifierOptionId?: string | null;
+  label?: string | null;
+};
 
 export type CreateUpdatePromoPayload = {
   code: string;
@@ -23,6 +37,7 @@ export type CreateUpdatePromoPayload = {
   endsAt?: Date;
   isOneTimePerCustomer: boolean;
   isActive: boolean;
+  eligibleFulfillmentType?: "BOTH" | "PICKUP" | "DELIVERY";
   bxgyRule?: {
     qualifyingProductId?: string;
     qualifyingCategoryId?: string;
@@ -31,6 +46,10 @@ export type CreateUpdatePromoPayload = {
     rewardCategoryId?: string;
     rewardQty: number;
     rewardRule: string;
+    qualifyingSize?: CreateUpdateBxgySizeInput | null;
+    rewardSize?: CreateUpdateBxgySizeInput | null;
+    qualifyingLabel?: string | null;
+    rewardLabel?: string | null;
   };
   productTargets?: string[];
   categoryTargets?: string[];
@@ -64,6 +83,173 @@ function getFirstOrderDealPublicCode(
   return typeof payload.publicCode === "string" ? payload.publicCode : undefined;
 }
 
+type ItemForSize = {
+  builderType: string | null;
+  modifierGroups: Array<{
+    contextKey?: string | null;
+    modifierGroup?: {
+      contextKey?: string | null;
+      options?: Array<{
+        id: string;
+        name: string;
+        priceDeltaCents?: number;
+      }>;
+    };
+  }>;
+};
+
+function extractWingWeightLbFromName(name: string): number {
+  const wingsMatch = name.match(/(\d+)\s*wings/i);
+  if (wingsMatch) {
+    const wingCount = Number.parseInt(wingsMatch[1] ?? "", 10);
+    return Number.isFinite(wingCount)
+      ? Number((wingCount / 15).toFixed(2))
+      : 0;
+  }
+
+  const poundsMatch = name.match(/([\d.]+)\s*pound/i);
+  if (!poundsMatch) return 0;
+  const weight = Number.parseFloat(poundsMatch[1] ?? "");
+  return Number.isFinite(weight) ? weight : 0;
+}
+
+function getSizeContextOptions(item: ItemForSize) {
+  const sizeGroup = item.modifierGroups.find((link) => {
+    const context = link.contextKey ?? link.modifierGroup?.contextKey ?? null;
+    return context === "size";
+  });
+  return sizeGroup?.modifierGroup?.options ?? [];
+}
+
+function itemHasMultipleSizes(item: ItemForSize): boolean {
+  if (item.builderType === "WINGS" || item.builderType === "WING_COMBO") {
+    return true;
+  }
+  return getSizeContextOptions(item).length >= 2;
+}
+
+type SerializedSize =
+  | {
+      kind: "weight_lb";
+      weightLb: number;
+      label: string;
+      menuItemId: string;
+    }
+  | {
+      kind: "modifier_option";
+      modifierOptionId: string;
+      label: string;
+      priceDeltaCents: number;
+    };
+
+function collectItemSizes(
+  item: ItemForSize & { id: string; name: string },
+): SerializedSize[] {
+  if (item.builderType === "WINGS" || item.builderType === "WING_COMBO") {
+    const weightLb = extractWingWeightLbFromName(item.name) || 1;
+    return [
+      {
+        kind: "weight_lb",
+        weightLb,
+        label: `${weightLb}lb`,
+        menuItemId: item.id,
+      },
+    ];
+  }
+
+  return getSizeContextOptions(item).map((option) => ({
+    kind: "modifier_option" as const,
+    modifierOptionId: option.id,
+    label: option.name,
+    priceDeltaCents: option.priceDeltaCents ?? 0,
+  }));
+}
+
+function normalizeBxgySize(
+  input: CreateUpdateBxgySizeInput | null | undefined,
+): BxgySizeFilter | null {
+  if (!input) return null;
+
+  if (input.kind === "weight_lb") {
+    const weightLb = Number(input.weightLb);
+    if (!Number.isFinite(weightLb) || weightLb <= 0) return null;
+    return {
+      kind: "weight_lb",
+      weightLb,
+      label: input.label?.trim() || `${weightLb}lb`,
+    };
+  }
+
+  if (input.kind === "modifier_option") {
+    if (!input.modifierOptionId) return null;
+    return {
+      kind: "modifier_option",
+      modifierOptionId: input.modifierOptionId,
+      label: input.label?.trim() || "Selected size",
+    };
+  }
+
+  return null;
+}
+
+function buildBxgyExtras(
+  bxgyRule: CreateUpdatePromoPayload["bxgyRule"],
+): BxgyExtras | null {
+  if (!bxgyRule) return null;
+
+  const qualifyingSize = normalizeBxgySize(bxgyRule.qualifyingSize);
+  const rewardSize = normalizeBxgySize(bxgyRule.rewardSize);
+  const qualifyingLabel =
+    bxgyRule.qualifyingLabel?.trim() || qualifyingSize?.label || null;
+  const rewardLabel =
+    bxgyRule.rewardLabel?.trim() || rewardSize?.label || null;
+
+  if (!qualifyingSize && !rewardSize && !qualifyingLabel && !rewardLabel) {
+    return null;
+  }
+
+  return {
+    qualifyingSize,
+    rewardSize,
+    labels: {
+      qualifying: qualifyingLabel,
+      reward: rewardLabel,
+    },
+  };
+}
+
+function serializePromoForAdmin<
+  T extends {
+    rulePayloadJson: unknown;
+    bxgyRule:
+      | null
+      | {
+          qualifyingProductId: string | null;
+          qualifyingCategoryId: string | null;
+          requiredQty: number;
+          rewardProductId: string | null;
+          rewardCategoryId: string | null;
+          rewardQty: number;
+          rewardRule: string;
+          maxUsesPerOrder: number;
+        };
+  },
+>(promo: T) {
+  const extras = readBxgyExtras(promo.rulePayloadJson);
+  return {
+    ...promo,
+    bxgyRule: promo.bxgyRule
+      ? {
+          ...promo.bxgyRule,
+          qualifyingSize: extras.qualifyingSize,
+          rewardSize: extras.rewardSize,
+          qualifyingLabel: extras.labels.qualifying,
+          rewardLabel: extras.labels.reward,
+        }
+      : null,
+  };
+}
+
 @Injectable()
 export class AdminPromosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -87,11 +273,30 @@ export class AdminPromosService {
       if (data.bxgyRule.requiredQty < 1 || data.bxgyRule.rewardQty < 1) {
         throw new BadRequestException("Buy X Get Y quantities must be at least 1");
       }
+      if (
+        data.bxgyRule.qualifyingSize &&
+        !normalizeBxgySize(data.bxgyRule.qualifyingSize)
+      ) {
+        throw new BadRequestException("Choose a valid qualifying size");
+      }
+      if (
+        data.bxgyRule.rewardSize &&
+        !normalizeBxgySize(data.bxgyRule.rewardSize)
+      ) {
+        throw new BadRequestException("Choose a valid reward size");
+      }
     }
   }
 
+  private resolveEligibleFulfillmentType(
+    data: CreateUpdatePromoPayload,
+  ): "BOTH" | "PICKUP" | "DELIVERY" {
+    if (data.discountType === "FREE_DELIVERY") return "DELIVERY";
+    return data.eligibleFulfillmentType ?? "BOTH";
+  }
+
   async listPromos(locationId: string) {
-    return this.prisma.promoCode.findMany({
+    const promos = await this.prisma.promoCode.findMany({
       where: {
         locationId,
         archivedAt: null,
@@ -107,6 +312,7 @@ export class AdminPromosService {
         },
       },
     });
+    return promos.map((promo) => serializePromoForAdmin(promo));
   }
 
   async getPromo(locationId: string, id: string) {
@@ -124,7 +330,7 @@ export class AdminPromosService {
       },
     });
     if (!promo) throw new NotFoundException("Promo code not found");
-    return promo;
+    return serializePromoForAdmin(promo);
   }
 
   async createPromo(locationId: string, data: CreateUpdatePromoPayload) {
@@ -138,6 +344,14 @@ export class AdminPromosService {
       throw new BadRequestException("Promo code already exists");
     }
 
+    const eligibleFulfillmentType = this.resolveEligibleFulfillmentType(data);
+    const bxgyExtras =
+      data.discountType === "BXGY" ? buildBxgyExtras(data.bxgyRule) : null;
+    const rulePayloadJson = withBxgyExtras(
+      {},
+      bxgyExtras,
+    ) as Prisma.InputJsonValue;
+
     return this.prisma.$transaction(async (tx) => {
       const promo = await tx.promoCode.create({
         data: {
@@ -150,6 +364,8 @@ export class AdminPromosService {
           endsAt: data.endsAt,
           isOneTimePerCustomer: data.isOneTimePerCustomer,
           isActive: data.isActive,
+          eligibleFulfillmentType,
+          rulePayloadJson,
           locationId,
           scopeType: "LOCATION_SCOPED",
         },
@@ -217,6 +433,14 @@ export class AdminPromosService {
       throw new BadRequestException("Promo code already exists");
     }
 
+    const eligibleFulfillmentType = this.resolveEligibleFulfillmentType(data);
+    const bxgyExtras =
+      data.discountType === "BXGY" ? buildBxgyExtras(data.bxgyRule) : null;
+    const rulePayloadJson = withBxgyExtras(
+      promo.rulePayloadJson,
+      bxgyExtras,
+    ) as Prisma.InputJsonValue;
+
     return this.prisma.$transaction(async (tx) => {
       if (data.isActive && !promo.isActive) {
         // Re-activating: reset usage so every customer can use it again.
@@ -237,6 +461,8 @@ export class AdminPromosService {
           endsAt: data.endsAt,
           isOneTimePerCustomer: data.isOneTimePerCustomer,
           isActive: data.isActive,
+          eligibleFulfillmentType,
+          rulePayloadJson,
           scopeType: "LOCATION_SCOPED",
           usageCount: data.isActive && !promo.isActive ? 0 : undefined,
         },
@@ -291,6 +517,129 @@ export class AdminPromosService {
       },
       data: { archivedAt: new Date(), isActive: false },
     });
+  }
+
+  async listTargetCategories(locationId: string) {
+    const categories = await this.prisma.menuCategory.findMany({
+      where: { locationId, archivedAt: null, isActive: true },
+      orderBy: { sortOrder: "asc" },
+      include: {
+        menuItems: {
+          where: {
+            archivedAt: null,
+            isAvailable: true,
+            isHidden: false,
+          },
+          select: {
+            id: true,
+            builderType: true,
+            modifierGroups: {
+              select: {
+                contextKey: true,
+                modifierGroup: {
+                  select: {
+                    contextKey: true,
+                    options: {
+                      where: { isActive: true },
+                      select: {
+                        id: true,
+                        name: true,
+                        priceDeltaCents: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return categories
+      .filter((category) => category.menuItems.length > 0)
+      .map((category) => ({
+        id: category.id,
+        name: category.name,
+        itemCount: category.menuItems.length,
+        hasMultiSizeItems: category.menuItems.some((item) =>
+          itemHasMultipleSizes(item),
+        ),
+      }));
+  }
+
+  async listTargetCategoryItems(locationId: string, categoryId: string) {
+    const category = await this.prisma.menuCategory.findFirst({
+      where: { id: categoryId, locationId, archivedAt: null, isActive: true },
+      select: { id: true },
+    });
+    if (!category) throw new NotFoundException("Menu category not found");
+
+    const items = await this.prisma.menuItem.findMany({
+      where: {
+        locationId,
+        categoryId,
+        archivedAt: null,
+        isAvailable: true,
+        isHidden: false,
+      },
+      orderBy: [{ name: "asc" }],
+      include: {
+        modifierGroups: {
+          include: {
+            modifierGroup: {
+              include: {
+                options: {
+                  where: { isActive: true },
+                  orderBy: { sortOrder: "asc" },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      builderType: item.builderType,
+      sizes: collectItemSizes(item),
+    }));
+  }
+
+  async listTargetItemSizes(locationId: string, itemId: string) {
+    const item = await this.prisma.menuItem.findFirst({
+      where: {
+        id: itemId,
+        locationId,
+        archivedAt: null,
+        isAvailable: true,
+        isHidden: false,
+      },
+      include: {
+        modifierGroups: {
+          include: {
+            modifierGroup: {
+              include: {
+                options: {
+                  where: { isActive: true },
+                  orderBy: { sortOrder: "asc" },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!item) throw new NotFoundException("Menu item not found");
+
+    return {
+      id: item.id,
+      name: item.name,
+      builderType: item.builderType,
+      sizes: collectItemSizes(item),
+    };
   }
 
   async getFirstOrderDeal(locationId: string) {

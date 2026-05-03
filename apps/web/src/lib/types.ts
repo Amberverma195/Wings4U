@@ -273,6 +273,19 @@ export type WingsRewardPreview = {
     | "NO_WINGS_IN_CART";
 };
 
+export type ActivePromoBxgySize =
+  | {
+      kind: "weight_lb";
+      weightLb: number;
+      label: string;
+    }
+  | {
+      kind: "modifier_option";
+      modifierOptionId: string;
+      label: string;
+    }
+  | null;
+
 export type ActivePromo = {
   id: string;
   code: string;
@@ -297,6 +310,10 @@ export type ActivePromo = {
         rewardQty: number;
         rewardRule: string;
         maxUsesPerOrder: number;
+        qualifyingSize?: ActivePromoBxgySize;
+        rewardSize?: ActivePromoBxgySize;
+        qualifyingLabel?: string | null;
+        rewardLabel?: string | null;
       };
 };
 

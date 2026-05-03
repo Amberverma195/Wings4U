@@ -25,6 +25,23 @@ import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { AdminPromosService } from "./admin-promos.service";
 
+class BxgySizeFilterDto {
+  @IsIn(["weight_lb", "modifier_option"])
+  kind!: "weight_lb" | "modifier_option";
+
+  @IsOptional()
+  @IsNumber()
+  weightLb?: number;
+
+  @IsOptional()
+  @IsString()
+  modifierOptionId?: string;
+
+  @IsOptional()
+  @IsString()
+  label?: string;
+}
+
 class BxgyRuleDto {
   @IsOptional()
   @IsString()
@@ -50,6 +67,24 @@ class BxgyRuleDto {
 
   @IsString()
   rewardRule!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BxgySizeFilterDto)
+  qualifyingSize?: BxgySizeFilterDto | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BxgySizeFilterDto)
+  rewardSize?: BxgySizeFilterDto | null;
+
+  @IsOptional()
+  @IsString()
+  qualifyingLabel?: string | null;
+
+  @IsOptional()
+  @IsString()
+  rewardLabel?: string | null;
 }
 
 class CreateUpdatePromoDto {
@@ -79,6 +114,10 @@ class CreateUpdatePromoDto {
 
   @IsBoolean()
   isActive!: boolean;
+
+  @IsOptional()
+  @IsIn(["BOTH", "PICKUP", "DELIVERY"])
+  eligibleFulfillmentType?: "BOTH" | "PICKUP" | "DELIVERY";
 
   @IsOptional()
   @ValidateNested()
@@ -138,6 +177,27 @@ export class AdminPromosController {
   @Get()
   async listPromos(@Req() req: Request) {
     return this.adminPromosService.listPromos(req.locationId!);
+  }
+
+  @Get("targets/categories")
+  async listTargetCategories(@Req() req: Request) {
+    return this.adminPromosService.listTargetCategories(req.locationId!);
+  }
+
+  @Get("targets/categories/:id/items")
+  async listTargetCategoryItems(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.adminPromosService.listTargetCategoryItems(req.locationId!, id);
+  }
+
+  @Get("targets/items/:id/sizes")
+  async listTargetItemSizes(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.adminPromosService.listTargetItemSizes(req.locationId!, id);
   }
 
   @Get(":id")

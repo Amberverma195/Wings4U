@@ -100,6 +100,7 @@ export function CheckoutClient() {
     const rawPromo = window.sessionStorage.getItem("wings4u.promo-applied");
     if (rawPromo) {
       setPromoApplied(rawPromo);
+      setApplyWingsReward(false);
     }
   }, []);
   const [contactlessPref, setContactlessPref] = useState("");
@@ -216,7 +217,8 @@ export function CheckoutClient() {
             })),
             scheduled_for: cart.scheduledFor ?? undefined,
             driver_tip_cents: tipCents,
-            apply_wings_reward: applyWingsReward ? true : undefined,
+            apply_wings_reward:
+              applyWingsReward && !promoApplied ? true : undefined,
             promo_code: promoApplied,
           }),
           locationId: cart.locationId,
@@ -297,7 +299,7 @@ export function CheckoutClient() {
     if (contactlessPref) payload.contactless_pref = contactlessPref;
     if (cart.scheduledFor) payload.scheduled_for = cart.scheduledFor;
     if (tipCents > 0) payload.driver_tip_cents = tipCents;
-    if (applyWingsReward) payload.apply_wings_reward = true;
+    if (applyWingsReward && !promoApplied) payload.apply_wings_reward = true;
     if (promoApplied) payload.promo_code = promoApplied;
 
     if (cart.fulfillmentType === "DELIVERY") {

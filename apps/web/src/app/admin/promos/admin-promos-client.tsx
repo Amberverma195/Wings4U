@@ -18,11 +18,42 @@ export type PromoCode = {
   endsAt: string | null;
   isOneTimePerCustomer: boolean;
   isActive: boolean;
+  eligibleFulfillmentType: "BOTH" | "PICKUP" | "DELIVERY" | string;
   bxgyRule?: any;
   productTargets: { menuItemId: string }[];
   categoryTargets: { menuCategoryId: string }[];
   redemptions?: { id: string }[];
 };
+
+function formatPromoType(promo: PromoCode): string {
+  if (promo.discountType === "PERCENT") return `${promo.discountValue}% Off`;
+  if (promo.discountType === "FIXED_AMOUNT") {
+    return `$${(promo.discountValue / 100).toFixed(2)} Off`;
+  }
+  if (promo.discountType === "FREE_DELIVERY") return "Free Delivery";
+
+  const rule = promo.bxgyRule;
+  if (!rule) return "Buy X Get Y";
+  const qualifying =
+    rule.qualifyingLabel ||
+    rule.qualifyingSize?.label ||
+    (rule.qualifyingProductId || rule.qualifyingCategoryId
+      ? "Selected items"
+      : "Any item");
+  const reward =
+    rule.rewardLabel ||
+    rule.rewardSize?.label ||
+    (rule.rewardProductId || rule.rewardCategoryId
+      ? "Selected items"
+      : "Any item");
+  return `Buy ${rule.requiredQty} ${qualifying} / Get ${rule.rewardQty} ${reward}`;
+}
+
+function formatRedeemType(value: PromoCode["eligibleFulfillmentType"]): string {
+  if (value === "PICKUP") return "Pickup";
+  if (value === "DELIVERY") return "Delivery";
+  return "Both";
+}
 
 type FirstOrderDeal = {
   couponCode: string;
@@ -154,7 +185,7 @@ export function AdminPromosClient() {
               <div>
                 <h3>First-order deal</h3>
                 <p className="surface-muted" style={{ margin: "0.55rem 0 0" }}>
-                  Automatically applies to signed-in customers with zero non-cancelled orders.
+                  Shows to signed-in customers with zero non-cancelled orders.
                 </p>
               </div>
               <label className={styles.checkbox} style={{ marginTop: "0.15rem" }}>
@@ -323,6 +354,7 @@ export function AdminPromosClient() {
                     <th>Code</th>
                     <th>Name</th>
                     <th>Type</th>
+                    <th>Redeem</th>
                     <th>Status</th>
                     <th>Usage</th>
                     <th>Actions</th>
@@ -333,12 +365,8 @@ export function AdminPromosClient() {
                     <tr key={promo.id}>
                       <td style={{ fontWeight: 600 }}>{promo.code}</td>
                       <td>{promo.name}</td>
-                      <td>
-                        {promo.discountType === "PERCENT" && `${promo.discountValue}% Off`}
-                        {promo.discountType === "FIXED_AMOUNT" && `$${(promo.discountValue / 100).toFixed(2)} Off`}
-                        {promo.discountType === "FREE_DELIVERY" && `Free Delivery`}
-                        {promo.discountType === "BXGY" && `Buy X Get Y`}
-                      </td>
+                      <td>{formatPromoType(promo)}</td>
+                      <td>{formatRedeemType(promo.eligibleFulfillmentType)}</td>
                       <td>
                         <span
                           style={{

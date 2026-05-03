@@ -77,6 +77,26 @@ function formatEntryType(entryType: string) {
     .join(" ");
 }
 
+function formatBxgyPromoDetails(promo: ActivePromo): string | null {
+  const rule = promo.bxgyRule;
+  if (!rule) return null;
+
+  const qualifying =
+    rule.qualifyingLabel ||
+    rule.qualifyingSize?.label ||
+    (rule.qualifyingProductId || rule.qualifyingCategoryId
+      ? "Selected items"
+      : "Any item");
+  const reward =
+    rule.rewardLabel ||
+    rule.rewardSize?.label ||
+    (rule.rewardProductId || rule.rewardCategoryId
+      ? "Selected items"
+      : "Any item");
+
+  return `Buy ${rule.requiredQty}: ${qualifying} -> Get ${rule.rewardQty}: ${reward}`;
+}
+
 function getInitials(name?: string | null) {
   if (!name) return "W4U";
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -479,7 +499,19 @@ export default function ProfilePage() {
                     </div>
                   ) : (
                     <ul className={styles.stampHistoryList}>
-                      {promos.map((promo) => (
+                      {promos.map((promo) => {
+                        const bxgyDetails =
+                          promo.discountType === "BXGY"
+                            ? formatBxgyPromoDetails(promo)
+                            : null;
+                        const redeemType =
+                          promo.eligibleFulfillmentType === "PICKUP"
+                            ? "Pickup only"
+                            : promo.eligibleFulfillmentType === "DELIVERY"
+                              ? "Delivery only"
+                              : null;
+
+                        return (
                         <li key={promo.id} className={styles.stampHistoryItem}>
                           <div className={`${styles.stampHistoryIcon} ${styles.stampHistoryIconEarn}`} aria-hidden>
                             🏷️
@@ -497,6 +529,16 @@ export default function ProfilePage() {
                                 Ends: {new Date(promo.endsAt).toLocaleDateString()}
                               </span>
                             )}
+                            {bxgyDetails ? (
+                              <span className={styles.stampHistoryReason} style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                                {bxgyDetails}
+                              </span>
+                            ) : null}
+                            {redeemType ? (
+                              <span className={styles.stampHistoryReason} style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                                {redeemType}
+                              </span>
+                            ) : null}
                           </div>
                           <div className={styles.stampHistoryDelta}>
                             <strong className={styles.stampHistoryDeltaEarn} style={{ fontSize: "1.15rem" }}>
@@ -510,7 +552,7 @@ export default function ProfilePage() {
                                 `FREE DELIVERY`}
                               {!promo.benefitSummary &&
                                 promo.discountType === "BXGY" &&
-                                `BOGO`}
+                                (bxgyDetails ? "BXGY" : `BOGO`)}
                             </strong>
                             <button
                               type="button"
@@ -529,7 +571,8 @@ export default function ProfilePage() {
                             </button>
                           </div>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   )}
                 </div>

@@ -38,6 +38,35 @@ function isBuilderLine(payload?: CartBuilderPayload): boolean {
   );
 }
 
+function formatBxgyDetails(promo: ActivePromo): {
+  summary: string;
+  scopeLine: string | null;
+} {
+  const rule = promo.bxgyRule;
+  if (!rule) return { summary: "Buy X Get Y", scopeLine: null };
+
+  const summary = `Buy ${rule.requiredQty} Get ${rule.rewardQty} ${
+    rule.rewardRule === "FREE" ? "Free" : rule.rewardRule
+  }`;
+  const qualifying =
+    rule.qualifyingLabel ||
+    rule.qualifyingSize?.label ||
+    (rule.qualifyingProductId || rule.qualifyingCategoryId
+      ? "Selected items"
+      : "Any item");
+  const reward =
+    rule.rewardLabel ||
+    rule.rewardSize?.label ||
+    (rule.rewardProductId || rule.rewardCategoryId
+      ? "Selected items"
+      : "Any item");
+
+  return {
+    summary,
+    scopeLine: `Buy: ${qualifying} -> Reward: ${reward}`,
+  };
+}
+
 function cartLinePlaceholder(item: CartItem): string {
   if (
     item.builder_payload?.builder_type === "WINGS" ||
@@ -120,6 +149,7 @@ export function CartPage() {
     if (rawPromo) {
       setPromoApplied(rawPromo);
       setPromoInput(rawPromo);
+      setApplyWingsReward(false);
     }
   }, []);
 
@@ -273,7 +303,8 @@ export function CartPage() {
           scheduled_for: cart.scheduledFor ?? undefined,
           promo_code: promoApplied.trim() || undefined,
           driver_tip_cents: tipCents,
-          apply_wings_reward: applyWingsReward ? true : undefined,
+          apply_wings_reward:
+            applyWingsReward && !promoApplied.trim() ? true : undefined,
         }),
         locationId: cart.locationId,
       });
@@ -605,7 +636,12 @@ export function CartPage() {
                     type="button"
                     className="cart-promo-apply-btn"
                     style={styles.cartPromoApplyBtn}
-                    onClick={() => setPromoApplied(promoInput.trim())}
+                    onClick={() => {
+                      const trimmed = promoInput.trim();
+                      if (!trimmed) return;
+                      setApplyWingsReward(false);
+                      setPromoApplied(trimmed);
+                    }}
                   >
                     Apply
                   </button>
@@ -788,7 +824,8 @@ export function CartPage() {
                           scheduled_for: cart.scheduledFor ?? undefined,
                           promo_code: promoApplied.trim() || undefined,
                           driver_tip_cents: tipCents,
-                          apply_wings_reward: applyWingsReward ? true : undefined,
+                          apply_wings_reward:
+                            applyWingsReward && !promoApplied.trim() ? true : undefined,
                         }),
                         locationId: cart.locationId,
                       });
@@ -858,6 +895,8 @@ export function CartPage() {
                 disabled={applyWingsReward}
                 onClick={() => {
                   setApplyWingsReward(true);
+                  setPromoInput("");
+                  setPromoApplied("");
                   setCouponsModalOpen(false);
                 }}
                 style={{
@@ -888,6 +927,14 @@ export function CartPage() {
             {activePromos.map((promo) => {
               const isApplied = confirmedPromoCodes.has(promo.code.toUpperCase());
               const isAutomatic = Boolean(promo.autoApply);
+              const bxgyDetails =
+                promo.discountType === "BXGY" ? formatBxgyDetails(promo) : null;
+              const redeemTypeLabel =
+                promo.eligibleFulfillmentType === "PICKUP"
+                  ? "Pickup only"
+                  : promo.eligibleFulfillmentType === "DELIVERY"
+                    ? "Delivery only"
+                    : null;
               return (
                 <button
                   key={promo.id}
@@ -895,6 +942,7 @@ export function CartPage() {
                   disabled={isApplied || isAutomatic}
                   onClick={() => {
                     if (isAutomatic) return;
+                    setApplyWingsReward(false);
                     setPromoInput(promo.code);
                     setPromoApplied(promo.code);
                     setCouponsModalOpen(false);
@@ -920,9 +968,17 @@ export function CartPage() {
                         `FREE DELIVERY`}
                       {!promo.benefitSummary &&
                         promo.discountType === "BXGY" &&
-                        `Buy X Get Y`}
+                        (bxgyDetails?.summary ?? `Buy X Get Y`)}
                       {promo.minSubtotalCents > 0 && ` (Min $${(promo.minSubtotalCents / 100).toFixed(2)})`}
                     </span>
+                    {bxgyDetails?.scopeLine ? (
+                      <span style={styles.couponCardMeta}>
+                        {bxgyDetails.scopeLine}
+                      </span>
+                    ) : null}
+                    {redeemTypeLabel ? (
+                      <span style={styles.couponCardMeta}>{redeemTypeLabel}</span>
+                    ) : null}
                   </div>
                   {isAutomatic ? (
                     <div style={styles.couponCardAction}>Auto</div>

@@ -9,6 +9,10 @@ import {
   isFirstOrderDealCode,
   normalizeFirstOrderDealPublicCode,
 } from "./first-order-deal";
+import {
+  readBxgyExtras,
+  type BxgySizeFilter,
+} from "./bxgy-rule-payload";
 
 type DbClient = Prisma.TransactionClient | PrismaClient | PrismaService;
 
@@ -17,6 +21,8 @@ export type PromoPricingLine = {
   categoryId: string | null;
   quantity: number;
   unitPriceCents: number;
+  modifierOptionIds?: string[];
+  builderPayload?: Record<string, unknown> | null;
 };
 
 export type EvaluatedPromo = {
@@ -81,6 +87,7 @@ function buildActivePromoWhere(now: Date): Prisma.PromoCodeWhereInput {
 }
 
 function serializePromo(promo: PromoWithRelations) {
+  const extras = readBxgyExtras(promo.rulePayloadJson);
   return {
     id: promo.id,
     code: promo.code,
@@ -102,6 +109,10 @@ function serializePromo(promo: PromoWithRelations) {
           rewardQty: promo.bxgyRule.rewardQty,
           rewardRule: promo.bxgyRule.rewardRule,
           maxUsesPerOrder: promo.bxgyRule.maxUsesPerOrder,
+          qualifyingSize: extras.qualifyingSize,
+          rewardSize: extras.rewardSize,
+          qualifyingLabel: extras.labels.qualifying,
+          rewardLabel: extras.labels.reward,
         }
       : null,
   };
@@ -152,7 +163,7 @@ function serializeFirstOrderDealPromo(
     isOneTimePerCustomer: true,
     eligibleFulfillmentType: "BOTH",
     bxgyRule: null,
-    autoApply: true,
+    autoApply: false,
     benefitSummary: benefitParts.join(" + "),
   };
 }
@@ -167,12 +178,40 @@ function lineMatchesTarget(
   return true;
 }
 
+function lineMatchesSizeFilter(
+  line: PromoPricingLine,
+  filter: BxgySizeFilter | null,
+): boolean {
+  if (!filter) return true;
+
+  if (filter.kind === "weight_lb") {
+    const builder = line.builderPayload;
+    if (!builder) return false;
+    const builderType = builder.builder_type;
+    if (builderType !== "WINGS" && builderType !== "WING_COMBO") {
+      return false;
+    }
+
+    const rawWeight = builder.weight_lb;
+    const weightLb =
+      typeof rawWeight === "number"
+        ? rawWeight
+        : typeof rawWeight === "string"
+          ? Number.parseFloat(rawWeight)
+          : NaN;
+    return Number.isFinite(weightLb) && Math.abs(weightLb - filter.weightLb) < 0.01;
+  }
+
+  return (line.modifierOptionIds ?? []).includes(filter.modifierOptionId);
+}
+
 function computeBxgyDiscountCents(
   promo: PromoWithRelations,
   lines: PromoPricingLine[],
 ): number {
   const rule = promo.bxgyRule;
   if (!rule) return 0;
+  const extras = readBxgyExtras(promo.rulePayloadJson);
 
   const requiredQty = Math.max(1, rule.requiredQty);
   const rewardQty = Math.max(1, rule.rewardQty);
@@ -184,16 +223,18 @@ function computeBxgyDiscountCents(
     [];
 
   for (const line of lines) {
-    const isQualifying = lineMatchesTarget(
-      line,
-      rule.qualifyingProductId,
-      rule.qualifyingCategoryId,
-    );
-    const isReward = lineMatchesTarget(
-      line,
-      rule.rewardProductId,
-      rule.rewardCategoryId,
-    );
+    const isQualifying =
+      lineMatchesTarget(
+        line,
+        rule.qualifyingProductId,
+        rule.qualifyingCategoryId,
+      ) && lineMatchesSizeFilter(line, extras.qualifyingSize);
+    const isReward =
+      lineMatchesTarget(
+        line,
+        rule.rewardProductId,
+        rule.rewardCategoryId,
+      ) && lineMatchesSizeFilter(line, extras.rewardSize);
 
     if (isQualifying) {
       totalQualifyingUnits += line.quantity;
@@ -525,8 +566,13 @@ export class PromotionsService {
     deliveryFeeCents: number;
     fulfillmentType: "PICKUP" | "DELIVERY";
     existingDiscountCents?: number;
+    explicitlyOptedIn?: boolean;
   }): Promise<EvaluatedFirstOrderDeal | null> {
     const client = params.client ?? this.prisma;
+    if (!params.explicitlyOptedIn) {
+      return null;
+    }
+
     const isFirstOrderCustomer = await this.isFirstOrderCustomer({
       client,
       userId: params.userId,
