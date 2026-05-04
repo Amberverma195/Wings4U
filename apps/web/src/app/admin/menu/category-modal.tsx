@@ -18,7 +18,34 @@ type FormState = {
   name: string;
   sort_order: number;
   is_active: boolean;
+  available_from_minutes: string;
+  available_until_minutes: string;
 };
+
+function minutesToTimeInput(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  const minutes = Math.max(0, Math.min(1439, Math.floor(value)));
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function timeInputToMinutes(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const [hourText, minuteText] = trimmed.split(":");
+  const hour = Number.parseInt(hourText ?? "", 10);
+  const minute = Number.parseInt(minuteText ?? "", 10);
+  if (
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+  return hour * 60 + minute;
+}
 
 export function CategoryModal({
   categoryId,
@@ -34,6 +61,8 @@ export function CategoryModal({
     name: existing?.name ?? "",
     sort_order: existing?.sortOrder ?? categories.length,
     is_active: existing?.isActive ?? true,
+    available_from_minutes: minutesToTimeInput(existing?.availableFromMinutes),
+    available_until_minutes: minutesToTimeInput(existing?.availableUntilMinutes),
   });
 
   const [saving, setSaving] = useState(false);
@@ -48,15 +77,29 @@ export function CategoryModal({
     setError(null);
 
     try {
+      const from = form.available_from_minutes.trim();
+      const until = form.available_until_minutes.trim();
+      if ((from === "") !== (until === "")) {
+        throw new Error(
+          "Set both category availability start and end times, or leave both blank.",
+        );
+      }
+      const payload = {
+        name: form.name,
+        sort_order: form.sort_order,
+        is_active: form.is_active,
+        available_from_minutes: timeInputToMinutes(form.available_from_minutes),
+        available_until_minutes: timeInputToMinutes(form.available_until_minutes),
+      };
       if (isEdit) {
         await adminFetch(`${ADMIN_MENU_API_BASE}/categories/${categoryId}`, {
           method: "PUT",
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
       } else {
         await adminFetch(`${ADMIN_MENU_API_BASE}/categories`, {
           method: "POST",
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
       }
       onSaved();
@@ -148,6 +191,43 @@ export function CategoryModal({
             />
             Active (visible on customer menu)
           </label>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "0.75rem",
+            }}
+          >
+            <div className={styles.formGroup}>
+              <label>Available from</label>
+              <input
+                type="time"
+                step="60"
+                className={styles.formInput}
+                value={form.available_from_minutes}
+                onChange={(e) =>
+                  setForm({ ...form, available_from_minutes: e.target.value })
+                }
+              />
+            </div>
+            <div className={styles.formGroup}>
+              <label>Available until</label>
+              <input
+                type="time"
+                step="60"
+                className={styles.formInput}
+                value={form.available_until_minutes}
+                onChange={(e) =>
+                  setForm({ ...form, available_until_minutes: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <p className="surface-muted" style={{ margin: "0 0 1rem", fontSize: "0.8rem" }}>
+            Leave both blank to keep this category available all day.
+          </p>
 
           <div className={styles.modalFooter}>
             {isEdit && (

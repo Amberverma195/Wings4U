@@ -18,7 +18,12 @@ export type ValidationMenuItem = {
   archivedAt: Date | null;
   allowedFulfillmentType: string;
   requiresSpecialInstructions: boolean;
-  category?: { slug?: string | null } | null;
+  category?: {
+    name?: string | null;
+    slug?: string | null;
+    availableFromMinutes?: number | null;
+    availableUntilMinutes?: number | null;
+  } | null;
   schedules: Array<{ dayOfWeek: number; timeFrom: Date; timeTo: Date }>;
   modifierGroups: Array<{ modifierGroupId: string }>;
 };
@@ -55,6 +60,33 @@ function minutesFromTime(value: Date): number {
   return value.getUTCHours() * 60 + value.getUTCMinutes();
 }
 
+function isWithinMinuteWindow(params: {
+  nowMinutes: number;
+  fromMinutes: number;
+  untilMinutes: number;
+}): boolean {
+  const { nowMinutes, fromMinutes, untilMinutes } = params;
+  if (fromMinutes === untilMinutes) return true;
+  if (fromMinutes < untilMinutes) {
+    return nowMinutes >= fromMinutes && nowMinutes < untilMinutes;
+  }
+  return nowMinutes >= fromMinutes || nowMinutes < untilMinutes;
+}
+
+export function isMenuCategoryScheduledAt(
+  category: ValidationMenuItem["category"],
+  context: ScheduleContext,
+): boolean {
+  const from = category?.availableFromMinutes;
+  const until = category?.availableUntilMinutes;
+  if (from == null || until == null) return true;
+  return isWithinMinuteWindow({
+    nowMinutes: context.hhmm,
+    fromMinutes: from,
+    untilMinutes: until,
+  });
+}
+
 export function isMenuItemScheduledAt(
   item: ValidationMenuItem,
   context: ScheduleContext,
@@ -75,7 +107,12 @@ export function collectScheduleViolation(
   scheduleViolationIds: string[],
   lunchScheduleViolationIds: string[],
 ) {
-  if (isMenuItemScheduledAt(item, context)) return;
+  if (
+    isMenuCategoryScheduledAt(item.category, context) &&
+    isMenuItemScheduledAt(item, context)
+  ) {
+    return;
+  }
   scheduleViolationIds.push(item.id);
   if (isLunchSpecialMenuItem(item)) {
     lunchScheduleViolationIds.push(item.id);

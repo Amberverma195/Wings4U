@@ -369,7 +369,13 @@ export class CheckoutService {
         categoryIds.length > 0
           ? await tx.menuCategory.findMany({
               where: { id: { in: categoryIds } },
-              select: { id: true, name: true, slug: true },
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                availableFromMinutes: true,
+                availableUntilMinutes: true,
+              },
             })
           : [];
       const modifierGroups =

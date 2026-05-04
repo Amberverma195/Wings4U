@@ -4,6 +4,8 @@ export type Category = {
   slug: string;
   sortOrder: number;
   isActive: boolean;
+  availableFromMinutes: number | null;
+  availableUntilMinutes: number | null;
   _count: { menuItems: number };
 };
 

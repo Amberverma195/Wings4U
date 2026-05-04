@@ -352,6 +352,8 @@ model MenuCategory {
   slug                 String
   sortOrder            Int                       @default(0) @map("sort_order")
   isActive             Boolean                   @default(true) @map("is_active")
+  availableFromMinutes Int?                      @map("available_from_minutes")
+  availableUntilMinutes Int?                     @map("available_until_minutes")
   archivedAt           DateTime?                 @map("archived_at") @db.Timestamptz(6)
   createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

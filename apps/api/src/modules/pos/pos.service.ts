@@ -21,8 +21,11 @@ import {
   assertMenuItemOrderable,
   assertModifierOptionAllowedForItem,
   assertWingFlavoursOrderable,
+  collectScheduleViolation,
   collectWingFlavourRefs,
+  getScheduleContext,
   loadWingFlavourMapForRefs,
+  throwScheduleViolations,
   type ValidationMenuItem,
 } from "../shared/order-validation";
 
@@ -40,7 +43,12 @@ function menuItemRowToValidationPayload(row: {
   archivedAt: Date | null;
   allowedFulfillmentType: string;
   requiresSpecialInstructions: boolean;
-  category: { slug: string } | null;
+  category: {
+    name: string;
+    slug: string;
+    availableFromMinutes: number | null;
+    availableUntilMinutes: number | null;
+  } | null;
   schedules: Array<{ dayOfWeek: number; timeFrom: Date; timeTo: Date }>;
   modifierGroups: Array<{ modifierGroupId: string }>;
 }): ValidationMenuItem {
@@ -52,7 +60,14 @@ function menuItemRowToValidationPayload(row: {
     archivedAt: row.archivedAt,
     allowedFulfillmentType: row.allowedFulfillmentType,
     requiresSpecialInstructions: row.requiresSpecialInstructions,
-    category: row.category ? { slug: row.category.slug } : null,
+    category: row.category
+      ? {
+          name: row.category.name,
+          slug: row.category.slug,
+          availableFromMinutes: row.category.availableFromMinutes,
+          availableUntilMinutes: row.category.availableUntilMinutes,
+        }
+      : null,
     schedules: row.schedules,
     modifierGroups: row.modifierGroups,
   };
@@ -388,6 +403,10 @@ export class PosService {
           collectWingFlavourRefs(item.builderPayload),
         ),
       });
+      const timezone = location.timezoneName ?? "America/Toronto";
+      const scheduleContext = getScheduleContext(new Date(), timezone);
+      const scheduleViolationIds: string[] = [];
+      const lunchScheduleViolationIds: string[] = [];
 
       // 4. Build line items + pricing
       let itemSubtotalCents = 0;
@@ -427,6 +446,12 @@ export class PosService {
             fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
             specialInstructions: cartItem.specialInstructions,
           });
+          collectScheduleViolation(
+            menuItemRowToValidationPayload(menuItem),
+            scheduleContext,
+            scheduleViolationIds,
+            lunchScheduleViolationIds,
+          );
         }
         assertWingFlavoursOrderable({
           builderPayload: cartItem.builderPayload,
@@ -472,6 +497,12 @@ export class PosService {
             fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
             label: "Salad",
           });
+          collectScheduleViolation(
+            menuItemRowToValidationPayload(saladMenuItem),
+            scheduleContext,
+            scheduleViolationIds,
+            lunchScheduleViolationIds,
+          );
 
           const allowedSaladIngredientMap = new Map<
             string,
@@ -614,6 +645,12 @@ export class PosService {
           modifiers,
         });
       }
+
+      throwScheduleViolations({
+        scheduleViolationIds,
+        lunchScheduleViolationIds,
+        timezone,
+      });
 
       // 5. Compute tax
       const orderDiscountCents = Math.min(

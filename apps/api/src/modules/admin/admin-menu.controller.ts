@@ -131,6 +131,18 @@ class CreateUpdateCategoryDto {
 
   @IsBoolean()
   is_active!: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  available_from_minutes?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  available_until_minutes?: number | null;
 }
 
 // ── Controller ──

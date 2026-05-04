@@ -136,6 +136,38 @@ function isItemAvailableAt(
   });
 }
 
+function isWithinMinuteWindow(params: {
+  nowMinutes: number;
+  fromMinutes: number;
+  untilMinutes: number;
+}): boolean {
+  const { nowMinutes, fromMinutes, untilMinutes } = params;
+  if (fromMinutes === untilMinutes) return true;
+  if (fromMinutes < untilMinutes) {
+    return nowMinutes >= fromMinutes && nowMinutes < untilMinutes;
+  }
+  return nowMinutes >= fromMinutes || nowMinutes < untilMinutes;
+}
+
+function isCategoryAvailableAt(
+  category: LocationCatalogPayload["menuCategories"][number],
+  locationTz: string,
+  referenceDate: Date,
+): boolean {
+  if (
+    category.availableFromMinutes == null ||
+    category.availableUntilMinutes == null
+  ) {
+    return true;
+  }
+  const local = getLocationLocalDate(referenceDate, locationTz);
+  return isWithinMinuteWindow({
+    nowMinutes: local.getHours() * 60 + local.getMinutes(),
+    fromMinutes: category.availableFromMinutes,
+    untilMinutes: category.availableUntilMinutes,
+  });
+}
+
 function serializeSchedules(item: CatalogItem) {
   if (!item.schedules.length) return null;
   return item.schedules.map((schedule) => {
@@ -373,6 +405,9 @@ export class CatalogService {
     );
 
     const categories = location.menuCategories
+      .filter((category) =>
+        isCategoryAvailableAt(category, timezone, scheduleReference),
+      )
       .map((category) => {
         const availableItems = category.menuItems.filter((item) =>
           isItemAvailableAt(item, timezone, scheduleReference),

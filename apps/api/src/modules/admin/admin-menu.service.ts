@@ -36,6 +36,8 @@ export type CreateUpdateCategoryPayload = {
   name: string;
   sort_order: number;
   is_active: boolean;
+  available_from_minutes?: number | null;
+  available_until_minutes?: number | null;
 };
 
 export type CreateUpdateWingFlavourPayload = {
@@ -96,6 +98,37 @@ function validateScheduleRows(
   }
 }
 
+function normalizeMinuteOfDay(value: unknown, fieldName: string): number | null {
+  if (value == null || value === "") return null;
+  const minutes =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) {
+    throw new BadRequestException(`${fieldName} must be between 00:00 and 23:59`);
+  }
+  return minutes;
+}
+
+function normalizeCategoryAvailability(data: CreateUpdateCategoryPayload) {
+  const availableFromMinutes = normalizeMinuteOfDay(
+    data.available_from_minutes,
+    "Category available from",
+  );
+  const availableUntilMinutes = normalizeMinuteOfDay(
+    data.available_until_minutes,
+    "Category available until",
+  );
+  if ((availableFromMinutes == null) !== (availableUntilMinutes == null)) {
+    throw new BadRequestException(
+      "Set both category availability start and end times, or leave both blank",
+    );
+  }
+  return { availableFromMinutes, availableUntilMinutes };
+}
+
 function generateSlug(name: string): string {
   return name
     .toLowerCase()
@@ -131,6 +164,7 @@ export class AdminMenuService {
     locationId: string,
     data: CreateUpdateCategoryPayload,
   ) {
+    const availability = normalizeCategoryAvailability(data);
     const slug = generateSlug(data.name);
     const existing = await this.prisma.menuCategory.findUnique({
       where: { locationId_slug: { locationId, slug } },
@@ -146,6 +180,8 @@ export class AdminMenuService {
         slug: finalSlug,
         sortOrder: data.sort_order,
         isActive: data.is_active,
+        availableFromMinutes: availability.availableFromMinutes,
+        availableUntilMinutes: availability.availableUntilMinutes,
       },
     });
   }
@@ -159,6 +195,7 @@ export class AdminMenuService {
       where: { id, locationId, archivedAt: null },
     });
     if (!category) throw new NotFoundException("Category not found");
+    const availability = normalizeCategoryAvailability(data);
 
     return this.prisma.menuCategory.update({
       where: { id },
@@ -166,6 +203,8 @@ export class AdminMenuService {
         name: data.name,
         sortOrder: data.sort_order,
         isActive: data.is_active,
+        availableFromMinutes: availability.availableFromMinutes,
+        availableUntilMinutes: availability.availableUntilMinutes,
         // slug stays stable on rename (v1)
       },
     });
