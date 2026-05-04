@@ -10,6 +10,20 @@ import {
 } from "../../common/utils/store-ip";
 import * as bcrypt from "bcryptjs";
 
+function normalizeMinuteOfDay(value: unknown, fieldName: string): number | null {
+  if (value == null || value === "") return null;
+  const minutes =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) {
+    throw new BadRequestException(`${fieldName} must be a time between 00:00 and 23:59`);
+  }
+  return minutes;
+}
+
 @Injectable()
 export class LocationSettingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -63,6 +77,35 @@ export class LocationSettingsService {
     } else if (nextData.kdsPasswordConfigured !== undefined) {
       // Do not allow kdsPasswordConfigured to be directly updated
       delete nextData.kdsPasswordConfigured;
+    }
+
+    if ("deliveryDisabled" in nextData) {
+      nextData.deliveryDisabled = Boolean(nextData.deliveryDisabled);
+    }
+    if ("deliveryAvailableFromMinutes" in nextData) {
+      nextData.deliveryAvailableFromMinutes = normalizeMinuteOfDay(
+        nextData.deliveryAvailableFromMinutes,
+        "Delivery starts at",
+      );
+    }
+    if ("deliveryAvailableUntilMinutes" in nextData) {
+      nextData.deliveryAvailableUntilMinutes = normalizeMinuteOfDay(
+        nextData.deliveryAvailableUntilMinutes,
+        "Delivery ends at",
+      );
+    }
+    const nextFrom =
+      "deliveryAvailableFromMinutes" in nextData
+        ? nextData.deliveryAvailableFromMinutes
+        : existing.deliveryAvailableFromMinutes;
+    const nextUntil =
+      "deliveryAvailableUntilMinutes" in nextData
+        ? nextData.deliveryAvailableUntilMinutes
+        : existing.deliveryAvailableUntilMinutes;
+    if ((nextFrom == null) !== (nextUntil == null)) {
+      throw new BadRequestException(
+        "Set both delivery start and end times, or leave both blank",
+      );
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {

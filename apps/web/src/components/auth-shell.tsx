@@ -83,6 +83,35 @@ export function AuthShell({
   }, [isHandoffActive, redirectTo, router]);
 
   useEffect(() => {
+    if (isHandoffActive) return;
+
+    const marker = { wings4uAuthGuard: true };
+    window.history.replaceState(marker, "", window.location.href);
+    window.history.pushState(marker, "", window.location.href);
+
+    const keepOnAuthPage = () => {
+      window.history.pushState(marker, "", window.location.href);
+    };
+    const blockMouseHistoryButtons = (event: globalThis.MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("popstate", keepOnAuthPage);
+    window.addEventListener("mousedown", blockMouseHistoryButtons, true);
+    window.addEventListener("mouseup", blockMouseHistoryButtons, true);
+    window.addEventListener("auxclick", blockMouseHistoryButtons, true);
+
+    return () => {
+      window.removeEventListener("popstate", keepOnAuthPage);
+      window.removeEventListener("mousedown", blockMouseHistoryButtons, true);
+      window.removeEventListener("mouseup", blockMouseHistoryButtons, true);
+      window.removeEventListener("auxclick", blockMouseHistoryButtons, true);
+    };
+  }, [isHandoffActive]);
+
+  useEffect(() => {
     if (!session.loaded || isHandoffActive) return;
 
     let cancelled = false;
@@ -252,7 +281,7 @@ const AUTH_PAGE_STYLES = `
   .wk-auth-shell {
     position: relative;
     isolation: isolate;
-    min-height: calc(100vh - 64px);
+    min-height: 100vh;
     overflow: hidden;
     color: #f7e9c8;
     font-family: 'DM Sans', sans-serif;

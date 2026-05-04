@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { getDeliveryAvailability } from "../../common/utils/delivery-availability";
 import { getDeliveryEligibilityForCustomer } from "../customers/no-show-policy";
 
 type LocationCatalogPayload = Prisma.LocationGetPayload<{
@@ -359,6 +360,11 @@ export class CatalogService {
     const settings = location.settings;
     const timezone = location.timezoneName ?? "America/Toronto";
     const scheduleReference = scheduledFor ? new Date(scheduledFor) : new Date();
+    const deliveryAvailability = getDeliveryAvailability({
+      settings,
+      timezone,
+      referenceDate: scheduleReference,
+    });
     const deliveryEligibility = await getDeliveryEligibilityForCustomer(
       this.prisma,
       locationId,
@@ -433,6 +439,13 @@ export class CatalogService {
         tax_rate_bps: settings?.taxRateBps ?? 1300,
         free_delivery_threshold_cents: settings?.freeDeliveryThresholdCents ?? null,
         minimum_delivery_subtotal_cents: settings?.minimumDeliverySubtotalCents ?? 0,
+        delivery_disabled: settings?.deliveryDisabled ?? false,
+        delivery_available_from_minutes:
+          settings?.deliveryAvailableFromMinutes ?? null,
+        delivery_available_until_minutes:
+          settings?.deliveryAvailableUntilMinutes ?? null,
+        delivery_currently_available: deliveryAvailability.available,
+        delivery_unavailable_reason: deliveryAvailability.message,
         pickup_min_minutes: settings?.defaultPickupMinMinutes ?? 30,
         pickup_max_minutes: settings?.defaultPickupMaxMinutes ?? 40,
         delivery_min_minutes: settings?.defaultDeliveryMinMinutes ?? 40,

@@ -7,8 +7,7 @@ import { useCart } from "@/lib/cart";
 import { useDeliveryAddress } from "@/components/delivery-address-provider";
 import { hasCompleteDeliveryAddress } from "@/lib/delivery-address";
 import {
-  DELIVERY_BLOCKED_NO_SHOWS_MESSAGE,
-  isDeliveryBlockedDueToNoShows,
+  getDeliveryUnavailableMessage,
 } from "@/lib/delivery-restrictions";
 import { isFocusInsideWkMethodOverlay, isTargetInsideWkMethodOverlay } from "@/lib/wk-overlay";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -239,7 +238,8 @@ export function MenuPage({
   );
   const { address: deliveryAddress, openAddressPicker } = useDeliveryAddress();
   const hasSelectedDeliveryAddress = hasCompleteDeliveryAddress(deliveryAddress);
-  const deliveryBlockedDueToNoShows = isDeliveryBlockedDueToNoShows(menu);
+  const deliveryUnavailableMessage = getDeliveryUnavailableMessage(menu);
+  const deliveryUnavailable = Boolean(deliveryUnavailableMessage);
 
   const sectionRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const catRowRef = useRef<HTMLDivElement | null>(null);
@@ -334,13 +334,13 @@ export function MenuPage({
 
   const handleDraftFulfillmentTypeChange = useCallback(
     (next: FulfillmentType) => {
-      if (next === "DELIVERY" && deliveryBlockedDueToNoShows) {
+      if (next === "DELIVERY" && deliveryUnavailable) {
         return;
       }
       setDraftFulfillmentType(next);
       setDeliveryAddressError(null);
     },
-    [deliveryBlockedDueToNoShows],
+    [deliveryUnavailable],
   );
 
   useEffect(() => {
@@ -785,7 +785,7 @@ export function MenuPage({
       return;
     }
 
-    if (draftFulfillmentType === "DELIVERY" && deliveryBlockedDueToNoShows) {
+    if (draftFulfillmentType === "DELIVERY" && deliveryUnavailable) {
       return;
     }
 
@@ -830,7 +830,7 @@ export function MenuPage({
     dismissOrderSettings,
     draftTimeValue,
     draftFulfillmentType,
-    deliveryBlockedDueToNoShows,
+    deliveryUnavailable,
     hasSelectedDeliveryAddress,
     isCommittingFulfillment,
     orderSettingsOpen,
@@ -1159,19 +1159,19 @@ export function MenuPage({
                       className="wk-order-fulfillment-btn"
                       data-active={draftFulfillmentType === option ? "true" : "false"}
                       data-disabled={
-                        option === "DELIVERY" && deliveryBlockedDueToNoShows ? "true" : "false"
+                        option === "DELIVERY" && deliveryUnavailable ? "true" : "false"
                       }
                       onClick={() => handleDraftFulfillmentTypeChange(option)}
-                      disabled={option === "DELIVERY" && deliveryBlockedDueToNoShows}
+                      disabled={option === "DELIVERY" && deliveryUnavailable}
                     >
                       {option}
                     </button>
                   ))}
                 </div>
 
-                {deliveryBlockedDueToNoShows ? (
+                {deliveryUnavailableMessage ? (
                   <p className="wk-order-settings-restriction-note">
-                    {DELIVERY_BLOCKED_NO_SHOWS_MESSAGE}
+                    {deliveryUnavailableMessage}
                   </p>
                 ) : null}
 

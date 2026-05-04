@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
+import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
 import { PrismaService } from "../../database/prisma.service";
 import {
   assertCustomerMayUseDelivery,
@@ -146,6 +147,13 @@ export class CartService {
       fulfillmentType,
       context: scheduleContext,
     });
+    if (fulfillmentType === "DELIVERY") {
+      assertDeliveryAvailable({
+        settings,
+        timezone,
+        referenceDate: scheduleReference,
+      });
+    }
 
     const wingFlavourRefs = items.flatMap((item) =>
       collectWingFlavourRefs(item.builder_payload),

@@ -26,8 +26,7 @@ import {
   type SchedulingHours,
 } from "@/lib/order-scheduling";
 import {
-  DELIVERY_BLOCKED_NO_SHOWS_MESSAGE,
-  isDeliveryBlockedDueToNoShows,
+  getDeliveryUnavailableMessage,
 } from "@/lib/delivery-restrictions";
 import type { FulfillmentType, MenuResponse } from "@/lib/types";
 
@@ -130,7 +129,7 @@ export function OrderMethodModal({
   const [scheduleTimezone, setScheduleTimezone] = useState<string | undefined>(undefined);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
-  const [deliveryBlockedDueToNoShows, setDeliveryBlockedDueToNoShows] = useState(false);
+  const [deliveryUnavailableMessage, setDeliveryUnavailableMessage] = useState<string | null>(null);
   
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -174,7 +173,7 @@ export function OrderMethodModal({
     setAddressPostal(initialAddress?.postalCode ?? EMPTY_DELIVERY_ADDRESS.postalCode);
     setScheduleDateKey(getSelectedDateKey(initialScheduledFor));
     setScheduleTimeValue(initialScheduledFor ?? "ASAP");
-    setDeliveryBlockedDueToNoShows(false);
+    setDeliveryUnavailableMessage(null);
   }, [open, defaultMethod, initialStepProp, addressOnly, initialScheduledFor, editingSavedAddressId]);
 
   useEffect(() => {
@@ -215,9 +214,10 @@ export function OrderMethodModal({
           delivery: response.data.location.delivery_hours,
         });
         setScheduleTimezone(response.data.location.timezone);
-        const deliveryBlocked = isDeliveryBlockedDueToNoShows(response.data);
-        setDeliveryBlockedDueToNoShows(deliveryBlocked);
-        if (deliveryBlocked) {
+        const nextDeliveryUnavailableMessage =
+          getDeliveryUnavailableMessage(response.data);
+        setDeliveryUnavailableMessage(nextDeliveryUnavailableMessage);
+        if (nextDeliveryUnavailableMessage) {
           setMethod("PICKUP");
         }
       } catch {
@@ -469,12 +469,12 @@ export function OrderMethodModal({
                 type="button"
                 className="wk-method-option"
                 data-selected={method === "DELIVERY" ? "true" : "false"}
-                data-disabled={deliveryBlockedDueToNoShows ? "true" : "false"}
+                data-disabled={deliveryUnavailableMessage ? "true" : "false"}
                 onClick={() => {
-                  if (deliveryBlockedDueToNoShows) return;
+                  if (deliveryUnavailableMessage) return;
                   setMethod("DELIVERY");
                 }}
-                disabled={deliveryBlockedDueToNoShows}
+                disabled={Boolean(deliveryUnavailableMessage)}
               >
                 <div className="wk-method-option-top">
                   <div className="wk-method-icon" aria-hidden="true">
@@ -490,8 +490,8 @@ export function OrderMethodModal({
                 </div>
                 <div className="wk-method-option-name">DELIVERY</div>
                 <div className="wk-method-option-desc">
-                  {deliveryBlockedDueToNoShows
-                    ? DELIVERY_BLOCKED_NO_SHOWS_MESSAGE
+                  {deliveryUnavailableMessage
+                    ? deliveryUnavailableMessage
                     : "We bring the heat straight to your door. Fast and fresh."}
                 </div>
               </button>

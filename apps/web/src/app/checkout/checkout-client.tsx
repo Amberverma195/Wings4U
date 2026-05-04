@@ -19,7 +19,7 @@ import {
   hasCompleteDeliveryAddress,
 } from "@/lib/delivery-address";
 import {
-  DELIVERY_BLOCKED_NO_SHOWS_MESSAGE,
+  DELIVERY_UNAVAILABLE_MESSAGE,
   isMinimumDeliverySubtotalError,
 } from "@/lib/delivery-restrictions";
 import { cents, orderStatusCustomerLabel } from "@/lib/format";
@@ -169,7 +169,9 @@ export function CheckoutClient() {
   );
   const deliveryBlockedMessage =
     cart.fulfillmentType === "DELIVERY" &&
-    quoteError === DELIVERY_BLOCKED_NO_SHOWS_MESSAGE
+    (quoteError === DELIVERY_UNAVAILABLE_MESSAGE ||
+      quoteError?.includes("Delivery is currently unavailable") ||
+      quoteError?.includes("Delivery is unavailable"))
       ? quoteError
       : null;
 

@@ -49,6 +49,8 @@ type MenuResponse = {
     name: string;
     timezone?: string;
     tax_rate_bps?: number;
+    delivery_currently_available?: boolean;
+    delivery_unavailable_reason?: string | null;
   };
 };
 
@@ -454,6 +456,13 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [staff, setStaff] = useState<Array<{ user_id: string; display_name: string }>>([]);
   const [customerFound, setCustomerFound] = useState<any | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const posDeliveryUnavailableMessage =
+    menu?.location.delivery_currently_available === false
+      ? menu.location.delivery_unavailable_reason ||
+        "Delivery is currently unavailable. Pickup is still available."
+      : null;
+  const phoneDeliveryDisabled =
+    orderSource === "PHONE" && Boolean(posDeliveryUnavailableMessage);
 
   /* ---------- Menu fetch ---------- */
 
@@ -478,6 +487,12 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   useEffect(() => {
     void loadMenu();
   }, [loadMenu]);
+
+  useEffect(() => {
+    if (diningOption !== "DELIVERY" || !phoneDeliveryDisabled) return;
+    setDiningOption("TO_GO");
+    setFulfillmentType("PICKUP");
+  }, [diningOption, phoneDeliveryDisabled]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -1168,15 +1183,27 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                   type="button"
                   className="pos-dining-btn"
                   aria-pressed={diningOption === "DELIVERY"}
+                  aria-disabled={phoneDeliveryDisabled}
+                  title={posDeliveryUnavailableMessage ?? undefined}
                   onClick={() => {
+                    if (phoneDeliveryDisabled) {
+                      setPlaceError(posDeliveryUnavailableMessage);
+                      return;
+                    }
                     setDiningOption("DELIVERY");
                     setFulfillmentType("DELIVERY");
                   }}
+                  disabled={phoneDeliveryDisabled}
                 >
                   Delivery
                 </button>
               )}
             </div>
+            {orderSource === "PHONE" && posDeliveryUnavailableMessage ? (
+              <p className="pos-field-hint" style={{ marginTop: "-0.35rem" }}>
+                {posDeliveryUnavailableMessage}
+              </p>
+            ) : null}
 
             <div className="pos-customer-fields" style={{ marginBottom: "0.75rem" }}>
               {customerFound ? (

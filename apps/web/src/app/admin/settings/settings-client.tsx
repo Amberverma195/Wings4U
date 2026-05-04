@@ -14,6 +14,9 @@ type Settings = {
   deliveryFeeCents: number;
   freeDeliveryThresholdCents: number | null;
   minimumDeliverySubtotalCents: number;
+  deliveryDisabled: boolean;
+  deliveryAvailableFromMinutes: number | null;
+  deliveryAvailableUntilMinutes: number | null;
   defaultPrepTimeMinutes: number;
   busyModeEnabled: boolean;
   busyModePrepTimeMinutes: number | null;
@@ -37,9 +40,12 @@ type FieldDef = {
   key: keyof Settings;
   label: string;
   group: string;
-  kind: "number" | "boolean" | "cents" | "nullable-int";
+  kind: "number" | "boolean" | "cents" | "nullable-int" | "time-minutes";
   /** Extra hint for money fields shown in dollars while API/DB use cents */
   description?: string;
+  trueLabel?: string;
+  falseLabel?: string;
+  display?: "toggle";
 };
 
 const FIELDS: FieldDef[] = [
@@ -97,6 +103,30 @@ const FIELDS: FieldDef[] = [
     label: "Delivery PIN expiry (min)",
     group: "Delivery",
     kind: "number",
+  },
+  {
+    key: "deliveryDisabled",
+    label: "Disable delivery",
+    group: "Delivery",
+    kind: "boolean",
+    trueLabel: "Disabled",
+    falseLabel: "Enabled",
+    display: "toggle",
+    description: "Turns off delivery for customers and POS phone orders until re-enabled.",
+  },
+  {
+    key: "deliveryAvailableFromMinutes",
+    label: "Delivery starts at",
+    group: "Delivery",
+    kind: "time-minutes",
+    description: "Leave both delivery time fields blank to allow delivery all day.",
+  },
+  {
+    key: "deliveryAvailableUntilMinutes",
+    label: "Delivery ends at",
+    group: "Delivery",
+    kind: "time-minutes",
+    description: "At this exact time, delivery becomes unavailable.",
   },
   {
     key: "defaultPickupMinMinutes",
@@ -171,6 +201,24 @@ const GROUPS = Array.from(new Set(FIELDS.map((f) => f.group)));
 
 function parseValue(raw: string, kind: FieldDef["kind"]): unknown {
   if (kind === "boolean") return raw === "true";
+  if (kind === "time-minutes") {
+    const t = raw.trim();
+    if (t === "") return null;
+    const [hourText, minuteText] = t.split(":");
+    const hour = Number.parseInt(hourText ?? "", 10);
+    const minute = Number.parseInt(minuteText ?? "", 10);
+    if (
+      !Number.isInteger(hour) ||
+      !Number.isInteger(minute) ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59
+    ) {
+      return null;
+    }
+    return hour * 60 + minute;
+  }
   if (kind === "nullable-int") {
     const t = raw.trim();
     if (t === "") return null;
@@ -190,6 +238,11 @@ function parseValue(raw: string, kind: FieldDef["kind"]): unknown {
 
 function valueToInput(value: unknown, kind: FieldDef["kind"]): string {
   if (kind === "boolean") return value ? "true" : "false";
+  if (kind === "time-minutes") {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "";
+    const minutes = Math.max(0, Math.min(1439, Math.floor(value)));
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  }
   if (kind === "cents") {
     if (value == null) return "";
     const cents =
@@ -314,6 +367,13 @@ export function SettingsClient() {
           "Allowed IP address must be a valid IPv4 address and cannot be localhost.",
         );
       }
+      const deliveryFrom = draft.deliveryAvailableFromMinutes?.trim() ?? "";
+      const deliveryUntil = draft.deliveryAvailableUntilMinutes?.trim() ?? "";
+      if ((deliveryFrom === "") !== (deliveryUntil === "")) {
+        throw new Error(
+          "Set both delivery start and end times, or leave both blank.",
+        );
+      }
 
       const payload: Record<string, unknown> = {};
       for (const f of FIELDS) {
@@ -423,7 +483,33 @@ export function SettingsClient() {
                 {FIELDS.filter((f) => f.group === group).map((f) => (
                   <label key={f.key} style={{ display: "block", fontSize: "0.85rem" }}>
                     <span style={{ fontWeight: 600 }}>{f.label}</span>
-                    {f.kind === "boolean" ? (
+                    {f.kind === "boolean" && f.display === "toggle" ? (
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.55rem",
+                          marginTop: "0.45rem",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={(draft[f.key] ?? "false") === "true"}
+                          onChange={(e) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              [f.key]: e.target.checked ? "true" : "false",
+                            }))
+                          }
+                          disabled={!isAdmin}
+                        />
+                        <span className="surface-muted">
+                          {(draft[f.key] ?? "false") === "true"
+                            ? f.trueLabel ?? "Enabled"
+                            : f.falseLabel ?? "Disabled"}
+                        </span>
+                      </span>
+                    ) : f.kind === "boolean" ? (
                       <select
                         value={draft[f.key] ?? "false"}
                         onChange={(e) =>
@@ -440,13 +526,19 @@ export function SettingsClient() {
                           fontFamily: "inherit",
                         }}
                       >
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled</option>
+                        <option value="true">{f.trueLabel ?? "Enabled"}</option>
+                        <option value="false">{f.falseLabel ?? "Disabled"}</option>
                       </select>
                     ) : (
                       <input
-                        type="number"
-                        step={f.kind === "cents" ? "0.01" : "1"}
+                        type={f.kind === "time-minutes" ? "time" : "number"}
+                        step={
+                          f.kind === "time-minutes"
+                            ? "60"
+                            : f.kind === "cents"
+                              ? "0.01"
+                              : "1"
+                        }
                         min={f.kind === "cents" ? "0" : undefined}
                         value={draft[f.key] ?? ""}
                         onChange={(e) =>

@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
+import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
@@ -274,7 +275,16 @@ export class CheckoutService {
       if (!settings) {
         throw new NotFoundException("Location settings not found");
       }
+      const scheduledReference = params.scheduledFor
+        ? new Date(params.scheduledFor)
+        : new Date();
       if (params.fulfillmentType === "DELIVERY") {
+        assertDeliveryAvailable({
+          settings,
+          timezone: location.timezoneName ?? "America/Toronto",
+          referenceDate: scheduledReference,
+        });
+
         const deliveryEligibility = await getDeliveryEligibilityForCustomer(
           tx,
           params.locationId,
@@ -312,9 +322,6 @@ export class CheckoutService {
           }
         }
       }
-      const scheduledReference = params.scheduledFor
-        ? new Date(params.scheduledFor)
-        : new Date();
 
       // PRD §8: minimum lead time. Scheduled orders cannot be placed for a
       // time earlier than now + default prep time (busy-mode aware).

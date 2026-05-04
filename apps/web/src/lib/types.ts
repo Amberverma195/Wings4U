@@ -86,6 +86,11 @@ export type LocationInfo = {
   delivery_fee_cents: number;
   free_delivery_threshold_cents: number | null;
   minimum_delivery_subtotal_cents: number;
+  delivery_disabled?: boolean;
+  delivery_available_from_minutes?: number | null;
+  delivery_available_until_minutes?: number | null;
+  delivery_currently_available?: boolean;
+  delivery_unavailable_reason?: string | null;
   pickup_min_minutes: number;
   pickup_max_minutes: number;
   delivery_min_minutes: number;

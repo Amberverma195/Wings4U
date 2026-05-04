@@ -196,6 +196,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     () => phoneInputPlaceholder(session.user?.phone),
     [session.user?.phone],
   );
+  const profileNameReady = fullName.trim().length >= 4;
 
   /* ---------------------------------------------------------------- */
   /*  Phone step: request OTP                                         */
@@ -638,7 +639,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         style={{ display: "contents" }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!busy) void handleProfileSubmit();
+          if (!busy && profileNameReady) void handleProfileSubmit();
         }}
       >
         <div style={s.field}>
@@ -667,8 +668,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
         <button
           type="submit"
-          style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
-          disabled={busy}
+          style={{
+            ...s.btn,
+            ...(busy || !profileNameReady ? s.btnDisabled : {}),
+            ...shakeStyle,
+          }}
+          disabled={busy || !profileNameReady}
         >
           {busy ? "Saving..." : "Save and continue"}
         </button>

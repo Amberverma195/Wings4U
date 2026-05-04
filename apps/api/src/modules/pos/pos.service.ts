@@ -6,6 +6,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import type { OrderStatus, PaymentTenderMethod } from "@prisma/client";
+import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
 import { PrismaService } from "../../database/prisma.service";
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
@@ -312,6 +313,13 @@ export class PosService {
       const settings = location.settings;
       if (!settings) {
         throw new NotFoundException("Location settings not configured");
+      }
+      if (params.fulfillmentType === "DELIVERY") {
+        assertDeliveryAvailable({
+          settings,
+          timezone: location.timezoneName ?? "America/Toronto",
+          referenceDate: new Date(),
+        });
       }
 
       // 3. Validate items against menu

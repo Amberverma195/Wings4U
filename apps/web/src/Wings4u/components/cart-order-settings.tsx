@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeliveryAddress } from "@/components/delivery-address-provider";
 import { hasCompleteDeliveryAddress } from "@/lib/delivery-address";
 import {
-  DELIVERY_BLOCKED_NO_SHOWS_MESSAGE,
-  isDeliveryBlockedDueToNoShows,
+  getDeliveryUnavailableMessage,
 } from "@/lib/delivery-restrictions";
 import { useCart } from "@/lib/cart";
 import {
@@ -101,7 +100,8 @@ export function CartOrderSettings({ menu }: Props) {
   const [draftTimeValue, setDraftTimeValue] = useState(() => scheduledFor ?? "ASAP");
   const [deliveryAddressError, setDeliveryAddressError] = useState<string | null>(null);
   const hasSelectedDeliveryAddress = hasCompleteDeliveryAddress(deliveryAddress);
-  const deliveryBlockedDueToNoShows = isDeliveryBlockedDueToNoShows(menu);
+  const deliveryUnavailableMessage = getDeliveryUnavailableMessage(menu);
+  const deliveryUnavailable = Boolean(deliveryUnavailableMessage);
 
   const schedulingHours = useMemo(
     () =>
@@ -144,13 +144,13 @@ export function CartOrderSettings({ menu }: Props) {
 
   const handleDraftFulfillmentTypeChange = useCallback(
     (next: FulfillmentType) => {
-      if (next === "DELIVERY" && deliveryBlockedDueToNoShows) {
+      if (next === "DELIVERY" && deliveryUnavailable) {
         return;
       }
       setDraftFulfillmentType(next);
       setDeliveryAddressError(null);
     },
-    [deliveryBlockedDueToNoShows],
+    [deliveryUnavailable],
   );
 
   useEffect(() => {
@@ -248,7 +248,7 @@ export function CartOrderSettings({ menu }: Props) {
       return;
     }
 
-    if (draftFulfillmentType === "DELIVERY" && deliveryBlockedDueToNoShows) {
+    if (draftFulfillmentType === "DELIVERY" && deliveryUnavailable) {
       return;
     }
 
@@ -276,7 +276,7 @@ export function CartOrderSettings({ menu }: Props) {
     dismissOrderSettings,
     draftFulfillmentType,
     draftTimeValue,
-    deliveryBlockedDueToNoShows,
+    deliveryUnavailable,
     fulfillmentType,
     hasSelectedDeliveryAddress,
     orderSettingsOpen,
@@ -356,19 +356,19 @@ export function CartOrderSettings({ menu }: Props) {
                 className="wk-order-fulfillment-btn"
                 data-active={draftFulfillmentType === option ? "true" : "false"}
                 data-disabled={
-                  option === "DELIVERY" && deliveryBlockedDueToNoShows ? "true" : "false"
+                  option === "DELIVERY" && deliveryUnavailable ? "true" : "false"
                 }
                 onClick={() => handleDraftFulfillmentTypeChange(option)}
-                disabled={option === "DELIVERY" && deliveryBlockedDueToNoShows}
+                disabled={option === "DELIVERY" && deliveryUnavailable}
               >
                 {option}
               </button>
             ))}
           </div>
 
-          {deliveryBlockedDueToNoShows ? (
+          {deliveryUnavailableMessage ? (
             <p className="wk-order-settings-restriction-note">
-              {DELIVERY_BLOCKED_NO_SHOWS_MESSAGE}
+              {deliveryUnavailableMessage}
             </p>
           ) : null}
 

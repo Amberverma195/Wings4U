@@ -14,8 +14,7 @@ import {
 import { buildLineSummary, splitSummaryForDisplay } from "@/lib/cart-line-summary";
 import { cents } from "@/lib/format";
 import {
-  DELIVERY_BLOCKED_NO_SHOWS_MESSAGE,
-  isDeliveryBlockedDueToNoShows,
+  getDeliveryUnavailableMessage,
   isMinimumDeliverySubtotalError,
 } from "@/lib/delivery-restrictions";
 import { getLunchScheduleConflict } from "@/lib/lunch-hours";
@@ -234,11 +233,11 @@ export function CartPage() {
   );
   const deliveryBlockedMessage =
     cart.fulfillmentType === "DELIVERY" &&
-    (isDeliveryBlockedDueToNoShows(menu)
-      ? DELIVERY_BLOCKED_NO_SHOWS_MESSAGE
-      : quoteError === DELIVERY_BLOCKED_NO_SHOWS_MESSAGE
+    (getDeliveryUnavailableMessage(menu) ??
+      (quoteError?.includes("Delivery is currently unavailable") ||
+      quoteError?.includes("Delivery is unavailable")
         ? quoteError
-        : null);
+        : null));
 
   const fallbackSubtotal = useMemo(
     () =>
