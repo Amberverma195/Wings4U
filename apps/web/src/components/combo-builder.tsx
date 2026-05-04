@@ -151,8 +151,9 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     () => comboOptions.find((option) => option.menu_item_id === selectedComboId) ?? null,
     [comboOptions, selectedComboId],
   );
-
   const requiredFlavourCount = selectedOption?.flavour_count ?? 0;
+  const threeFlavourTellUsHow = requiredFlavourCount === 3;
+  const tellUsHowSaucing = threeFlavourTellUsHow;
   const sideGroups = selectedOption?.modifier_groups.filter((group) => group.context_key === "side") ?? [];
   const drinkGroups = selectedOption?.modifier_groups.filter((group) => group.context_key === "drink") ?? [];
 
@@ -207,6 +208,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
           prev,
           false,
           requiredFlavourCount,
+          threeFlavourTellUsHow,
         )
       ) {
         return prev;
@@ -215,9 +217,10 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
         effectiveSaucedCount,
         false,
         requiredFlavourCount,
+        threeFlavourTellUsHow,
       );
     });
-  }, [effectiveSaucedCount, requiredFlavourCount]);
+  }, [effectiveSaucedCount, requiredFlavourCount, threeFlavourTellUsHow]);
 
   useEffect(() => {
     if (!methodRequiresSideFlavourPick(effectiveSaucedCount, saucingMethod)) {
@@ -266,6 +269,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
                   saucingMethod,
                   false,
                   requiredFlavourCount,
+                  threeFlavourTellUsHow,
                 ) &&
                 (!methodRequiresSideFlavourPick(
                   effectiveSaucedCount,
@@ -302,6 +306,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     sideGroups.length,
     sideSelections,
     wingType,
+    threeFlavourTellUsHow,
   ]);
 
   const setStepRef = useCallback((key: string, node: HTMLElement | null) => {
@@ -318,6 +323,16 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     node.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
+  const handleSaucingMethodChange = useCallback(
+    (value: string) => {
+      setSaucingMethod(value);
+      if (tellUsHowSaucing && value === "TELL_US_HOW") {
+        requestAnimationFrame(() => scrollToStep("instructions"));
+      }
+    },
+    [scrollToStep, tellUsHowSaucing],
+  );
+
   const validate = useCallback(() => {
     if (!selectedOption) return "combo-size";
     if (!wingType) return "wing-type";
@@ -330,6 +345,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
           saucingMethod,
           false,
           requiredFlavourCount,
+          threeFlavourTellUsHow,
         )
       ) {
         return requiredFlavourCount >= 1 ? "saucing" : null;
@@ -341,6 +357,13 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
         return "saucing";
       }
     }
+    if (
+      tellUsHowSaucing &&
+      saucingMethod === "TELL_US_HOW" &&
+      !instructions.trim()
+    ) {
+      return "instructions";
+    }
     if (sideSelections.some((selection) => !selection)) return "sides";
     if (drinkSelections.some((selection) => !selection)) return "drinks";
     return null;
@@ -350,13 +373,16 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     effectiveSaucedCount,
     flavourSelections,
     hasValidSideFlavourSlot,
+    instructions,
     requiredFlavourCount,
     resolvedPreparation,
     saucingMethod,
     selectedOption,
     sideFlavourSlot,
     sideSelections,
+    tellUsHowSaucing,
     wingType,
+    threeFlavourTellUsHow,
   ]);
 
   const validationError = useMemo(() => validate(), [validate]);
@@ -388,12 +414,14 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
           saucingMethod,
           false,
           requiredFlavourCount,
+          threeFlavourTellUsHow,
         )
         ? saucingMethod
         : defaultSaucingMethodForCount(
             effectiveSaucedCount,
             false,
             requiredFlavourCount,
+            threeFlavourTellUsHow,
           );
 
     const modifierSelections: CartModifierSelection[] = [];
@@ -451,6 +479,10 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
       weight_lb: selectedOption.weight_lb,
       flavour_slots: flavourSlots,
       saucing_method: resolvedSaucingMethod ?? undefined,
+      saucing_customer_note:
+        tellUsHowSaucing && resolvedSaucingMethod === "TELL_US_HOW" && instructions.trim()
+          ? instructions.trim()
+          : undefined,
       side_flavour_slot_no:
         methodRequiresSideFlavourPick(
           effectiveSaucedCount,
@@ -643,7 +675,8 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
                 effectiveSaucedCount={effectiveSaucedCount}
                 slotCount={requiredFlavourCount}
                 value={saucingMethod}
-                onChange={setSaucingMethod}
+                onChange={handleSaucingMethodChange}
+                threeFlavourTellUsHow={threeFlavourTellUsHow}
                 sideFlavourOptions={sideFlavourOptions}
                 sideFlavourSlot={sideFlavourSlot}
                 onSideFlavourSlotChange={setSideFlavourSlot}
@@ -729,6 +762,17 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
 
           <StepContainer
             title="Special instructions"
+            subtitle={
+              tellUsHowSaucing && saucingMethod === "TELL_US_HOW"
+                ? "Describe how you want the sauces applied."
+                : "Notes for the kitchen."
+            }
+            invalid={submitAttempted && validationError === "instructions"}
+            inlineError={
+              submitAttempted && validationError === "instructions"
+                ? BUILDER_VALIDATION_MESSAGE
+                : null
+            }
             ref={(node) => setStepRef("instructions", node)}
           >
             <textarea
@@ -736,7 +780,11 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
               rows={4}
               value={instructions}
               onChange={(event) => setInstructions(event.target.value)}
-              placeholder="Anything we should know?"
+              placeholder={
+                tellUsHowSaucing && saucingMethod === "TELL_US_HOW"
+                  ? "e.g. one flavour per section, two on the side…"
+                  : "Anything we should know?"
+              }
             />
           </StepContainer>
     </BuilderShell>

@@ -39,6 +39,11 @@ type SaucingMethodPickerProps = {
    * Party 75/100 wing packs (5 flavours): only All mixed / Split evenly / Tell us how.
    */
   partyFiveSpecial?: boolean;
+  /**
+   * Three-flavour wing builds should not offer "Two mixed + one on the side";
+   * customers can choose a free-text instruction path instead.
+   */
+  threeFlavourTellUsHow?: boolean;
   /** Only the non-plain flavour slots that are eligible for "on the side". */
   sideFlavourOptions?: Array<{ slotNo: number; label: string }>;
   /** 1-based slot number for the flavour going on the side, or null. */
@@ -64,9 +69,11 @@ export function defaultSaucingMethodForCount(
   effectiveSaucedCount: number,
   partyFiveSpecial?: boolean,
   slotCount = effectiveSaucedCount,
+  threeFlavourTellUsHow = false,
 ): string | null {
   if (effectiveSaucedCount <= 0) return null;
   if (effectiveSaucedCount === 1) return "ON_WINGS";
+  if (threeFlavourTellUsHow) return "SPLIT_EVENLY";
   if (partyFiveSpecial && slotCount === 5) return "ALL_MIXED";
   if (effectiveSaucedCount === 2) return "HALF_HALF";
   return "TWO_MIXED_ONE_SIDE";
@@ -109,11 +116,20 @@ function getSaucingOptions(
   effectiveSaucedCount: number,
   slotCount: number,
   partyFiveSpecial?: boolean,
+  threeFlavourTellUsHow = false,
 ) {
   if (effectiveSaucedCount <= 1) {
     return [
       { value: "ON_WINGS", label: "Tossed on wings" },
       { value: "ON_SIDE", label: "On the side" },
+    ];
+  }
+
+  if (threeFlavourTellUsHow) {
+    return [
+      { value: "SPLIT_EVENLY", label: "Split evenly (1/3 + 1/3 + 1/3)" },
+      { value: "ALL_MIXED", label: "All mixed together" },
+      { value: "TELL_US_HOW", label: "Tell us how to do it" },
     ];
   }
 
@@ -145,12 +161,14 @@ export function isSaucingMethodValidForCount(
   method: string | null,
   partyFiveSpecial?: boolean,
   slotCount = effectiveSaucedCount,
+  threeFlavourTellUsHow = false,
 ): boolean {
   if (!method) return false;
   return getSaucingOptions(
     effectiveSaucedCount,
     slotCount,
     partyFiveSpecial,
+    threeFlavourTellUsHow,
   ).some(
     (option) => option.value === method,
   );
@@ -557,6 +575,7 @@ export function SaucingMethodPicker({
   value,
   onChange,
   partyFiveSpecial = false,
+  threeFlavourTellUsHow = false,
   sideFlavourOptions = [],
   sideFlavourSlot = null,
   onSideFlavourSlotChange,
@@ -565,6 +584,7 @@ export function SaucingMethodPicker({
     effectiveSaucedCount,
     slotCount,
     partyFiveSpecial,
+    threeFlavourTellUsHow,
   );
   const showSideQuestion = methodRequiresSideFlavourPick(
     effectiveSaucedCount,

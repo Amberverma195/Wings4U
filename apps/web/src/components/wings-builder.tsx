@@ -406,7 +406,6 @@ export function WingsBuilder({
       null,
     [selectedWeightId, weightOptions],
   );
-
   const extraGroups = useMemo(() => {
     if (!selectedOption) return [];
     const groups = getExtraModifierGroups(selectedOption);
@@ -672,6 +671,8 @@ export function WingsBuilder({
   }, [normalizedSaladSizeNames, resolvedSaladItem, selectedSaladSizeNames]);
 
   const requiredFlavourCount = selectedOption?.flavour_count ?? 0;
+  const threeFlavourTellUsHow = requiredFlavourCount === 3;
+  const tellUsHowSaucing = partyFiveSpecial || threeFlavourTellUsHow;
   // Hide the "Pound size" step entirely when the item has only one weight
   // option — i.e. party specials and any standalone single-SKU wings item.
   // Showing a single non-interactive pill there confused customers and
@@ -733,6 +734,7 @@ export function WingsBuilder({
           prev,
           partyFiveSpecial,
           requiredFlavourCount,
+          threeFlavourTellUsHow,
         )
       ) {
         return prev;
@@ -741,9 +743,15 @@ export function WingsBuilder({
         effectiveSaucedCount,
         partyFiveSpecial,
         requiredFlavourCount,
+        threeFlavourTellUsHow,
       );
     });
-  }, [effectiveSaucedCount, partyFiveSpecial, requiredFlavourCount]);
+  }, [
+    effectiveSaucedCount,
+    partyFiveSpecial,
+    requiredFlavourCount,
+    threeFlavourTellUsHow,
+  ]);
 
   useEffect(() => {
     if (!methodRequiresSideFlavourPick(effectiveSaucedCount, saucingMethod)) {
@@ -883,6 +891,7 @@ export function WingsBuilder({
                   saucingMethod,
                   partyFiveSpecial,
                   requiredFlavourCount,
+                  threeFlavourTellUsHow,
                 ) &&
                 (!methodRequiresSideFlavourPick(
                   effectiveSaucedCount,
@@ -980,6 +989,7 @@ export function WingsBuilder({
     sideFlavourSlot,
     usesChildSaladCustomization,
     wingType,
+    threeFlavourTellUsHow,
   ]);
 
   const setStepRef = useCallback((key: string, node: HTMLElement | null) => {
@@ -999,11 +1009,11 @@ export function WingsBuilder({
   const handleSaucingMethodChange = useCallback(
     (value: string) => {
       setSaucingMethod(value);
-      if (partyFiveSpecial && value === "TELL_US_HOW") {
+      if (tellUsHowSaucing && value === "TELL_US_HOW") {
         requestAnimationFrame(() => scrollToStep("instructions"));
       }
     },
-    [partyFiveSpecial, scrollToStep],
+    [scrollToStep, tellUsHowSaucing],
   );
 
   const validate = useCallback(() => {
@@ -1018,6 +1028,7 @@ export function WingsBuilder({
           saucingMethod,
           partyFiveSpecial,
           requiredFlavourCount,
+          threeFlavourTellUsHow,
         )
       ) {
         return requiredFlavourCount >= 1 ? "saucing" : null;
@@ -1030,7 +1041,7 @@ export function WingsBuilder({
       }
     }
     if (
-      partyFiveSpecial &&
+      tellUsHowSaucing &&
       saucingMethod === "TELL_US_HOW" &&
       !instructions.trim()
     ) {
@@ -1070,6 +1081,8 @@ export function WingsBuilder({
     sideFlavourSlot,
     usesChildSaladCustomization,
     wingType,
+    tellUsHowSaucing,
+    threeFlavourTellUsHow,
   ]);
 
   const validationError = useMemo(() => validate(), [validate]);
@@ -1097,16 +1110,18 @@ export function WingsBuilder({
     const resolvedSaucingMethod = allMainFlavoursPlain
       ? null
       : isSaucingMethodValidForCount(
-            effectiveSaucedCount,
-            saucingMethod,
-            partyFiveSpecial,
-            requiredFlavourCount,
-          )
+          effectiveSaucedCount,
+          saucingMethod,
+          partyFiveSpecial,
+          requiredFlavourCount,
+          threeFlavourTellUsHow,
+        )
         ? saucingMethod
         : defaultSaucingMethodForCount(
             effectiveSaucedCount,
             partyFiveSpecial,
             requiredFlavourCount,
+            threeFlavourTellUsHow,
           );
 
     const modifierSelections: CartModifierSelection[] = [];
@@ -1186,7 +1201,7 @@ export function WingsBuilder({
       flavour_slots: flavourSlots,
       saucing_method: resolvedSaucingMethod ?? undefined,
       saucing_customer_note:
-        partyFiveSpecial && resolvedSaucingMethod === "TELL_US_HOW" && instructions.trim()
+        tellUsHowSaucing && resolvedSaucingMethod === "TELL_US_HOW" && instructions.trim()
           ? instructions.trim()
           : undefined,
       side_flavour_slot_no:
@@ -1419,6 +1434,7 @@ export function WingsBuilder({
                 value={saucingMethod}
                 onChange={handleSaucingMethodChange}
                 partyFiveSpecial={partyFiveSpecial}
+                threeFlavourTellUsHow={threeFlavourTellUsHow}
                 sideFlavourOptions={sideFlavourOptions}
                 sideFlavourSlot={sideFlavourSlot}
                 onSideFlavourSlotChange={setSideFlavourSlot}
@@ -1765,7 +1781,7 @@ export function WingsBuilder({
           <StepContainer
             title="Special instructions"
             subtitle={
-              partyFiveSpecial && saucingMethod === "TELL_US_HOW"
+              tellUsHowSaucing && saucingMethod === "TELL_US_HOW"
                 ? "Describe how you want the sauces applied."
                 : "Notes for the kitchen."
             }
@@ -1783,7 +1799,7 @@ export function WingsBuilder({
               value={instructions}
               onChange={(event) => setInstructions(event.target.value)}
               placeholder={
-                partyFiveSpecial && saucingMethod === "TELL_US_HOW"
+                tellUsHowSaucing && saucingMethod === "TELL_US_HOW"
                   ? "e.g. one flavour per section, two on the side…"
                   : "Anything we should know?"
               }
