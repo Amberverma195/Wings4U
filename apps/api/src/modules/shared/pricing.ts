@@ -55,6 +55,7 @@ export type SaladCustomizationInput = {
 // ────────────────────────  Constants  ────────────────────────
 
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
+export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
 export const LUNCH_WINDOW_LABEL = "11 AM - 3 PM";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_CODE = "LUNCH_SPECIAL_SCHEDULE_CONFLICT";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_MESSAGE =
@@ -169,7 +170,18 @@ export function getBuilderPriceDelta(builderPayload?: Record<string, unknown>): 
     return 0;
   }
   const extraFlavour = builderPayload.extra_flavour;
-  return extraFlavour && typeof extraFlavour === "object" ? EXTRA_FLAVOUR_PRICE_CENTS : 0;
+  const extraFlavourCents =
+    extraFlavour && typeof extraFlavour === "object" ? EXTRA_FLAVOUR_PRICE_CENTS : 0;
+  if (
+    builderPayload.builder_type === "WINGS" ||
+    builderPayload.builder_type === "WING_COMBO"
+  ) {
+    return (
+      extraFlavourCents +
+      (builderPayload.wing_type === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0)
+    );
+  }
+  return extraFlavourCents;
 }
 
 export function parseRemovedIngredients(value: unknown): RemovedIngredientInput[] {
