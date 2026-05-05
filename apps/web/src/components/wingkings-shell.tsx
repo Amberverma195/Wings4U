@@ -20,6 +20,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
   const isSaucesRoute = pathname === "/sauces";
   const isKdsRoute = pathname === "/kds" || pathname?.startsWith("/kds/");
   const isPosRoute = pathname === "/pos" || pathname?.startsWith("/pos/");
+  const isAdminRoute = pathname === "/admin" || pathname?.startsWith("/admin/");
   const isAuthRoute = /^\/auth\/(login|signup)\/?$/.test(pathname ?? "");
   /** Login/signup use a neutral background; global embers sit above main (z-index 996) and add an orange wash. */
   const hideFireEmbers = isAuthRoute;
@@ -65,6 +66,15 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
   }
 
   if (isPosRoute) {
+    return (
+      <div style={styles.app}>
+        <WingKingsGlobalStyle />
+        {children}
+      </div>
+    );
+  }
+
+  if (isAdminRoute) {
     return (
       <div style={styles.app}>
         <WingKingsGlobalStyle />

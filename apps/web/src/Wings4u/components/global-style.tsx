@@ -1907,7 +1907,7 @@ export function WingKingsGlobalStyle() {
         --wk-order-stack-offset: 220px;
         --wk-menu-bar-outdent: 0px;
         /* Pickup/delivery row + category bar share the same left edge (centered column). */
-        --wk-menu-align-max: 1200px;
+        --wk-menu-align-max: 1400px;
       }
 
       .wk-nav-bar {

@@ -794,6 +794,7 @@ export function CartPage() {
                     )}
                 </div>
 
+                </div>
                 <button
                   type="button"
                   className="cart-checkout-fire-btn"
@@ -842,10 +843,10 @@ export function CartPage() {
                       deliveryMinimumBlocked ||
                       checkoutValidating,
                   )}
+                  style={{ marginTop: 16 }}
                 >
-                  <span className="btn-label">{checkoutValidating ? "VALIDATING..." : "CHECKOUT \u2192"}</span>
+                  <span className="btn-label">CHECKOUT &rarr;</span>
                 </button>
-              </div>
             </aside>
             </div>
           </div>

@@ -121,6 +121,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
 
       const customerIdNow = session.user?.id;
       if (
+        session.user?.role === "CUSTOMER" &&
         customerIdNow != null &&
         body.data.customer_user_id !== customerIdNow &&
         session.authenticated

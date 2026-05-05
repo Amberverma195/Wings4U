@@ -255,12 +255,21 @@ export function AdminReviewsClient() {
         <p className="surface-muted" style={{ margin: "0.4rem 0 0" }}>
           Reply to customer reviews and choose which ones to publish publicly.
         </p>
-        <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem" }}>
+        <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-start" }}>
           {(["all", "unreplied", "replied"] as const).map((f) => (
             <button
               key={f}
               type="button"
               className={filter === f ? "btn-primary" : "btn-secondary"}
+              style={{
+                width: "140px",
+                height: "42px",
+                padding: "0",
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
               onClick={() => setFilter(f)}
             >
               {f === "all" ? "All" : f === "unreplied" ? "Needs reply" : "Replied"}

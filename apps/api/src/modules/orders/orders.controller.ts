@@ -34,6 +34,10 @@ class ListOrdersQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  mine?: string;
 }
 
 @Controller("orders")
@@ -55,6 +59,22 @@ export class OrdersController {
       cursor: query.cursor,
       limit: Number.isFinite(limit) ? limit : undefined,
       status: query.status,
+      mine: query.mine === "1" || query.mine === "true",
+    });
+  }
+
+  @Get("customer")
+  @Roles("CUSTOMER", "STAFF", "ADMIN")
+  async listMine(@Query() query: ListOrdersQueryDto, @Req() req: Request) {
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    return this.ordersService.listOrders({
+      userId: req.user!.userId,
+      userRole: req.user!.role,
+      locationId: req.locationId,
+      cursor: query.cursor,
+      limit: Number.isFinite(limit) ? limit : undefined,
+      status: query.status,
+      mine: true,
     });
   }
 

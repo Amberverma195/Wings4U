@@ -176,12 +176,13 @@ export class OrdersService {
     cursor?: string;
     limit?: number;
     status?: string;
+    mine?: boolean;
   }) {
     const take = Math.min(params.limit ?? 20, 50);
 
     const where: Record<string, unknown> = {};
 
-    if (params.userRole === "CUSTOMER") {
+    if (params.mine || params.userRole === "CUSTOMER") {
       where.customerUserId = params.userId;
     }
     if (params.locationId) {

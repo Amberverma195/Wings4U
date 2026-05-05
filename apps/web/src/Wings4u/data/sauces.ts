@@ -287,7 +287,7 @@ export const SAUCE_FLAVOURS: SauceFlavour[] = SOURCE_FLAVOURS.map((flavour, inde
   };
 });
 
-export const SAUCE_TOTAL = SAUCE_FLAVOURS.length;
+export const SAUCE_TOTAL = 70;
 
 export const SAUCE_COUNTS = SAUCE_FLAVOURS.reduce<Record<SauceCategory, number>>(
   (counts, sauce) => {

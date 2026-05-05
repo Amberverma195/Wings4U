@@ -61,7 +61,7 @@ export function OrdersListClient() {
         if (nextCursor) params.set("cursor", nextCursor);
         const res = await withSilentRefresh(
           () =>
-            apiFetch(`/api/v1/orders?${params}`, {
+            apiFetch(`/api/v1/orders/customer?${params}`, {
               locationId: DEFAULT_LOCATION_ID,
             }),
           session.refresh,
