@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { toast } from "sonner";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AccountSkeleton } from "@/components/account-skeleton";
@@ -32,7 +33,6 @@ export default function AccountPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
   const [busy, setBusy] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [shaking, setShaking] = useState(false);
@@ -54,7 +54,6 @@ export default function AccountPage() {
 
   const handleSave = useCallback(async () => {
     setError("");
-    setSuccess(false);
 
     if (fullName.trim().length < 4) {
       setError("Name must be at least 4 characters");
@@ -83,7 +82,7 @@ export default function AccountPage() {
         return;
       }
       await session.refresh();
-      setSuccess(true);
+      toast.success("Profile updated!");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -201,7 +200,6 @@ export default function AccountPage() {
                 ) : null}
 
                 {error ? <p className={`${styles.feedback} ${styles.feedbackError}`}>{error}</p> : null}
-                {success ? <p className={`${styles.feedback} ${styles.feedbackSuccess}`}>Profile updated!</p> : null}
 
                 <button
                   className={`${styles.saveBtn}${shaking ? ` ${styles.saveBtnShake}` : ""}`}

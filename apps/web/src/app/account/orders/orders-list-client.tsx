@@ -246,10 +246,7 @@ export function OrdersListClient() {
               <span className={styles.tabCount}>{past.length}</span>
             </button>
           </div>
-          <Link href="/order" className={styles.cta}>
-            <span>Order something new</span>
-            <span className={styles.ctaArrow} aria-hidden>{"\u2192"}</span>
-          </Link>
+
         </div>
 
         {error && (
@@ -282,7 +279,7 @@ export function OrdersListClient() {
                 : "Once an order wraps up, it will live here for easy reordering."}
             </p>
             <Link href="/order" className={styles.cta}>
-              <span>Browse the menu</span>
+              <span>Order Something New</span>
               <span className={styles.ctaArrow} aria-hidden>{"\u2192"}</span>
             </Link>
           </div>

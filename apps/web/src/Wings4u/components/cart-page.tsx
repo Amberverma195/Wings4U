@@ -528,30 +528,32 @@ export function CartPage() {
                       <span style={styles.cartItemPriceTop}>{cents(lineTotal)}</span>
                     </div>
 
-                    {description.map((line, lineIndex) => {
-                      const parts = splitCartDescLine(line);
-                      return (
-                        <p key={lineIndex} style={styles.cartItemLineDesc}>
-                          {parts ? (
-                            <>
-                              <span style={styles.cartItemLineDescLabel}>{parts.label}</span>
-                              <span style={styles.cartItemLineDescValue}>{parts.value}</span>
-                            </>
-                          ) : (
-                            <span style={styles.cartItemLineDescSingle}>{line}</span>
-                          )}
-                        </p>
-                      );
-                    })}
+                    <div style={styles.cartItemListingsBox}>
+                      {description.map((line, lineIndex) => {
+                        const parts = splitCartDescLine(line);
+                        return (
+                          <p key={lineIndex} style={styles.cartItemLineDesc}>
+                            {parts ? (
+                              <>
+                                <span style={styles.cartItemLineDescLabel}>{parts.label}</span>
+                                <span style={styles.cartItemLineDescValue}>{parts.value}</span>
+                              </>
+                            ) : (
+                              <span style={styles.cartItemLineDescSingle}>{line}</span>
+                            )}
+                          </p>
+                        );
+                      })}
 
-                    {instructionsForDisplay ? (
-                      <div style={styles.cartItemNoteRow}>
-                        <span style={styles.cartItemNoteLabel}>Special instructions: </span>
-                        <span style={styles.cartItemNoteValue}>
-                          &ldquo;{instructionsForDisplay}&rdquo;
-                        </span>
-                      </div>
-                    ) : null}
+                      {instructionsForDisplay ? (
+                        <div style={{ ...styles.cartItemNoteRow, marginTop: 6 }}>
+                          <span style={styles.cartItemNoteLabel}>Special instructions: </span>
+                          <span style={styles.cartItemNoteValue}>
+                            &ldquo;{instructionsForDisplay}&rdquo;
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
 
                     <div className="wk-cart-line-footer" style={styles.cartItemFooterRow}>
                       <div className="cart-item-qty-wrap" style={styles.cartItemQtyGroup}>

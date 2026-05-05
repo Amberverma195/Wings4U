@@ -1136,15 +1136,12 @@ main {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  background-color: #3A2618;
-  border: 1px solid rgba(245, 166, 35, 0.28);
+  background-color: #FFFFFF;
+  border: 1px solid rgba(234, 88, 12, 0.16);
   border-radius: 16px;
   padding: clamp(12px, 2vw, 16px) clamp(14px, 2vw, 18px);
-  margin-bottom: 0.65rem;
-  box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 210, 140, 0.08);
-  border-bottom: none;
+  margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(12, 3, 0, 0.06), 0 1px 2px rgba(12, 3, 0, 0.04);
 }
 
 .checkout-page .checkout-order-summary-section .checkout-cart-line-info {
@@ -1183,8 +1180,8 @@ main {
   padding: 0;
   border: none;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffd500;
+  background: rgba(12, 3, 0, 0.04);
+  color: #EA580C;
   cursor: pointer;
   transition:
     background 0.15s ease,
@@ -1211,8 +1208,27 @@ main {
 
 .checkout-page .checkout-order-summary-section .checkout-cart-line-details {
   margin-top: 0.55rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.7rem 0.85rem;
+  background: #FAFAFA;
+  border-radius: 12px;
+  border: 1px solid rgba(12, 3, 0, 0.04);
+}
+
+.checkout-page .checkout-order-summary-section .cart-line-instructions {
+  margin-top: 0.5rem;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.checkout-page .checkout-order-summary-section .cart-line-instructions-label {
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.checkout-page .checkout-order-summary-section .cart-line-instructions-value {
+  color: #EA580C;
+  font-style: normal;
+  font-weight: 400;
 }
 
 .checkout-page .checkout-order-summary-section > .cart-line:last-child {
@@ -1220,7 +1236,7 @@ main {
 }
 
 .checkout-page .checkout-order-summary-section .cart-line-info h3 {
-  color: #fff8ef;
+  color: #0C0300;
   font-family: "DM Sans", sans-serif;
   font-size: clamp(17px, 1.85vw, 20px);
   font-weight: 700;
@@ -1236,15 +1252,15 @@ main {
 }
 
 .checkout-page .checkout-order-summary-section .cart-line-mods .cart-line-desc-label {
-  color: #ffffff;
+  color: #4b5563;
 }
 
 .checkout-page .checkout-order-summary-section .cart-line-mods .cart-line-desc-value {
-  color: #ffd500;
+  color: #EA580C;
 }
 
 .checkout-page .checkout-order-summary-section .cart-line-mods .cart-line-desc-single {
-  color: rgba(255, 244, 230, 0.88);
+  color: #4b5563;
 }
 
 /* Match `styles.cartItemPriceTop` on Wings cart page (Bebas, 1px tracking, no bold). */
@@ -1252,30 +1268,13 @@ main {
   flex-shrink: 0;
   margin: 0;
   line-height: 1;
-  color: #fff4e6;
+  color: #EA580C;
   font-family: "Bebas Neue", sans-serif;
   font-size: clamp(19px, 2.2vw, 22px);
   font-weight: 400;
   letter-spacing: 1px;
   white-space: nowrap;
   text-shadow: none;
-}
-
-.checkout-page .checkout-order-summary-section .cart-line-instructions {
-  margin: 0.4rem 0 0;
-  font-size: 15px;
-  line-height: 1.45;
-  font-style: normal;
-  color: #ffffff;
-}
-
-.checkout-page .checkout-order-summary-section .cart-line-instructions-label {
-  color: #ffffff;
-  font-weight: 800;
-}
-
-.checkout-page .checkout-order-summary-section .cart-line-instructions-value {
-  color: #ffd500;
 }
 
 .checkout-page .quote-summary {
@@ -1536,6 +1535,16 @@ main {
   color: #0c0300;
   font-family: "Bebas Neue", sans-serif;
   letter-spacing: 0.05em;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  margin-bottom: 0.5rem;
+}
+
+.checkout-page .cart-empty p {
+  font-size: clamp(1.1rem, 1.5vw, 1.35rem);
+  margin-bottom: 1.5rem;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ── Order detail ────────────────────────────────────────────────── */
@@ -3017,10 +3026,8 @@ main {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1.4rem;
-  /* Lifted wash: reads lighter than step cards below for clear separation from the shell. */
-  background:
-    radial-gradient(ellipse 110% 65% at 50% 0%, rgba(255, 220, 175, 0.1), transparent 55%),
-    linear-gradient(180deg, #363028 0%, #2c2620 40%, #242019 100%);
+  background: #F8C676;
+  color: #17120d;
 }
 
 .builder-panel-header h2 {
@@ -3039,15 +3046,16 @@ main {
 
 .builder-inline-copy {
   margin: 0.35rem 0 0;
-  color: rgba(255, 244, 230, 0.7);
+  color: rgba(23, 18, 13, 0.7);
   font-size: 0.95rem;
   line-height: 1.5;
 }
 
 .builder-step-card-head p {
   margin: 0.35rem 0 0;
-  color: #ffbc00;
+  color: #854d0e;
   font-size: 0.95rem;
+  font-weight: 700;
   line-height: 1.5;
 }
 
@@ -3111,12 +3119,13 @@ main {
 }
 
 .builder-step-card {
-  background: #2b1d0e;
+  background: #FFFFFF;
   border: 1px solid rgba(245, 166, 35, 0.14);
   border-radius: 22px;
   padding: 1rem;
   margin-bottom: 1rem;
   scroll-margin-top: 112px;
+  color: #17120d;
 }
 
 .builder-step-card-invalid {
@@ -3140,8 +3149,10 @@ main {
 }
 
 .modifier-required-highlight {
+  background: #FFFFFF;
   border-color: rgba(245, 166, 35, 0.42);
   box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.22);
+  color: #17120d;
 }
 
 .builder-option-pills,
@@ -3160,14 +3171,14 @@ main {
   padding: 0.4rem 0.55rem;
   margin: 0 -0.15rem 0.15rem;
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .builder-heat-tab {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 244, 230, 0.82);
+  border: 1px solid rgba(245, 166, 35, 0.28);
+  background: #FAFAFA;
+  color: #EA580C;
   border-radius: 10px;
   padding: 0.45rem 0.78rem;
   font: inherit;
@@ -3183,15 +3194,15 @@ main {
   transform: translateY(-1px);
   border-color: rgba(245, 166, 35, 0.45);
   background: rgba(245, 166, 35, 0.12);
-  color: #fff4e6;
+  color: #EA580C;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
 }
 
 .builder-option-pill,
 .builder-flavour-pill {
   border: 1px solid rgba(245, 166, 35, 0.28);
-  background: rgba(255, 255, 255, 0.04);
-  color: #fff4e6;
+  background: #FAFAFA;
+  color: #EA580C;
   border-radius: 999px;
   padding: 0.75rem 1rem;
   font: inherit;
@@ -3234,28 +3245,33 @@ main {
   border-radius: 14px;
   cursor: pointer;
   transition: background 0.16s ease;
+  color: #EA580C;
 }
 
 .ingredient-checkbox-row:hover {
-  background: rgba(245, 166, 35, 0.08);
+  background: rgba(234, 88, 12, 0.12);
+}
+
+.ingredient-checkbox-name {
+  color: #EA580C;
 }
 
 .ingredient-checkbox-row input[type="checkbox"] {
   width: 1.2rem;
   height: 1.2rem;
   flex-shrink: 0;
-  accent-color: #f5a623;
+  accent-color: #EA580C;
   cursor: pointer;
 }
 
 .ingredient-checkbox-name {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #fff4e6;
+  color: #EA580C;
 }
 
 .ingredient-checkbox-row-removed .ingredient-checkbox-name {
-  color: rgba(255, 244, 230, 0.4);
+  color: rgba(234, 88, 12, 0.4);
   text-decoration: line-through;
 }
 
@@ -3304,6 +3320,10 @@ main {
   color: inherit;
 }
 
+.builder-panel .price-text {
+  color: #EA580C;
+}
+
 .builder-checkbox-list {
   display: grid;
   gap: 0.55rem;
@@ -3313,15 +3333,15 @@ main {
   width: 100%;
   padding: 0.85rem 1rem;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: #FAFAFA;
   border: 1px solid rgba(245, 166, 35, 0.28);
-  color: #fff4e6;
+  color: #EA580C;
   font: inherit;
   font-weight: 600;
   appearance: none;
   -webkit-appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, #f5a623 50%),
-    linear-gradient(135deg, #f5a623 50%, transparent 50%);
+  background-image: linear-gradient(45deg, transparent 50%, #EA580C 50%),
+    linear-gradient(135deg, #EA580C 50%, transparent 50%);
   background-position:
     calc(100% - 18px) 50%,
     calc(100% - 12px) 50%;
@@ -3383,14 +3403,19 @@ main {
   align-items: center;
   padding: 0.8rem 0.9rem;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: #F9FAFB;
   border: 1px solid rgba(245, 166, 35, 0.18);
-  color: #fff4e6;
+  color: #EA580C;
 }
 
 .builder-checkbox-row input,
 .builder-inline-toggle input {
-  accent-color: #f5a623;
+  accent-color: #EA580C;
+}
+
+.builder-checkbox-row:hover,
+.builder-inline-toggle:hover {
+  background: rgba(234, 88, 12, 0.12);
 }
 
 .builder-inline-toggle {
@@ -3415,7 +3440,7 @@ main {
 .builder-slot-block {
   border-radius: 18px;
   border: 1px solid rgba(245, 166, 35, 0.16);
-  background: rgba(255, 255, 255, 0.03);
+  background: #FAFAFA;
   padding: 0.9rem;
 }
 
@@ -3423,7 +3448,7 @@ main {
   margin: 0 0 0.65rem;
   font-size: 0.92rem;
   font-weight: 800;
-  color: #fff4e6;
+  color: #EA580C;
 }
 
 .builder-textarea {
@@ -3435,12 +3460,13 @@ main {
   padding: 0.9rem 1rem;
   font: inherit;
   font-size: 0.96rem;
-  background: rgba(255, 255, 255, 0.04);
-  color: #fff4e6;
+  background: #FAFAFA;
+  color: #17120d;
 }
 
 .builder-textarea::placeholder {
-  color: rgba(255, 244, 230, 0.4);
+  color: #EA580C;
+  opacity: 0.8;
 }
 
 .builder-placeholder-box {

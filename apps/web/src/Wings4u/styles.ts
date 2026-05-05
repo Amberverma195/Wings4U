@@ -653,12 +653,12 @@ export const styles = {
   },
   /** Per-line item card — dark brown surface. */
   cartItemLineCard: {
-    background:"#3a2618",
-    border:"1px solid rgba(245, 166, 35, 0.28)",
+    background:"#FFFFFF",
+    border:"1px solid rgba(234, 88, 12, 0.16)",
     borderRadius:16,
     padding:"clamp(14px, 2vw, 18px)",
     marginBottom:16,
-    boxShadow:"0 8px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,210,140,0.08)",
+    boxShadow:"0 8px 24px rgba(12, 3, 0, 0.06), 0 1px 2px rgba(12, 3, 0, 0.04)",
   },
   cartItemThumbWrap: {
     borderRadius:12,
@@ -685,6 +685,13 @@ export const styles = {
     letterSpacing:1.5,
   },
   cartItemCardBody: { flex:1, minWidth:0 },
+  cartItemListingsBox: {
+    background: "#FAFAFA",
+    borderRadius: 12,
+    padding: "0.6rem 0.8rem",
+    marginTop: "0.7rem",
+    border: "1px solid rgba(12, 3, 0, 0.04)",
+  },
   cartItemTitleRow: {
     display:"flex",
     justifyContent:"space-between",
@@ -697,7 +704,7 @@ export const styles = {
     fontFamily:"'DM Sans',sans-serif",
     fontSize:"clamp(15px, 1.6vw, 17px)",
     fontWeight:700,
-    color:"#fff8ef",
+    color:"#0C0300",
     lineHeight:1.25,
     flex:1,
     minWidth:0,
@@ -706,7 +713,7 @@ export const styles = {
     fontFamily:"'Bebas Neue',sans-serif",
     fontSize:"clamp(19px, 2.2vw, 22px)",
     letterSpacing:1,
-    color:"#fff4e6",
+    color:"#EA580C",
     flexShrink:0,
   },
   cartItemDescLine: {
@@ -722,15 +729,15 @@ export const styles = {
     lineHeight:1.45,
   },
   cartItemLineDescLabel: {
-    color:"#ffffff",
+    color:"#4b5563",
   },
   /** Value after "Label: " in structured cart lines. */
   cartItemLineDescValue: {
-    color:"#FFD500",
+    color:"#EA580C",
   },
   /** Full-width line when no `Category: value` parse (fallback). */
   cartItemLineDescSingle: {
-    color:"rgba(255, 244, 230, 0.88)",
+    color:"#4b5563",
   },
   cartItemNoteRow: {
     display:"flex",
@@ -743,11 +750,11 @@ export const styles = {
     lineHeight:1.45,
   },
   cartItemNoteLabel: {
-    color:"rgba(255, 255, 255, 0.92)",
+    color:"#4b5563",
     fontWeight:600,
   },
   cartItemNoteValue: {
-    color:"#FFD500",
+    color:"#EA580C",
     fontStyle:"normal" as const,
     fontWeight:400,
   },
@@ -759,7 +766,7 @@ export const styles = {
     gap:12,
     marginTop:14,
     paddingTop:12,
-    borderTop:"1px solid rgba(255, 255, 255, 0.1)",
+    borderTop:"1px solid rgba(12, 3, 0, 0.1)",
   },
   /** Shell for .cart-item-qty-* classes in global-style. */
   cartItemQtyGroup: {
@@ -774,14 +781,14 @@ export const styles = {
     fontSize:17,
     letterSpacing:1,
     fontWeight:700 as const,
-    color:"#fff8ef",
+    color:"#0C0300",
   },
   cartItemActionRow: { display:"flex", gap:8, flexWrap:"wrap" as const },
   cartItemBtnEdit: {
     /* hover via .cart-line-btn-edit */
-    background:"rgba(255, 248, 240, 0.22)",
-    border:"1px solid rgba(255, 244, 230, 0.5)",
-    color:"#fff8ef",
+    background:"rgba(12, 3, 0, 0.04)",
+    border:"1px solid rgba(12, 3, 0, 0.12)",
+    color:"#0C0300",
     padding:"8px 14px",
     borderRadius:8,
     cursor:"pointer",
@@ -792,9 +799,9 @@ export const styles = {
     transition:"background 0.2s ease, border-color 0.2s ease, transform 0.2s ease",
   },
   cartItemBtnRemove: {
-    background:"rgba(255, 120, 60, 0.2)",
-    border:"1px solid rgba(255, 170, 110, 0.65)",
-    color:"#ffe0d4",
+    background:"rgba(239, 68, 68, 0.08)",
+    border:"1px solid rgba(239, 68, 68, 0.16)",
+    color:"#dc2626",
     padding:"8px 14px",
     borderRadius:8,
     cursor:"pointer",

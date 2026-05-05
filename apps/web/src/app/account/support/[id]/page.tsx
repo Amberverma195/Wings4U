@@ -1,12 +1,16 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { use } from "react";
 import { AccountSkeleton } from "@/components/account-skeleton";
 import { RequireAuthModal } from "@/components/require-auth-modal";
 import { TicketDetailClient } from "./ticket-detail-client";
 
-export default function AccountSupportTicketPage() {
-  const { id } = useParams<{ id: string }>();
+export default function AccountSupportTicketPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const ticketId = typeof id === "string" ? id : "";
 
   return (
