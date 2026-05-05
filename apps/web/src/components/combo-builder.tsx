@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
+import { BONELESS_WINGS_UPCHARGE_CENTS } from "@/lib/cart-item-utils";
 import type {
   BuilderMenuOption,
   CartItem,
@@ -39,6 +40,56 @@ type Props = {
 
 type WingType = "BONE_IN" | "BONELESS" | null;
 type Preparation = "BREADED" | "NON_BREADED" | null;
+type WingPreparationOptionId =
+  | "BREADED_BONE_IN"
+  | "NON_BREADED_BONE_IN"
+  | "BREADED_BONELESS";
+
+const WING_PREPARATION_OPTIONS: Array<{
+  id: WingPreparationOptionId;
+  label: string;
+  wingType: Exclude<WingType, null>;
+  preparation: Exclude<Preparation, null>;
+  priceNote?: string;
+}> = [
+  {
+    id: "BREADED_BONE_IN",
+    label: "Breaded - Bone-In",
+    wingType: "BONE_IN",
+    preparation: "BREADED",
+  },
+  {
+    id: "NON_BREADED_BONE_IN",
+    label: "Non-Breaded Bone-In",
+    wingType: "BONE_IN",
+    preparation: "NON_BREADED",
+  },
+  {
+    id: "BREADED_BONELESS",
+    label: "Breaded-Boneless",
+    wingType: "BONELESS",
+    preparation: "BREADED",
+    priceNote: `+$${(BONELESS_WINGS_UPCHARGE_CENTS / 100).toFixed(2)}`,
+  },
+];
+
+function normalizeInitialPreparation(
+  wingType: WingType,
+  preparation: Preparation,
+): Preparation {
+  return wingType === "BONELESS" ? "BREADED" : preparation;
+}
+
+function selectedWingPreparationId(
+  wingType: WingType,
+  preparation: Preparation,
+): WingPreparationOptionId | null {
+  const option = WING_PREPARATION_OPTIONS.find(
+    (candidate) =>
+      candidate.wingType === wingType && candidate.preparation === preparation,
+  );
+  return option?.id ?? null;
+}
 
 function countFlavourGroups(groups: ModifierGroup[]) {
   return groups.filter((group) =>
@@ -114,11 +165,12 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
   const [selectedComboId, setSelectedComboId] = useState<string | null>(
     editingLine?.menu_item_id ?? null,
   );
+  const initialWingType = editingPayload?.wing_type ?? null;
   const [wingType, setWingType] = useState<WingType>(
-    editingPayload?.wing_type ?? null,
+    initialWingType,
   );
   const [preparation, setPreparation] = useState<Preparation>(
-    editingPayload?.preparation ?? null,
+    normalizeInitialPreparation(initialWingType, editingPayload?.preparation ?? null),
   );
   const [flavourSelections, setFlavourSelections] = useState<string[]>(
     () => editingPayload?.flavour_slots.map((slot) => slot.wing_flavour_id) ?? [],
@@ -242,21 +294,20 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     setDrinkSelections((prev) => Array.from({ length: drinkGroups.length }, (_, index) => prev[index] ?? ""));
   }, [drinkGroups.length]);
 
-  useEffect(() => {
-    if (wingType === "BONELESS") {
-      setPreparation(null);
-    }
-  }, [wingType]);
-
   const resolvedPreparation = preparation;
-  const liveUnitPrice = selectedOption?.base_price_cents ?? 0;
+  const liveUnitPrice =
+    (selectedOption?.base_price_cents ?? 0) +
+    (wingType === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0);
   const showsSaucingStep = requiredFlavourCount >= 1 && !allMainFlavoursPlain;
 
   const steps = useMemo(() => {
     const completion = [
       { id: "combo-size", label: "Combo size", complete: selectedOption !== null },
-      { id: "wing-type", label: "Wing type", complete: wingType !== null },
-      { id: "preparation", label: "Preparation", complete: preparation !== null },
+      {
+        id: "preparation",
+        label: "Wing Preparation",
+        complete: wingType !== null && preparation !== null,
+      },
       { id: "flavours", label: "Flavours", complete: requiredFlavourCount > 0 && flavourSelections.every(Boolean) },
       ...(showsSaucingStep
         ? [
@@ -335,8 +386,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
 
   const validate = useCallback(() => {
     if (!selectedOption) return "combo-size";
-    if (!wingType) return "wing-type";
-    if (!resolvedPreparation) return "preparation";
+    if (!wingType || !resolvedPreparation) return "preparation";
     if (flavourSelections.some((selection) => !selection)) return "flavours";
     if (!allMainFlavoursPlain) {
       if (
@@ -558,37 +608,8 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
           </StepContainer>
 
           <StepContainer
-            title="Wing type"
-            subtitle="Choose bone-in or boneless."
-            invalid={submitAttempted && validationError === "wing-type"}
-            inlineError={
-              submitAttempted && validationError === "wing-type"
-                ? BUILDER_VALIDATION_MESSAGE
-                : null
-            }
-            ref={(node) => setStepRef("wing-type", node)}
-          >
-            <div className="builder-option-pills">
-              <button
-                type="button"
-                className={`builder-option-pill${wingType === "BONE_IN" ? " builder-option-pill-active" : ""}`}
-                onClick={() => setWingType("BONE_IN")}
-              >
-                Bone-in
-              </button>
-              <button
-                type="button"
-                className={`builder-option-pill${wingType === "BONELESS" ? " builder-option-pill-active" : ""}`}
-                onClick={() => setWingType("BONELESS")}
-              >
-                Boneless
-              </button>
-            </div>
-          </StepContainer>
-
-          <StepContainer
-            title="Preparation"
-            subtitle={wingType === "BONELESS" ? "Boneless wings are non-breaded. Tap to confirm." : "Choose breaded or non-breaded."}
+            title="Wing Preparation"
+            subtitle="Choose how the wings should be prepared."
             invalid={submitAttempted && validationError === "preparation"}
             inlineError={
               submitAttempted && validationError === "preparation"
@@ -598,22 +619,24 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
             ref={(node) => setStepRef("preparation", node)}
           >
             <div className="builder-option-pills">
-              {wingType !== "BONELESS" && (
+              {WING_PREPARATION_OPTIONS.map((option) => (
                 <button
+                  key={option.id}
                   type="button"
-                  className={`builder-option-pill${preparation === "BREADED" ? " builder-option-pill-active" : ""}`}
-                  onClick={() => setPreparation("BREADED")}
+                  className={`builder-option-pill${
+                    selectedWingPreparationId(wingType, preparation) === option.id
+                      ? " builder-option-pill-active"
+                      : ""
+                  }`}
+                  onClick={() => {
+                    setWingType(option.wingType);
+                    setPreparation(option.preparation);
+                  }}
                 >
-                  Breaded
+                  {option.label}
+                  {option.priceNote ? ` (${option.priceNote})` : ""}
                 </button>
-              )}
-              <button
-                type="button"
-                className={`builder-option-pill${preparation === "NON_BREADED" ? " builder-option-pill-active" : ""}`}
-                onClick={() => setPreparation("NON_BREADED")}
-              >
-                Non-breaded
-              </button>
+              ))}
             </div>
           </StepContainer>
 

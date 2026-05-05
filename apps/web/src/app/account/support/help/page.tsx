@@ -18,7 +18,13 @@ export default function HelpPage() {
     if (assistModalOpen && assistView === "orders" && session.loaded) {
       setLoadingOrders(true);
       apiFetch("/api/v1/orders/customer?limit=1")
-        .then((res) => setOrders(res.orders || []))
+        .then(async (res) => {
+          const body = (await res.json()) as {
+            data?: { orders?: any[] };
+            orders?: any[];
+          };
+          setOrders(body.orders ?? body.data?.orders ?? []);
+        })
         .catch(() => {})
         .finally(() => setLoadingOrders(false));
     }

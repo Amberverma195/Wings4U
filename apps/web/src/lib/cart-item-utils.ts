@@ -81,6 +81,7 @@ export function sidePopComboDisplayLines(bundle: {
 }
 
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
+export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
 
 export function getRemovedIngredientsFromBuilderPayload(
   payload?: CartBuilderPayload,
@@ -121,6 +122,12 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
     return payload.child_addons.reduce(
       (sum, addon) => sum + addon.price_delta_cents,
       0,
+    );
+  }
+  if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
+    return (
+      (payload.extra_flavour ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
+      (payload.wing_type === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0)
     );
   }
   return payload.extra_flavour ? EXTRA_FLAVOUR_PRICE_CENTS : 0;

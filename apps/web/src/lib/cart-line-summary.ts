@@ -30,7 +30,7 @@ function partyPackSizeDisplayLine(item: CartItem): string | null {
 }
 
 function wingPreparationLabel(payload: WingBuilderPayload): string {
-  if (payload.wing_type === "BONELESS") return "Boneless";
+  if (payload.wing_type === "BONELESS") return "Breaded-Boneless";
   if (payload.preparation === "BREADED") return "House Breaded Bone-In";
   return "Non-Breaded Bone-In";
 }
@@ -40,6 +40,12 @@ function wingModifierOptionIsDuplicateOfPrepLine(
   optionName: string,
   payload: WingBuilderPayload,
 ): boolean {
+  if (
+    payload.wing_type === "BONELESS" &&
+    /boneless/i.test(optionName.trim())
+  ) {
+    return true;
+  }
   const prep = wingPreparationLabel(payload);
   return optionName.trim().toLowerCase() === prep.toLowerCase();
 }
@@ -227,6 +233,8 @@ function linesFromLabeledModifiers(
     if (shouldSkipWingModifierForSummary(modifier, wingPayloadForMods, selectedSaladName)) {
       continue;
     }
+    const g = modifier.group_name;
+    const o = modifier.option_name;
     const priceSuffix =
       g === "Open Food" && modifier.price_delta_cents > 0
         ? ` (+$${(modifier.price_delta_cents / 100).toFixed(2)})`
