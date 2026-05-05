@@ -579,52 +579,6 @@ export default function ProfilePage() {
               )}
             </section>
 
-            {/* Bottom Grid */}
-            <div className={styles.innerGrid}>
-
-              {/* Activity Card */}
-              <section className={styles.settingsCard}>
-                <header className={styles.cardHeader}>
-                  <span className={styles.eyebrow}>History</span>
-                  <h2>Activity</h2>
-                </header>
-
-                {rewardsLoading ? <p>Loading activity...</p> : null}
-
-                {!rewardsLoading && ledger.length === 0 ? (
-                  <div className={styles.emptyState}>
-                    <p>No transactions yet.</p>
-                  </div>
-                ) : (
-                  <div className={styles.timeline}>
-                    {ledger.slice(0, 4).map((entry) => {
-                      const isNeg = entry.amount_cents < 0;
-                      return (
-                        <div key={entry.id} className={styles.timelineItem}>
-                          <div className={`${styles.marker} ${isNeg ? styles.neg : styles.pos}`}>
-                            {isNeg ? "−" : "+"}
-                          </div>
-                          <div className={styles.timelineBody}>
-                            <strong>{entry.reason_text}</strong>
-                            <span className={styles.timelineMeta}>
-                              {new Date(entry.created_at).toLocaleDateString([], {
-                                month: "short",
-                                day: "numeric",
-                              })}
-                            </span>
-                          </div>
-                          <div className={styles.timelineAmount}>
-                            <strong className={isNeg ? styles.timelineAmountNeg : undefined}>
-                              {formatPoints(Math.abs(entry.amount_cents))}
-                            </strong>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            </div>
           </div>
         </div>
       </main>

@@ -536,7 +536,18 @@ export function CheckoutClient() {
       </div>
 
       <div className="checkout-section checkout-order-summary-section">
-        <h3>Order summary</h3>
+        <h3
+          style={{
+            fontFamily: "'Libre Baskerville', Georgia, 'Times New Roman', serif",
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "#111827",
+            margin: "0 0 18px",
+            letterSpacing: "0.5px",
+          }}
+        >
+          Order summary
+        </h3>
         <hr className="checkout-order-summary-rule" aria-hidden="true" />
         {cart.items.map((item) => {
           const summaryLines = buildLineSummary(item);
@@ -711,17 +722,6 @@ export function CheckoutClient() {
         </div>
       )}
 
-      <div className="checkout-section" style={{ marginTop: cart.fulfillmentType === "PICKUP" ? "1.5rem" : 0 }}>
-        <div className="checkout-field">
-          <label>Order notes</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any special requests for the kitchen"
-            rows={2}
-          />
-        </div>
-      </div>
 
       {state.step === "error" && (
         <p className="surface-error" style={{ marginBottom: "1rem" }}>

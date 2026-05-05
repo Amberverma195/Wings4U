@@ -468,11 +468,6 @@ export function CartPage() {
           <div style={styles.cartOrderTopRow}>
             <header style={styles.cartOrderHeaderBlock}>
               <h1 style={styles.cartOrderTitleLeft}>YOUR ORDER</h1>
-              <p style={styles.cartItemCountLabel}>
-                {totalCartItemUnits === 1
-                  ? "1 item in your cart"
-                  : `${totalCartItemUnits} items in your cart`}
-              </p>
               <Link
                 href={`/order?fulfillment_type=${cart.fulfillmentType}`}
                 className="cart-back-to-menu-link"
@@ -490,6 +485,12 @@ export function CartPage() {
           <div style={styles.cartOrderAccentLineTrack} aria-hidden>
             <div style={styles.cartOrderAccentLine} />
           </div>
+
+          <p style={styles.cartItemCountLabel}>
+            {totalCartItemUnits === 1
+              ? "1 item in your cart"
+              : `${totalCartItemUnits} items in your cart`}
+          </p>
 
           <div style={styles.cartLayoutRow}>
             <div style={styles.cartItemsColumn}>
@@ -639,6 +640,8 @@ export function CartPage() {
                 ) : null}
 
 
+                <hr style={styles.cartOrderSummaryDivider} />
+
                 <p style={styles.cartTipLabel}>
                   {cart.fulfillmentType === "DELIVERY" ? "Add a tip for your driver" : "Add a tip"}
                 </p>
@@ -664,8 +667,6 @@ export function CartPage() {
                     );
                   })}
                 </div>
-
-                <hr style={styles.cartOrderSummaryDivider} />
 
                 <div className="quote-summary">
                   <div className="quote-row">
@@ -841,9 +842,6 @@ export function CartPage() {
                   <h2 id="coupons-modal-title" style={styles.couponsModalTitle}>
                     Available Coupons
                   </h2>
-                  <p style={styles.couponsModalSubtitle}>
-                    Active promotions and special offers currently available for your account.
-                  </p>
                 </div>
                 <button
                   type="button"
