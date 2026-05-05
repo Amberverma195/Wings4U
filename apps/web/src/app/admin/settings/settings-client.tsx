@@ -34,6 +34,14 @@ type Settings = {
   addItemsAutoApproveEnabled: boolean;
   trustedIpRanges: string[];
   kdsPasswordConfigured?: boolean;
+  storeHours: StoreHour[];
+};
+
+type StoreHour = {
+  day_of_week: number;
+  time_from: string;
+  time_to: string;
+  is_closed: boolean;
 };
 
 type FieldDef = {
@@ -197,7 +205,84 @@ const FIELDS: FieldDef[] = [
   },
 ];
 
-const GROUPS = Array.from(new Set(FIELDS.map((f) => f.group)));
+const GROUPS = [
+  "Tax",
+  "Delivery",
+  "Store Hours",
+  "Pickup",
+  "Kitchen",
+  "Promotions",
+  "Risk",
+];
+
+const STORE_HOUR_DAYS = [
+  { day: 1, label: "Monday" },
+  { day: 2, label: "Tuesday" },
+  { day: 3, label: "Wednesday" },
+  { day: 4, label: "Thursday" },
+  { day: 5, label: "Friday" },
+  { day: 6, label: "Saturday" },
+  { day: 0, label: "Sunday" },
+] as const;
+
+const DEFAULT_STORE_HOURS: StoreHour[] = STORE_HOUR_DAYS.map(({ day }) => ({
+  day_of_week: day,
+  time_from: "11:00",
+  time_to: day === 5 || day === 6 ? "02:30" : "01:00",
+  is_closed: false,
+}));
+
+function normalizeStoreHours(hours?: StoreHour[] | null): StoreHour[] {
+  const byDay = new Map<number, StoreHour>();
+  if (Array.isArray(hours)) {
+    for (const hour of hours) {
+      if (
+        !hour ||
+        !Number.isInteger(hour.day_of_week) ||
+        hour.day_of_week < 0 ||
+        hour.day_of_week > 6
+      ) {
+        continue;
+      }
+      byDay.set(hour.day_of_week, {
+        day_of_week: hour.day_of_week,
+        time_from: typeof hour.time_from === "string" ? hour.time_from : "11:00",
+        time_to: typeof hour.time_to === "string" ? hour.time_to : "01:00",
+        is_closed: Boolean(hour.is_closed),
+      });
+    }
+  }
+
+  return STORE_HOUR_DAYS.map(({ day }) => {
+    const fallback = DEFAULT_STORE_HOURS.find((hour) => hour.day_of_week === day)!;
+    return byDay.get(day) ?? { ...fallback };
+  });
+}
+
+function storeHoursEqual(a?: StoreHour[] | null, b?: StoreHour[] | null): boolean {
+  const left = normalizeStoreHours(a);
+  const right = normalizeStoreHours(b);
+  return left.every((hour, index) => {
+    const other = right[index];
+    return (
+      other &&
+      hour.day_of_week === other.day_of_week &&
+      hour.time_from === other.time_from &&
+      hour.time_to === other.time_to &&
+      hour.is_closed === other.is_closed
+    );
+  });
+}
+
+function updateStoreHour(
+  rows: StoreHour[],
+  dayOfWeek: number,
+  patch: Partial<StoreHour>,
+): StoreHour[] {
+  return rows.map((row) =>
+    row.day_of_week === dayOfWeek ? { ...row, ...patch } : row,
+  );
+}
 
 function parseValue(raw: string, kind: FieldDef["kind"]): unknown {
   if (kind === "boolean") return raw === "true";
@@ -291,6 +376,8 @@ export function SettingsClient() {
   const session = useSession();
   const [data, setData] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [storeHoursDraft, setStoreHoursDraft] =
+    useState<StoreHour[]>(DEFAULT_STORE_HOURS);
   const [allowedIpDraft, setAllowedIpDraft] = useState("");
   const [editingAllowedIp, setEditingAllowedIp] = useState(false);
   const [kdsPasswordDraft, setKdsPasswordDraft] = useState("");
@@ -327,6 +414,7 @@ export function SettingsClient() {
         seeded[f.key] = valueToInput(settings[f.key], f.kind);
       }
       setDraft(seeded);
+      setStoreHoursDraft(normalizeStoreHours(settings.storeHours));
       setAllowedIpDraft(getAllowedIp(settings));
       setEditingAllowedIp(false);
       setKdsPasswordDraft("");
@@ -346,6 +434,7 @@ export function SettingsClient() {
 
   const dirty = data
     ? FIELDS.some((f) => valueToInput(data[f.key], f.kind) !== draft[f.key]) ||
+      !storeHoursEqual(storeHoursDraft, data.storeHours) ||
       getAllowedIp(data) !== allowedIpDraft.trim() ||
       (editingKdsPassword && kdsPasswordDraft !== "") ||
       removingKdsPassword
@@ -374,6 +463,14 @@ export function SettingsClient() {
           "Set both delivery start and end times, or leave both blank.",
         );
       }
+      for (const row of storeHoursDraft) {
+        if (!row.is_closed && (!row.time_from || !row.time_to)) {
+          const dayLabel =
+            STORE_HOUR_DAYS.find((day) => day.day === row.day_of_week)?.label ??
+            "Store";
+          throw new Error(`${dayLabel} needs both an open and close time.`);
+        }
+      }
 
       const payload: Record<string, unknown> = {};
       for (const f of FIELDS) {
@@ -385,6 +482,9 @@ export function SettingsClient() {
       }
       if (getAllowedIp(data) !== normalizedAllowedIp) {
         payload.trustedIpRanges = normalizedAllowedIp ? [normalizedAllowedIp] : [];
+      }
+      if (!storeHoursEqual(storeHoursDraft, data.storeHours)) {
+        payload.storeHours = storeHoursDraft;
       }
       if (editingKdsPassword && kdsPasswordDraft.length > 0 && !/^\d{8}$/.test(kdsPasswordDraft)) {
         throw new Error("KDS and POS password must be exactly 8 digits.");
@@ -426,6 +526,7 @@ export function SettingsClient() {
         seeded[f.key] = valueToInput(settings[f.key], f.kind);
       }
       setDraft(seeded);
+      setStoreHoursDraft(normalizeStoreHours(settings.storeHours));
       setAllowedIpDraft(getAllowedIp(settings));
       setEditingAllowedIp(false);
       setKdsPasswordDraft("");
@@ -466,109 +567,224 @@ export function SettingsClient() {
             void onSave();
           }}
         >
-          {GROUPS.map((group) => (
-            <section
-              key={group}
-              className="surface-card"
-              style={{ padding: "1rem", marginBottom: "1rem" }}
-            >
-              <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>{group}</h2>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: "0.75rem",
-                }}
+          {GROUPS.map((group) => {
+            if (group === "Store Hours") {
+              return (
+                <section
+                  key={group}
+                  className="surface-card"
+                  style={{ padding: "1rem", marginBottom: "1rem" }}
+                >
+                  <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
+                    Store Hours
+                  </h2>
+                  <p
+                    className="surface-muted"
+                    style={{ marginTop: 0, marginBottom: "0.9rem" }}
+                  >
+                    These hours are shown in the customer footer and can cross
+                    midnight.
+                  </p>
+                  <div style={{ display: "grid", gap: "0.7rem" }}>
+                    {storeHoursDraft.map((row) => {
+                      const dayLabel =
+                        STORE_HOUR_DAYS.find((day) => day.day === row.day_of_week)
+                          ?.label ?? "Day";
+                      return (
+                        <div
+                          key={row.day_of_week}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "minmax(110px, 1fr) minmax(120px, 160px) minmax(120px, 160px) minmax(100px, auto)",
+                            gap: "0.7rem",
+                            alignItems: "center",
+                          }}
+                        >
+                          <strong style={{ fontSize: "0.9rem" }}>{dayLabel}</strong>
+                          <label style={{ fontSize: "0.8rem" }}>
+                            <span className="surface-muted">Open</span>
+                            <input
+                              type="time"
+                              step="60"
+                              value={row.time_from}
+                              disabled={!isAdmin || row.is_closed}
+                              onChange={(e) =>
+                                setStoreHoursDraft((prev) =>
+                                  updateStoreHour(prev, row.day_of_week, {
+                                    time_from: e.target.value,
+                                  }),
+                                )
+                              }
+                              style={{
+                                display: "block",
+                                marginTop: "0.25rem",
+                                padding: "0.4rem 0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "1px solid #d4d4d4",
+                                width: "100%",
+                                fontFamily: "inherit",
+                              }}
+                            />
+                          </label>
+                          <label style={{ fontSize: "0.8rem" }}>
+                            <span className="surface-muted">Close</span>
+                            <input
+                              type="time"
+                              step="60"
+                              value={row.time_to}
+                              disabled={!isAdmin || row.is_closed}
+                              onChange={(e) =>
+                                setStoreHoursDraft((prev) =>
+                                  updateStoreHour(prev, row.day_of_week, {
+                                    time_to: e.target.value,
+                                  }),
+                                )
+                              }
+                              style={{
+                                display: "block",
+                                marginTop: "0.25rem",
+                                padding: "0.4rem 0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "1px solid #d4d4d4",
+                                width: "100%",
+                                fontFamily: "inherit",
+                              }}
+                            />
+                          </label>
+                          <label
+                            style={{
+                              display: "flex",
+                              gap: "0.45rem",
+                              alignItems: "center",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={row.is_closed}
+                              disabled={!isAdmin}
+                              onChange={(e) =>
+                                setStoreHoursDraft((prev) =>
+                                  updateStoreHour(prev, row.day_of_week, {
+                                    is_closed: e.target.checked,
+                                  }),
+                                )
+                              }
+                            />
+                            Closed
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            }
+
+            return (
+              <section
+                key={group}
+                className="surface-card"
+                style={{ padding: "1rem", marginBottom: "1rem" }}
               >
-                {FIELDS.filter((f) => f.group === group).map((f) => (
-                  <label key={f.key} style={{ display: "block", fontSize: "0.85rem" }}>
-                    <span style={{ fontWeight: 600 }}>{f.label}</span>
-                    {f.kind === "boolean" && f.display === "toggle" ? (
-                      <span
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.55rem",
-                          marginTop: "0.45rem",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={(draft[f.key] ?? "false") === "true"}
+                <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>{group}</h2>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "0.75rem",
+                  }}
+                >
+                  {FIELDS.filter((f) => f.group === group).map((f) => (
+                    <label key={f.key} style={{ display: "block", fontSize: "0.85rem" }}>
+                      <span style={{ fontWeight: 600 }}>{f.label}</span>
+                      {f.kind === "boolean" && f.display === "toggle" ? (
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.55rem",
+                            marginTop: "0.45rem",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={(draft[f.key] ?? "false") === "true"}
+                            onChange={(e) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                [f.key]: e.target.checked ? "true" : "false",
+                              }))
+                            }
+                            disabled={!isAdmin}
+                          />
+                          <span className="surface-muted">
+                            {(draft[f.key] ?? "false") === "true"
+                              ? f.trueLabel ?? "Enabled"
+                              : f.falseLabel ?? "Disabled"}
+                          </span>
+                        </span>
+                      ) : f.kind === "boolean" ? (
+                        <select
+                          value={draft[f.key] ?? "false"}
                           onChange={(e) =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              [f.key]: e.target.checked ? "true" : "false",
-                            }))
+                            setDraft((prev) => ({ ...prev, [f.key]: e.target.value }))
                           }
                           disabled={!isAdmin}
+                          style={{
+                            display: "block",
+                            marginTop: "0.25rem",
+                            padding: "0.4rem 0.5rem",
+                            borderRadius: "0.375rem",
+                            border: "1px solid #d4d4d4",
+                            width: "100%",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          <option value="true">{f.trueLabel ?? "Enabled"}</option>
+                          <option value="false">{f.falseLabel ?? "Disabled"}</option>
+                        </select>
+                      ) : (
+                        <input
+                          type={f.kind === "time-minutes" ? "time" : "number"}
+                          step={
+                            f.kind === "time-minutes"
+                              ? "60"
+                              : f.kind === "cents"
+                                ? "0.01"
+                                : "1"
+                          }
+                          min={f.kind === "cents" ? "0" : undefined}
+                          value={draft[f.key] ?? ""}
+                          onChange={(e) =>
+                            setDraft((prev) => ({ ...prev, [f.key]: e.target.value }))
+                          }
+                          disabled={!isAdmin}
+                          style={{
+                            display: "block",
+                            marginTop: "0.25rem",
+                            padding: "0.4rem 0.5rem",
+                            borderRadius: "0.375rem",
+                            border: "1px solid #d4d4d4",
+                            width: "100%",
+                            fontFamily: "inherit",
+                          }}
                         />
-                        <span className="surface-muted">
-                          {(draft[f.key] ?? "false") === "true"
-                            ? f.trueLabel ?? "Enabled"
-                            : f.falseLabel ?? "Disabled"}
+                      )}
+                      {f.description && (
+                        <span
+                          className="surface-muted"
+                          style={{ display: "block", fontSize: "0.75rem", marginTop: "0.2rem" }}
+                        >
+                          {f.description}
                         </span>
-                      </span>
-                    ) : f.kind === "boolean" ? (
-                      <select
-                        value={draft[f.key] ?? "false"}
-                        onChange={(e) =>
-                          setDraft((prev) => ({ ...prev, [f.key]: e.target.value }))
-                        }
-                        disabled={!isAdmin}
-                        style={{
-                          display: "block",
-                          marginTop: "0.25rem",
-                          padding: "0.4rem 0.5rem",
-                          borderRadius: "0.375rem",
-                          border: "1px solid #d4d4d4",
-                          width: "100%",
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        <option value="true">{f.trueLabel ?? "Enabled"}</option>
-                        <option value="false">{f.falseLabel ?? "Disabled"}</option>
-                      </select>
-                    ) : (
-                      <input
-                        type={f.kind === "time-minutes" ? "time" : "number"}
-                        step={
-                          f.kind === "time-minutes"
-                            ? "60"
-                            : f.kind === "cents"
-                              ? "0.01"
-                              : "1"
-                        }
-                        min={f.kind === "cents" ? "0" : undefined}
-                        value={draft[f.key] ?? ""}
-                        onChange={(e) =>
-                          setDraft((prev) => ({ ...prev, [f.key]: e.target.value }))
-                        }
-                        disabled={!isAdmin}
-                        style={{
-                          display: "block",
-                          marginTop: "0.25rem",
-                          padding: "0.4rem 0.5rem",
-                          borderRadius: "0.375rem",
-                          border: "1px solid #d4d4d4",
-                          width: "100%",
-                          fontFamily: "inherit",
-                        }}
-                      />
-                    )}
-                    {f.description && (
-                      <span
-                        className="surface-muted"
-                        style={{ display: "block", fontSize: "0.75rem", marginTop: "0.2rem" }}
-                      >
-                        {f.description}
-                      </span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            </section>
-          ))}
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
 
           <section
             className="surface-card"

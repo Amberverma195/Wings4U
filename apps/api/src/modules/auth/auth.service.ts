@@ -76,13 +76,12 @@ interface TokenBundle {
   needsProfileCompletion?: boolean;
 }
 
-/** A customer profile is complete only after the profile form has stored a real name. */
+/** A profile is complete only after the profile form/admin tooling has stored a real name. */
 function isProfileComplete(user: {
   role: string;
   displayName: string;
   firstName?: string | null;
 }): boolean {
-  if (user.role !== "CUSTOMER") return true;
   const displayName = user.displayName.trim();
   const firstName = user.firstName?.trim();
   return (

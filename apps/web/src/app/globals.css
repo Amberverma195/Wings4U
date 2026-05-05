@@ -2787,25 +2787,21 @@ main {
 .cart-tip-seg-btn {
   flex: 1 1 0;
   min-width: 0;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #f5a623, #ffbd00);
-  color: #0a0a0a;
-  font-family: "Bebas Neue", sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #4b5563;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
   cursor: pointer;
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  box-shadow: 0 12px 26px rgba(245, 166, 35, 0.28);
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    filter 0.2s ease,
-    opacity 0.2s ease;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  justify-content: center;
 }
 
 .cart-tip-seg-btn__label {
@@ -2813,37 +2809,14 @@ main {
   z-index: 1;
 }
 
-.cart-tip-seg-btn::after {
-  content: "";
-  position: absolute;
-  inset: -35% -15%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.4) 45%,
-    transparent 70%
-  );
-  transform: translateX(-115%) skewX(-10deg);
-  transition: transform 0.48s ease;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.cart-tip-seg-btn:hover {
-  transform: translateY(-2px) scale(1.01);
-  box-shadow:
-    0 18px 36px rgba(245, 166, 35, 0.38),
-    0 0 0 1px rgba(255, 220, 140, 0.35) inset;
-  filter: saturate(1.06) brightness(1.02);
-}
-
-.cart-tip-seg-btn:hover::after {
-  transform: translateX(115%) skewX(-10deg);
+.cart-tip-seg-btn:not(.cart-tip-seg-btn--active):hover {
+  background: #fff7ed;
+  color: #f97316;
+  border-color: #fed7aa;
 }
 
 .cart-tip-seg-btn:active {
-  transform: translateY(0) scale(0.99);
-  box-shadow: 0 8px 18px rgba(245, 166, 35, 0.24);
+  transform: translateY(1px);
 }
 
 .cart-tip-seg-btn:focus {
@@ -2851,26 +2824,18 @@ main {
 }
 
 .cart-tip-seg-btn:focus-visible {
-  outline: 2px solid rgba(245, 166, 35, 0.95);
+  outline: 2px solid #f97316;
   outline-offset: 3px;
 }
 
-.cart-tip-seg-btn:not(.cart-tip-seg-btn--active) {
-  opacity: 0.52;
-  filter: saturate(0.88);
-}
-
-.cart-tip-seg-btn:not(.cart-tip-seg-btn--active):hover {
-  opacity: 0.78;
-}
-
 .cart-tip-seg-btn--active {
-  opacity: 1;
-  filter: none;
-  box-shadow:
-    0 14px 30px rgba(245, 166, 35, 0.42),
-    0 0 0 1px rgba(255, 220, 140, 0.35) inset;
+  background: #fff7ed;
+  color: #f97316;
+  border-color: #fb923c;
+  cursor: default;
+  box-shadow: none;
 }
+
 
 /* Menu item cards — ADD TO CART (base styles remain in styles.addBtn; hover layer here) */
 .menu-add-to-cart-btn {

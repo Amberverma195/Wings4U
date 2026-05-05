@@ -1,5 +1,6 @@
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
 import { FooterMenuLinks } from "@/components/footer-menu-links";
+import { FooterStoreHours } from "@/components/footer-store-hours";
 
 export function SiteFooter() {
   return (
@@ -30,18 +31,7 @@ export function SiteFooter() {
           <p className="footer-address">
             Address: Wings 4 U, 1544 Dundas St, London, ON N5W 3C1
           </p>
-          <details className="footer-hours-disclosure">
-            <summary className="footer-hours-toggle">Store Hours</summary>
-            <div className="footer-hours" aria-label="Store hours">
-              <p>Tuesday: 11 a.m. {"\u2013"} 1 a.m.</p>
-              <p>Wednesday: 11 a.m. {"\u2013"} 1 a.m.</p>
-              <p>Thursday: 11 a.m. {"\u2013"} 1 a.m.</p>
-              <p>Friday: 11 a.m. {"\u2013"} 2:30 a.m.</p>
-              <p>Saturday: 11 a.m. {"\u2013"} 2:30 a.m.</p>
-              <p>Sunday: 11 a.m. {"\u2013"} 1 a.m.</p>
-              <p>Monday: 11 a.m. {"\u2013"} 1 a.m.</p>
-            </div>
-          </details>
+          <FooterStoreHours />
         </div>
 
         <div className="footer-col footer-col--info">

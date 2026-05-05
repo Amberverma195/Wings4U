@@ -100,6 +100,7 @@ export type LocationInfo = {
   delivery_blocked_due_to_no_shows: boolean;
   pickup_hours: LocationServiceHours[];
   delivery_hours: LocationServiceHours[];
+  store_hours?: LocationServiceHours[];
 };
 
 export type LocationServiceHours = {

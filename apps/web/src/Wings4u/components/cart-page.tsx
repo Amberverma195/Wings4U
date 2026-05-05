@@ -96,6 +96,25 @@ export const CART_EDIT_STORAGE_KEY = "wings4u.cart-edit-key";
  */
 export const WINGS_REWARD_STORAGE_KEY = "wings4u.apply-wings-reward";
 
+/** Cart/checkout handoff for coupons applied from the modal (not typed in the UI). */
+export const PROMO_HANDOFF_STORAGE_KEY = "wings4u.promo-checkout-handoff";
+
+/** Legacy key from when the cart had a promo text field; stripped so invalid codes cannot stick forever. */
+export const LEGACY_PROMO_APPLIED_STORAGE_KEY = "wings4u.promo-applied";
+
+export function persistPromoHandoff(code: string) {
+  if (typeof window === "undefined") return;
+  const trimmed = code.trim();
+  if (trimmed) window.sessionStorage.setItem(PROMO_HANDOFF_STORAGE_KEY, trimmed);
+  else window.sessionStorage.removeItem(PROMO_HANDOFF_STORAGE_KEY);
+}
+
+export function clearPromoHandoffStorage() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(PROMO_HANDOFF_STORAGE_KEY);
+  window.sessionStorage.removeItem(LEGACY_PROMO_APPLIED_STORAGE_KEY);
+}
+
 export function CartPage() {
   const router = useRouter();
   const cart = useCart();
@@ -111,7 +130,6 @@ export function CartPage() {
   const [menuLoading, setMenuLoading] = useState(false);
   const [activePromos, setActivePromos] = useState<ActivePromo[]>([]);
 
-  const [promoInput, setPromoInput] = useState("");
   const [promoApplied, setPromoApplied] = useState("");
 
   /**
@@ -144,21 +162,14 @@ export function CartPage() {
   }, [applyWingsReward]);
 
   useEffect(() => {
-    const rawPromo = window.sessionStorage.getItem("wings4u.promo-applied");
-    if (rawPromo) {
-      setPromoApplied(rawPromo);
-      setPromoInput(rawPromo);
+    if (typeof window === "undefined") return;
+    window.sessionStorage.removeItem(LEGACY_PROMO_APPLIED_STORAGE_KEY);
+    const handoff = window.sessionStorage.getItem(PROMO_HANDOFF_STORAGE_KEY);
+    if (handoff) {
+      setPromoApplied(handoff);
       setApplyWingsReward(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (promoApplied) {
-      window.sessionStorage.setItem("wings4u.promo-applied", promoApplied);
-    } else {
-      window.sessionStorage.removeItem("wings4u.promo-applied");
-    }
-  }, [promoApplied]);
 
   useEffect(() => {
     if (cart.items.length === 0) {
@@ -330,6 +341,12 @@ export function CartPage() {
     return () => clearTimeout(debounceRef.current);
   }, [fetchQuote]);
 
+  useEffect(() => {
+    if (!quoteError || !/invalid or expired promo/i.test(quoteError)) return;
+    setPromoApplied("");
+    persistPromoHandoff("");
+  }, [quoteError]);
+
   // Lock body scroll + wire Escape while the Coupons modal is open.
   useEffect(() => {
     if (!couponsModalOpen || typeof document === "undefined") return;
@@ -437,7 +454,7 @@ export function CartPage() {
   }
 
   return (
-    <div style={styles.cartPageShell}>
+    <div style={styles.cartPageShell} className="checkout-page">
       <div style={styles.menuPage}>
       <div style={styles.cartMenuSurface}>
         <div style={styles.cartMenuInner}>
@@ -621,30 +638,6 @@ export function CartPage() {
                   </p>
                 ) : null}
 
-                <div style={styles.cartPromoRow}>
-                  <input
-                    type="text"
-                    placeholder="Promo code"
-                    value={promoInput}
-                    onChange={(e) => setPromoInput(e.target.value)}
-                    style={styles.cartPromoInput}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button
-                    type="button"
-                    className="cart-promo-apply-btn"
-                    style={styles.cartPromoApplyBtn}
-                    onClick={() => {
-                      const trimmed = promoInput.trim();
-                      if (!trimmed) return;
-                      setApplyWingsReward(false);
-                      setPromoApplied(trimmed);
-                    }}
-                  >
-                    Apply
-                  </button>
-                </div>
 
                 <p style={styles.cartTipLabel}>
                   {cart.fulfillmentType === "DELIVERY" ? "Add a tip for your driver" : "Add a tip"}
@@ -674,31 +667,22 @@ export function CartPage() {
 
                 <hr style={styles.cartOrderSummaryDivider} />
 
-                <div style={styles.cartSummaryBox}>
-                  <div style={{ ...styles.cartSummaryRow, marginTop: 0 }}>
+                <div className="quote-summary">
+                  <div className="quote-row">
                     <span>{quote ? "Subtotal" : "Items subtotal"}</span>
-                    <span style={styles.cartSummaryAmount}>
-                      {cents(quote?.item_subtotal_cents ?? fallbackSubtotal)}
-                    </span>
+                    <span>{cents(quote?.item_subtotal_cents ?? fallbackSubtotal)}</span>
                   </div>
                   {quote?.wings_reward.applied &&
                   quote.wings_reward.discount_cents > 0 ? (
-                    <div style={styles.cartSummaryRow}>
+                    <div className="quote-row" style={{ color: "#16a34a" }}>
                       <span>Wings reward (1lb free)</span>
-                      <span
-                        style={{
-                          ...styles.cartSummaryAmount,
-                          color: "#34d399",
-                        }}
-                      >
-                        −{cents(quote.wings_reward.discount_cents)}
-                      </span>
+                      <span>−{cents(quote.wings_reward.discount_cents)}</span>
                     </div>
                   ) : null}
                   {quote && cart.fulfillmentType === "DELIVERY" && (
-                    <div style={styles.cartSummaryRow}>
+                    <div className="quote-row">
                       <span>Delivery fee</span>
-                      <span style={styles.cartSummaryAmount}>
+                      <span>
                         {quote.delivery_fee_waived && quote.delivery_fee_stated_cents > 0 ? (
                           <>
                             <span
@@ -719,46 +703,28 @@ export function CartPage() {
                     </div>
                   )}
                   {quote?.promo_discount_cents && quote.promo_discount_cents > 0 ? (
-                    <div style={styles.cartSummaryRow}>
+                    <div className="quote-row" style={{ color: "#34d399" }}>
                       <span>Promo code ({quote.applied_promo_code})</span>
-                      <span
-                        style={{
-                          ...styles.cartSummaryAmount,
-                          color: "#34d399",
-                        }}
-                      >
-                        −{cents(quote.promo_discount_cents)}
-                      </span>
+                      <span>−{cents(quote.promo_discount_cents)}</span>
                     </div>
                   ) : null}
                   {quote && quote.driver_tip_cents > 0 && (
-                    <div style={styles.cartSummaryRow}>
+                    <div className="quote-row">
                       <span>Tip</span>
-                      <span style={styles.cartSummaryAmount}>
-                        {cents(quote.driver_tip_cents)}
-                      </span>
+                      <span>{cents(quote.driver_tip_cents)}</span>
                     </div>
                   )}
                   {quote && (
-                    <div style={styles.cartSummaryRow}>
+                    <div className="quote-row">
                       <span>Tax (13%)</span>
-                      <span style={styles.cartSummaryAmount}>{cents(quote.tax_cents)}</span>
+                      <span>{cents(quote.tax_cents)}</span>
                     </div>
                   )}
-                  <div
-                    style={{
-                      ...styles.cartSummaryTotal,
-                      marginTop: 12,
-                      alignItems: "center",
-                    }}
-                  >
-                    <span style={styles.cartOrderSummaryTotalLabel}>
-                      {quote ? "TOTAL" : "EST. SUBTOTAL"}
-                    </span>
-                    <span style={styles.cartOrderSummaryTotalValue}>
-                      {cents(quote?.final_payable_cents ?? fallbackSubtotal)}
-                    </span>
+                  <div className="quote-row quote-total">
+                    <span>{quote ? "Total" : "Est. Subtotal"}</span>
+                    <span>{cents(quote?.final_payable_cents ?? fallbackSubtotal)}</span>
                   </div>
+
                   {!quote && !loading && (
                     <p style={{ ...styles.cartItemDescLine, marginTop: 4, fontSize: 12 }}>
                       Tax and fees calculated at checkout
@@ -830,6 +796,7 @@ export function CartPage() {
                         locationId: cart.locationId,
                       });
                       setQuote(env.data);
+                      persistPromoHandoff(promoApplied.trim());
                       router.push("/checkout");
                     } catch (cause) {
                       setQuoteError(cause instanceof Error ? cause.message : "Failed to validate cart");
@@ -895,8 +862,8 @@ export function CartPage() {
                 disabled={applyWingsReward}
                 onClick={() => {
                   setApplyWingsReward(true);
-                  setPromoInput("");
                   setPromoApplied("");
+                  persistPromoHandoff("");
                   setCouponsModalOpen(false);
                 }}
                 style={{
@@ -943,8 +910,8 @@ export function CartPage() {
                   onClick={() => {
                     if (isAutomatic) return;
                     setApplyWingsReward(false);
-                    setPromoInput(promo.code);
                     setPromoApplied(promo.code);
+                    persistPromoHandoff(promo.code);
                     setCouponsModalOpen(false);
                   }}
                   style={{
@@ -1013,7 +980,7 @@ export function CartPage() {
                 onClick={() => {
                   setApplyWingsReward(false);
                   setPromoApplied("");
-                  setPromoInput("");
+                  persistPromoHandoff("");
                 }}
                 style={{ ...styles.couponRemoveBtn, marginTop: 16 }}
               >

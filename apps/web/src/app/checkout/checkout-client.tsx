@@ -37,7 +37,11 @@ import type { ApiEnvelope } from "@wings4u/contracts";
 
 import { ContactlessPreferenceCombo } from "./contactless-preference-combo";
 import { deleteSavedCart } from "@/lib/saved-cart-api";
-import { WINGS_REWARD_STORAGE_KEY } from "@/Wings4u/components/cart-page";
+import {
+  PROMO_HANDOFF_STORAGE_KEY,
+  WINGS_REWARD_STORAGE_KEY,
+  clearPromoHandoffStorage,
+} from "@/Wings4u/components/cart-page";
 
 type CheckoutState =
   | { step: "review" }
@@ -97,12 +101,19 @@ export function CheckoutClient() {
   const [promoApplied, setPromoApplied] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const rawPromo = window.sessionStorage.getItem("wings4u.promo-applied");
+    const rawPromo = window.sessionStorage.getItem(PROMO_HANDOFF_STORAGE_KEY);
     if (rawPromo) {
       setPromoApplied(rawPromo);
       setApplyWingsReward(false);
     }
   }, []);
+
+  /** Drop invalid/expired handoff codes so quotes recover instead of staying wedged. */
+  useEffect(() => {
+    if (!quoteError || !/invalid or expired promo/i.test(quoteError)) return;
+    clearPromoHandoffStorage();
+    setPromoApplied(undefined);
+  }, [quoteError]);
   const [contactlessPref, setContactlessPref] = useState("");
   const [notes, setNotes] = useState("");
   const [deliveryAddressError, setDeliveryAddressError] = useState<string | null>(null);
@@ -344,7 +355,7 @@ export function CheckoutClient() {
       cart.clear();
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(WINGS_REWARD_STORAGE_KEY);
-        window.sessionStorage.removeItem("wings4u.promo-applied");
+        clearPromoHandoffStorage();
       }
       setState({ step: "success", order });
     } catch (e) {

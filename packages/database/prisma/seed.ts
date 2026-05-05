@@ -168,6 +168,30 @@ const COMBO_DRINK_OPTIONS = [
   ...POP_OPTIONS,
 ] as const;
 
+const DEFAULT_STORE_HOURS = [
+  { dayOfWeek: 1, timeFrom: "11:00", timeTo: "01:00" },
+  { dayOfWeek: 2, timeFrom: "11:00", timeTo: "01:00" },
+  { dayOfWeek: 3, timeFrom: "11:00", timeTo: "01:00" },
+  { dayOfWeek: 4, timeFrom: "11:00", timeTo: "01:00" },
+  { dayOfWeek: 5, timeFrom: "11:00", timeTo: "02:30" },
+  { dayOfWeek: 6, timeFrom: "11:00", timeTo: "02:30" },
+  { dayOfWeek: 0, timeFrom: "11:00", timeTo: "01:00" },
+] as const;
+
+function timeToUtcDate(value: string): Date {
+  const [hourText, minuteText] = value.split(":");
+  return new Date(
+    Date.UTC(
+      1970,
+      0,
+      1,
+      Number.parseInt(hourText ?? "0", 10),
+      Number.parseInt(minuteText ?? "0", 10),
+      0,
+    ),
+  );
+}
+
 /* ================================================================== */
 /*  Seed                                                              */
 /* ================================================================== */
@@ -186,6 +210,32 @@ async function main() {
         defaultDeliveryMaxMinutes: 60,
       },
     });
+    const existingStoreHourDays = await prisma.locationHours.findMany({
+      where: {
+        locationId: existing.id,
+        serviceType: "STORE",
+      },
+      select: { dayOfWeek: true },
+    });
+    const existingStoreDaySet = new Set(
+      existingStoreHourDays.map((hour) => hour.dayOfWeek),
+    );
+    const missingStoreHours = DEFAULT_STORE_HOURS.filter(
+      (hour) => !existingStoreDaySet.has(hour.dayOfWeek),
+    );
+    if (missingStoreHours.length > 0) {
+      await prisma.locationHours.createMany({
+        data: missingStoreHours.map((hour) => ({
+          locationId: existing.id,
+          serviceType: "STORE",
+          dayOfWeek: hour.dayOfWeek,
+          timeFrom: timeToUtcDate(hour.timeFrom),
+          timeTo: timeToUtcDate(hour.timeTo),
+          isClosed: false,
+        })),
+      });
+      console.log(`Added ${missingStoreHours.length} default store-hours row(s).`);
+    }
     const [
       saladAddonLabelFix,
       jalapenoAddonFix,
@@ -309,6 +359,16 @@ async function main() {
         trustedIpRanges: JSON.stringify(["192.168.1.0/24", "10.0.0.0/8"]),
         allowedPostalCodes: JSON.stringify(["N5W", "N5V", "N5X", "N5Y", "N5Z", "N6A", "N6B", "N6C", "N6E", "N6G", "N6H"]),
       },
+    });
+    await tx.locationHours.createMany({
+      data: DEFAULT_STORE_HOURS.map((hour) => ({
+        locationId: location.id,
+        serviceType: "STORE",
+        dayOfWeek: hour.dayOfWeek,
+        timeFrom: timeToUtcDate(hour.timeFrom),
+        timeTo: timeToUtcDate(hour.timeTo),
+        isClosed: false,
+      })),
     });
 
     // ── 3. Users ─────────────────────────────────────────────────────────

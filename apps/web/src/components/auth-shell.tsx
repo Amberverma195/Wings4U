@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -262,15 +261,7 @@ export function AuthShell({
             </div>
           </section>
 
-          <Link
-            href="/"
-            className="wk-auth-back-btn"
-          >
-            <span className="wk-auth-back-btn-arrow" aria-hidden>
-              {"\u2190"}
-            </span>
-            <span className="wk-auth-back-btn-label">Back to menu</span>
-          </Link>
+
         </main>
       </div>
     </div>
@@ -655,111 +646,7 @@ const AUTH_PAGE_STYLES = `
     border-bottom: 1px dotted rgba(245, 166, 35, 0.5);
   }
 
-  .wk-auth-back-btn {
-    position: relative;
-    align-self: center;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.55rem;
-    padding: 0.55rem 0.4rem;
-    margin-top: 0.5rem;
-    border: none;
-    background: transparent;
-    color: rgba(247, 233, 200, 0.78);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    cursor: pointer;
-    font-family: inherit;
-    text-decoration: none;
-    -webkit-tap-highlight-color: transparent;
-    transition: color 0.25s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  }
 
-  .wk-auth-back-btn-arrow {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.7rem;
-    height: 1.7rem;
-    border-radius: 50%;
-    font-size: 0.95rem;
-    line-height: 1;
-    color: #f7e9c8;
-    background:
-      radial-gradient(120% 120% at 30% 30%, rgba(255, 188, 116, 0.4), transparent 55%),
-      rgba(245, 166, 35, 0.14);
-    border: 1px solid rgba(245, 166, 35, 0.45);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      0 6px 14px -10px rgba(255, 106, 0, 0.5);
-    transition:
-      transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-      background 0.25s ease,
-      color 0.25s ease,
-      border-color 0.25s ease,
-      box-shadow 0.25s ease;
-  }
-
-  .wk-auth-back-btn-label {
-    position: relative;
-    display: inline-block;
-    padding-bottom: 2px;
-    background-image: linear-gradient(
-      90deg,
-      rgba(249, 115, 22, 0.95) 0%,
-      rgba(245, 166, 35, 0.95) 50%,
-      rgba(234, 179, 8, 0.95) 100%
-    );
-    background-size: 0% 1.5px;
-    background-repeat: no-repeat;
-    background-position: 100% 100%;
-    transition: background-size 0.4s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s ease;
-  }
-
-  .wk-auth-back-btn:hover {
-    color: #f7e9c8;
-    transform: translateY(-1px);
-  }
-
-  .wk-auth-back-btn:hover .wk-auth-back-btn-arrow {
-    color: #160700;
-    background:
-      radial-gradient(120% 120% at 30% 30%, rgba(255, 215, 165, 0.95), transparent 60%),
-      linear-gradient(135deg, #ff7d12 0%, #ffbc2e 100%);
-    border-color: rgba(255, 188, 116, 0.95);
-    transform: translateX(-4px);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.4),
-      0 10px 22px -10px rgba(255, 106, 0, 0.65);
-  }
-
-  .wk-auth-back-btn:hover .wk-auth-back-btn-label {
-    background-size: 100% 1.5px;
-    background-position: 0 100%;
-  }
-
-  .wk-auth-back-btn:active {
-    transform: translateY(0);
-  }
-
-  .wk-auth-back-btn:focus-visible {
-    outline: none;
-  }
-
-  .wk-auth-back-btn:focus-visible .wk-auth-back-btn-arrow {
-    border-color: rgba(255, 188, 116, 1);
-    box-shadow:
-      0 0 0 3px rgba(245, 166, 35, 0.28),
-      inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  }
-
-  .wk-auth-back-btn:focus-visible .wk-auth-back-btn-label {
-    background-size: 100% 1.5px;
-    background-position: 0 100%;
-  }
 
   /* Inputs and the orange CTA inside CustomerAuth get a subtle glow on focus
      without changing the component's own styles. */
@@ -804,22 +691,7 @@ const AUTH_PAGE_STYLES = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .wk-auth-back-btn,
-    .wk-auth-back-btn-arrow,
-    .wk-auth-back-btn-label {
-      transition: none !important;
-    }
-    .wk-auth-back-btn:hover,
-    .wk-auth-back-btn:active {
-      transform: none !important;
-    }
-    .wk-auth-back-btn:hover .wk-auth-back-btn-arrow {
-      transform: none !important;
-    }
-    .wk-auth-back-btn:hover .wk-auth-back-btn-label,
-    .wk-auth-back-btn:focus-visible .wk-auth-back-btn-label {
-      background-size: 100% 1.5px !important;
-    }
+
     .wk-auth-flame-emoji,
     .wk-auth-flame-ring,
     .wk-auth-card-glow,

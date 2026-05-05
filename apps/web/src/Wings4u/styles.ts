@@ -1080,6 +1080,8 @@ export const styles = {
     display:"flex",
     flexWrap:"wrap" as const,
     gap:8,
+    borderTop: "1px solid #f3f4f6",
+    paddingTop: "1.5rem",
     marginBottom:20,
   },
   cartOrderSummaryDivider: {

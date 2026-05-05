@@ -10,7 +10,7 @@ type LocationCatalogPayload = Prisma.LocationGetPayload<{
     hours: {
       where: {
         serviceType: {
-          in: ["PICKUP", "DELIVERY"];
+          in: ["PICKUP", "DELIVERY", "STORE"];
         };
       };
       orderBy: [
@@ -341,7 +341,7 @@ export class CatalogService {
         settings: true,
         hours: {
           where: {
-            serviceType: { in: ["PICKUP", "DELIVERY"] },
+            serviceType: { in: ["PICKUP", "DELIVERY", "STORE"] },
           },
           orderBy: [
             { serviceType: "asc" },
@@ -495,6 +495,9 @@ export class CatalogService {
         ),
         delivery_hours: serializeLocationHours(
           location.hours.filter((hour) => hour.serviceType === "DELIVERY"),
+        ),
+        store_hours: serializeLocationHours(
+          location.hours.filter((hour) => hour.serviceType === "STORE"),
         ),
       },
     };
