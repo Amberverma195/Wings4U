@@ -812,6 +812,10 @@ main {
 .checkout-success-panel {
   position: relative;
   overflow: hidden;
+  display: grid;
+  place-items: center;
+  min-height: calc(100svh - 7rem);
+  scroll-margin-top: 0;
 }
 
 .checkout-success-panel::before {

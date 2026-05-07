@@ -121,6 +121,7 @@ export function CheckoutClient() {
   /** Checkout order summary: line keys with expanded detail (default all collapsed). */
   const [checkoutLineExpanded, setCheckoutLineExpanded] = useState<Record<string, boolean>>({});
   const pendingSubmitRef = useRef(false);
+  const successPanelRef = useRef<HTMLElement | null>(null);
 
   /** Sign-in modal: cursor-following amber rim, mirrors the login card behaviour. */
   const checkoutAuthCardRef = useRef<HTMLElement | null>(null);
@@ -289,6 +290,14 @@ export function CheckoutClient() {
     }
   }, [lunchScheduleConflict, state]);
 
+  useEffect(() => {
+    if (state.step !== "success" || typeof window === "undefined") return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    requestAnimationFrame(() => {
+      successPanelRef.current?.focus({ preventScroll: true });
+    });
+  }, [state]);
+
   const doSubmit = useCallback(async () => {
     setState({ step: "submitting" });
     const key = generateIdempotencyKey();
@@ -424,7 +433,11 @@ export function CheckoutClient() {
         })
       : null;
     return (
-      <section className="surface-card checkout-success-panel">
+      <section
+        ref={successPanelRef}
+        tabIndex={-1}
+        className="surface-card checkout-success-panel"
+      >
         <div className="checkout-success">
           <div className="checkout-success-icon" aria-hidden>
             <span className="checkout-success-icon-pulse" />
