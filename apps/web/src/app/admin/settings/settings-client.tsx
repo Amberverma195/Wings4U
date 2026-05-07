@@ -53,7 +53,6 @@ type FieldDef = {
   description?: string;
   trueLabel?: string;
   falseLabel?: string;
-  display?: "toggle";
 };
 
 const FIELDS: FieldDef[] = [
@@ -114,12 +113,11 @@ const FIELDS: FieldDef[] = [
   },
   {
     key: "deliveryDisabled",
-    label: "Disable delivery",
+    label: "Delivery availability",
     group: "Delivery",
     kind: "boolean",
     trueLabel: "Disabled",
     falseLabel: "Enabled",
-    display: "toggle",
     description: "Turns off delivery for customers and POS phone orders until re-enabled.",
   },
   {
@@ -698,33 +696,7 @@ export function SettingsClient() {
                   {FIELDS.filter((f) => f.group === group).map((f) => (
                     <label key={f.key} style={{ display: "block", fontSize: "0.85rem" }}>
                       <span style={{ fontWeight: 600 }}>{f.label}</span>
-                      {f.kind === "boolean" && f.display === "toggle" ? (
-                        <span
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.55rem",
-                            marginTop: "0.45rem",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={(draft[f.key] ?? "false") === "true"}
-                            onChange={(e) =>
-                              setDraft((prev) => ({
-                                ...prev,
-                                [f.key]: e.target.checked ? "true" : "false",
-                              }))
-                            }
-                            disabled={!isAdmin}
-                          />
-                          <span className="surface-muted">
-                            {(draft[f.key] ?? "false") === "true"
-                              ? f.trueLabel ?? "Enabled"
-                              : f.falseLabel ?? "Disabled"}
-                          </span>
-                        </span>
-                      ) : f.kind === "boolean" ? (
+                      {f.kind === "boolean" ? (
                         <select
                           value={draft[f.key] ?? "false"}
                           onChange={(e) =>
@@ -741,8 +713,17 @@ export function SettingsClient() {
                             fontFamily: "inherit",
                           }}
                         >
-                          <option value="true">{f.trueLabel ?? "Enabled"}</option>
-                          <option value="false">{f.falseLabel ?? "Disabled"}</option>
+                          {f.key === "deliveryDisabled" ? (
+                            <>
+                              <option value="false">{f.falseLabel ?? "Enabled"}</option>
+                              <option value="true">{f.trueLabel ?? "Disabled"}</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="true">{f.trueLabel ?? "Enabled"}</option>
+                              <option value="false">{f.falseLabel ?? "Disabled"}</option>
+                            </>
+                          )}
                         </select>
                       ) : (
                         <input
