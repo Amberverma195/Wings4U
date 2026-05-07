@@ -30,6 +30,10 @@ function isTerminal(status: OrderStatus): boolean {
   return terminalStatuses.has(status);
 }
 
+function canOpenPostOrderSupport(status: OrderStatus): boolean {
+  return status === "PICKED_UP" || status === "DELIVERED";
+}
+
 function cancelStillAllowed(order: OrderDetail): boolean {
   if (!order.cancel_allowed_until) return false;
   if (new Date(order.cancel_allowed_until) <= new Date()) return false;
@@ -383,16 +387,42 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 )}
                 {!terminal && !cancelStillAllowed(order) && order.cancel_allowed_until && (
                   <div className={styles.statusRowActions}>
-                    <button
-                      type="button"
-                      className={styles.helpBtn}
-                      onClick={() => {
-                        setOrderStatusHistoryOpen(false);
-                        setShowHelpModal(true);
-                      }}
-                    >
-                      Help
-                    </button>
+                    <div className={styles.helpActionGroup}>
+                      <button
+                        type="button"
+                        className={styles.chatIconBtn}
+                        aria-label="Open order chat"
+                        title="Open order chat"
+                        onClick={() => {
+                          setOrderStatusHistoryOpen(false);
+                          setShowChatModal(true);
+                        }}
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.helpBtn}
+                        onClick={() => {
+                          setOrderStatusHistoryOpen(false);
+                          setShowHelpModal(true);
+                        }}
+                      >
+                        Help
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -609,15 +639,17 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
             />
 
             {/* Support ticket */}
-            <div className={styles.sideCard}>
-              <button
-                type="button"
-                className={styles.supportBtn}
-                onClick={() => setShowSupport(true)}
-              >
-                Need help? Open a support ticket
-              </button>
-            </div>
+            {canOpenPostOrderSupport(order.status) ? (
+              <div className={styles.sideCard}>
+                <button
+                  type="button"
+                  className={styles.supportBtn}
+                  onClick={() => setShowSupport(true)}
+                >
+                  Need help? Open a support ticket
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       </main>

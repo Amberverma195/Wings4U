@@ -59,6 +59,9 @@ type KdsOrder = {
   placed_at: string;
   customer_name_snapshot: string | null;
   customer_phone_snapshot: string | null;
+  customer_order_count: number | null;
+  customer_no_show_pickup_count: number | null;
+  customer_no_show_delivery_count: number | null;
   customer_order_notes: string | null;
   estimated_ready_at: string | null;
   item_subtotal_cents: number;
@@ -207,6 +210,21 @@ function getPlacedEtaSecondsRemaining(order: KdsOrder, nowMs: number): number | 
   if (!Number.isFinite(placedAtMs)) return null;
   const windowSeconds = order.kds_auto_accept_seconds ?? 10;
   return Math.max(0, Math.ceil((placedAtMs + windowSeconds * 1000 - nowMs) / 1000));
+}
+
+function formatKdsCustomerCounters(order: KdsOrder): string {
+  const parts: string[] = [];
+  if (typeof order.customer_order_count === "number") {
+    parts.push(`Orders: ${order.customer_order_count}`);
+  }
+
+  const pickupNoShows = order.customer_no_show_pickup_count ?? 0;
+  const deliveryNoShows = order.customer_no_show_delivery_count ?? 0;
+  if (pickupNoShows > 0 || deliveryNoShows > 0) {
+    parts.push(`No-shows: P ${pickupNoShows} / D ${deliveryNoShows}`);
+  }
+
+  return parts.join(" | ");
 }
 
 /* ------------------------------------------------------------------ */
@@ -1622,6 +1640,7 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
 
   const placedDate = new Date(order.placed_at);
   const isTerminal = ["DELIVERED", "PICKED_UP", "CANCELLED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY"].includes(order.status);
+  const customerCounters = formatKdsCustomerCounters(order);
 
   return (
     <div className="kds-modal-overlay" onClick={onClose}>
@@ -1639,9 +1658,19 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
               border: "1px solid rgba(217, 119, 6, 0.2)",
               color: "#111827",
               fontWeight: 600,
-              display: "inline-block"
+              display: "inline-grid",
+              gap: "0.18rem",
             }}>
-              {order.customer_name_snapshot ?? "Guest"} {order.customer_phone_snapshot ? `| ${formatKdsOrderPhone(order.customer_phone_snapshot)}` : ""} | {order.fulfillment_type} | {order.status} | Placed: {placedDate.toLocaleTimeString()} | ETA: {formatKitchenTime(order.estimated_ready_at)}
+              <span>
+                {order.customer_name_snapshot ?? "Guest"}
+                {order.customer_phone_snapshot
+                  ? ` | ${formatKdsOrderPhone(order.customer_phone_snapshot)}`
+                  : ""}
+                {customerCounters ? ` | ${customerCounters}` : ""}
+              </span>
+              <span>
+                {order.fulfillment_type} | Placed: {placedDate.toLocaleTimeString()} | ETA: {formatKitchenTime(order.estimated_ready_at)}
+              </span>
             </p>
           </div>
           <button type="button" className="btn-secondary" onClick={onClose}>Close</button>

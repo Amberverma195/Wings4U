@@ -146,6 +146,32 @@
   margin-left: auto;
 }
 
+.helpActionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chatIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatIconBtn:hover {
+  background: #f97316;
+  color: #fff;
+  border-color: #f97316;
+}
+
 .statusTimelineCompact {
   display: flex;
   flex-direction: column;

@@ -61,6 +61,11 @@ const TIMESTAMP_FIELDS: Partial<Record<OrderStatus, string>> = {
 function serializeKdsOrder(
   order: Record<string, unknown>,
   kdsAutoAcceptSeconds: number | null = null,
+  customerStats: {
+    orderCount: number;
+    noShowPickupCount: number;
+    noShowDeliveryCount: number;
+  } | null = null,
 ) {
   const o = order as Record<string, unknown> & {
     orderNumber: bigint;
@@ -131,6 +136,9 @@ function serializeKdsOrder(
     delivery_completed_at: o.deliveryCompletedAt,
     customer_name_snapshot: o.customerNameSnapshot,
     customer_phone_snapshot: o.customerPhoneSnapshot,
+    customer_order_count: customerStats?.orderCount ?? null,
+    customer_no_show_pickup_count: customerStats?.noShowPickupCount ?? null,
+    customer_no_show_delivery_count: customerStats?.noShowDeliveryCount ?? null,
     customer_order_notes: o.customerOrderNotes,
     item_subtotal_cents: o.itemSubtotalCents,
     item_discount_total_cents: o.itemDiscountTotalCents,
@@ -159,6 +167,20 @@ function serializeKdsOrder(
           created_at: (pendingCancelRequest as Record<string, unknown>).createdAt,
         }
       : null,
+  };
+}
+
+type KdsCustomerOrderStats = {
+  orderCount: number;
+  noShowPickupCount: number;
+  noShowDeliveryCount: number;
+};
+
+function createEmptyCustomerStats(): KdsCustomerOrderStats {
+  return {
+    orderCount: 0,
+    noShowPickupCount: 0,
+    noShowDeliveryCount: 0,
   };
 }
 
@@ -212,11 +234,18 @@ export class KdsService {
       orderIds,
       "STAFF",
     );
+    const customerStats = await this.getCustomerOrderStats(
+      locationId,
+      orders
+        .map((order) => order.customerUserId)
+        .filter((id): id is string => Boolean(id)),
+    );
 
     return orders.map((o) => {
       const serialized = serializeKdsOrder(
         o as unknown as Record<string, unknown>,
         settings?.kdsAutoAcceptSeconds ?? null,
+        o.customerUserId ? customerStats.get(o.customerUserId) ?? null : null,
       );
       return {
         ...serialized,
@@ -258,14 +287,57 @@ export class KdsService {
       [order.id],
       "STAFF",
     );
+    const customerStats = order.customerUserId
+      ? await this.getCustomerOrderStats(locationId, [order.customerUserId])
+      : new Map<string, KdsCustomerOrderStats>();
 
     return {
       ...serializeKdsOrder(
         order as unknown as Record<string, unknown>,
         settings?.kdsAutoAcceptSeconds ?? null,
+        order.customerUserId
+          ? customerStats.get(order.customerUserId) ?? null
+          : null,
       ),
       unread_customer_chat_count: unreadCounts.get(order.id) ?? 0,
     };
+  }
+
+  private async getCustomerOrderStats(
+    locationId: string,
+    customerUserIds: string[],
+  ): Promise<Map<string, KdsCustomerOrderStats>> {
+    const uniqueCustomerIds = Array.from(new Set(customerUserIds)).filter(Boolean);
+    const stats = new Map<string, KdsCustomerOrderStats>();
+    for (const customerId of uniqueCustomerIds) {
+      stats.set(customerId, createEmptyCustomerStats());
+    }
+    if (uniqueCustomerIds.length === 0) return stats;
+
+    const grouped = await this.prisma.order.groupBy({
+      by: ["customerUserId", "status"],
+      where: {
+        locationId,
+        customerUserId: { in: uniqueCustomerIds },
+      },
+      _count: { _all: true },
+    });
+
+    for (const row of grouped) {
+      if (!row.customerUserId) continue;
+      const current = stats.get(row.customerUserId) ?? createEmptyCustomerStats();
+      const count = row._count._all;
+      current.orderCount += count;
+      if (row.status === "NO_SHOW_PICKUP") {
+        current.noShowPickupCount += count;
+      }
+      if (row.status === "NO_SHOW_DELIVERY") {
+        current.noShowDeliveryCount += count;
+      }
+      stats.set(row.customerUserId, current);
+    }
+
+    return stats;
   }
 
   async getOrderHistory(
