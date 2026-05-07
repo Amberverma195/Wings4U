@@ -549,6 +549,7 @@ export type SupportTicketType =
   | "WRONG_ITEM"
   | "MISSING_ITEM"
   | "COLD_FOOD"
+  | "BURNT_FOOD"
   | "DELIVERY_ISSUE"
   | "DRIVER_ISSUE"
   | "QUALITY_ISSUE"
@@ -559,6 +560,7 @@ export const SUPPORT_TICKET_TYPES: readonly SupportTicketType[] = [
   "WRONG_ITEM",
   "MISSING_ITEM",
   "COLD_FOOD",
+  "BURNT_FOOD",
   "DELIVERY_ISSUE",
   "DRIVER_ISSUE",
   "QUALITY_ISSUE",

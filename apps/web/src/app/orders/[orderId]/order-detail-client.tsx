@@ -608,25 +608,16 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               orderStatus={order.status}
             />
 
-            {/* Support ticket (terminal orders) */}
-            {terminal && (
-              <div className={styles.sideCard}>
-                {showSupport ? (
-                  <SupportTicketForm
-                    orderId={orderId}
-                    locationId={order.location_id}
-                    onDone={() => setShowSupport(false)}
-                  />
-                ) : (
-                  <button
-                    className={styles.supportBtn}
-                    onClick={() => setShowSupport(true)}
-                  >
-                    Need help? Open a support ticket
-                  </button>
-                )}
-              </div>
-            )}
+            {/* Support ticket */}
+            <div className={styles.sideCard}>
+              <button
+                type="button"
+                className={styles.supportBtn}
+                onClick={() => setShowSupport(true)}
+              >
+                Need help? Open a support ticket
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -702,6 +693,27 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Support ticket modal */}
+      {showSupport && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setShowSupport(false)}
+        >
+          <div
+            className={`${styles.modalContent} ${styles.supportModalContent}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SupportTicketForm
+              orderId={orderId}
+              orderNumber={order.order_number}
+              locationId={order.location_id}
+              items={order.items}
+              onDone={() => setShowSupport(false)}
+            />
           </div>
         </div>
       )}

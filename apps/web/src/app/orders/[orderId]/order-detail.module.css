@@ -791,6 +791,12 @@
   max-width: 640px;
 }
 
+.supportModalContent {
+  max-width: 680px;
+  max-height: min(720px, 88vh);
+  overflow-y: auto;
+}
+
 .chatModalContent .modalCloseBtn {
   margin-top: 1.25rem;
 }
