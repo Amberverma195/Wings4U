@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { IsOptional, IsString } from "class-validator";
+import { IsOptional, IsString, Matches } from "class-validator";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -38,6 +38,12 @@ class ListOrdersQueryDto {
   @IsOptional()
   @IsString()
   mine?: string;
+
+  /** Filter to orders whose placed_at falls on this calendar date in the scoped location's timezone (YYYY-MM-DD). */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "placed_on must be YYYY-MM-DD" })
+  placed_on?: string;
 }
 
 @Controller("orders")
@@ -60,6 +66,7 @@ export class OrdersController {
       limit: Number.isFinite(limit) ? limit : undefined,
       status: query.status,
       mine: query.mine === "1" || query.mine === "true",
+      placedOn: query.placed_on,
     });
   }
 
@@ -75,6 +82,7 @@ export class OrdersController {
       limit: Number.isFinite(limit) ? limit : undefined,
       status: query.status,
       mine: true,
+      placedOn: query.placed_on,
     });
   }
 

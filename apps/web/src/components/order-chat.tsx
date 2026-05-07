@@ -138,7 +138,7 @@ export function OrderChat({
             key={msg.id}
             className={`chat-bubble chat-${msg.sender_surface === "CUSTOMER" ? "own" : "other"}`}
           >
-            <span className="chat-sender">{statusLabel(msg.sender_surface)}</span>
+            <span className="chat-sender">{msg.sender_surface === "CUSTOMER" ? "You" : statusLabel(msg.sender_surface)}</span>
             <p className="chat-body">{msg.message_body}</p>
             <span className="chat-time">{relativeTime(msg.created_at)}</span>
           </div>
@@ -147,26 +147,31 @@ export function OrderChat({
 
       {canSend && (
         <div style={{ marginTop: "1rem" }}>
-          <div className="chat-helpers" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-            {HELPER_TEXTS.map((text) => (
-              <button
-                key={text}
-                type="button"
-                className={`wk-pill ${selectedHelper === text ? "wk-pill-active" : ""} ${selectedHelper && selectedHelper !== text ? "wk-pill-disabled" : ""}`}
-                onClick={() => setSelectedHelper(prev => prev === text ? null : text)}
-                disabled={sending || (!!selectedHelper && selectedHelper !== text)}
-              >
-                {text}
-              </button>
-            ))}
-          </div>
+          {messages.length === 0 && (
+            <div className="chat-helpers" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+              {HELPER_TEXTS.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  className={`wk-pill ${selectedHelper === text ? "wk-pill-active" : ""} ${selectedHelper && selectedHelper !== text ? "wk-pill-disabled" : ""}`}
+                  onClick={() => setSelectedHelper(prev => prev === text ? null : text)}
+                  disabled={sending || (!!selectedHelper && selectedHelper !== text)}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="chat-input-row">
             <div className="chat-input-container">
               <input
                 className="chat-input"
                 style={{ paddingRight: selectedHelper ? "2.5rem" : "0.75rem" }}
                 value={selectedHelper || draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  if (selectedHelper) setSelectedHelper(null);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -174,7 +179,7 @@ export function OrderChat({
                   }
                 }}
                 placeholder="Type a message…"
-                disabled
+                disabled={sending}
               />
               {selectedHelper && (
                 <button
@@ -189,7 +194,7 @@ export function OrderChat({
             </div>
             <button
               className="btn-primary chat-send-btn"
-              disabled={sending || !selectedHelper}
+              disabled={sending || (!selectedHelper && !draft.trim())}
               onClick={() => void send()}
             >
               {sending ? "…" : "Send"}

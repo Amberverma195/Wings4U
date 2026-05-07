@@ -5,6 +5,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { TZDate } from "@date-fns/tz";
+import { addDays, startOfDay } from "date-fns";
 import { PrismaService } from "../../database/prisma.service";
 import { ChatService } from "../chat/chat.service";
 import { RefundService } from "../refunds/refund.service";
@@ -18,6 +20,8 @@ const TERMINAL_STATUSES = [
   "NO_SHOW",
   "REFUNDED",
 ] as const;
+
+const PLACED_ON_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function serializeOrderSummary(order: Record<string, unknown>) {
   const o = order as Record<string, unknown> & { orderNumber: bigint };
@@ -177,6 +181,7 @@ export class OrdersService {
     limit?: number;
     status?: string;
     mine?: boolean;
+    placedOn?: string;
   }) {
     const take = Math.min(params.limit ?? 20, 50);
 
@@ -190,6 +195,33 @@ export class OrdersService {
     }
     if (params.status) {
       where.status = params.status;
+    }
+
+    const placedOn = params.placedOn?.trim();
+    if (placedOn && PLACED_ON_RE.test(placedOn)) {
+      let tz = "UTC";
+      if (params.locationId) {
+        const loc = await this.prisma.location.findUnique({
+          where: { id: params.locationId },
+          select: { timezoneName: true },
+        });
+        if (loc?.timezoneName) {
+          tz = loc.timezoneName;
+        }
+      }
+      const [yStr, moStr, dStr] = placedOn.split("-");
+      const y = Number(yStr);
+      const mo = Number(moStr);
+      const da = Number(dStr);
+      if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(da)) {
+        const anchor = TZDate.tz(tz, y, mo - 1, da);
+        const start = startOfDay(anchor);
+        const endExclusive = addDays(start, 1);
+        where.placedAt = {
+          gte: start,
+          lt: endExclusive,
+        };
+      }
     }
 
     const orders = await this.prisma.order.findMany({

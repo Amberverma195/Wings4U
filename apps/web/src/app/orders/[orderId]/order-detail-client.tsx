@@ -62,6 +62,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [showSupport, setShowSupport] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPinResponse | null>(null);
   const [orderStatusHistoryOpen, setOrderStatusHistoryOpen] = useState(false);
   const orderStatusAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -574,15 +575,15 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
 
             </div>
 
-            {/* Order chat — hidden once the order is completed (terminal) */}
+            {/* Add more items — hidden once the order is completed (terminal) */}
             {!terminal && (
-              <div className={styles.chatCard}>
-                <OrderChat
-                  orderId={orderId}
-                  locationId={order.location_id}
-                  isTerminal={false}
-                />
-              </div>
+              <OrderAddItems
+                orderId={orderId}
+                locationId={order.location_id}
+                placedAt={order.placed_at}
+                fulfillmentType={order.fulfillment_type}
+                orderStatus={order.status}
+              />
             )}
 
             {/* Footer actions for terminal orders */}
@@ -597,19 +598,8 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
             )}
           </div>
 
-          {/* RIGHT — Add items + support + reviews */}
+          {/* RIGHT — support + reviews */}
           <div className={styles.rightColumn}>
-            {/* Add more items (auto-hides after 3 min via component logic) */}
-            {!terminal && (
-              <OrderAddItems
-                orderId={orderId}
-                locationId={order.location_id}
-                placedAt={order.placed_at}
-                fulfillmentType={order.fulfillment_type}
-                orderStatus={order.status}
-              />
-            )}
-
             {/* Reviews */}
             <OrderReviews
               orderId={orderId}
@@ -666,13 +656,49 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               </a>
             ) : (
               <p style={{ fontSize: "0.9rem", color: "#6b7280", marginBottom: "0.75rem" }}>
-                Store phone is not available. Please use the order chat below.
+                Store phone is not available. You can chat with us here instead.
               </p>
             )}
             <button
               type="button"
+              className={styles.modalChatBtn}
+              onClick={() => {
+                setShowHelpModal(false);
+                setShowChatModal(true);
+              }}
+            >
+              Chat with us
+            </button>
+            <button
+              type="button"
               className={styles.modalCloseBtn}
               onClick={() => setShowHelpModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Chat modal */}
+      {showChatModal && !terminal && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setShowChatModal(false)}
+        >
+          <div
+            className={`${styles.modalContent} ${styles.chatModalContent}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <OrderChat
+              orderId={orderId}
+              locationId={order.location_id}
+              isTerminal={false}
+            />
+            <button
+              type="button"
+              className={styles.modalCloseBtn}
+              onClick={() => setShowChatModal(false)}
             >
               Close
             </button>

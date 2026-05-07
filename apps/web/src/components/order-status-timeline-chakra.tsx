@@ -7,7 +7,7 @@ import {
   Text,
   Timeline,
 } from "@chakra-ui/react";
-import { statusEventWhenLine } from "@/lib/format";
+import { cents, statusEventWhenLine } from "@/lib/format";
 import type { OrderStatus, OrderStatusEvent } from "@/lib/types";
 import {
   LuCheck,
@@ -45,6 +45,30 @@ function timelineIconForStatus(toStatus: string): ComponentType<{ size?: number 
   }
 }
 
+function isAddItemsApprovedEvent(event: OrderStatusEvent): boolean {
+  return event.event_type === "CHANGE_REQUEST_APPROVED";
+}
+
+function timelineTitleForEvent(
+  event: OrderStatusEvent,
+  getStatusLabel: (toStatus: string) => string,
+): string {
+  if (isAddItemsApprovedEvent(event)) return "Item added";
+  return getStatusLabel(event.to_status);
+}
+
+function timelineDetailForEvent(event: OrderStatusEvent): string | null {
+  if (!isAddItemsApprovedEvent(event)) return event.reason_text;
+  const text = event.reason_text?.trim();
+  if (!text) return null;
+
+  const legacyMatch = text.match(/^Add-items request .+ approved \(\+(\d+).+\)$/i);
+  if (legacyMatch) {
+    return `Additional item - ${cents(Number.parseInt(legacyMatch[1] ?? "0", 10))}`;
+  }
+  return text;
+}
+
 type Props = {
   events: OrderStatusEvent[];
   getStatusLabel: (toStatus: string) => string;
@@ -61,8 +85,9 @@ export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = f
       <Timeline.Root maxW="100%" size={size} colorPalette="orange" variant="solid">
         {events.map((event) => {
           const Icon = timelineIconForStatus(event.to_status);
-          const title = getStatusLabel(event.to_status);
+          const title = timelineTitleForEvent(event, getStatusLabel);
           const when = statusEventWhenLine(event.created_at);
+          const detail = timelineDetailForEvent(event);
           return (
             <Timeline.Item key={event.id}>
               <Timeline.Connector>
@@ -88,9 +113,9 @@ export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = f
                 >
                   {when}
                 </Timeline.Description>
-                {event.reason_text ? (
+                {detail ? (
                   <Text textStyle="sm" color={readable ? "fg.muted" : undefined}>
-                    {event.reason_text}
+                    {detail}
                   </Text>
                 ) : null}
               </Timeline.Content>

@@ -313,19 +313,16 @@ export function OrderReviews({
           <button
             type="button"
             onClick={() => setMultiItemExpanded(true)}
+            className="wk-builder-add-btn"
             style={{
               width: "100%",
-              padding: "0.65rem 1rem",
-              borderRadius: 12,
-              border: "none",
-              cursor: "pointer",
+              padding: "0.55rem 1rem",
+              borderRadius: "10px",
+              fontSize: "0.85rem",
               fontWeight: 700,
-              fontSize: "0.92rem",
-              letterSpacing: "0.02em",
-              color: "#fff",
-              background:
-                "linear-gradient(135deg, #e85d4c 0%, #c23b2e 55%, #a82e24 100%)",
-              boxShadow: "0 8px 18px -10px rgba(168, 46, 36, 0.55)",
+              fontFamily: '"DM Sans", sans-serif',
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
             }}
           >
             Review items

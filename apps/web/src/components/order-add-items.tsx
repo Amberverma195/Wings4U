@@ -165,41 +165,48 @@ export function OrderAddItems({
     (r) => r.status === "PENDING" || r.status === "REJECTED",
   );
 
+  // No empty "window ended" card — still show pending/rejected add-on requests if any.
+  if (!withinWindow && pendingOrRejected.length === 0) {
+    return null;
+  }
+
+  const requestsOnlyAfterWindow = !withinWindow && pendingOrRejected.length > 0;
+
   return (
     <section className="surface-card" style={{ marginTop: "1rem" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "0.5rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <h3 style={{ margin: 0 }}>Add more items</h3>
-          {eligible ? (
-            <p className="surface-muted" style={{ margin: "0.2rem 0 0", fontSize: "0.85rem" }}>
-              You have {formatCountdown(remaining)} to add items to this order.
-            </p>
-          ) : (
-            <p className="surface-muted" style={{ margin: "0.2rem 0 0", fontSize: "0.85rem" }}>
-              {withinWindow
-                ? "This order has moved too far along to add items."
-                : "The 3-minute window to add items has ended."}
-            </p>
+      {!requestsOnlyAfterWindow && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0 }}>Add more items</h3>
+            {eligible ? (
+              <p className="surface-muted" style={{ margin: "0.2rem 0 0", fontSize: "0.85rem" }}>
+                You have {formatCountdown(remaining)} to add items to this order.
+              </p>
+            ) : (
+              <p className="surface-muted" style={{ margin: "0.2rem 0 0", fontSize: "0.85rem" }}>
+                This order has moved too far along to add items.
+              </p>
+            )}
+          </div>
+          {eligible && (
+            <button
+              type="button"
+              className={expanded ? "btn-secondary" : "btn-primary"}
+              onClick={handleToggle}
+            >
+              {expanded ? "Close" : "Add items"}
+            </button>
           )}
         </div>
-        {eligible && (
-          <button
-            type="button"
-            className={expanded ? "btn-secondary" : "btn-primary"}
-            onClick={handleToggle}
-          >
-            {expanded ? "Close" : "Add items"}
-          </button>
-        )}
-      </div>
+      )}
 
       {expanded && eligible && (
         <div style={{ marginTop: "1rem" }}>

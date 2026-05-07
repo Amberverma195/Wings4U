@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
+import { formatUsdFromCents } from "../../common/utils/money";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -50,6 +51,23 @@ interface PricingRecompute {
   taxableSubtotalCents: number;
   taxCents: number;
   finalPayableCents: number;
+}
+
+function formatAddedItemTimelineText(
+  lines: Array<{
+    productNameSnapshot: string;
+    quantity: number;
+    lineTotalCents: number;
+  }>,
+): string {
+  return lines
+    .map((line) => {
+      const quantity = line.quantity > 1 ? ` x${line.quantity}` : "";
+      return `${line.productNameSnapshot}${quantity} - ${formatUsdFromCents(
+        line.lineTotalCents,
+      )}`;
+    })
+    .join("; ");
 }
 
 function serialize(row: Record<string, unknown>) {
@@ -524,6 +542,7 @@ export class OrderChangesService {
       });
 
       // Finding 6: audit trail row so the order timeline shows the approval.
+      const addedItemsTimelineText = formatAddedItemTimelineText(linesToCreate);
       await tx.orderStatusEvent.create({
         data: {
           orderId: order.id,
@@ -532,7 +551,7 @@ export class OrderChangesService {
           toStatus: order.status,
           eventType: "CHANGE_REQUEST_APPROVED",
           actorUserId: params.approverUserId,
-          reasonText: `Add-items request ${request.id} approved (+${deltaSubtotalCents}¢)`,
+          reasonText: addedItemsTimelineText,
         },
       });
 

@@ -109,7 +109,7 @@
 
 /* Main order card */
 .orderCard {
-  background: #fafafa;
+  background: white;
   border-radius: 24px;
   border: 1px solid #e5e7eb;
   padding: 2rem;
@@ -450,14 +450,22 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  background: #fafafa;
+  border-radius: 16px;
+  border: 1px solid #f3f4f6;
+  margin-bottom: 0.75rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.itemRow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
 .itemRow:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .itemName {
@@ -745,6 +753,27 @@
   box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3);
 }
 
+.modalChatBtn {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 14px;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  background: #fff7ed;
+  color: #c2410c;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modalChatBtn:hover {
+  background: #f97316;
+  border-color: #f97316;
+  color: #fff;
+}
+
 .modalCloseBtn {
   width: 100%;
   padding: 0.65rem 1rem;
@@ -758,10 +787,19 @@
   cursor: pointer;
 }
 
-/* ── Surface-card overrides for right column ─────────── */
+.chatModalContent {
+  max-width: 640px;
+}
+
+.chatModalContent .modalCloseBtn {
+  margin-top: 1.25rem;
+}
+
+/* ── Surface-card overrides for order detail columns ─────────── */
 /* OrderAddItems and OrderReviews render their own
    <section className="surface-card">. Style them to match
    the white-card aesthetic on our yellow background. */
+.leftColumn :global(.surface-card),
 .rightColumn :global(.surface-card) {
   background: white !important;
   border: 1px solid #e5e7eb !important;
@@ -773,15 +811,18 @@
 }
 
 /* ── Chat overrides inside our light theme ───────────── */
+.chatModalContent :global(.chat-container h3),
 .chatCard :global(.chat-container h3) {
   color: #111827;
 }
 
+.chatModalContent :global(.chat-messages),
 .chatCard :global(.chat-messages) {
   max-height: 320px;
   overflow-y: auto;
 }
 
+.chatModalContent :global(.chat-bubble.chat-own),
 .chatCard :global(.chat-bubble.chat-own) {
   background: linear-gradient(135deg, #f97316, #ea580c);
   color: #fff;
@@ -789,6 +830,7 @@
   box-shadow: 0 4px 12px -4px rgba(249, 115, 22, 0.35);
 }
 
+.chatModalContent :global(.chat-bubble.chat-other),
 .chatCard :global(.chat-bubble.chat-other) {
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
@@ -796,6 +838,7 @@
   border-radius: 14px;
 }
 
+.chatModalContent :global(.chat-input),
 .chatCard :global(.chat-input) {
   background: #fafafa;
   border: 1px solid #e5e7eb;
@@ -803,12 +846,14 @@
   color: #111827;
 }
 
+.chatModalContent :global(.chat-input:focus),
 .chatCard :global(.chat-input:focus) {
   border-color: #f97316;
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
   outline: none;
 }
 
+.chatModalContent :global(.chat-send-btn),
 .chatCard :global(.chat-send-btn) {
   border-radius: 12px;
   background: linear-gradient(135deg, #f97316, #ea580c);
@@ -817,11 +862,12 @@
   font-weight: 700;
 }
 
+.chatModalContent :global(.surface-muted),
 .chatCard :global(.surface-muted) {
   color: #9ca3af;
 }
 
+.chatModalContent :global(.surface-error),
 .chatCard :global(.surface-error) {
   color: #dc2626;
 }
-

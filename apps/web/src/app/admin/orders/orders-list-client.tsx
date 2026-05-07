@@ -36,6 +36,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 export function OrdersListClient() {
   const session = useSession();
   const [status, setStatus] = useState("");
+  const [placedOn, setPlacedOn] = useState("");
   const [items, setItems] = useState<OrderSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +44,12 @@ export function OrdersListClient() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (opts: { append: boolean; cursor: string | null; statusFilter: string }) => {
+    async (opts: {
+      append: boolean;
+      cursor: string | null;
+      statusFilter: string;
+      placedOnFilter: string;
+    }) => {
       const isAppend = opts.append;
       if (isAppend) setLoadingMore(true);
       else {
@@ -54,6 +60,7 @@ export function OrdersListClient() {
         const qs = new URLSearchParams();
         qs.set("limit", "50");
         if (opts.statusFilter) qs.set("status", opts.statusFilter);
+        if (opts.placedOnFilter) qs.set("placed_on", opts.placedOnFilter);
         if (isAppend && opts.cursor) qs.set("cursor", opts.cursor);
 
         const res = await withSilentRefresh(
@@ -83,8 +90,13 @@ export function OrdersListClient() {
   );
 
   useEffect(() => {
-    void load({ append: false, cursor: null, statusFilter: status });
-  }, [load, status]);
+    void load({
+      append: false,
+      cursor: null,
+      statusFilter: status,
+      placedOnFilter: placedOn,
+    });
+  }, [load, status, placedOn]);
 
   return (
     <>
@@ -122,6 +134,22 @@ export function OrdersListClient() {
               </option>
             ))}
           </select>
+        </label>
+        <label style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+          Date{" "}
+          <input
+            type="date"
+            value={placedOn}
+            onChange={(e) => setPlacedOn(e.target.value)}
+            aria-label="Filter orders by placed date"
+            style={{
+              marginLeft: "0.35rem",
+              padding: "0.3rem 0.5rem",
+              borderRadius: "8px",
+              border: "1px solid var(--border)",
+              font: "inherit",
+            }}
+          />
         </label>
       </section>
 
@@ -199,6 +227,7 @@ export function OrdersListClient() {
                   append: true,
                   cursor: nextCursor,
                   statusFilter: status,
+                  placedOnFilter: placedOn,
                 })
               }
               style={{ width: "auto" }}
