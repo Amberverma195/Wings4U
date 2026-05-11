@@ -284,6 +284,20 @@ export class AdminMenuController {
     return this.adminMenuService.uploadImage(req.locationId!, id, file);
   }
 
+  @Post("categories/:id/builder-image")
+  @UseInterceptors(FileInterceptor("image"))
+  async uploadBuilderCategoryImage(
+    @Param("id", ParseUUIDPipe) id: string,
+    @UploadedFile() file: any,
+    @Req() req: Request,
+  ) {
+    return this.adminMenuService.uploadBuilderCategoryImage(
+      req.locationId!,
+      id,
+      file,
+    );
+  }
+
   @Delete("items/:id/image")
   async deleteImage(
     @Param("id", ParseUUIDPipe) id: string,

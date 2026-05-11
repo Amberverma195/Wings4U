@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { adminFetch } from "../admin-api";
+import type { ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { adminApiFetch, adminFetch } from "../admin-api";
 import type { Category, FullMenuItem, WingFlavour } from "./admin-menu.types";
 import { CategoryModal } from "./category-modal";
 import { MenuItemCard } from "./menu-item-card";
@@ -27,6 +28,9 @@ export function AdminMenuClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [builderImageUploading, setBuilderImageUploading] = useState(false);
+  const builderImageInputRef = useRef<HTMLInputElement>(null);
+  const builderImageCategoryRef = useRef<Category | null>(null);
 
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [itemModalOpen, setItemModalOpen] = useState(false);
@@ -100,8 +104,67 @@ export function AdminMenuClient() {
     }
   }, [activeCategoryId, loadCategories, loadItems, loadSauces, searchQuery, activeTab]);
 
+  const getBuilderImageLabel = (category: Category) => {
+    if (category.slug === "wing-combos") return "Wing Combos";
+    if (category.slug === "wings") return "Wings by the Pound";
+    return null;
+  };
+
+  const openBuilderImagePicker = (category: Category) => {
+    builderImageCategoryRef.current = category;
+    builderImageInputRef.current?.click();
+  };
+
+  const handleBuilderImagePick = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    const category = builderImageCategoryRef.current;
+    if (!file || !category) return;
+
+    setBuilderImageUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await adminApiFetch(
+        `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
+        { method: "POST", body: formData },
+      );
+      if (!res.ok) {
+        const raw = await res.text();
+        let message = `Upload failed (${res.status})`;
+        try {
+          const body = JSON.parse(raw) as {
+            errors?: Array<{ message?: string }>;
+            message?: string;
+          };
+          message = body.errors?.[0]?.message ?? body.message ?? message;
+        } catch {
+          // Keep the status-based fallback.
+        }
+        throw new Error(message);
+      }
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload picture");
+    } finally {
+      setBuilderImageUploading(false);
+      builderImageCategoryRef.current = null;
+      event.target.value = "";
+    }
+  };
+
   return (
     <>
+      <input
+        ref={builderImageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={handleBuilderImagePick}
+        style={{ display: "none" }}
+      />
+
       <section className="surface-card admin-section-lead">
         <div className="admin-section-lead__row">
           <div>
@@ -202,12 +265,14 @@ export function AdminMenuClient() {
               <span>All Items</span>
             </button>
 
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                className={styles.categoryRow}
-                data-active={activeCategoryId === cat.id}
-              >
+            {categories.map((cat) => {
+              const builderImageLabel = getBuilderImageLabel(cat);
+              return (
+                <div
+                  key={cat.id}
+                  className={styles.categoryRow}
+                  data-active={activeCategoryId === cat.id}
+                >
                 <button
                   type="button"
                   className={styles.categoryItem}
@@ -232,8 +297,21 @@ export function AdminMenuClient() {
                 >
                   Edit
                 </button>
+                {builderImageLabel && (
+                  <button
+                    type="button"
+                    className={styles.catEditBtn}
+                    onClick={() => openBuilderImagePicker(cat)}
+                    disabled={builderImageUploading}
+                    title={`Add picture to every ${builderImageLabel} item`}
+                    aria-label={`Add picture to every ${builderImageLabel} item`}
+                  >
+                    {builderImageUploading ? "Uploading..." : "Add picture"}
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
           </>
           )}

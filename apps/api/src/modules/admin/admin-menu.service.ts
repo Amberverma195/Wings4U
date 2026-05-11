@@ -584,6 +584,82 @@ export class AdminMenuService {
     return { image_url: imageUrl };
   }
 
+  async uploadBuilderCategoryImage(
+    locationId: string,
+    categoryId: string,
+    file: { buffer: Buffer; originalname?: string },
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException("No image file provided");
+    }
+
+    const category = await this.prisma.menuCategory.findFirst({
+      where: { id: categoryId, locationId, archivedAt: null },
+      select: { id: true, slug: true, name: true },
+    });
+    if (!category) {
+      throw new NotFoundException("Category not found");
+    }
+
+    const builderType =
+      category.slug === "wings"
+        ? "WINGS"
+        : category.slug === "wing-combos"
+          ? "WING_COMBO"
+          : null;
+    if (!builderType) {
+      throw new BadRequestException(
+        "Bulk picture upload is only available for Wings by the Pound and Wing Combos",
+      );
+    }
+
+    const items = await this.prisma.menuItem.findMany({
+      where: {
+        locationId,
+        categoryId,
+        builderType,
+        archivedAt: null,
+      },
+      select: { id: true, slug: true, imageUrl: true },
+      orderBy: [{ name: "asc" }],
+    });
+    if (items.length === 0) {
+      throw new NotFoundException(`No ${category.name} builder items found`);
+    }
+
+    const nextImages = await Promise.all(
+      items.map(async (item) => ({
+        id: item.id,
+        imageUrl: await this.imageStorage.save(
+          item.slug,
+          file.buffer,
+          file.originalname ?? "image.jpg",
+        ),
+      })),
+    );
+
+    await this.prisma.$transaction(
+      nextImages.map((image) =>
+        this.prisma.menuItem.update({
+          where: { id: image.id },
+          data: { imageUrl: image.imageUrl },
+        }),
+      ),
+    );
+
+    await Promise.all(
+      items
+        .map((item) => item.imageUrl)
+        .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+        .map((imageUrl) => this.imageStorage.remove(imageUrl)),
+    );
+
+    return {
+      image_url: nextImages[0]?.imageUrl ?? null,
+      updated_count: nextImages.length,
+    };
+  }
+
   async deleteImage(locationId: string, id: string) {
     const item = await this.prisma.menuItem.findFirst({
       where: { id, locationId, archivedAt: null },
