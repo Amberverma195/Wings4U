@@ -244,7 +244,13 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     };
   }, [orderId]);
 
-  const handleCancel = useCallback(async () => {
+  const handleCancel = useCallback(() => {
+    if (cancelling) return;
+    setCancelError(null);
+    setShowCancelConfirm(true);
+  }, [cancelling]);
+
+  const confirmCancel = useCallback(async () => {
     setCancelling(true);
     setCancelError(null);
     try {
@@ -377,13 +383,11 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 {!terminal && cancelStillAllowed(order) && (
                   <div className={styles.statusRowActions}>
                     <button
+                      type="button"
                       className={styles.cancelBtn}
                       disabled={cancelling}
                       aria-haspopup="dialog"
-                      onClick={() => {
-                        setCancelError(null);
-                        setShowCancelConfirm(true);
-                      }}
+                      onClick={handleCancel}
                     >
                       {cancelling ? "Cancelling…" : "Cancel order"}
                     </button>
@@ -467,10 +471,10 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 </div>
               )}
 
-              {/* Cancellation reason */}
-              {order.cancellation_reason && (
+              {/* Cancellation notice */}
+              {order.status === "CANCELLED" && (
                 <p className={styles.cancelReason}>
-                  Cancellation reason: {order.cancellation_reason}
+                  Order cancelled by KDS.
                 </p>
               )}
 
@@ -704,7 +708,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 type="button"
                 className={styles.confirmCancelBtn}
                 disabled={cancelling}
-                onClick={handleCancel}
+                onClick={confirmCancel}
               >
                 {cancelling ? "Cancelling…" : "Yes, cancel order"}
               </button>

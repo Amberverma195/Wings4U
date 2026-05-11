@@ -272,7 +272,7 @@ async function createSupportTestCustomer(prisma: PrismaService): Promise<string>
       displayName: "Support Test Customer",
       identities: {
         create: {
-          provider: "PHONE",
+          provider: "PHONE_OTP",
           providerSubject: phone,
           phoneE164: phone,
           isPrimary: true,
