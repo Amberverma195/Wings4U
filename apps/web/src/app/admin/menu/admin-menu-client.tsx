@@ -460,7 +460,9 @@ function BuilderCategoryImageModal({
       `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
     )
       .then((data) => {
-        if (!cancelled) setImageUrl(data.image_url);
+        if (!cancelled) {
+          setImageUrl(data.image_url);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -569,44 +571,65 @@ function BuilderCategoryImageModal({
             <div className={styles.loader}>Loading picture...</div>
           ) : (
             <div className={styles.builderPicturePanel}>
-              <div className={styles.builderPicturePreview}>
-                {shownImage ? (
-                  <img
-                    src={shownImage}
-                    alt={`${label} preview`}
-                    className={styles.builderPictureImage}
+              {shownImage ? (
+                <>
+                  <div className={styles.builderPicturePreview}>
+                    <img
+                      src={shownImage}
+                      alt=""
+                      className={styles.builderPictureImage}
+                    />
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleFilePick}
+                    style={{ display: "none" }}
                   />
-                ) : (
-                  <span>No picture selected</span>
-                )}
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={handleFilePick}
-                style={{ display: "none" }}
-              />
-
-              <div className={styles.builderPictureActions}>
-                <button
-                  type="button"
-                  className={styles.btnDanger}
-                  onClick={removePicture}
-                  disabled={saving || (!shownImage && !imageUrl)}
-                >
-                  Remove picture
-                </button>
-                <button
-                  type="button"
-                  className={styles.btnCancel}
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={saving}
-                >
-                  Replace picture
-                </button>
-              </div>
+                  <div className={styles.builderPictureActions}>
+                    <button
+                      type="button"
+                      className={styles.btnDanger}
+                      onClick={removePicture}
+                      disabled={saving || (!shownImage && !imageUrl)}
+                    >
+                      Remove picture
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.btnCancel}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={saving}
+                    >
+                      Replace picture
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={styles.builderPicturePreview}>
+                    <span>No picture selected</span>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleFilePick}
+                    style={{ display: "none" }}
+                  />
+                  <div className={styles.builderPictureActions}>
+                    <button
+                      type="button"
+                      className={styles.btnCancel}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={saving}
+                    >
+                      Upload picture
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -32,3 +32,19 @@ export function phoneInputPlaceholder(phoneE164OrDigits: string | undefined | nu
   }
   return DEFAULT_PHONE_PLACEHOLDER;
 }
+
+/**
+ * NANP E.164 / digits → readable groups for display (`+1 (AAA)-BBB-CCCC`),
+ * same slicing as {@link phoneInputPlaceholder}. Non‑NANP values returned trimmed.
+ */
+export function formatPhoneForDisplay(phoneE164OrDigits: string): string {
+  const raw = String(phoneE164OrDigits ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
+  }
+  if (digits.length === 10) {
+    return `+1 (${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  }
+  return raw.length ? raw : phoneE164OrDigits;
+}

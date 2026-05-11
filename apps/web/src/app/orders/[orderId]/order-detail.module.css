@@ -813,6 +813,61 @@
   cursor: pointer;
 }
 
+.modalCloseBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cancelConfirmModal {
+  max-width: 440px;
+}
+
+.cancelConfirmActions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.cancelConfirmActions .modalCloseBtn,
+.confirmCancelBtn {
+  width: auto;
+  flex: 1;
+}
+
+.confirmCancelBtn {
+  padding: 0.65rem 1rem;
+  border-radius: 14px;
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #fff;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.confirmCancelBtn:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.confirmCancelBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cancelConfirmError {
+  margin: 0.85rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .chatModalContent {
   max-width: 640px;
 }
@@ -825,6 +880,17 @@
 
 .chatModalContent .modalCloseBtn {
   margin-top: 1.25rem;
+}
+
+@media (max-width: 520px) {
+  .cancelConfirmActions {
+    flex-direction: column-reverse;
+  }
+
+  .cancelConfirmActions .modalCloseBtn,
+  .confirmCancelBtn {
+    width: 100%;
+  }
 }
 
 /* ── Surface-card overrides for order detail columns ─────────── */

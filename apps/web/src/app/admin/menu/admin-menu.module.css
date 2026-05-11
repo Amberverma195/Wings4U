@@ -787,6 +787,21 @@
   justify-content: center;
 }
 
+.menuItemModalImageWrap {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(18, 14, 11, 0.06);
+  max-height: 14rem;
+}
+
+.menuItemModalImage {
+  display: block;
+  width: 100%;
+  height: 12.5rem;
+  object-fit: cover;
+}
+
 .btnSmall,
 .btnSmallDanger,
 .btnCancel,

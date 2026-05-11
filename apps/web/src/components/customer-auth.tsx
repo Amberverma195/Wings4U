@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
-import { phoneInputPlaceholder, toE164 } from "@/lib/phone";
+import { formatPhoneForDisplay, phoneInputPlaceholder, toE164 } from "@/lib/phone";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 
@@ -178,7 +178,10 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
   // -- Shared state --
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<
+    "send" | "verify" | "resend" | "profile" | null
+  >(null);
+  const busy = busyAction !== null;
   const [shaking, setShaking] = useState(false);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -229,7 +232,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         return;
       }
 
-      setBusy(true);
+      setBusyAction("send");
       try {
         const checkRes = await apiFetch("/api/v1/auth/check-signup", {
           method: "POST",
@@ -249,12 +252,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             setError(
               "An account already exists with this phone number. Try signing in.",
             );
-            setBusy(false);
+            setBusyAction(null);
             return;
           }
           if (checkBody.data.email_taken) {
             setError("This email is already in use by another account.");
-            setBusy(false);
+            setBusyAction(null);
             return;
           }
         }
@@ -262,7 +265,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         // Non-fatal: if the check fails, let the OTP request proceed normally
       }
     } else {
-      setBusy(true);
+      setBusyAction("send");
     }
 
     try {
@@ -280,7 +283,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }, [phone, mode, fullName, email, triggerShake]);
 
@@ -291,7 +294,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const handleOtpSubmit = useCallback(async () => {
     if (step.name !== "otp") return;
     setError("");
-    setBusy(true);
+    setBusyAction("verify");
     try {
       const res = await apiFetch("/api/v1/auth/otp/verify", {
         method: "POST",
@@ -319,7 +322,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }, [step, otpCode, session, onComplete]);
 
@@ -337,7 +340,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       return;
     }
 
-    setBusy(true);
+    setBusyAction("profile");
     try {
       const payload: Record<string, string> = { full_name: fullName.trim() };
       if (email.trim()) payload.email = email.trim();
@@ -365,7 +368,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }, [fullName, email, session, onComplete, triggerShake]);
 
@@ -376,7 +379,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const handleResend = useCallback(async () => {
     if (step.name !== "otp") return;
     setError("");
-    setBusy(true);
+    setBusyAction("resend");
     try {
       const res = await apiFetch("/api/v1/auth/otp/request", {
         method: "POST",
@@ -390,7 +393,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }, [step]);
 
@@ -503,7 +506,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
             disabled={busy}
           >
-            {busy ? "Sending..." : "Send verification code"}
+            {busyAction === "send" ? "Sending..." : "Send verification code"}
           </button>
         </form>
 
@@ -543,7 +546,10 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       <div style={s.container}>
         <AuthHeading>Enter verification code</AuthHeading>
         <p style={s.subtitle}>
-          We sent a code to <span style={s.subtitlePhone}>{step.phone}</span>
+          We sent a code to{" "}
+          <span style={s.subtitlePhone} title={step.phone}>
+            {formatPhoneForDisplay(step.phone)}
+          </span>
         </p>
 
         <form
@@ -581,7 +587,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             style={{ ...s.btn, ...(busy ? s.btnDisabled : {}) }}
             disabled={busy || otpCode.length < 4}
           >
-            {busy ? "Verifying..." : "Verify"}
+            {busyAction === "verify" ? "Verifying..." : "Verify"}
           </button>
         </form>
 
@@ -609,7 +615,11 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
               </svg>
             </span>
             <span className="wk-otp-resend-label">
-              {busy ? "Sending..." : "Resend code"}
+              {busyAction === "resend"
+                ? "Sending..."
+                : busyAction === "verify"
+                  ? "Verifying..."
+                  : "Resend code"}
             </span>
           </button>
         </div>
@@ -675,7 +685,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
           disabled={busy || !profileNameReady}
         >
-          {busy ? "Saving..." : "Save and continue"}
+          {busyAction === "profile" ? "Saving..." : "Save and continue"}
         </button>
       </form>
     </div>

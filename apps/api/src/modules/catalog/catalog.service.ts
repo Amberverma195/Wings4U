@@ -300,6 +300,8 @@ function buildSyntheticCard(params: {
   const serializedOptions = params.items.map(serializeBuilderOption);
   const minPrice = Math.min(...params.items.map((item) => item.basePriceCents));
 
+  const refItem = params.items.find((item) => item.imageUrl);
+
   return {
     id: params.id,
     name: params.name,
@@ -310,7 +312,7 @@ function buildSyntheticCard(params: {
     is_available: params.items.some((item) => item.isAvailable),
     stock_status: params.items.every((item) => item.stockStatus === "UNAVAILABLE") ? "UNAVAILABLE" : params.items.some((item) => item.stockStatus === "LOW_STOCK") ? "LOW_STOCK" : "NORMAL",
     is_popular: params.items.some((item) => item.isPopular),
-    image_url: params.items.find((item) => item.imageUrl)?.imageUrl ?? null,
+    image_url: refItem?.imageUrl ?? null,
     builder_type: params.builderType,
     requires_special_instructions: false,
     schedules: null,

@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { adminFetch, adminApiFetch } from "../admin-api";
 import styles from "./admin-menu.module.css";
-import Image from "next/image";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ADMIN_MENU_API_BASE = "/api/v1/admin/menu";
@@ -113,7 +112,14 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
           }),
         });
 
-        if (data.imageUrl) setImagePreview(data.imageUrl);
+        setImageRemoved(false);
+        setImageFile(null);
+
+        if (data.imageUrl) {
+          setImagePreview(data.imageUrl);
+        } else {
+          setImagePreview(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load item");
       } finally {
@@ -198,6 +204,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
     setImageRemoved(false);
+    e.target.value = "";
   };
 
   const handleImageRemove = () => {
@@ -375,47 +382,46 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
             {/* ── Image ── */}
             <div className={styles.formSection}>
               <h3>Image</h3>
-              <div
-                className={styles.imageUploadArea}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {imagePreview ? (
-                  <div style={{ position: "relative", height: 150 }}>
-                    <Image
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleImagePick}
+              />
+
+              {imagePreview && !imageRemoved ? (
+                <>
+                  <div className={styles.menuItemModalImageWrap}>
+                    <img
                       src={imagePreview}
-                      alt="Preview"
-                      fill
-                      style={{ objectFit: "contain" }}
-                      unoptimized
+                      alt=""
+                      className={styles.menuItemModalImage}
                     />
                   </div>
-                ) : (
+                  <div className={styles.imageActions}>
+                    <button
+                      type="button"
+                      className={styles.btnSmall}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.btnSmallDanger}
+                      onClick={handleImageRemove}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div
+                  className={styles.imageUploadArea}
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <div>Click to upload an image</div>
-                )}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  style={{ display: "none" }}
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={handleImagePick}
-                />
-              </div>
-              {imagePreview && (
-                <div className={styles.imageActions}>
-                  <button
-                    type="button"
-                    className={styles.btnSmall}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Replace
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.btnSmallDanger}
-                    onClick={handleImageRemove}
-                  >
-                    Remove
-                  </button>
                 </div>
               )}
             </div>

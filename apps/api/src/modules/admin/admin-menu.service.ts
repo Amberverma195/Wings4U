@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
 import * as crypto from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   LocalMenuImageStorage,
   type MenuImageStorage,
@@ -578,7 +578,9 @@ export class AdminMenuService {
 
     await this.prisma.menuItem.update({
       where: { id },
-      data: { imageUrl },
+      data: {
+        imageUrl,
+      },
     });
 
     return { image_url: imageUrl };
@@ -638,8 +640,9 @@ export class AdminMenuService {
       locationId,
       categoryId,
     );
+    const ref = items.find((item) => item.imageUrl);
     return {
-      image_url: items.find((item) => item.imageUrl)?.imageUrl ?? null,
+      image_url: ref?.imageUrl ?? null,
       updated_count: items.length,
     };
   }

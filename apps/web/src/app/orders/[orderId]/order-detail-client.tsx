@@ -64,6 +64,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
@@ -79,6 +80,9 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   useEffect(() => {
     setOrder(null);
     setError(null);
+    setCancelling(false);
+    setCancelError(null);
+    setShowCancelConfirm(false);
     setDeliveryPin(null);
     setOrderStatusHistoryOpen(false);
   }, [orderId]);
@@ -259,6 +263,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
         const body = await res.json();
         throw new Error(body?.errors?.[0]?.message ?? `Cancel failed (${res.status})`);
       }
+      setShowCancelConfirm(false);
       await fetchOrder();
     } catch (e) {
       setCancelError(e instanceof Error ? e.message : "Cancel failed");
@@ -374,7 +379,11 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                     <button
                       className={styles.cancelBtn}
                       disabled={cancelling}
-                      onClick={handleCancel}
+                      aria-haspopup="dialog"
+                      onClick={() => {
+                        setCancelError(null);
+                        setShowCancelConfirm(true);
+                      }}
                     >
                       {cancelling ? "Cancelling…" : "Cancel order"}
                     </button>
@@ -653,6 +662,56 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
           </div>
         </div>
       </main>
+
+      {/* Cancel confirmation modal */}
+      {showCancelConfirm && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => {
+            if (!cancelling) setShowCancelConfirm(false);
+          }}
+        >
+          <div
+            className={`${styles.modalContent} ${styles.cancelConfirmModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-order-title"
+            aria-describedby="cancel-order-description"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="cancel-order-title" className={styles.modalTitle}>
+              Cancel this order?
+            </h3>
+            <p id="cancel-order-description" className={styles.modalText}>
+              Are you sure you want to cancel order #{order.order_number}? This
+              cannot be undone once confirmed.
+            </p>
+            {cancelError && (
+              <p className={styles.cancelConfirmError} role="alert">
+                {cancelError}
+              </p>
+            )}
+            <div className={styles.cancelConfirmActions}>
+              <button
+                type="button"
+                className={styles.modalCloseBtn}
+                disabled={cancelling}
+                onClick={() => setShowCancelConfirm(false)}
+              >
+                Keep order
+              </button>
+              <button
+                type="button"
+                className={styles.confirmCancelBtn}
+                disabled={cancelling}
+                onClick={handleCancel}
+              >
+                {cancelling ? "Cancelling…" : "Yes, cancel order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Help modal */}
       {showHelpModal && (

@@ -1,7 +1,6 @@
 import { formatCents } from "../admin-api";
 import type { FullMenuItem } from "./admin-menu.types";
 import styles from "./admin-menu.module.css";
-import Image from "next/image";
 
 type Props = {
   item: FullMenuItem;
@@ -20,13 +19,10 @@ export function MenuItemCard({ item, onEdit }: Props) {
     <div className={styles.card}>
       <div className={styles.cardImageWrapper}>
         {item.imageUrl ? (
-          <Image
+          <img
             src={item.imageUrl}
             alt={item.name}
             className={styles.cardImage}
-            width={300}
-            height={200}
-            unoptimized
           />
         ) : (
           <span className={styles.cardNoImage}>No image</span>
