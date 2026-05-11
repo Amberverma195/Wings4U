@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
-import { adminApiFetch, formatCents } from "./admin-api";
+import { adminApiFetch, adminFetch, formatCents } from "./admin-api";
+import type { FullMenuItem } from "./menu/admin-menu.types";
 
 type WidgetResponse = {
   active_orders: number;
@@ -91,6 +92,7 @@ export function AdminHomeClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const [lowStockOpen, setLowStockOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,6 +180,14 @@ export function AdminHomeClient() {
                 <Link href={card.href} className="admin-stat-tile__link">
                   {inner}
                 </Link>
+              ) : card.key === "low_stock_items" ? (
+                <button
+                  type="button"
+                  className="admin-stat-tile__button"
+                  onClick={() => setLowStockOpen(true)}
+                >
+                  {inner}
+                </button>
               ) : (
                 inner
               )}
@@ -203,6 +213,135 @@ export function AdminHomeClient() {
           ))}
         </div>
       </section>
+
+      {lowStockOpen ? (
+        <LowStockItemsModal
+          onClose={() => setLowStockOpen(false)}
+          onChanged={load}
+        />
+      ) : null}
     </>
+  );
+}
+
+type LowStockItemsModalProps = {
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+};
+
+function LowStockItemsModal({ onClose, onChanged }: LowStockItemsModalProps) {
+  const [items, setItems] = useState<FullMenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const loadLowStockItems = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await adminFetch<FullMenuItem[]>("/api/v1/admin/menu/items");
+      setItems(rows.filter((item) => item.stockStatus === "LOW_STOCK"));
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Failed to load low stock items",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLowStockItems();
+  }, [loadLowStockItems]);
+
+  const removeLowStock = async (item: FullMenuItem) => {
+    setUpdatingId(item.id);
+    setError(null);
+    try {
+      await adminFetch(`/api/v1/admin/menu/items/${item.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: item.name,
+          description: item.description ?? undefined,
+          base_price_cents: item.basePriceCents,
+          category_id: item.categoryId,
+          stock_status: "NORMAL",
+          is_hidden: item.isHidden,
+          allowed_fulfillment_type: item.allowedFulfillmentType,
+        }),
+      });
+      setItems((current) => current.filter((row) => row.id !== item.id));
+      await onChanged();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to remove low stock status",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  return (
+    <div className="admin-modal-backdrop" onClick={onClose}>
+      <section
+        className="surface-card admin-low-stock-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="low-stock-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="admin-low-stock-modal__header">
+          <div>
+            <p className="surface-eyebrow" style={{ margin: 0 }}>
+              Inventory
+            </p>
+            <h2 id="low-stock-title">Low stock items</h2>
+          </div>
+          <button
+            type="button"
+            className="admin-modal-close"
+            onClick={onClose}
+            aria-label="Close low stock items"
+          >
+            x
+          </button>
+        </div>
+
+        {error ? <p className="surface-error">{error}</p> : null}
+
+        {loading ? (
+          <p className="surface-muted">Loading low stock items...</p>
+        ) : items.length === 0 ? (
+          <div className="admin-low-stock-empty">
+            No menu items are marked low stock.
+          </div>
+        ) : (
+          <div className="admin-low-stock-list">
+            {items.map((item) => (
+              <div key={item.id} className="admin-low-stock-row">
+                <div className="admin-low-stock-row__item">
+                  <strong>{item.name}</strong>
+                  <span>
+                    {item.category.name} | {formatCents(item.basePriceCents)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary admin-low-stock-row__action"
+                  onClick={() => void removeLowStock(item)}
+                  disabled={updatingId === item.id}
+                >
+                  {updatingId === item.id
+                    ? "Removing..."
+                    : "Remove from low stock"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
