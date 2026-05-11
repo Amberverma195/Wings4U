@@ -77,31 +77,57 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     width: number;
   } | null>(null);
 
-  useEffect(() => {
+  const clearPrivateOrderState = useCallback(() => {
     setOrder(null);
     setError(null);
     setCancelling(false);
     setCancelError(null);
     setShowCancelConfirm(false);
+    setShowSupport(false);
+    setShowHelpModal(false);
+    setShowChatModal(false);
     setDeliveryPin(null);
     setOrderStatusHistoryOpen(false);
-  }, [orderId]);
+  }, []);
+
+  useEffect(() => {
+    clearPrivateOrderState();
+  }, [orderId, clearPrivateOrderState]);
 
   useEffect(() => {
     setError(null);
   }, [session.user?.id]);
 
-  // If another tab swaps the signed-in customer, drop any in-memory order belonging to someone else.
+  // The customer tracking route must not keep stale order details across logout
+  // or account switching. Admin/staff order access belongs in admin surfaces,
+  // not on this customer-facing page.
   useEffect(() => {
-    if (!session.loaded || !session.authenticated || !session.user?.id) return;
-    const uid = session.user.id;
-    setOrder((prev) => {
-      if (!prev || prev.customer_user_id === uid) return prev;
-      return null;
-    });
-  }, [session.loaded, session.authenticated, session.user?.id]);
+    if (!session.loaded) return;
+    if (!session.authenticated || !session.user?.id) {
+      clearPrivateOrderState();
+      return;
+    }
+    if (order && order.customer_user_id !== session.user.id) {
+      clearPrivateOrderState();
+      goToCustomerOrdersHome();
+    }
+  }, [
+    session.loaded,
+    session.authenticated,
+    session.user?.id,
+    order,
+    clearPrivateOrderState,
+  ]);
 
   const fetchOrder = useCallback(async () => {
+    if (!session.loaded) return;
+    if (!session.authenticated || !session.user?.id) {
+      clearPrivateOrderState();
+      return;
+    }
+
+    const currentUserId = session.user.id;
+
     try {
       const res = await withSilentRefresh(
         () =>
@@ -113,6 +139,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
       );
       if (!res.ok) {
         if (res.status === 403) {
+          clearPrivateOrderState();
           goToCustomerOrdersHome();
           return;
         }
@@ -128,15 +155,8 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
         throw new Error("Failed to load order");
       }
 
-      const customerIdNow = session.user?.id;
-      if (
-        session.user?.role === "CUSTOMER" &&
-        customerIdNow != null &&
-        body.data.customer_user_id !== customerIdNow &&
-        session.authenticated
-      ) {
-        setOrder(null);
-        setError(null);
+      if (body.data.customer_user_id !== currentUserId) {
+        clearPrivateOrderState();
         goToCustomerOrdersHome();
         return;
       }
@@ -156,12 +176,21 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
         typeof msg === "string" &&
         msg.toLowerCase().includes("do not have access to this order")
       ) {
+        clearPrivateOrderState();
         goToCustomerOrdersHome();
         return;
       }
       setError(msg ?? "Failed to load order");
     }
-  }, [orderId, session]);
+  }, [
+    orderId,
+    session.loaded,
+    session.authenticated,
+    session.user?.id,
+    session.refresh,
+    session.clear,
+    clearPrivateOrderState,
+  ]);
 
   useEffect(() => {
     void fetchOrder();
@@ -170,6 +199,15 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   // PRD §7.8.5: fetch the delivery PIN while the order is out for delivery.
   useEffect(() => {
     if (!order || order.fulfillment_type !== "DELIVERY") {
+      setDeliveryPin(null);
+      return;
+    }
+    if (
+      !session.loaded ||
+      !session.authenticated ||
+      !session.user?.id ||
+      order.customer_user_id !== session.user.id
+    ) {
       setDeliveryPin(null);
       return;
     }
@@ -198,7 +236,15 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [order, orderId, session]);
+  }, [
+    order,
+    orderId,
+    session.loaded,
+    session.authenticated,
+    session.user?.id,
+    session.refresh,
+    session.clear,
+  ]);
 
   // Keep a stable ref to the latest fetchOrder so the socket effect doesn't
   // tear down & reconnect every time the session object changes identity
@@ -216,6 +262,8 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   // manual reload. `subscribeToChannels` keeps the subscription alive
   // across reconnects.
   useEffect(() => {
+    if (!session.loaded || !session.authenticated || !session.user?.id) return;
+
     const socket = createOrdersSocket();
 
     const refresh = () => void fetchOrderRef.current();
@@ -242,7 +290,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
       disposeSubscription();
       socket.disconnect();
     };
-  }, [orderId]);
+  }, [orderId, session.loaded, session.authenticated, session.user?.id]);
 
   const handleCancel = useCallback(() => {
     if (cancelling) return;
