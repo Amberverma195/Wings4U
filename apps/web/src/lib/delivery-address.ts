@@ -265,14 +265,15 @@ export function loadDeliveryAddressDraft(): DeliveryAddressDraft | null {
 }
 
 /**
- * All addresses saved in this session, including a one-time migration from the legacy
- * single-address key when the list was empty.
+ * All addresses saved in this session. Guests get a one-time migration from
+ * the legacy single-address key; signed-in users use the server-backed cache
+ * only so a checkout draft is never mistaken for a persisted address row.
  */
 export function loadSavedAddresses(): SavedDeliveryAddress[] {
   if (typeof window === "undefined") return [];
 
   let list = loadSavedAddressesRaw();
-  if (list.length === 0) {
+  if (list.length === 0 && !isAuthenticatedForAddresses) {
     const legacy = loadDeliveryAddressDraft();
     if (legacy) {
       list = [{ id: crypto.randomUUID(), ...legacy }];

@@ -5,16 +5,15 @@ import { apiFetch } from "@/lib/api";
 
 import { useSession } from "@/lib/session";
 import { 
+  DELIVERY_ADDRESSES_UPDATED_EVENT,
   loadSavedAddresses, 
   removeSavedAddressByIdSync, 
   syncSavedAddressesFromServer,
   setDeliveryAddressAuthState,
-  upsertSavedAddressFromDraftSync,
-  FIXED_DELIVERY_CITY,
   type SavedDeliveryAddress
 } from "@/lib/delivery-address";
 import Link from "next/link";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import styles from "./addresses.module.css";
 import { RequireAuthModal } from "@/components/require-auth-modal";
 import { OrderMethodModal } from "@/Wings4u/components/order-method-modal";
@@ -79,6 +78,20 @@ function AddressesContent() {
       });
     }
   }, [session.loaded, session.authenticated, session.refresh, session.clear]);
+
+  useEffect(() => {
+    function handleSavedAddressesUpdated() {
+      setAddresses(loadSavedAddresses());
+    }
+
+    window.addEventListener(DELIVERY_ADDRESSES_UPDATED_EVENT, handleSavedAddressesUpdated);
+    return () => {
+      window.removeEventListener(
+        DELIVERY_ADDRESSES_UPDATED_EVENT,
+        handleSavedAddressesUpdated,
+      );
+    };
+  }, []);
 
   const handleDelete = (id: string) => {
     if (confirm("Are you sure you want to remove this address?")) {

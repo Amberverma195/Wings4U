@@ -163,6 +163,8 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
             setAddressPickerOpen(true);
           }
         }}
+        refresh={session.refresh}
+        clear={session.clear}
       />
     </DeliveryAddressContext.Provider>
   );
