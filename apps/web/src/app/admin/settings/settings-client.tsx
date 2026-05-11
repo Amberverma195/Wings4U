@@ -106,12 +106,6 @@ const FIELDS: FieldDef[] = [
     kind: "number",
   },
   {
-    key: "deliveryPinExpiryMinutes",
-    label: "Delivery PIN expiry (min)",
-    group: "Delivery",
-    kind: "number",
-  },
-  {
     key: "deliveryDisabled",
     label: "Delivery availability",
     group: "Delivery",

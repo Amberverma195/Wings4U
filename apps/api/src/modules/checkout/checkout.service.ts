@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
+import { requireDeliveryPinFromPhone } from "../../common/utils/delivery-pin-phone";
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
@@ -284,6 +285,7 @@ export class CheckoutService {
           timezone: location.timezoneName ?? "America/Toronto",
           referenceDate: scheduledReference,
         });
+        requireDeliveryPinFromPhone(customerPhone, "customer_phone");
 
         const deliveryEligibility = await getDeliveryEligibilityForCustomer(
           tx,

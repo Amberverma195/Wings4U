@@ -30,8 +30,6 @@ import { DeliveryPinService } from "./delivery-pin.service";
 import { KdsHeartbeatService } from "./kds-heartbeat.service";
 import { KdsService } from "./kds.service";
 
-const DEFAULT_PIN_EXPIRY_MINUTES = 240;
-
 class KdsOrdersQueryDto {
   @IsOptional()
   @IsString()
@@ -398,9 +396,7 @@ export class KdsController {
   // PRD §7.8.5: structured PIN check. Returns an explicit `{ ok, remaining_attempts, locked }`
   // shape instead of throwing on mismatch so the KDS modal can render the
   // "You have N attempts left" copy inline without having to reverse-engineer
-  // a 422 error body. Expired PINs auto-renew in the backend; `renewed: true`
-  // tells the client to ask the customer for the fresh PIN instead of
-  // pretending the challenge is locked out.
+  // a 422 error body.
   @Post("orders/:id/verify-pin")
   async verifyPin(
     @Param("id", ParseUUIDPipe) id: string,
@@ -426,7 +422,6 @@ export class KdsController {
       reason: result.reason,
       remaining_attempts: result.remaining_attempts ?? 0,
       locked: result.reason === "LOCKED",
-      renewed: result.renewed === true,
     };
   }
 
@@ -464,19 +459,17 @@ export class KdsController {
     return { ok: true };
   }
 
-  // PRD §7.8.5: regenerate PIN (e.g., after lockout). Resets attempts and
-  // returns the new plaintext to the caller so the customer can be notified.
+  // PRD §7.8.5: regenerate PIN (e.g., after lockout). With phone-derived
+  // PINs this resets attempts and returns the same last-four code.
   @Post("orders/:id/pin/regenerate")
   async regeneratePin(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
-    const expiry = await this.kdsService.getPinExpiryMinutes(req.locationId!);
     return this.deliveryPin.regenerate({
       orderId: id,
       locationId: req.locationId!,
       actorUserId: (req.user?.userId ?? null),
-      expiryMinutes: expiry ?? DEFAULT_PIN_EXPIRY_MINUTES,
     });
   }
 

@@ -17,8 +17,6 @@ import {
   PIN_MAX_FAILED_ATTEMPTS,
 } from "./delivery-pin.service";
 
-const DEFAULT_PIN_EXPIRY_MINUTES = 240;
-
 const DEFAULT_KDS_STATUSES: OrderStatus[] = [
   "PLACED",
   "ACCEPTED",
@@ -1229,16 +1227,11 @@ export class KdsService {
       }),
     ]);
 
-    // PRD §7.8.5: on OUT_FOR_DELIVERY, generate a 4-digit PIN the customer
-    // will show/read to the driver. Uses location-configured expiry minutes.
-    const settings = await this.prisma.locationSettings.findUnique({
-      where: { locationId },
-      select: { deliveryPinExpiryMinutes: true },
-    });
+    // PRD §7.8.5: on OUT_FOR_DELIVERY, generate the customer's stable
+    // 4-digit PIN from the last four digits of their phone snapshot.
     await this.deliveryPin.generateForOrder({
       orderId,
       locationId,
-      expiryMinutes: settings?.deliveryPinExpiryMinutes ?? DEFAULT_PIN_EXPIRY_MINUTES,
     });
 
     this.realtime.emitOrderEvent(locationId, orderId, "order.delivery_started", {
@@ -1845,14 +1838,6 @@ export class KdsService {
       });
     }
     return order;
-  }
-
-  async getPinExpiryMinutes(locationId: string): Promise<number | null> {
-    const s = await this.prisma.locationSettings.findUnique({
-      where: { locationId },
-      select: { deliveryPinExpiryMinutes: true },
-    });
-    return s?.deliveryPinExpiryMinutes ?? null;
   }
 
   async requestRefund(

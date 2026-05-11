@@ -600,6 +600,72 @@ describe("PRD §22 — POS Walk-In (e2e)", () => {
       expect(res.body.data.order_source).toBe("PHONE");
     });
 
+    it("rejects delivery phone orders without a customer phone", async () => {
+      const deliveryItem = await prisma.menuItem.findFirstOrThrow({
+        where: {
+          locationId,
+          isAvailable: true,
+          archivedAt: null,
+          allowedFulfillmentType: { in: ["BOTH", "DELIVERY"] },
+        },
+      });
+
+      await authedPost(server, "/pos/orders", cashierToken, locationId)
+        .set("X-Forwarded-For", "192.168.1.100")
+        .send({
+          order_source: "PHONE",
+          fulfillment_type: "DELIVERY",
+          payment_method: "CASH",
+          items: [{ menu_item_id: deliveryItem.id, quantity: 1 }],
+        })
+        .expect(422);
+    });
+
+    it("uses POS delivery customer phone last four as delivery PIN", async () => {
+      const deliveryItem = await prisma.menuItem.findFirstOrThrow({
+        where: {
+          locationId,
+          isAvailable: true,
+          archivedAt: null,
+          allowedFulfillmentType: { in: ["BOTH", "DELIVERY"] },
+        },
+      });
+
+      const res = await authedPost(server, "/pos/orders", cashierToken, locationId)
+        .set("X-Forwarded-For", "192.168.1.100")
+        .send({
+          order_source: "PHONE",
+          fulfillment_type: "DELIVERY",
+          customer_phone: "(519) 555-9876",
+          payment_method: "CASH",
+          items: [{ menu_item_id: deliveryItem.id, quantity: 1 }],
+        })
+        .expect(201);
+
+      const orderId = res.body.data.id as string;
+      const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+      expect(order.customerPhoneSnapshot).toBe("+15195559876");
+
+      await prisma.driverProfile.update({
+        where: { userId: driverUserId },
+        data: { availabilityStatus: "AVAILABLE", isOnDelivery: false },
+      });
+      await authedPost(server, `/kds/orders/${orderId}/status`, managerToken, locationId)
+        .send({ status: "READY" })
+        .expect(201);
+      await authedPost(server, `/kds/orders/${orderId}/assign-driver`, managerToken, locationId)
+        .send({ driver_user_id: driverUserId })
+        .expect(201);
+      await authedPost(server, `/kds/orders/${orderId}/start-delivery`, managerToken, locationId)
+        .send({})
+        .expect(201);
+
+      const pin = await prisma.deliveryPinVerification.findUniqueOrThrow({
+        where: { orderId },
+      });
+      expect(pin.pinPlaintext).toBe("9876");
+    });
+
     it("kitchen staff can create a POS order", async () => {
       const res = await authedPost(server, "/pos/orders", kitchenToken, locationId)
         .set("X-Forwarded-For", "192.168.1.100")

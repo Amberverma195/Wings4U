@@ -1956,8 +1956,63 @@ describe("API (e2e)", () => {
       expect(tickets).toHaveLength(1);
     });
 
-    // PRD §7.8.5: PIN flows — valid match completes delivery; 5 bad attempts
-    // lock the PIN; admin bypass unblocks; regenerate resets attempts.
+    // PRD §7.8.5: PIN flows — phone-last-four completes delivery; 3 bad
+    // attempts lock the PIN; admin bypass unblocks; regenerate resets attempts.
+    const startDeliveryForPinTest = async (token: string) => {
+      const deliveryItem = await prisma.menuItem.findFirstOrThrow({
+        where: {
+          locationId,
+          allowedFulfillmentType: { in: ["BOTH", "DELIVERY"] },
+          basePriceCents: { gt: 0 },
+        },
+        orderBy: { basePriceCents: "desc" },
+      });
+      const { minimumDeliverySubtotalCents } = await prisma.locationSettings.findUniqueOrThrow({
+        where: { locationId },
+        select: { minimumDeliverySubtotalCents: true },
+      });
+      const quantity = Math.max(
+        1,
+        Math.ceil(minimumDeliverySubtotalCents / deliveryItem.basePriceCents),
+      );
+      const orderId = await createCheckoutOrder(
+        server,
+        token,
+        locationId,
+        deliveryItem.id,
+        {
+          fulfillmentType: "DELIVERY",
+          quantity,
+          contactlessPref: "HAND_TO_ME",
+          addressSnapshotJson: {
+            line1: "1544 Dundas St",
+            city: "London",
+            province: "ON",
+            postal_code: "N5W3C1",
+          },
+        },
+      );
+
+      await prisma.driverProfile.update({
+        where: { userId: driverUserId },
+        data: { availabilityStatus: "AVAILABLE", isOnDelivery: false },
+      });
+      await authedPost(server, `/kds/orders/${orderId}/accept`, managerToken, locationId)
+        .send({})
+        .expect(201);
+      await authedPost(server, `/kds/orders/${orderId}/status`, managerToken, locationId)
+        .send({ status: "READY" })
+        .expect(201);
+      await authedPost(server, `/kds/orders/${orderId}/assign-driver`, managerToken, locationId)
+        .send({ driver_user_id: driverUserId })
+        .expect(201);
+      await authedPost(server, `/kds/orders/${orderId}/start-delivery`, managerToken, locationId)
+        .send({})
+        .expect(201);
+
+      return orderId;
+    };
+
     it("delivery PIN: correct PIN completes delivery", async () => {
       const deliveryItem = await prisma.menuItem.findFirstOrThrow({
         where: {
@@ -2014,7 +2069,7 @@ describe("API (e2e)", () => {
       const pinRow = await prisma.deliveryPinVerification.findUniqueOrThrow({
         where: { orderId },
       });
-      expect(pinRow.pinPlaintext).toMatch(/^\d{4}$/);
+      expect(pinRow.pinPlaintext).toBe("0005");
 
       const completeRes = await authedPost(
         server,
@@ -2032,7 +2087,45 @@ describe("API (e2e)", () => {
       expect(verified.verificationResult).toBe("VERIFIED");
     });
 
-    it("delivery PIN: 5 wrong attempts lock the PIN and bypass unblocks completion", async () => {
+    it("delivery PIN: same phone is stable and different phones differ", async () => {
+      const firstOrderId = await startDeliveryForPinTest(customerToken);
+      const secondOrderId = await startDeliveryForPinTest(customerToken);
+
+      const otherPhone = "+15195551234";
+      const otherUser = await prisma.user.create({
+        data: {
+          role: "CUSTOMER",
+          displayName: "PIN Test Customer",
+          identities: {
+            create: {
+              provider: "PHONE_OTP",
+              phoneE164: otherPhone,
+              isPrimary: true,
+              isVerified: true,
+              verifiedAt: new Date(),
+            },
+          },
+          customerProfile: { create: {} },
+        },
+        select: { id: true },
+      });
+      const otherToken = await createSessionToken(prisma, otherUser.id, "CUSTOMER");
+      const otherOrderId = await startDeliveryForPinTest(otherToken);
+
+      const [first, second, other] = await Promise.all([
+        prisma.deliveryPinVerification.findUniqueOrThrow({ where: { orderId: firstOrderId } }),
+        prisma.deliveryPinVerification.findUniqueOrThrow({ where: { orderId: secondOrderId } }),
+        prisma.deliveryPinVerification.findUniqueOrThrow({ where: { orderId: otherOrderId } }),
+      ]);
+      const expectedOtherPin = otherPhone.replace(/\D/g, "").slice(-4);
+
+      expect(first.pinPlaintext).toBe("0005");
+      expect(second.pinPlaintext).toBe("0005");
+      expect(other.pinPlaintext).toBe(expectedOtherPin);
+      expect(other.pinPlaintext).not.toBe(first.pinPlaintext);
+    });
+
+    it("delivery PIN: 3 wrong attempts lock the PIN and bypass unblocks completion", async () => {
       const deliveryItem = await prisma.menuItem.findFirstOrThrow({
         where: {
           locationId,
@@ -2090,7 +2183,7 @@ describe("API (e2e)", () => {
       });
       const wrong = pinRow.pinPlaintext === "0000" ? "1111" : "0000";
 
-      for (let i = 0; i < 5; i += 1) {
+      for (let i = 0; i < 3; i += 1) {
         await authedPost(
           server,
           `/kds/orders/${orderId}/complete-delivery`,
@@ -2139,7 +2232,7 @@ describe("API (e2e)", () => {
       expect(completeRes.body.data.status).toBe("DELIVERED");
     });
 
-    it("delivery PIN: admin regenerate resets attempts and returns new plaintext", async () => {
+    it("delivery PIN: admin regenerate resets attempts and returns same phone PIN", async () => {
       const deliveryItem = await prisma.menuItem.findFirstOrThrow({
         where: {
           locationId,
@@ -2217,7 +2310,7 @@ describe("API (e2e)", () => {
         .expect(201);
 
       expect(regenRes.body.data.pin).toMatch(/^\d{4}$/);
-      expect(regenRes.body.data.pin).not.toBe(original.pinPlaintext);
+      expect(regenRes.body.data.pin).toBe(original.pinPlaintext);
 
       const fresh = await prisma.deliveryPinVerification.findUniqueOrThrow({
         where: { orderId },
@@ -2226,7 +2319,7 @@ describe("API (e2e)", () => {
       expect(fresh.verificationResult).toBe("PENDING");
     });
 
-    it("delivery PIN: expired customer PIN auto-regenerates on fetch", async () => {
+    it("delivery PIN: expired timestamp does not block phone PIN", async () => {
       const deliveryItem = await prisma.menuItem.findFirstOrThrow({
         where: {
           locationId,
@@ -2298,16 +2391,25 @@ describe("API (e2e)", () => {
         locationId,
       ).expect(200);
 
-      expect(pinRes.body.data.pin).toMatch(/^\d{4}$/);
-      expect(pinRes.body.data.pin).not.toBe(original.pinPlaintext);
+      expect(pinRes.body.data.pin).toBe(original.pinPlaintext);
 
-      const renewed = await prisma.deliveryPinVerification.findUniqueOrThrow({
+      const unchanged = await prisma.deliveryPinVerification.findUniqueOrThrow({
         where: { orderId },
       });
-      expect(renewed.pinPlaintext).toBe(pinRes.body.data.pin);
-      expect(renewed.failedAttempts).toBe(0);
-      expect(renewed.verificationResult).toBe("PENDING");
-      expect(renewed.expiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect(unchanged.pinPlaintext).toBe(pinRes.body.data.pin);
+      expect(unchanged.failedAttempts).toBe(0);
+      expect(unchanged.verificationResult).toBe("PENDING");
+      expect(unchanged.expiresAt.getTime()).toBeLessThan(Date.now());
+
+      const completeRes = await authedPost(
+        server,
+        `/kds/orders/${orderId}/complete-delivery`,
+        managerToken,
+        locationId,
+      )
+        .send({ pin: original.pinPlaintext })
+        .expect(201);
+      expect(completeRes.body.data.status).toBe("DELIVERED");
     });
   });
 

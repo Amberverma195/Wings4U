@@ -693,7 +693,6 @@ function DeliveryPinModal({
         reason?: string;
         remaining_attempts?: number;
         locked?: boolean;
-        renewed?: boolean;
       }>(session, `/api/v1/kds/orders/${orderId}/verify-pin`, {
         method: "POST",
         locationId: DEFAULT_LOCATION_ID,
@@ -705,18 +704,6 @@ function DeliveryPinModal({
         // PIN verified — complete the delivery the normal way.
         await kdsAction(session, `${orderId}/complete-delivery`);
         onDone();
-        return;
-      }
-
-      if (result.reason === "EXPIRED") {
-        setLocked(false);
-        setRemaining(PIN_TOTAL_ATTEMPTS);
-        setPin("");
-        setErr(
-          result.renewed
-            ? "This PIN expired, and a fresh PIN was automatically issued to the customer. Ask for the updated code and try again."
-            : "This PIN has expired. Ask the customer for the latest delivery PIN and try again.",
-        );
         return;
       }
 

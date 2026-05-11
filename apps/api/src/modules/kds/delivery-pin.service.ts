@@ -1,4 +1,4 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   BadRequestException,
   ForbiddenException,
@@ -7,16 +7,13 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import type { DeliveryPinVerification, Prisma, PrismaClient } from "@prisma/client";
+import { requireDeliveryPinFromPhone } from "../../common/utils/delivery-pin-phone";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 
-// PRD §7.8.5 — the customer-facing flow promises "You have N attempts left"
-// after the first wrong PIN, so the UI copy is pinned to 3 total attempts
-// (i.e. "2 left" after the 1st mismatch, "1 left" after the 2nd, then the
-// driver is offered a manual `NO_PIN_DELIVERY` completion). Changing this
-// constant will also change the copy in `pin-entry-modal` on the KDS.
+// Kept in lockstep with the KDS delivery PIN modal copy.
 export const PIN_MAX_FAILED_ATTEMPTS = 3;
-const DEFAULT_PIN_EXPIRY_MINUTES = 240;
+const NON_EXPIRING_PIN_EXPIRES_AT = new Date("9999-12-31T23:59:59.999Z");
 
 type Tx = Prisma.TransactionClient;
 type DeliveryPinOrderSnapshot = {
@@ -25,16 +22,10 @@ type DeliveryPinOrderSnapshot = {
   fulfillmentType: string;
   locationId: string;
   status: string;
+  customerPhoneSnapshot: string;
 };
 
-function generatePin(): string {
-  return String(randomInt(0, 10_000)).padStart(4, "0");
-}
-
 function hashPin(pin: string): string {
-  // 4-digit PIN is low-entropy — we combine with a per-install secret so the
-  // stored hash isn't a lookup table for 10 000 values. The secret mirrors
-  // whatever JWT_SECRET the deployment uses (set via env).
   const salt = process.env.PIN_HASH_SECRET ?? process.env.JWT_SECRET ?? "dev-pin-secret";
   return createHash("sha256").update(`${salt}:${pin}`).digest("hex");
 }
@@ -46,43 +37,22 @@ export class DeliveryPinService {
     private readonly realtime: RealtimeGateway,
   ) {}
 
-  private async getExpiryMinutes(locationId: string): Promise<number> {
-    const settings = await this.prisma.locationSettings.findUnique({
-      where: { locationId },
-      select: { deliveryPinExpiryMinutes: true },
-    });
-    return settings?.deliveryPinExpiryMinutes ?? DEFAULT_PIN_EXPIRY_MINUTES;
-  }
-
-  private async autoRenewExpiredPinIfNeeded(
+  private async ensurePinRecordIfNeeded(
     order: DeliveryPinOrderSnapshot,
     record: DeliveryPinVerification | null,
-  ): Promise<{
-    record: DeliveryPinVerification | null;
-    renewed: boolean;
-  }> {
+  ): Promise<{ record: DeliveryPinVerification | null; created: boolean }> {
     const isActiveDelivery =
       order.fulfillmentType === "DELIVERY" && order.status === "OUT_FOR_DELIVERY";
-    const needsRenewal =
-      !record ||
-      record.verificationResult === "EXPIRED" ||
-      (record.verificationResult !== "VERIFIED" &&
-        record.verificationResult !== "BYPASSED" &&
-        record.verificationResult !== "LOCKED" &&
-        record.expiresAt <= new Date());
-
-    if (!isActiveDelivery || !needsRenewal) {
-      return { record, renewed: false };
+    if (!isActiveDelivery || record) {
+      return { record, created: false };
     }
 
-    const expiryMinutes = await this.getExpiryMinutes(order.locationId);
     await this.generateForOrder({
       orderId: order.id,
       locationId: order.locationId,
-      expiryMinutes,
     });
 
-    const renewedRecord = await this.prisma.deliveryPinVerification.findUnique({
+    const createdRecord = await this.prisma.deliveryPinVerification.findUnique({
       where: { orderId: order.id },
     });
 
@@ -93,23 +63,42 @@ export class DeliveryPinService {
       { order_id: order.id, pin_regenerated: true, automatic: true },
     );
 
-    return { record: renewedRecord, renewed: true };
+    return { record: createdRecord, created: true };
   }
 
-  // Called inside KdsService.startDelivery — accepts an optional tx client so
-  // PIN generation participates in the same transaction as the status flip.
   async generateForOrder(
     params: {
       orderId: string;
       locationId: string;
-      expiryMinutes: number;
     },
     client?: Tx | PrismaClient,
   ): Promise<{ plaintext: string; expiresAt: Date }> {
     const db = (client ?? this.prisma) as Tx;
-    const pin = generatePin();
+    const order = await db.order.findUnique({
+      where: { id: params.orderId },
+      select: {
+        id: true,
+        locationId: true,
+        fulfillmentType: true,
+        customerPhoneSnapshot: true,
+      },
+    });
+    if (!order) throw new NotFoundException("Order not found");
+    if (order.locationId !== params.locationId) {
+      throw new UnprocessableEntityException({
+        message: "Order does not belong to this location",
+        field: "location_id",
+      });
+    }
+    if (order.fulfillmentType !== "DELIVERY") {
+      throw new UnprocessableEntityException({
+        message: "PIN is only available for delivery orders",
+        field: "fulfillment_type",
+      });
+    }
+
+    const pin = requireDeliveryPinFromPhone(order.customerPhoneSnapshot);
     const hash = hashPin(pin);
-    const expiresAt = new Date(Date.now() + params.expiryMinutes * 60_000);
 
     await db.deliveryPinVerification.upsert({
       where: { orderId: params.orderId },
@@ -117,14 +106,14 @@ export class DeliveryPinService {
         orderId: params.orderId,
         pinHash: hash,
         pinPlaintext: pin,
-        expiresAt,
+        expiresAt: NON_EXPIRING_PIN_EXPIRES_AT,
         failedAttempts: 0,
         verificationResult: "PENDING",
       },
       update: {
         pinHash: hash,
         pinPlaintext: pin,
-        expiresAt,
+        expiresAt: NON_EXPIRING_PIN_EXPIRES_AT,
         failedAttempts: 0,
         lockedAt: null,
         verifiedAt: null,
@@ -135,11 +124,9 @@ export class DeliveryPinService {
       },
     });
 
-    return { plaintext: pin, expiresAt };
+    return { plaintext: pin, expiresAt: NON_EXPIRING_PIN_EXPIRES_AT };
   }
 
-  // Customer-facing read. Returns plaintext only while the PIN is active —
-  // i.e., the order is OUT_FOR_DELIVERY and the PIN hasn't been used up.
   async fetchForCustomer(orderId: string, customerUserId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -149,6 +136,7 @@ export class DeliveryPinService {
         status: true,
         fulfillmentType: true,
         locationId: true,
+        customerPhoneSnapshot: true,
       },
     });
     if (!order) throw new NotFoundException("Order not found");
@@ -165,27 +153,27 @@ export class DeliveryPinService {
     const current = await this.prisma.deliveryPinVerification.findUnique({
       where: { orderId },
     });
-    const { record } = await this.autoRenewExpiredPinIfNeeded(order, current);
+    const { record } = await this.ensurePinRecordIfNeeded(order, current);
 
     if (!record || !record.pinPlaintext) {
       return { pin: null, status: record?.verificationResult ?? "PENDING" };
     }
     return {
       pin: record.pinPlaintext,
-      expires_at: record.expiresAt,
       status: record.verificationResult,
     };
   }
 
-  // KDS-facing read used by the PIN modal on open. Lets the UI restore its
-  // "locked / X attempts remaining" state after a page refresh or after the
-  // staff closed & reopened the modal — otherwise the client would show a
-  // fresh PIN input every time even though the backend record is already
-  // locked from previous failed attempts.
   async statusForStaff(orderId: string, locationId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { id: true, locationId: true, fulfillmentType: true, status: true },
+      select: {
+        id: true,
+        locationId: true,
+        fulfillmentType: true,
+        status: true,
+        customerPhoneSnapshot: true,
+      },
     });
     if (!order) throw new NotFoundException("Order not found");
     if (order.locationId !== locationId) {
@@ -204,7 +192,7 @@ export class DeliveryPinService {
     const current = await this.prisma.deliveryPinVerification.findUnique({
       where: { orderId },
     });
-    const { record } = await this.autoRenewExpiredPinIfNeeded(order, current);
+    const { record } = await this.ensurePinRecordIfNeeded(order, current);
     if (!record) {
       return {
         exists: false,
@@ -216,6 +204,7 @@ export class DeliveryPinService {
         verification_result: null,
       };
     }
+
     const isLocked =
       record.verificationResult === "LOCKED" ||
       Boolean(record.lockedAt) ||
@@ -246,9 +235,8 @@ export class DeliveryPinService {
     | { ok: true }
     | {
         ok: false;
-        reason: "LOCKED" | "EXPIRED" | "MISMATCH";
+        reason: "LOCKED" | "MISMATCH";
         remaining_attempts?: number;
-        renewed?: boolean;
       }
   > {
     if (!/^\d{4}$/.test(params.pin)) {
@@ -257,18 +245,32 @@ export class DeliveryPinService {
 
     const order = await this.prisma.order.findUnique({
       where: { id: params.orderId },
-      select: { id: true, fulfillmentType: true, locationId: true, status: true },
+      select: {
+        id: true,
+        fulfillmentType: true,
+        locationId: true,
+        status: true,
+        customerPhoneSnapshot: true,
+      },
     });
-    if (!order) {
-      throw new NotFoundException("Order not found");
+    if (!order) throw new NotFoundException("Order not found");
+    if (order.locationId !== params.locationId) {
+      throw new UnprocessableEntityException({
+        message: "Order does not belong to this location",
+        field: "location_id",
+      });
     }
 
-    const record = await this.prisma.deliveryPinVerification.findUnique({
+    const current = await this.prisma.deliveryPinVerification.findUnique({
       where: { orderId: params.orderId },
     });
+    const { record } = await this.ensurePinRecordIfNeeded(order, current);
     if (!record) {
-      const { renewed } = await this.autoRenewExpiredPinIfNeeded(order, null);
-      return { ok: false, reason: "EXPIRED", renewed };
+      return {
+        ok: false,
+        reason: "MISMATCH",
+        remaining_attempts: PIN_MAX_FAILED_ATTEMPTS,
+      };
     }
     if (record.verificationResult === "VERIFIED" || record.verificationResult === "BYPASSED") {
       return { ok: true };
@@ -276,19 +278,6 @@ export class DeliveryPinService {
     if (record.verificationResult === "LOCKED" || record.lockedAt) {
       await this.logPinEvent(params, "PIN_FAIL_LOCKED");
       return { ok: false, reason: "LOCKED" };
-    }
-    if (record.expiresAt <= new Date()) {
-      await this.prisma.deliveryPinVerification.update({
-        where: { orderId: params.orderId },
-        data: { verificationResult: "EXPIRED", pinPlaintext: null },
-      });
-      await this.logPinEvent(params, "PIN_FAIL_EXPIRED");
-      const { renewed } = await this.autoRenewExpiredPinIfNeeded(order, {
-        ...record,
-        verificationResult: "EXPIRED",
-        pinPlaintext: null,
-      });
-      return { ok: false, reason: "EXPIRED", renewed };
     }
 
     const candidateHash = hashPin(params.pin);
@@ -357,11 +346,16 @@ export class DeliveryPinService {
     orderId: string;
     locationId: string;
     actorUserId: string | null;
-    expiryMinutes: number;
   }) {
     const order = await this.prisma.order.findUnique({
       where: { id: params.orderId },
-      select: { id: true, status: true, fulfillmentType: true, locationId: true },
+      select: {
+        id: true,
+        status: true,
+        fulfillmentType: true,
+        locationId: true,
+        customerPhoneSnapshot: true,
+      },
     });
     if (!order) throw new NotFoundException("Order not found");
     if (order.fulfillmentType !== "DELIVERY") {
@@ -377,10 +371,9 @@ export class DeliveryPinService {
       });
     }
 
-    const { plaintext, expiresAt } = await this.generateForOrder({
+    const { plaintext } = await this.generateForOrder({
       orderId: params.orderId,
       locationId: params.locationId,
-      expiryMinutes: params.expiryMinutes,
     });
 
     this.realtime.emitOrderEvent(
@@ -390,7 +383,7 @@ export class DeliveryPinService {
       { order_id: params.orderId, pin_regenerated: true },
     );
 
-    return { pin: plaintext, expires_at: expiresAt };
+    return { pin: plaintext };
   }
 
   private async logPinEvent(
@@ -409,14 +402,10 @@ export class DeliveryPinService {
       },
     });
 
-    // PRD §7.8.5 / §8: PIN failures and bypasses must also be visible to ops
-    // via the admin audit log, not just driver events. Success verifications
-    // stay out of admin audit to keep the feed signal-heavy.
     const AUDITABLE = new Set([
       "PIN_FAIL",
       "PIN_FAIL_LOCK",
       "PIN_FAIL_LOCKED",
-      "PIN_FAIL_EXPIRED",
       "PIN_BYPASS",
     ]);
     if (AUDITABLE.has(eventType)) {

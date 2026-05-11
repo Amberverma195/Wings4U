@@ -7,6 +7,10 @@ import {
 } from "@nestjs/common";
 import type { OrderStatus, PaymentTenderMethod } from "@prisma/client";
 import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
+import {
+  normalizeNanpDeliveryPhone,
+  requireDeliveryPinFromPhone,
+} from "../../common/utils/delivery-pin-phone";
 import { PrismaService } from "../../database/prisma.service";
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
@@ -219,6 +223,11 @@ export class PosService {
       let customerUserId: string;
       let customerName: string;
       let customerPhone: string;
+      const inputCustomerPhone = params.customerPhone?.trim()
+        ? params.fulfillmentType === "DELIVERY"
+          ? normalizeNanpDeliveryPhone(params.customerPhone, "customer_phone")
+          : params.customerPhone.trim()
+        : undefined;
 
       if (params.customerId) {
         const user = await tx.user.findUnique({
@@ -239,9 +248,9 @@ export class PosService {
         }
         customerUserId = user.id;
         customerName = params.customerName ?? user.displayName;
-        customerPhone = params.customerPhone ?? user.identities[0]?.phoneE164 ?? "";
-      } else if (params.customerPhone) {
-        const phoneE164 = params.customerPhone;
+        customerPhone = inputCustomerPhone ?? user.identities[0]?.phoneE164 ?? "";
+      } else if (inputCustomerPhone) {
+        const phoneE164 = inputCustomerPhone;
         const existingIdentity = await tx.userIdentity.findUnique({
           where: { phoneE164 },
           include: { user: true },
@@ -335,6 +344,7 @@ export class PosService {
           timezone: location.timezoneName ?? "America/Toronto",
           referenceDate: new Date(),
         });
+        requireDeliveryPinFromPhone(customerPhone, "customer_phone");
       }
 
       // 3. Validate items against menu

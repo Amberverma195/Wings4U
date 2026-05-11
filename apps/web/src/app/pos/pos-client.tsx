@@ -913,6 +913,16 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
       );
     }
 
+    const customerPhoneDigits = customerPhone.replace(/\D/g, "");
+    const hasValidDeliveryPhone =
+      customerPhoneDigits.length === 10 ||
+      (customerPhoneDigits.length === 11 && customerPhoneDigits.startsWith("1"));
+    if (fulfillmentType === "DELIVERY" && !hasValidDeliveryPhone) {
+      setPlacing(false);
+      setPlaceError("Delivery orders require a valid 10-digit customer phone number.");
+      return;
+    }
+
     try {
       const payload: Record<string, unknown> = {
         fulfillment_type: fulfillmentType,
@@ -1239,7 +1249,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                   </label>
                   {orderSource === "PHONE" && (
                     <label className="pos-field">
-                      PHONE{" "}
+                      {fulfillmentType === "DELIVERY" ? "PHONE (REQUIRED FOR DELIVERY)" : "PHONE"}{" "}
                       {lookupError && (
                         <span
                           style={{
@@ -1260,6 +1270,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                         onChange={(e) => updatePhone(e.target.value)}
                         placeholder="(519) 000-0000"
                         autoComplete="off"
+                        required={fulfillmentType === "DELIVERY"}
                       />
                     </label>
                   )}
