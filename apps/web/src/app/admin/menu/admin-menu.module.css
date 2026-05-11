@@ -75,18 +75,19 @@
 
 .categoryDock {
   position: sticky;
-  top: 4.75rem;
+  top: 0.75rem;
   z-index: 18;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
   background: linear-gradient(
     180deg,
-    rgba(249, 240, 228, 0.98) 0%,
-    rgba(241, 228, 213, 0.96) 100%
+    #fbf1e5 0%,
+    #f3e3d0 100%
   ) !important;
   border: 1px solid rgba(110, 73, 36, 0.18) !important;
   box-shadow: 0 14px 30px rgba(23, 18, 13, 0.08) !important;
+  overflow: hidden;
 }
 
 .sidebarHeader {
@@ -142,17 +143,18 @@
 
 .categoryList {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.65rem;
-  overflow-x: auto;
+  overflow: visible;
   padding: 0.1rem 0 0.15rem;
-  scrollbar-width: thin;
 }
 
 .categoryRow {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .categoryRow[data-active="true"] .catEditBtn {
@@ -164,6 +166,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
+  max-width: 15rem;
   min-height: 2.85rem;
   padding: 0.8rem 1rem;
   white-space: nowrap;
@@ -177,6 +180,12 @@
   font-weight: 600;
   transition: background 0.15s ease, border-color 0.15s ease,
     color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.categoryItem > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .categoryItem:hover {
@@ -217,6 +226,7 @@
   border-radius: 999px;
   font-size: 0.76rem;
   font-weight: 700;
+  white-space: nowrap;
   transition: color 0.15s ease, border-color 0.15s ease,
     background 0.15s ease, transform 0.15s ease;
 }
@@ -573,6 +583,35 @@
 
 .editButton:hover {
   background: rgba(194, 73, 20, 0.14);
+}
+
+@media (max-width: 1080px) {
+  .categoryDock {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .categoryList {
+    flex-direction: column;
+  }
+
+  .categoryRow {
+    width: 100%;
+  }
+
+  .categoryItem {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .catEditBtn {
+    padding-inline: 0.7rem;
+  }
+
+  .searchWrapper {
+    min-width: 100%;
+  }
 }
 
 .modalOverlay {

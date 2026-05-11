@@ -114,18 +114,30 @@
 /* Grid layout: sidebar + main */
 .admin-shell-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) 1fr;
+  grid-template-columns: minmax(210px, 244px) minmax(0, 1fr);
   gap: 1.15rem;
   align-items: start;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1080px) {
   .admin-shell-grid {
     grid-template-columns: 1fr;
   }
 
   .admin-sidebar {
     position: static;
+    border-left: 0;
+    border-top: 3px solid var(--accent);
+  }
+
+  .admin-sidebar nav ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+    gap: 0.35rem;
+  }
+
+  .admin-sidebar nav li {
+    margin-bottom: 0 !important;
   }
 }
 
