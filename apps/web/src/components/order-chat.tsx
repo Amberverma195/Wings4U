@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { relativeTime, statusLabel } from "@/lib/format";
+import { relativeTime } from "@/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ChatResponse, ChatMessage } from "@/lib/types";
@@ -15,10 +15,30 @@ const HELPER_TEXTS = [
   "Other issue",
 ];
 
+function isOwnChatMessage(
+  message: ChatMessage,
+  viewerSide: "CUSTOMER" | "STAFF",
+): boolean {
+  return viewerSide === "CUSTOMER"
+    ? message.sender_surface === "CUSTOMER"
+    : message.sender_surface !== "CUSTOMER";
+}
+
+function chatSenderLabel(
+  message: ChatMessage,
+  viewerSide: "CUSTOMER" | "STAFF",
+): string {
+  if (viewerSide === "CUSTOMER") {
+    return message.sender_surface === "CUSTOMER" ? "You" : "Staff";
+  }
+  return message.sender_surface === "CUSTOMER" ? "Customer" : "You";
+}
+
 export function OrderChat({
   orderId,
   locationId,
   isTerminal,
+  viewerSide,
 }: {
   orderId: string;
   /**
@@ -29,6 +49,7 @@ export function OrderChat({
    */
   locationId: string;
   isTerminal: boolean;
+  viewerSide?: "CUSTOMER" | "STAFF";
 }) {
   const session = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -119,6 +140,8 @@ export function OrderChat({
   }, [orderId, locationId, draft, selectedHelper, fetchMessages, session]);
 
   const canSend = !isTerminal && !isClosed;
+  const resolvedViewerSide =
+    viewerSide ?? (session.user?.role === "CUSTOMER" ? "CUSTOMER" : "STAFF");
 
   return (
     <div className="chat-container">
@@ -136,9 +159,9 @@ export function OrderChat({
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`chat-bubble chat-${msg.sender_surface === "CUSTOMER" ? "own" : "other"}`}
+            className={`chat-bubble chat-${isOwnChatMessage(msg, resolvedViewerSide) ? "own" : "other"}`}
           >
-            <span className="chat-sender">{msg.sender_surface === "CUSTOMER" ? "You" : statusLabel(msg.sender_surface)}</span>
+            <span className="chat-sender">{chatSenderLabel(msg, resolvedViewerSide)}</span>
             <p className="chat-body">{msg.message_body}</p>
             <span className="chat-time">{relativeTime(msg.created_at)}</span>
           </div>

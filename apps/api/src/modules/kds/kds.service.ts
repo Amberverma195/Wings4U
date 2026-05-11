@@ -176,12 +176,69 @@ type KdsCustomerOrderStats = {
   noShowDeliveryCount: number;
 };
 
+type KdsCustomerStatsTarget = {
+  key: string;
+  customerUserId: string | null;
+  rawPhones: string[];
+  phoneKeys: string[];
+};
+
 function createEmptyCustomerStats(): KdsCustomerOrderStats {
   return {
     orderCount: 0,
     noShowPickupCount: 0,
     noShowDeliveryCount: 0,
   };
+}
+
+function normalizeStatsPhone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return digits.slice(1);
+  }
+  return digits.length >= 7 ? digits : null;
+}
+
+function getKdsOrderRawPhones(order: Record<string, unknown>): string[] {
+  return [order.customerPhoneSnapshot, order.deliveryPhoneSnapshot]
+    .filter((phone): phone is string => typeof phone === "string" && phone.trim().length > 0)
+    .map((phone) => phone.trim());
+}
+
+function getKdsOrderPhoneKeys(order: Record<string, unknown>): string[] {
+  return Array.from(
+    new Set(
+      getKdsOrderRawPhones(order)
+        .map(normalizeStatsPhone)
+        .filter((phone): phone is string => Boolean(phone)),
+    ),
+  );
+}
+
+function makeKdsCustomerStatsTarget(order: {
+  id: string;
+  customerUserId: string | null;
+  customerPhoneSnapshot?: string | null;
+  deliveryPhoneSnapshot?: string | null;
+}): KdsCustomerStatsTarget {
+  const rawOrder = order as unknown as Record<string, unknown>;
+  return {
+    key: order.id,
+    customerUserId: order.customerUserId ?? null,
+    rawPhones: getKdsOrderRawPhones(rawOrder),
+    phoneKeys: getKdsOrderPhoneKeys(rawOrder),
+  };
+}
+
+function incrementCustomerStats(stats: KdsCustomerOrderStats, status: OrderStatus) {
+  stats.orderCount += 1;
+  if (status === "NO_SHOW_PICKUP") {
+    stats.noShowPickupCount += 1;
+  }
+  if (status === "NO_SHOW_DELIVERY") {
+    stats.noShowDeliveryCount += 1;
+  }
 }
 
 @Injectable()
@@ -236,16 +293,14 @@ export class KdsService {
     );
     const customerStats = await this.getCustomerOrderStats(
       locationId,
-      orders
-        .map((order) => order.customerUserId)
-        .filter((id): id is string => Boolean(id)),
+      orders.map((order) => makeKdsCustomerStatsTarget(order)),
     );
 
     return orders.map((o) => {
       const serialized = serializeKdsOrder(
         o as unknown as Record<string, unknown>,
         settings?.kdsAutoAcceptSeconds ?? null,
-        o.customerUserId ? customerStats.get(o.customerUserId) ?? null : null,
+        customerStats.get(o.id) ?? null,
       );
       return {
         ...serialized,
@@ -287,17 +342,15 @@ export class KdsService {
       [order.id],
       "STAFF",
     );
-    const customerStats = order.customerUserId
-      ? await this.getCustomerOrderStats(locationId, [order.customerUserId])
-      : new Map<string, KdsCustomerOrderStats>();
+    const customerStats = await this.getCustomerOrderStats(locationId, [
+      makeKdsCustomerStatsTarget(order),
+    ]);
 
     return {
       ...serializeKdsOrder(
         order as unknown as Record<string, unknown>,
         settings?.kdsAutoAcceptSeconds ?? null,
-        order.customerUserId
-          ? customerStats.get(order.customerUserId) ?? null
-          : null,
+        customerStats.get(order.id) ?? null,
       ),
       unread_customer_chat_count: unreadCounts.get(order.id) ?? 0,
     };
@@ -305,36 +358,74 @@ export class KdsService {
 
   private async getCustomerOrderStats(
     locationId: string,
-    customerUserIds: string[],
+    targets: KdsCustomerStatsTarget[],
   ): Promise<Map<string, KdsCustomerOrderStats>> {
-    const uniqueCustomerIds = Array.from(new Set(customerUserIds)).filter(Boolean);
     const stats = new Map<string, KdsCustomerOrderStats>();
-    for (const customerId of uniqueCustomerIds) {
-      stats.set(customerId, createEmptyCustomerStats());
+    for (const target of targets) {
+      stats.set(target.key, createEmptyCustomerStats());
     }
-    if (uniqueCustomerIds.length === 0) return stats;
 
-    const grouped = await this.prisma.order.groupBy({
-      by: ["customerUserId", "status"],
+    const uniqueCustomerIds = Array.from(
+      new Set(
+        targets
+          .map((target) => target.customerUserId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const hasPhoneTargets = targets.some((target) => target.phoneKeys.length > 0);
+
+    const orFilters: Array<Record<string, unknown>> = [];
+    if (uniqueCustomerIds.length > 0) {
+      orFilters.push({ customerUserId: { in: uniqueCustomerIds } });
+    }
+    if (hasPhoneTargets) {
+      // Phone snapshots are not normalized consistently across old/new orders
+      // (`+1519...`, `+1 (519)...`, `(519)...`). Fetch phone-bearing rows and
+      // do normalized digit matching below so the customer counter survives
+      // formatting differences.
+      orFilters.push({ customerPhoneSnapshot: { not: null } });
+      orFilters.push({ deliveryPhoneSnapshot: { not: null } });
+    }
+
+    if (orFilters.length === 0) return stats;
+
+    const matchingOrders = await this.prisma.order.findMany({
       where: {
         locationId,
-        customerUserId: { in: uniqueCustomerIds },
+        OR: orFilters,
       },
-      _count: { _all: true },
+      select: {
+        id: true,
+        customerUserId: true,
+        customerPhoneSnapshot: true,
+        deliveryPhoneSnapshot: true,
+        status: true,
+      },
     });
 
-    for (const row of grouped) {
-      if (!row.customerUserId) continue;
-      const current = stats.get(row.customerUserId) ?? createEmptyCustomerStats();
-      const count = row._count._all;
-      current.orderCount += count;
-      if (row.status === "NO_SHOW_PICKUP") {
-        current.noShowPickupCount += count;
+    for (const target of targets) {
+      const current = stats.get(target.key) ?? createEmptyCustomerStats();
+      const seenOrderIds = new Set<string>();
+
+      for (const order of matchingOrders) {
+        if (seenOrderIds.has(order.id)) continue;
+
+        const idMatches =
+          Boolean(target.customerUserId) &&
+          order.customerUserId === target.customerUserId;
+        const orderPhoneKeys = getKdsOrderPhoneKeys(
+          order as unknown as Record<string, unknown>,
+        );
+        const phoneMatches =
+          target.phoneKeys.length > 0 &&
+          orderPhoneKeys.some((phone) => target.phoneKeys.includes(phone));
+
+        if (!idMatches && !phoneMatches) continue;
+        seenOrderIds.add(order.id);
+        incrementCustomerStats(current, order.status);
       }
-      if (row.status === "NO_SHOW_DELIVERY") {
-        current.noShowDeliveryCount += count;
-      }
-      stats.set(row.customerUserId, current);
+
+      stats.set(target.key, current);
     }
 
     return stats;

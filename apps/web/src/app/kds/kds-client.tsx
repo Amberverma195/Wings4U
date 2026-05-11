@@ -59,9 +59,9 @@ type KdsOrder = {
   placed_at: string;
   customer_name_snapshot: string | null;
   customer_phone_snapshot: string | null;
-  customer_order_count: number | null;
-  customer_no_show_pickup_count: number | null;
-  customer_no_show_delivery_count: number | null;
+  customer_order_count?: number | string | null;
+  customer_no_show_pickup_count?: number | string | null;
+  customer_no_show_delivery_count?: number | string | null;
   customer_order_notes: string | null;
   estimated_ready_at: string | null;
   item_subtotal_cents: number;
@@ -212,14 +212,24 @@ function getPlacedEtaSecondsRemaining(order: KdsOrder, nowMs: number): number | 
   return Math.max(0, Math.ceil((placedAtMs + windowSeconds * 1000 - nowMs) / 1000));
 }
 
+function coerceKdsCount(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function formatKdsCustomerCounters(order: KdsOrder): string {
   const parts: string[] = [];
-  if (typeof order.customer_order_count === "number") {
-    parts.push(`Orders: ${order.customer_order_count}`);
+  const orderCount = coerceKdsCount(order.customer_order_count);
+  if (orderCount !== null) {
+    parts.push(`Orders: ${orderCount}`);
   }
 
-  const pickupNoShows = order.customer_no_show_pickup_count ?? 0;
-  const deliveryNoShows = order.customer_no_show_delivery_count ?? 0;
+  const pickupNoShows = coerceKdsCount(order.customer_no_show_pickup_count) ?? 0;
+  const deliveryNoShows = coerceKdsCount(order.customer_no_show_delivery_count) ?? 0;
   if (pickupNoShows > 0 || deliveryNoShows > 0) {
     parts.push(`No-shows: P ${pickupNoShows} / D ${deliveryNoShows}`);
   }
@@ -1764,7 +1774,12 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
 
           {/* Right Side */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border)", paddingLeft: "1.5rem", minWidth: 0 }}>
-            <OrderChat orderId={order.id} locationId={DEFAULT_LOCATION_ID} isTerminal={isTerminal} />
+            <OrderChat
+              orderId={order.id}
+              locationId={DEFAULT_LOCATION_ID}
+              isTerminal={isTerminal}
+              viewerSide="STAFF"
+            />
           </div>
         </div>
       </div>

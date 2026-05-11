@@ -612,6 +612,7 @@ function AdminOrderDetailModal({
               orderId={order.id}
               locationId={order.location_id}
               isTerminal={isTerminal}
+              viewerSide="STAFF"
             />
           </aside>
         </div>

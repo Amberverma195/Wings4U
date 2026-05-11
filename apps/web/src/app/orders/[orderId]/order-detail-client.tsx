@@ -717,6 +717,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               orderId={orderId}
               locationId={order.location_id}
               isTerminal={false}
+              viewerSide="CUSTOMER"
             />
             <button
               type="button"
