@@ -28,9 +28,7 @@ export function AdminMenuClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [builderImageUploading, setBuilderImageUploading] = useState(false);
-  const builderImageInputRef = useRef<HTMLInputElement>(null);
-  const builderImageCategoryRef = useRef<Category | null>(null);
+  const [builderImageCategory, setBuilderImageCategory] = useState<Category | null>(null);
 
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [itemModalOpen, setItemModalOpen] = useState(false);
@@ -110,61 +108,8 @@ export function AdminMenuClient() {
     return null;
   };
 
-  const openBuilderImagePicker = (category: Category) => {
-    builderImageCategoryRef.current = category;
-    builderImageInputRef.current?.click();
-  };
-
-  const handleBuilderImagePick = async (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    const category = builderImageCategoryRef.current;
-    if (!file || !category) return;
-
-    setBuilderImageUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await adminApiFetch(
-        `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
-        { method: "POST", body: formData },
-      );
-      if (!res.ok) {
-        const raw = await res.text();
-        let message = `Upload failed (${res.status})`;
-        try {
-          const body = JSON.parse(raw) as {
-            errors?: Array<{ message?: string }>;
-            message?: string;
-          };
-          message = body.errors?.[0]?.message ?? body.message ?? message;
-        } catch {
-          // Keep the status-based fallback.
-        }
-        throw new Error(message);
-      }
-      refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload picture");
-    } finally {
-      setBuilderImageUploading(false);
-      builderImageCategoryRef.current = null;
-      event.target.value = "";
-    }
-  };
-
   return (
     <>
-      <input
-        ref={builderImageInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        onChange={handleBuilderImagePick}
-        style={{ display: "none" }}
-      />
-
       <section className="surface-card admin-section-lead">
         <div className="admin-section-lead__row">
           <div>
@@ -301,12 +246,11 @@ export function AdminMenuClient() {
                   <button
                     type="button"
                     className={styles.catEditBtn}
-                    onClick={() => openBuilderImagePicker(cat)}
-                    disabled={builderImageUploading}
+                    onClick={() => setBuilderImageCategory(cat)}
                     title={`Add picture to every ${builderImageLabel} item`}
                     aria-label={`Add picture to every ${builderImageLabel} item`}
                   >
-                    {builderImageUploading ? "Uploading..." : "Add picture"}
+                    Add picture
                   </button>
                 )}
               </div>
@@ -446,6 +390,18 @@ export function AdminMenuClient() {
           />
         )}
 
+        {builderImageCategory && (
+          <BuilderCategoryImageModal
+            category={builderImageCategory}
+            label={getBuilderImageLabel(builderImageCategory) ?? builderImageCategory.name}
+            onClose={() => setBuilderImageCategory(null)}
+            onSaved={() => {
+              setBuilderImageCategory(null);
+              refresh();
+            }}
+          />
+        )}
+
         {catModalOpen && (
           <CategoryModal
             categoryId={editCategoryId}
@@ -470,5 +426,215 @@ export function AdminMenuClient() {
         )}
       </div>
     </>
+  );
+}
+
+type BuilderImageResponse = {
+  image_url: string | null;
+  updated_count: number;
+};
+
+function BuilderCategoryImageModal({
+  category,
+  label,
+  onClose,
+  onSaved,
+}: {
+  category: Category;
+  label: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [removePending, setRemovePending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    adminFetch<BuilderImageResponse>(
+      `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
+    )
+      .then((data) => {
+        if (!cancelled) setImageUrl(data.image_url);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load picture");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [category.id]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const handleFilePick = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setImageFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setRemovePending(false);
+    event.target.value = "";
+  };
+
+  const removePicture = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setImageFile(null);
+    setRemovePending(true);
+  };
+
+  const readErrorMessage = async (res: Response) => {
+    const raw = await res.text();
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = JSON.parse(raw) as {
+        errors?: Array<{ message?: string }>;
+        message?: string;
+      };
+      message = body.errors?.[0]?.message ?? body.message ?? message;
+    } catch {
+      // Keep the status-based fallback.
+    }
+    return message;
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append("image", imageFile);
+        const res = await adminApiFetch(
+          `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
+          { method: "POST", body: formData },
+        );
+        if (!res.ok) throw new Error(await readErrorMessage(res));
+      } else if (removePending) {
+        const res = await adminApiFetch(
+          `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) throw new Error(await readErrorMessage(res));
+      }
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save picture");
+      setSaving(false);
+    }
+  };
+
+  const shownImage = removePending ? null : previewUrl ?? imageUrl;
+  const hasChange = Boolean(imageFile) || removePending;
+
+  return (
+    <div
+      className={styles.modalOverlay}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <div className={`${styles.modalContent} ${styles.builderPictureModal}`}>
+        <div className={styles.modalHeader}>
+          <h2>{label} picture</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className={styles.closeButton}
+            disabled={saving}
+          >
+            &#x2715;
+          </button>
+        </div>
+
+        <div className={styles.modalBody}>
+          {error && <div className={styles.error}>{error}</div>}
+          {loading ? (
+            <div className={styles.loader}>Loading picture...</div>
+          ) : (
+            <div className={styles.builderPicturePanel}>
+              <div className={styles.builderPicturePreview}>
+                {shownImage ? (
+                  <img
+                    src={shownImage}
+                    alt={`${label} preview`}
+                    className={styles.builderPictureImage}
+                  />
+                ) : (
+                  <span>No picture selected</span>
+                )}
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleFilePick}
+                style={{ display: "none" }}
+              />
+
+              <div className={styles.builderPictureActions}>
+                <button
+                  type="button"
+                  className={styles.btnDanger}
+                  onClick={removePicture}
+                  disabled={saving || (!shownImage && !imageUrl)}
+                >
+                  Remove picture
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnCancel}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={saving}
+                >
+                  Replace picture
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className={styles.modalFooter}>
+          <span className="surface-muted">
+            Applies to every {label} item.
+          </span>
+          <div className={styles.modalFooterActions}>
+            <button
+              type="button"
+              className={styles.btnCancel}
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={styles.btnSave}
+              onClick={save}
+              disabled={saving || loading || !hasChange}
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

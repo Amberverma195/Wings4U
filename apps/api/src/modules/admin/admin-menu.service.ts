@@ -593,6 +593,107 @@ export class AdminMenuService {
       throw new BadRequestException("No image file provided");
     }
 
+    const { items } = await this.getBuilderCategoryImageItems(
+      locationId,
+      categoryId,
+    );
+    const previousImageUrls = Array.from(
+      new Set(
+        items
+          .map((item) => item.imageUrl)
+          .filter((imageUrl): imageUrl is string => Boolean(imageUrl)),
+      ),
+    );
+
+    const nextImages = await Promise.all(
+      items.map(async (item) => ({
+        id: item.id,
+        imageUrl: await this.imageStorage.save(
+          item.slug,
+          file.buffer,
+          file.originalname ?? "image.jpg",
+        ),
+      })),
+    );
+
+    await this.prisma.$transaction(
+      nextImages.map((image) =>
+        this.prisma.menuItem.update({
+          where: { id: image.id },
+          data: { imageUrl: image.imageUrl },
+        }),
+      ),
+    );
+
+    await Promise.all(previousImageUrls.map((url) => this.imageStorage.remove(url)));
+
+    return {
+      image_url: nextImages[0]?.imageUrl ?? null,
+      updated_count: items.length,
+    };
+  }
+
+  async getBuilderCategoryImage(locationId: string, categoryId: string) {
+    const { items } = await this.getBuilderCategoryImageItems(
+      locationId,
+      categoryId,
+    );
+    return {
+      image_url: items.find((item) => item.imageUrl)?.imageUrl ?? null,
+      updated_count: items.length,
+    };
+  }
+
+  async deleteBuilderCategoryImage(locationId: string, categoryId: string) {
+    const { items } = await this.getBuilderCategoryImageItems(
+      locationId,
+      categoryId,
+    );
+    const previousImageUrls = Array.from(
+      new Set(
+        items
+          .map((item) => item.imageUrl)
+          .filter((imageUrl): imageUrl is string => Boolean(imageUrl)),
+      ),
+    );
+
+    await this.prisma.menuItem.updateMany({
+      where: { id: { in: items.map((item) => item.id) } },
+      data: { imageUrl: null },
+    });
+
+    await Promise.all(previousImageUrls.map((url) => this.imageStorage.remove(url)));
+
+    return {
+      image_url: null,
+      updated_count: items.length,
+    };
+  }
+
+  async deleteImage(locationId: string, id: string) {
+    const item = await this.prisma.menuItem.findFirst({
+      where: { id, locationId, archivedAt: null },
+    });
+    if (!item) throw new NotFoundException("Menu item not found");
+
+    if (item.imageUrl) {
+      await this.imageStorage.remove(item.imageUrl);
+    }
+
+    await this.prisma.menuItem.update({
+      where: { id },
+      data: { imageUrl: null },
+    });
+
+    return { image_url: null };
+  }
+
+  // ────────── Validation helpers ──────────
+
+  private async getBuilderCategoryImageItems(
+    locationId: string,
+    categoryId: string,
+  ) {
     const category = await this.prisma.menuCategory.findFirst({
       where: { id: categoryId, locationId, archivedAt: null },
       select: { id: true, slug: true, name: true },
@@ -627,58 +728,8 @@ export class AdminMenuService {
       throw new NotFoundException(`No ${category.name} builder items found`);
     }
 
-    const nextImages = await Promise.all(
-      items.map(async (item) => ({
-        id: item.id,
-        imageUrl: await this.imageStorage.save(
-          item.slug,
-          file.buffer,
-          file.originalname ?? "image.jpg",
-        ),
-      })),
-    );
-
-    await this.prisma.$transaction(
-      nextImages.map((image) =>
-        this.prisma.menuItem.update({
-          where: { id: image.id },
-          data: { imageUrl: image.imageUrl },
-        }),
-      ),
-    );
-
-    await Promise.all(
-      items
-        .map((item) => item.imageUrl)
-        .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
-        .map((imageUrl) => this.imageStorage.remove(imageUrl)),
-    );
-
-    return {
-      image_url: nextImages[0]?.imageUrl ?? null,
-      updated_count: nextImages.length,
-    };
+    return { category, items };
   }
-
-  async deleteImage(locationId: string, id: string) {
-    const item = await this.prisma.menuItem.findFirst({
-      where: { id, locationId, archivedAt: null },
-    });
-    if (!item) throw new NotFoundException("Menu item not found");
-
-    if (item.imageUrl) {
-      await this.imageStorage.remove(item.imageUrl);
-    }
-
-    await this.prisma.menuItem.update({
-      where: { id },
-      data: { imageUrl: null },
-    });
-
-    return { image_url: null };
-  }
-
-  // ────────── Validation helpers ──────────
 
   private async validateCategoryBelongsToLocation(
     locationId: string,

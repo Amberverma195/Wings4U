@@ -882,6 +882,10 @@ export function MenuPage({
       const price = item.displayPriceCents / 100;
       const quantityInCart = cartCountForDisplayItem(item);
       const description = item.displayDescription?.trim();
+      const imageUrl =
+        item.kind === "item"
+          ? item.item.image_url
+          : item.group.options.find((option) => option.item.image_url)?.item.image_url ?? null;
 
       const handleAddClick = () => {
         if (item.kind === "legacy-group") {
@@ -923,7 +927,17 @@ export function MenuPage({
 
       return (
         <div key={item.key} style={{ ...styles.menuCard, ...(item.stockStatus === "UNAVAILABLE" ? { opacity: 0.5, pointerEvents: "none" } : {}) }}>
-          <div style={styles.menuCardEmoji}>{emoji}</div>
+          {imageUrl ? (
+            <div style={styles.menuCardImageWrap}>
+              <img
+                src={imageUrl}
+                alt={item.displayName}
+                style={styles.menuCardImage}
+              />
+            </div>
+          ) : (
+            <div style={styles.menuCardEmoji}>{emoji}</div>
+          )}
           <div style={styles.menuCardBody}>
             <div style={styles.menuCardCopy}>
               <h3 style={styles.menuCardName}>
