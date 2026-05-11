@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/lib/cart";
@@ -188,48 +189,56 @@ function ReorderConfirmModal({
 }) {
   const { items, diff, all_unavailable } = preview;
 
-  return (
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onCancel]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
+      className="reorder-modal-backdrop"
       onClick={onCancel}
+      role="presentation"
     >
       <div
-        style={{
-          background: "#fff",
-          borderRadius: "18px",
-          padding: "1.5rem",
-          maxWidth: "520px",
-          width: "90%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-        }}
+        className="reorder-modal-card"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reorder-modal-title"
+        aria-describedby="reorder-modal-description"
       >
-        <h3 style={{ margin: "0 0 0.75rem" }}>Review your reorder</h3>
+        <h3 id="reorder-modal-title" className="reorder-modal-title">
+          Review your reorder
+        </h3>
 
         {all_unavailable ? (
-          <p className="surface-error">
+          <p id="reorder-modal-description" className="surface-error reorder-modal-copy">
             We&apos;re sorry, none of the items from this order are currently available.
           </p>
         ) : (
-          <p className="surface-muted" style={{ margin: "0 0 0.75rem", fontSize: "0.9rem" }}>
+          <p id="reorder-modal-description" className="surface-muted reorder-modal-copy">
             {items.length} item{items.length === 1 ? "" : "s"} will be added to your cart at
             current prices.
           </p>
         )}
 
         {diff.skipped.length > 0 && (
-          <div style={{ marginTop: "0.75rem" }}>
+          <div className="reorder-modal-section">
             <strong>Skipped</strong>
-            <ul style={{ margin: "0.3rem 0 0", paddingLeft: "1.2rem", fontSize: "0.9rem" }}>
+            <ul className="reorder-modal-list">
               {diff.skipped.map((s, i) => (
                 <li key={i}>
                   {s.name} — {SKIP_REASON_COPY[s.reason]}
@@ -240,9 +249,9 @@ function ReorderConfirmModal({
         )}
 
         {diff.modifier_changes.length > 0 && (
-          <div style={{ marginTop: "0.75rem" }}>
+          <div className="reorder-modal-section">
             <strong>Modifiers dropped</strong>
-            <ul style={{ margin: "0.3rem 0 0", paddingLeft: "1.2rem", fontSize: "0.9rem" }}>
+            <ul className="reorder-modal-list">
               {diff.modifier_changes.map((c, i) => (
                 <li key={i}>
                   {c.name}: {c.dropped.join(", ")}
@@ -253,9 +262,9 @@ function ReorderConfirmModal({
         )}
 
         {diff.price_changes.length > 0 && (
-          <div style={{ marginTop: "0.75rem" }}>
+          <div className="reorder-modal-section">
             <strong>Price changes</strong>
-            <ul style={{ margin: "0.3rem 0 0", paddingLeft: "1.2rem", fontSize: "0.9rem" }}>
+            <ul className="reorder-modal-list">
               {diff.price_changes.map((p, i) => (
                 <li key={i}>
                   {p.name}: {formatCents(p.old_cents)} → {formatCents(p.new_cents)}
@@ -265,14 +274,7 @@ function ReorderConfirmModal({
           </div>
         )}
 
-        <div
-          style={{
-            display: "flex",
-            gap: "0.75rem",
-            marginTop: "1.25rem",
-            justifyContent: "flex-end",
-          }}
-        >
+        <div className="reorder-modal-actions">
           <button type="button" className="btn-secondary" onClick={onCancel}>
             {all_unavailable ? "Close" : "Cancel"}
           </button>
@@ -283,6 +285,7 @@ function ReorderConfirmModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
