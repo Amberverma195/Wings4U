@@ -187,10 +187,6 @@ function ReorderConfirmModal({
   onCancel: () => void;
 }) {
   const { items, diff, all_unavailable } = preview;
-  const hasAnyDiff =
-    diff.skipped.length > 0 ||
-    diff.modifier_changes.length > 0 ||
-    diff.price_changes.length > 0;
 
   return (
     <div
@@ -267,12 +263,6 @@ function ReorderConfirmModal({
               ))}
             </ul>
           </div>
-        )}
-
-        {!hasAnyDiff && !all_unavailable && (
-          <p className="surface-muted" style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
-            Everything from your original order is available at the same price.
-          </p>
         )}
 
         <div

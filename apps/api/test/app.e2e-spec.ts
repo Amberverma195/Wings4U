@@ -123,7 +123,7 @@ async function requestOtpAndCaptureCode(
 
     expect(otpLog).toBeDefined();
     const match = otpLog?.match(/: (\d{6})$/);
-    expect(match).toBeDefined();
+    expect(match).vtoBeDefined();
     return match![1];
   } finally {
     logSpy.mockRestore();

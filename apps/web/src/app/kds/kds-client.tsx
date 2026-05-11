@@ -130,6 +130,12 @@ const COLUMNS: StatusColumn[] = [
 ];
 
 const ALL_KDS_STATUSES = COLUMNS.flatMap((c) => c.statuses);
+const KDS_ALERT_SOUND_SRC = "/notification.wav";
+
+type RealtimeOrderPayload = {
+  order_id?: string;
+  cancellation_source?: string;
+};
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -2019,7 +2025,70 @@ export function KdsClient() {
   const [detailOrder, setDetailOrder] = useState<KdsOrder | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const socketRef = useRef<ReturnType<typeof createOrdersSocket> | null>(null);
+  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stopAlertListenerRef = useRef<(() => void) | null>(null);
+  const knownVisibleOrderIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedVisibleOrdersRef = useRef(false);
   const sessionControls = KDS_SESSION_CONTROLS;
+
+  const stopKdsAlert = useCallback(() => {
+    const listener = stopAlertListenerRef.current;
+    if (listener) {
+      listener();
+      return;
+    }
+
+    const audio = alertAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, []);
+
+  const startKdsAlert = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    let audio = alertAudioRef.current;
+    if (!audio) {
+      audio = new Audio(KDS_ALERT_SOUND_SRC);
+      audio.loop = true;
+      audio.preload = "auto";
+      alertAudioRef.current = audio;
+    }
+
+    audio.loop = true;
+    if (audio.paused) {
+      audio.currentTime = 0;
+    }
+    void audio.play().catch(() => {
+      // Browsers can block audio before the KDS station has had a user gesture.
+      // The station unlock flow usually satisfies that, so this is best-effort.
+    });
+
+    if (!stopAlertListenerRef.current) {
+      const stop = () => {
+        window.removeEventListener("pointerdown", stop, true);
+        window.removeEventListener("keydown", stop, true);
+        stopAlertListenerRef.current = null;
+
+        const currentAudio = alertAudioRef.current;
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+        }
+      };
+
+      stopAlertListenerRef.current = stop;
+      window.addEventListener("pointerdown", stop, {
+        capture: true,
+        once: true,
+      });
+      window.addEventListener("keydown", stop, {
+        capture: true,
+        once: true,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     apiFetch(`/api/v1/kds/auth/status?location_id=${encodeURIComponent(DEFAULT_LOCATION_ID)}`)
@@ -2046,33 +2115,57 @@ export function KdsClient() {
         `/api/v1/kds/orders?statuses=${ALL_KDS_STATUSES.join(",")}`,
         { locationId: DEFAULT_LOCATION_ID },
       );
+      const previousIds = knownVisibleOrderIdsRef.current;
+      const hasNewVisibleOrder =
+        hasLoadedVisibleOrdersRef.current &&
+        response.some((order) => !previousIds.has(order.id));
+
+      knownVisibleOrderIdsRef.current = new Set(response.map((order) => order.id));
+      hasLoadedVisibleOrdersRef.current = true;
+
+      if (hasNewVisibleOrder) {
+        startKdsAlert();
+      }
+
       setOrders(response);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load KDS orders");
     } finally {
       setLoading(false);
     }
-  }, [sessionControls]);
+  }, [sessionControls, startKdsAlert]);
 
   const logout = useCallback(async () => {
     setLogoutBusy(true);
+    stopKdsAlert();
     try {
       await apiFetch("/api/v1/kds/auth/logout", { method: "POST" });
     } catch {
       // best-effort; local clear still returns the station to the password screen
     }
+    knownVisibleOrderIdsRef.current = new Set();
+    hasLoadedVisibleOrdersRef.current = false;
     setOrders([]);
     setDetailOrder(null);
     setOptionsOpen(false);
     setStationAuth("NEEDS_PIN");
     setLogoutBusy(false);
-  }, []);
+  }, [stopKdsAlert]);
 
   // Initial load — only if session is good
   useEffect(() => {
-    if (!canUseBoard) return;
+    if (!canUseBoard) {
+      stopKdsAlert();
+      knownVisibleOrderIdsRef.current = new Set();
+      hasLoadedVisibleOrdersRef.current = false;
+      return;
+    }
     void loadOrders();
-  }, [canUseBoard, loadOrders]);
+  }, [canUseBoard, loadOrders, stopKdsAlert]);
+
+  useEffect(() => {
+    return () => stopKdsAlert();
+  }, [stopKdsAlert]);
 
   // Stable ref so the socket effect doesn't re-run when loadOrders
   // changes identity (session revalidation, etc.).
@@ -2091,10 +2184,21 @@ export function KdsClient() {
     socketRef.current = socket;
 
     const refresh = () => void loadOrdersRef.current();
-    socket.on("order.placed", refresh);
+    const refreshWithAlert = () => {
+      startKdsAlert();
+      refresh();
+    };
+    const refreshCancelled = (payload?: RealtimeOrderPayload) => {
+      if (payload?.cancellation_source === "CUSTOMER_SELF") {
+        startKdsAlert();
+      }
+      refresh();
+    };
+
+    socket.on("order.placed", refreshWithAlert);
     socket.on("order.accepted", refresh);
     socket.on("order.status_changed", refresh);
-    socket.on("order.cancelled", refresh);
+    socket.on("order.cancelled", refreshCancelled);
     socket.on("order.driver_assigned", refresh);
     socket.on("order.delivery_started", refresh);
     socket.on("order.eta_updated", refresh);
@@ -2113,10 +2217,23 @@ export function KdsClient() {
 
     return () => {
       disposeSubscription();
+      socket.off("order.placed", refreshWithAlert);
+      socket.off("order.accepted", refresh);
+      socket.off("order.status_changed", refresh);
+      socket.off("order.cancelled", refreshCancelled);
+      socket.off("order.driver_assigned", refresh);
+      socket.off("order.delivery_started", refresh);
+      socket.off("order.eta_updated", refresh);
+      socket.off("order.manual_review_required", refresh);
+      socket.off("cancellation.requested", refresh);
+      socket.off("cancellation.decided", refresh);
+      socket.off("order.change_requested", refresh);
+      socket.off("order.change_approved", refresh);
+      socket.off("order.change_rejected", refresh);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [canUseBoard]);
+  }, [canUseBoard, startKdsAlert]);
 
   /* ---- Gate: show loading / station password ---- */
 
