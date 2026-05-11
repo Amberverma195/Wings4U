@@ -1,5 +1,12 @@
 import { Injectable } from "@nestjs/common";
+import type { OrderStatus } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+
+const REVENUE_ORDER_STATUSES: OrderStatus[] = [
+  "PICKED_UP",
+  "DELIVERED",
+  "NO_PIN_DELIVERY",
+];
 
 @Injectable()
 export class ReportsService {
@@ -34,7 +41,7 @@ export class ReportsService {
       this.prisma.order.aggregate({
         where: {
           locationId,
-          status: { notIn: ["CANCELLED"] },
+          status: { in: REVENUE_ORDER_STATUSES },
           placedAt: { gte: todayStart },
         },
         _sum: { finalPayableCents: true },
@@ -121,7 +128,8 @@ export class ReportsService {
   }
 
   async getSalesDashboard(locationId: string, startDate: Date, endDate: Date) {
-    // 1. Get all completed/paid orders in range for this location
+    // Revenue reporting only counts fulfilled sales. No-show and cancelled
+    // orders remain operational history, but they are not sales.
     const orders = await this.prisma.order.findMany({
       where: {
         locationId,
@@ -129,9 +137,7 @@ export class ReportsService {
           gte: startDate,
           lte: endDate,
         },
-        status: {
-          notIn: ["CANCELLED"],
-        },
+        status: { in: REVENUE_ORDER_STATUSES },
       },
       select: {
         placedAt: true,
@@ -145,7 +151,7 @@ export class ReportsService {
     const sourceBreakdown: Record<string, number> = {};
     const fulfillmentBreakdown: Record<string, number> = {};
     let totalSalesCents = 0;
-    let totalOrders = orders.length;
+    const totalOrders = orders.length;
 
     for (const order of orders) {
       const amount = order.finalPayableCents ?? 0;
@@ -172,7 +178,7 @@ export class ReportsService {
     const [paymentsResult, refundsResult, discountsResult] = await Promise.all([
       this.prisma.orderPayment.groupBy({
         by: ['paymentMethod'],
-        where: { order: { locationId, placedAt: { gte: startDate, lte: endDate }, status: { notIn: ["CANCELLED"] } }, transactionStatus: "SUCCESS" },
+        where: { order: { locationId, placedAt: { gte: startDate, lte: endDate }, status: { in: REVENUE_ORDER_STATUSES } }, transactionStatus: "SUCCESS" },
         _sum: { signedAmountCents: true }
       }),
       this.prisma.refundRequest.aggregate({
@@ -180,7 +186,7 @@ export class ReportsService {
         _sum: { amountCents: true }
       }),
       this.prisma.order.aggregate({
-        where: { locationId, placedAt: { gte: startDate, lte: endDate }, status: { notIn: ["CANCELLED"] } },
+        where: { locationId, placedAt: { gte: startDate, lte: endDate }, status: { in: REVENUE_ORDER_STATUSES } },
         _sum: { itemDiscountTotalCents: true, orderDiscountTotalCents: true }
       })
     ]);
@@ -217,7 +223,7 @@ export class ReportsService {
         order: {
           locationId,
           placedAt: { gte: startDate, lte: endDate },
-          status: { notIn: ["CANCELLED"] },
+          status: { in: REVENUE_ORDER_STATUSES },
         },
       },
       _sum: {
@@ -258,7 +264,7 @@ export class ReportsService {
       WHERE o.location_id = ${locationId}::uuid
         AND o.placed_at >= ${startDate}
         AND o.placed_at <= ${endDate}
-        AND o.status != 'CANCELLED'
+        AND o.status IN ('PICKED_UP', 'DELIVERED', 'NO_PIN_DELIVERY')
       GROUP BY oim.modifier_option_id, oim.modifier_name_snapshot, oim.modifier_group_name_snapshot
       ORDER BY quantity_sold DESC
       LIMIT 50
@@ -271,7 +277,7 @@ export class ReportsService {
         order: {
           locationId,
           placedAt: { gte: startDate, lte: endDate },
-          status: { notIn: ["CANCELLED"] },
+          status: { in: REVENUE_ORDER_STATUSES },
         },
       },
       _sum: {
