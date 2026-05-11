@@ -10,6 +10,7 @@ import { addDays, startOfDay } from "date-fns";
 import { PrismaService } from "../../database/prisma.service";
 import { ChatService } from "../chat/chat.service";
 import { RefundService } from "../refunds/refund.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 // PRD §12.1: fixed default reason string for customer self-cancellations.
 const SELF_CANCEL_DEFAULT_REASON = "Customer cancelled within window";
@@ -171,6 +172,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
     private readonly refundService: RefundService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async listOrders(params: {
@@ -355,6 +357,14 @@ export class OrdersService {
       locationId: order.locationId,
       initiatedByUserId: userId,
       reasonText: `Auto: ${reason}`,
+    });
+
+    this.realtime.emitOrderEvent(order.locationId, orderId, "order.cancelled", {
+      order_id: orderId,
+      from_status: order.status,
+      to_status: "CANCELLED",
+      changed_by_user_id: userId,
+      cancellation_source: "CUSTOMER_SELF",
     });
 
     return {

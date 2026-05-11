@@ -582,7 +582,11 @@ describe("PRD §22 — POS Walk-In (e2e)", () => {
       const dbOrder = await prisma.order.findUniqueOrThrow({
         where: { id: order.id },
       });
-      expect(dbOrder.createdByUserId).toBe(cashierUserId);
+      const dbPayment = await prisma.orderPayment.findFirstOrThrow({
+        where: { orderId: order.id },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(dbPayment.createdByUserId).toBe(cashierUserId);
       expect(dbOrder.orderSource).toBe("POS");
     });
 

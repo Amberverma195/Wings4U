@@ -182,11 +182,17 @@ function serializePosOrder(order: Record<string, unknown>) {
     created_at: p.createdAt,
   }));
 
+  const createdByUserId =
+    (o.payments ?? []).find(
+      (payment: Record<string, unknown>) =>
+        typeof payment.createdByUserId === "string",
+    )?.createdByUserId ?? null;
+
   return {
     id: o.id,
     location_id: o.locationId,
     customer_user_id: o.customerUserId,
-    created_by_user_id: null,
+    created_by_user_id: createdByUserId,
     order_number: Number(o.orderNumber),
     order_source: o.orderSource,
     fulfillment_type: o.fulfillmentType,

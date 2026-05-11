@@ -8,6 +8,7 @@ import { signJwt } from "../src/common/utils/jwt";
 import { PrismaService } from "../src/database/prisma.service";
 import { KdsAutoAcceptWorker } from "../src/modules/kds/kds-auto-accept.worker";
 import { OverdueDeliveryWorker } from "../src/modules/kds/overdue-delivery.worker";
+import { RealtimeGateway } from "../src/modules/realtime/realtime.gateway";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const BASE = "/api/v1";
@@ -291,6 +292,7 @@ describe("API (e2e)", () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication["getHttpServer"]>;
   let prisma: PrismaService;
+  let realtime: RealtimeGateway;
 
   let locationId: string;
   let customerUserId: string;
@@ -319,6 +321,7 @@ describe("API (e2e)", () => {
 
     server = app.getHttpServer();
     prisma = app.get(PrismaService);
+    realtime = app.get(RealtimeGateway);
 
     const location = await prisma.location.findUnique({
       where: { code: "LON01" },
@@ -1243,6 +1246,62 @@ describe("API (e2e)", () => {
 
         expect(cancelRes.body.data.status).toBe("CANCELLED");
       }
+    });
+
+    it("POST /orders/:id/cancel emits KDS realtime removal and excludes order from active KDS feed", async () => {
+      const freshOrder = await authedPost(
+        server,
+        "/checkout",
+        customerToken,
+        locationId,
+      )
+        .set("Idempotency-Key", randomUUID())
+        .send({
+          location_id: locationId,
+          fulfillment_type: "PICKUP",
+          items: [{ menu_item_id: firstMenuItemId, quantity: 1 }],
+        })
+        .expect(201);
+
+      const freshOrderId = freshOrder.body.data.id as string;
+      const emitSpy = jest.spyOn(realtime, "emitOrderEvent");
+      emitSpy.mockClear();
+
+      try {
+        await authedPost(
+          server,
+          `/orders/${freshOrderId}/cancel`,
+          customerToken,
+          locationId,
+        )
+          .send({})
+          .expect(201);
+
+        expect(emitSpy).toHaveBeenCalledWith(
+          locationId,
+          freshOrderId,
+          "order.cancelled",
+          expect.objectContaining({
+            order_id: freshOrderId,
+            from_status: "PLACED",
+            to_status: "CANCELLED",
+            cancellation_source: "CUSTOMER_SELF",
+          }),
+        );
+      } finally {
+        emitSpy.mockRestore();
+      }
+
+      const kdsRes = await authedGet(
+        server,
+        "/kds/orders?statuses=PLACED,ACCEPTED,PREPARING,READY,OUT_FOR_DELIVERY",
+        managerToken,
+        locationId,
+      ).expect(200);
+      const activeIds = (kdsRes.body.data as Array<{ id: string }>).map(
+        (order) => order.id,
+      );
+      expect(activeIds).not.toContain(freshOrderId);
     });
 
     // PRD §12.6 / QA matrix: customer self-cancel with captured payment → auto PENDING refund_request

@@ -474,7 +474,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               {/* Cancellation notice */}
               {order.status === "CANCELLED" && (
                 <p className={styles.cancelReason}>
-                  Order cancelled by KDS.
+                  Order cancelled by Staff.
                 </p>
               )}
 
