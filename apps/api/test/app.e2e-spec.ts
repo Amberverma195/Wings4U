@@ -1567,13 +1567,17 @@ describe("API (e2e)", () => {
       expect(startRes.body.data.status).toBe("OUT_FOR_DELIVERY");
       expect(startRes.body.data.delivery_started_at).toBeDefined();
 
+      const pinRow = await prisma.deliveryPinVerification.findUniqueOrThrow({
+        where: { orderId },
+        select: { pinPlaintext: true },
+      });
       const completeRes = await authedPost(
         server,
         `/kds/orders/${orderId}/complete-delivery`,
         managerToken,
         locationId,
       )
-        .send({})
+        .send({ pin: pinRow.pinPlaintext ?? "0000" })
         .expect(201);
 
       expect(completeRes.body.data.status).toBe("DELIVERED");
@@ -1588,6 +1592,108 @@ describe("API (e2e)", () => {
         availabilityStatus: "AVAILABLE",
         isOnDelivery: false,
       });
+    });
+
+    // Delivery no-shows should close out the driver assignment.
+    it("NO_SHOW_DELIVERY releases the assigned driver for the next delivery order", async () => {
+      const { itemId, quantity } = await getDeliveryOrderInput(prisma, locationId);
+      const deliveryOrderOptions = {
+        fulfillmentType: "DELIVERY" as const,
+        quantity,
+        contactlessPref: "HAND_TO_ME" as const,
+        addressSnapshotJson: {
+          line1: "1544 Dundas St",
+          city: "London",
+          province: "ON",
+          postal_code: "N5W3C1",
+        },
+      };
+
+      await prisma.driverProfile.update({
+        where: { userId: driverUserId },
+        data: {
+          availabilityStatus: "AVAILABLE",
+          isOnDelivery: false,
+        },
+      });
+
+      const firstOrderId = await createCheckoutOrder(
+        server,
+        customerToken,
+        locationId,
+        itemId,
+        deliveryOrderOptions,
+      );
+
+      await authedPost(server, `/kds/orders/${firstOrderId}/accept`, managerToken, locationId)
+        .send({})
+        .expect(201);
+      await authedPost(server, `/kds/orders/${firstOrderId}/status`, managerToken, locationId)
+        .send({ status: "READY" })
+        .expect(201);
+      await authedPost(server, `/kds/orders/${firstOrderId}/assign-driver`, managerToken, locationId)
+        .send({ driver_user_id: driverUserId })
+        .expect(201);
+      await authedPost(server, `/kds/orders/${firstOrderId}/start-delivery`, managerToken, locationId)
+        .send({})
+        .expect(201);
+
+      const noShowRes = await authedPost(
+        server,
+        `/kds/orders/${firstOrderId}/status`,
+        managerToken,
+        locationId,
+      )
+        .send({ status: "NO_SHOW_DELIVERY", reason: "Customer unavailable" })
+        .expect(201);
+
+      expect(noShowRes.body.data.status).toBe("NO_SHOW_DELIVERY");
+      expect(noShowRes.body.data.delivery_completed_at).toBeDefined();
+
+      const driverAfterNoShow = await prisma.driverProfile.findUniqueOrThrow({
+        where: { userId: driverUserId },
+        select: {
+          availabilityStatus: true,
+          isOnDelivery: true,
+          lastDeliveryCompletedAt: true,
+        },
+      });
+      expect(driverAfterNoShow).toMatchObject({
+        availabilityStatus: "AVAILABLE",
+        isOnDelivery: false,
+      });
+      expect(driverAfterNoShow.lastDeliveryCompletedAt).not.toBeNull();
+
+      const noShowDriverEvent = await prisma.orderDriverEvent.findFirst({
+        where: { orderId: firstOrderId, eventType: "DELIVERY_NO_SHOW" },
+      });
+      expect(noShowDriverEvent?.driverUserId).toBe(driverUserId);
+
+      const secondOrderId = await createCheckoutOrder(
+        server,
+        customerToken,
+        locationId,
+        itemId,
+        deliveryOrderOptions,
+      );
+
+      await authedPost(server, `/kds/orders/${secondOrderId}/accept`, managerToken, locationId)
+        .send({})
+        .expect(201);
+      await authedPost(server, `/kds/orders/${secondOrderId}/status`, managerToken, locationId)
+        .send({ status: "READY" })
+        .expect(201);
+
+      const nextAssignRes = await authedPost(
+        server,
+        `/kds/orders/${secondOrderId}/assign-driver`,
+        managerToken,
+        locationId,
+      )
+        .send({ driver_user_id: driverUserId })
+        .expect(201);
+
+      expect(nextAssignRes.body.data.assigned_driver_user_id).toBe(driverUserId);
     });
 
     // PRD §11.1B: auto-accept fires when the KDS heartbeat is fresh.

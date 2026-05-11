@@ -50,8 +50,16 @@ const TIMESTAMP_FIELDS: Partial<Record<OrderStatus, string>> = {
   CANCELLED: "cancelledAt",
   OUT_FOR_DELIVERY: "deliveryStartedAt",
   DELIVERED: "deliveryCompletedAt",
+  NO_SHOW_DELIVERY: "deliveryCompletedAt",
   NO_PIN_DELIVERY: "deliveryCompletedAt",
 };
+
+const DRIVER_ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  "ACCEPTED",
+  "PREPARING",
+  "READY",
+  "OUT_FOR_DELIVERY",
+];
 
 function serializeKdsOrder(
   order: Record<string, unknown>,
@@ -176,6 +184,12 @@ type KdsCustomerStatsTarget = {
   customerUserId: string | null;
   rawPhones: string[];
   phoneKeys: string[];
+};
+
+type ReleasedDeliveryDriver = {
+  driverUserId: string;
+  isOnDelivery: boolean;
+  availabilityStatus: "AVAILABLE" | "ON_DELIVERY";
 };
 
 function createEmptyCustomerStats(): KdsCustomerOrderStats {
@@ -703,9 +717,14 @@ export class KdsService {
       updateData.deliveryCompletedByUserId = actorUserId;
     }
 
+    if (newStatus === "NO_SHOW_DELIVERY") {
+      updateData.deliveryCompletedByUserId = actorUserId;
+    }
+
     const isNoShowTransition =
       newStatus === "NO_SHOW_PICKUP" || newStatus === "NO_SHOW_DELIVERY";
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { nextOrder: updated, releasedDriver } = await this.prisma.$transaction(async (tx) => {
+      let releasedDriver: ReleasedDeliveryDriver | null = null;
       const nextOrder = await tx.order.update({
         where: { id: orderId },
         data: updateData,
@@ -733,6 +752,43 @@ export class KdsService {
         },
       });
 
+      if (newStatus === "NO_SHOW_DELIVERY" && order.assignedDriverUserId) {
+        const remainingAssignments = await tx.order.count({
+          where: {
+            assignedDriverUserId: order.assignedDriverUserId,
+            id: { not: orderId },
+            status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
+          },
+        });
+        const driverHasOtherActiveAssignments = remainingAssignments > 0;
+        releasedDriver = {
+          driverUserId: order.assignedDriverUserId,
+          isOnDelivery: driverHasOtherActiveAssignments,
+          availabilityStatus: driverHasOtherActiveAssignments
+            ? "ON_DELIVERY"
+            : "AVAILABLE",
+        };
+
+        await tx.orderDriverEvent.create({
+          data: {
+            orderId,
+            locationId,
+            driverUserId: order.assignedDriverUserId,
+            eventType: "DELIVERY_NO_SHOW",
+            actorUserId,
+            noteText: reason,
+          },
+        });
+        await tx.driverProfile.update({
+          where: { userId: order.assignedDriverUserId },
+          data: {
+            isOnDelivery: releasedDriver.isOnDelivery,
+            availabilityStatus: releasedDriver.availabilityStatus,
+            lastDeliveryCompletedAt: now,
+          },
+        });
+      }
+
       if (isNoShowTransition && order.customerUserId) {
         // Cash-only phase: track no-shows now; future card-prepay behavior stays documented only.
         documentFuturePrepaymentPolicy();
@@ -754,7 +810,7 @@ export class KdsService {
         await this.rewardsService.accrueForOrderInTransaction(tx, orderId);
       }
 
-      return nextOrder;
+      return { nextOrder, releasedDriver };
     });
 
     if (TERMINAL_STATUSES.has(newStatus as OrderStatus)) {
@@ -773,6 +829,20 @@ export class KdsService {
       newStatus === "CANCELLED" ? "order.cancelled" : "order.status_changed",
       statusPayload,
     );
+    if (releasedDriver) {
+      this.realtime.emitDriverEvent(locationId, "driver.delivery_completed", {
+        driver_user_id: releasedDriver.driverUserId,
+        order_id: orderId,
+        location_id: locationId,
+        no_show: true,
+      });
+      this.realtime.emitDriverEvent(locationId, "driver.availability_changed", {
+        driver_user_id: releasedDriver.driverUserId,
+        location_id: locationId,
+        availability_status: releasedDriver.availabilityStatus,
+        is_on_delivery: releasedDriver.isOnDelivery,
+      });
+    }
 
     return serializeKdsOrder(updated as unknown as Record<string, unknown>);
   }
@@ -1233,7 +1303,14 @@ export class KdsService {
 
     this.realtime.emitOrderEvent(locationId, orderId, "order.delivery_started", {
       order_id: orderId,
+      status: "OUT_FOR_DELIVERY",
       driver_user_id: order.assignedDriverUserId,
+    });
+    this.realtime.emitOrderEvent(locationId, orderId, "order.status_changed", {
+      order_id: orderId,
+      from_status: "READY",
+      to_status: "OUT_FOR_DELIVERY",
+      changed_by_user_id: actorUserId,
     });
 
     return serializeKdsOrder(updated as unknown as Record<string, unknown>);
@@ -1307,7 +1384,7 @@ export class KdsService {
       where: {
         assignedDriverUserId: driverUserId,
         id: { not: orderId },
-        status: { in: ["ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"] },
+        status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
       },
     });
     const driverHasOtherActiveAssignments = remainingAssignments > 0;
@@ -1462,7 +1539,7 @@ export class KdsService {
       where: {
         assignedDriverUserId: driverUserId,
         id: { not: orderId },
-        status: { in: ["ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"] },
+        status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
       },
     });
     const driverHasOtherActiveAssignments = remainingAssignments > 0;
