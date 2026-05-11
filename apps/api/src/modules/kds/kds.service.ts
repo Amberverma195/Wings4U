@@ -12,10 +12,7 @@ import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { documentFuturePrepaymentPolicy } from "../customers/no-show-policy";
 import { RefundService } from "../refunds/refund.service";
 import { RewardsService } from "../rewards/rewards.service";
-import {
-  DeliveryPinService,
-  PIN_MAX_FAILED_ATTEMPTS,
-} from "./delivery-pin.service";
+import { DeliveryPinService } from "./delivery-pin.service";
 
 const DEFAULT_KDS_STATUSES: OrderStatus[] = [
   "PLACED",
@@ -30,9 +27,9 @@ const TERMINAL_STATUSES = new Set<OrderStatus>([
   "CANCELLED",
   "NO_SHOW_PICKUP",
   "NO_SHOW_DELIVERY",
-  // PRD §7.8.5 — forced completion after 3 failed PIN attempts. Treated
-  // like DELIVERED for lifecycle purposes (chat closes, no further KDS
-  // transitions), but surfaced distinctly to ops and the customer.
+  // Manual completion without PIN. Treated like DELIVERED for lifecycle
+  // purposes (chat closes, no further KDS transitions), but surfaced
+  // distinctly to ops and the customer.
   "NO_PIN_DELIVERY",
 ]);
 
@@ -41,8 +38,8 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   PREPARING: ["READY"],
   READY: ["PICKED_UP", "OUT_FOR_DELIVERY", "NO_SHOW_PICKUP"],
   // NO_PIN_DELIVERY is reachable from OUT_FOR_DELIVERY but only via the
-  // dedicated /complete-delivery-without-pin endpoint after the PIN record
-  // has been locked — it is deliberately not part of /status transitions
+  // dedicated /complete-delivery-without-pin endpoint for legacy locked PIN
+  // records — it is deliberately not part of /status transitions
   // so generic PATCH calls can't sidestep the PIN challenge.
   OUT_FOR_DELIVERY: ["DELIVERED", "NO_SHOW_DELIVERY"],
 };
@@ -1300,7 +1297,6 @@ export class KdsService {
           message: `PIN verification failed (${result.reason})`,
           field: "pin",
           reason: result.reason,
-          remaining_attempts: result.remaining_attempts,
         });
       }
     }
@@ -1399,14 +1395,11 @@ export class KdsService {
   }
 
   /**
-   * PRD §7.8.5 — forced "no PIN" delivery completion.
+   * Manual "no PIN" delivery completion for legacy locked PIN records.
    *
-   * After `PIN_MAX_FAILED_ATTEMPTS` wrong PIN submissions the PIN record is
-   * LOCKED. At that point the driver can still hand the food over (e.g. the
-   * customer lost their PIN email / is a known regular), but we need to
-   * record that the delivery was closed *without* PIN verification so ops
-   * can audit it later and the customer can see in their order timeline
-   * that handoff was manual.
+   * New PIN verification can be retried indefinitely, so the normal driver
+   * path stays on `completeDelivery` until the correct phone-last-four PIN is
+   * entered or an admin bypasses the PIN.
    *
    * Separate from `completeDelivery` so the state machine still refuses
    * generic NO_PIN_DELIVERY transitions via /status.
@@ -1437,7 +1430,8 @@ export class KdsService {
       });
     }
 
-    // Only allowed once the PIN challenge itself has been exhausted.
+    // New PINs do not lock from failed attempts. This remains only for legacy
+    // records that were already locked before indefinite retries shipped.
     const pinRecord = await this.prisma.deliveryPinVerification.findUnique({
       where: { orderId },
     });
@@ -1453,11 +1447,11 @@ export class KdsService {
     }
     const locked =
       pinRecord?.verificationResult === "LOCKED" ||
-      (pinRecord?.failedAttempts ?? 0) >= PIN_MAX_FAILED_ATTEMPTS;
+      Boolean(pinRecord?.lockedAt);
     if (!locked) {
       throw new UnprocessableEntityException({
         message:
-          "PIN challenge has not been exhausted yet — enter the PIN or keep trying before completing without PIN.",
+          "Delivery PIN can be retried indefinitely. Enter the PIN or use admin bypass before completing delivery.",
         field: "pin",
       });
     }
@@ -1519,8 +1513,8 @@ export class KdsService {
           totalDeliveriesCompleted: { increment: 1 },
         },
       });
-      // Audit trail — the locked PIN already logged PIN_FAIL_LOCK, but this
-      // is the moment staff chose to complete anyway, which ops should see.
+      // Audit trail for the moment staff chose to complete a legacy locked
+      // PIN order manually, which ops should see.
       await tx.adminAuditLog.create({
         data: {
           locationId,

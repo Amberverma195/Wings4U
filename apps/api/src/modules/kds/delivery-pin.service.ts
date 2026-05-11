@@ -11,8 +11,6 @@ import { requireDeliveryPinFromPhone } from "../../common/utils/delivery-pin-pho
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 
-// Kept in lockstep with the KDS delivery PIN modal copy.
-export const PIN_MAX_FAILED_ATTEMPTS = 3;
 const NON_EXPIRING_PIN_EXPIRES_AT = new Date("9999-12-31T23:59:59.999Z");
 
 type Tx = Prisma.TransactionClient;
@@ -199,28 +197,18 @@ export class DeliveryPinService {
         verified: false,
         locked: false,
         failed_attempts: 0,
-        max_attempts: PIN_MAX_FAILED_ATTEMPTS,
-        remaining_attempts: PIN_MAX_FAILED_ATTEMPTS,
         verification_result: null,
       };
     }
 
-    const isLocked =
-      record.verificationResult === "LOCKED" ||
-      Boolean(record.lockedAt) ||
-      record.failedAttempts >= PIN_MAX_FAILED_ATTEMPTS;
     const verified =
       record.verificationResult === "VERIFIED" ||
       record.verificationResult === "BYPASSED";
     return {
       exists: true,
       verified,
-      locked: isLocked,
+      locked: false,
       failed_attempts: record.failedAttempts,
-      max_attempts: PIN_MAX_FAILED_ATTEMPTS,
-      remaining_attempts: isLocked
-        ? 0
-        : Math.max(0, PIN_MAX_FAILED_ATTEMPTS - record.failedAttempts),
       verification_result: record.verificationResult,
     };
   }
@@ -235,8 +223,7 @@ export class DeliveryPinService {
     | { ok: true }
     | {
         ok: false;
-        reason: "LOCKED" | "MISMATCH";
-        remaining_attempts?: number;
+        reason: "MISMATCH";
       }
   > {
     if (!/^\d{4}$/.test(params.pin)) {
@@ -269,35 +256,28 @@ export class DeliveryPinService {
       return {
         ok: false,
         reason: "MISMATCH",
-        remaining_attempts: PIN_MAX_FAILED_ATTEMPTS,
       };
     }
     if (record.verificationResult === "VERIFIED" || record.verificationResult === "BYPASSED") {
       return { ok: true };
     }
-    if (record.verificationResult === "LOCKED" || record.lockedAt) {
-      await this.logPinEvent(params, "PIN_FAIL_LOCKED");
-      return { ok: false, reason: "LOCKED" };
-    }
 
     const candidateHash = hashPin(params.pin);
     if (candidateHash !== record.pinHash) {
       const nextAttempts = record.failedAttempts + 1;
-      const shouldLock = nextAttempts >= PIN_MAX_FAILED_ATTEMPTS;
       await this.prisma.deliveryPinVerification.update({
         where: { orderId: params.orderId },
         data: {
           failedAttempts: nextAttempts,
-          lockedAt: shouldLock ? new Date() : null,
-          verificationResult: shouldLock ? "LOCKED" : "PENDING",
-          pinPlaintext: shouldLock ? null : record.pinPlaintext,
+          lockedAt: null,
+          verificationResult: "PENDING",
+          pinPlaintext: record.pinPlaintext,
         },
       });
-      await this.logPinEvent(params, shouldLock ? "PIN_FAIL_LOCK" : "PIN_FAIL");
+      await this.logPinEvent(params, "PIN_FAIL");
       return {
         ok: false,
-        reason: shouldLock ? "LOCKED" : "MISMATCH",
-        remaining_attempts: Math.max(0, PIN_MAX_FAILED_ATTEMPTS - nextAttempts),
+        reason: "MISMATCH",
       };
     }
 
@@ -307,6 +287,7 @@ export class DeliveryPinService {
         verificationResult: "VERIFIED",
         verifiedAt: new Date(),
         verifiedByUserId: params.actorUserId,
+        lockedAt: null,
         pinPlaintext: null,
       },
     });
@@ -404,8 +385,6 @@ export class DeliveryPinService {
 
     const AUDITABLE = new Set([
       "PIN_FAIL",
-      "PIN_FAIL_LOCK",
-      "PIN_FAIL_LOCKED",
       "PIN_BYPASS",
     ]);
     if (AUDITABLE.has(eventType)) {

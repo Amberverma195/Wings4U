@@ -591,19 +591,10 @@ function DriverAssignModal({
 /*  Delivery PIN Modal                                                 */
 /* ------------------------------------------------------------------ */
 
-// Kept in lockstep with `PIN_MAX_FAILED_ATTEMPTS` on the API side. The
-// backend is the source of truth — this value is only used to render
-// the initial "You have N attempts" hint when the modal first opens.
-const PIN_TOTAL_ATTEMPTS = 3;
-
 /**
  * PRD §7.8.5 — the driver clicks "Mark Delivered" from the KDS card,
- * this modal asks the customer-facing PIN, tracks remaining attempts
- * inline, and once the PIN record is locked falls through to a
- * "Complete without PIN" button that marks the order NO_PIN_DELIVERY.
- *
- * Uses a direct `verify-pin` endpoint (ok/remaining_attempts/locked)
- * so we don't have to decode attempt counts out of a 422 error body.
+ * this modal asks for the customer-facing PIN. Wrong PINs can be retried
+ * indefinitely.
  */
 function DeliveryPinModal({
   orderId,
@@ -617,18 +608,14 @@ function DeliveryPinModal({
   onClose: () => void;
 }) {
   const [pin, setPin] = useState("");
-  const [remaining, setRemaining] = useState<number | null>(null);
-  const [locked, setLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   // While we're fetching the server-side PIN state on open. Prevents a
-  // flash of the fresh PIN-input view for orders that are already locked.
+  // flash of the PIN-input view for orders that are already verified.
   const [hydrating, setHydrating] = useState(true);
 
-  // Hydrate from backend on open so a close/reopen or a page reload doesn't
-  // lose the "locked" state — the client `locked` flag alone is just local
-  // React state and resets every time the modal mounts.
+  // Hydrate from backend on open so a close/reopen or a page reload can
+  // immediately complete already verified orders.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -637,9 +624,8 @@ function DeliveryPinModal({
           exists: boolean;
           verified: boolean;
           locked: boolean;
-          failed_attempts: number;
-          max_attempts: number;
-          remaining_attempts: number;
+          failed_attempts?: number;
+          verification_result?: string | null;
         }>(session, `/api/v1/kds/orders/${orderId}/pin-status`, {
           method: "GET",
           locationId: DEFAULT_LOCATION_ID,
@@ -653,20 +639,9 @@ function DeliveryPinModal({
           onDone();
           return;
         }
-        if (status.locked) {
-          setLocked(true);
-          setRemaining(0);
-          setErr(
-            `All ${status.max_attempts} attempts used. You can now complete this delivery manually without PIN.`,
-          );
-        } else if (status.failed_attempts > 0) {
-          // Previous session already burned some attempts — surface the
-          // accurate count so the first submit hint is honest.
-          setRemaining(status.remaining_attempts);
-        }
       } catch {
         // Non-fatal — the modal will still work, the user just won't see
-        // the prior-session attempt count until they submit once.
+        // prior server state until they submit once.
       } finally {
         if (!cancelled) setHydrating(false);
       }
@@ -686,12 +661,10 @@ function DeliveryPinModal({
     }
     setBusy(true);
     setErr(null);
-    setInfo(null);
     try {
       const result = await kdsJson<{
         ok: boolean;
         reason?: string;
-        remaining_attempts?: number;
         locked?: boolean;
       }>(session, `/api/v1/kds/orders/${orderId}/verify-pin`, {
         method: "POST",
@@ -707,29 +680,8 @@ function DeliveryPinModal({
         return;
       }
 
-      if (result.locked) {
-        setLocked(true);
-        setRemaining(0);
-        setErr(
-          "All 3 attempts used. You can now complete this delivery manually without PIN.",
-        );
-        setPin("");
-        return;
-      }
-
-      const remainingNow = result.remaining_attempts ?? 0;
-      setRemaining(remainingNow);
       setPin("");
-      if (remainingNow <= 0) {
-        setLocked(true);
-        setErr(
-          "All 3 attempts used. You can now complete this delivery manually without PIN.",
-        );
-      } else if (remainingNow === 1) {
-        setErr("Incorrect PIN. You have 1 attempt left.");
-      } else {
-        setErr(`Incorrect PIN. You have ${remainingNow} attempts left.`);
-      }
+      setErr("Incorrect PIN. Try again.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Verification failed");
     } finally {
@@ -737,30 +689,7 @@ function DeliveryPinModal({
     }
   };
 
-  const completeWithoutPin = async () => {
-    setBusy(true);
-    setErr(null);
-    setInfo("Completing delivery without PIN verification...");
-    try {
-      await kdsAction(
-        session,
-        `${orderId}/complete-delivery-without-pin`,
-      );
-      onDone();
-    } catch (e) {
-      setInfo(null);
-      setErr(e instanceof Error ? e.message : "Could not complete delivery");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Pre-attempt hint vs. mid-attempt countdown copy.
-  const hintLine = locked
-    ? "Manually complete this delivery — it will be recorded as No-PIN Delivery in the audit log."
-    : remaining == null
-      ? `Ask the customer for their 4-digit delivery PIN. You have ${PIN_TOTAL_ATTEMPTS} attempts.`
-      : null;
+  const hintLine = "Ask the customer for their 4-digit delivery PIN.";
 
   if (hydrating) {
     return (
@@ -768,7 +697,7 @@ function DeliveryPinModal({
         <div className="kds-modal-card" onClick={(e) => e.stopPropagation()}>
           <h3>Verify Delivery PIN</h3>
           <p className="surface-muted" style={{ margin: "0.25rem 0 0" }}>
-            Loading…
+            Loading...
           </p>
         </div>
       </div>
@@ -778,57 +707,41 @@ function DeliveryPinModal({
   return (
     <div className="kds-modal-overlay" onClick={onClose}>
       <div className="kds-modal-card" onClick={(e) => e.stopPropagation()}>
-        <h3>{locked ? "Complete Delivery — No PIN" : "Verify Delivery PIN"}</h3>
+        <h3>Verify Delivery PIN</h3>
         {hintLine && (
           <p className="kds-modal-copy" style={{ margin: "0 0 0.75rem" }}>
             {hintLine}
           </p>
         )}
 
-        {!locked && (
-          <>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="\d{4}"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="••••"
-              className="kds-modal-input"
-              style={{
-                fontSize: "1.6rem",
-                letterSpacing: "0.6rem",
-                textAlign: "center",
-                fontVariantNumeric: "tabular-nums",
-              }}
-              autoFocus
-              disabled={busy}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && pin.length === 4 && !busy) {
-                  void submitPin();
-                }
-              }}
-            />
-            {remaining != null && !err && (
-              <p className="surface-muted" style={{ margin: "0.5rem 0 0" }}>
-                {remaining === 1
-                  ? "1 attempt left."
-                  : `${remaining} attempts left.`}
-              </p>
-            )}
-          </>
-        )}
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="\d{4}"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          placeholder="0000"
+          className="kds-modal-input"
+          style={{
+            fontSize: "1.6rem",
+            letterSpacing: "0.6rem",
+            textAlign: "center",
+            fontVariantNumeric: "tabular-nums",
+          }}
+          autoFocus
+          disabled={busy}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && pin.length === 4 && !busy) {
+              void submitPin();
+            }
+          }}
+        />
 
         {err && (
           <p className="surface-error" style={{ margin: "0.5rem 0 0" }}>
             {err}
-          </p>
-        )}
-        {info && !err && (
-          <p className="surface-muted" style={{ margin: "0.5rem 0 0" }}>
-            {info}
           </p>
         )}
 
@@ -839,27 +752,16 @@ function DeliveryPinModal({
             onClick={onClose}
             disabled={busy}
           >
-            {locked ? "Go back" : "Cancel"}
+            Cancel
           </button>
-          {locked ? (
-            <button
-              type="button"
-              className="btn-danger"
-              onClick={completeWithoutPin}
-              disabled={busy}
-            >
-              {busy ? "Completing..." : "Complete without PIN"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={submitPin}
-              disabled={busy || pin.length !== 4}
-            >
-              {busy ? "Verifying..." : "Verify & Deliver"}
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={submitPin}
+            disabled={busy || pin.length !== 4}
+          >
+            {busy ? "Verifying..." : "Verify & Deliver"}
+          </button>
         </div>
       </div>
     </div>
@@ -914,8 +816,8 @@ function KdsOrderCard({
   const pickedUp = () =>
     runAction(() => kdsAction(session, `${order.id}/status`, "POST", { status: "PICKED_UP" }));
   const startDelivery = () => runAction(() => kdsAction(session, `${order.id}/start-delivery`));
-  // "Mark Delivered" is now always gated through the PIN modal — the modal
-  // itself calls /verify-pin + /complete-delivery or the no-PIN fallback.
+  // "Mark Delivered" is always gated through the PIN modal; the modal itself
+  // calls /verify-pin + /complete-delivery after the correct PIN is entered.
   // We still surface `completeDelivery` errors via `actionError` by letting
   // the modal's onDone() trigger `onRefresh()`.
 

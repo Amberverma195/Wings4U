@@ -381,10 +381,7 @@ export class KdsController {
     );
   }
 
-  // PRD §7.8.5: read the current PIN state for the KDS modal. Lets the UI
-  // restore the "locked" view after a close/reopen or a page reload, and
-  // hints the correct "N attempts left" count for the first submit even
-  // when an older session already burned some attempts on this order.
+  // PRD §7.8.5: read the current PIN state for the KDS modal.
   @Get("orders/:id/pin-status")
   async pinStatus(
     @Param("id", ParseUUIDPipe) id: string,
@@ -393,10 +390,9 @@ export class KdsController {
     return this.deliveryPin.statusForStaff(id, req.locationId!);
   }
 
-  // PRD §7.8.5: structured PIN check. Returns an explicit `{ ok, remaining_attempts, locked }`
+  // PRD §7.8.5: structured PIN check. Returns an explicit `{ ok, locked }`
   // shape instead of throwing on mismatch so the KDS modal can render the
-  // "You have N attempts left" copy inline without having to reverse-engineer
-  // a 422 error body.
+  // inline retry state without reverse-engineering a 422 error body.
   @Post("orders/:id/verify-pin")
   async verifyPin(
     @Param("id", ParseUUIDPipe) id: string,
@@ -420,13 +416,11 @@ export class KdsController {
     return {
       ok: false,
       reason: result.reason,
-      remaining_attempts: result.remaining_attempts ?? 0,
-      locked: result.reason === "LOCKED",
+      locked: false,
     };
   }
 
-  // PRD §7.8.5: after `PIN_MAX_FAILED_ATTEMPTS` wrong PIN entries, the driver
-  // can still hand off the food but the delivery is closed as
+  // Legacy/admin path for manually closing an already locked PIN record as
   // NO_PIN_DELIVERY (distinct from DELIVERED) so ops keeps an audit trail.
   @Post("orders/:id/complete-delivery-without-pin")
   async completeDeliveryWithoutPin(

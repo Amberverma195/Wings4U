@@ -1956,8 +1956,8 @@ describe("API (e2e)", () => {
       expect(tickets).toHaveLength(1);
     });
 
-    // PRD §7.8.5: PIN flows — phone-last-four completes delivery; 3 bad
-    // attempts lock the PIN; admin bypass unblocks; regenerate resets attempts.
+    // PRD §7.8.5: PIN flows — phone-last-four completes delivery; bad
+    // attempts stay retryable; admin regenerate resets the attempt count.
     const startDeliveryForPinTest = async (token: string) => {
       const deliveryItem = await prisma.menuItem.findFirstOrThrow({
         where: {
@@ -2125,7 +2125,7 @@ describe("API (e2e)", () => {
       expect(other.pinPlaintext).not.toBe(first.pinPlaintext);
     });
 
-    it("delivery PIN: 3 wrong attempts lock the PIN and bypass unblocks completion", async () => {
+    it("delivery PIN: wrong attempts do not lock and correct PIN still completes", async () => {
       const deliveryItem = await prisma.menuItem.findFirstOrThrow({
         where: {
           locationId,
@@ -2183,7 +2183,7 @@ describe("API (e2e)", () => {
       });
       const wrong = pinRow.pinPlaintext === "0000" ? "1111" : "0000";
 
-      for (let i = 0; i < 3; i += 1) {
+      for (let i = 0; i < 5; i += 1) {
         await authedPost(
           server,
           `/kds/orders/${orderId}/complete-delivery`,
@@ -2194,32 +2194,12 @@ describe("API (e2e)", () => {
           .expect(422);
       }
 
-      const locked = await prisma.deliveryPinVerification.findUniqueOrThrow({
+      const afterWrongAttempts = await prisma.deliveryPinVerification.findUniqueOrThrow({
         where: { orderId },
       });
-      expect(locked.verificationResult).toBe("LOCKED");
-      expect(locked.lockedAt).not.toBeNull();
-
-      // Correct PIN rejected once locked.
-      await authedPost(
-        server,
-        `/kds/orders/${orderId}/complete-delivery`,
-        managerToken,
-        locationId,
-      )
-        .send({ pin: pinRow.pinPlaintext ?? "0000" })
-        .expect(422);
-
-      // Admin bypass unlocks; subsequent complete-delivery succeeds with no PIN.
-      await authedPost(server, `/kds/orders/${orderId}/pin/bypass`, adminToken, locationId)
-        .send({ reason: "Customer lost PIN, verified by phone" })
-        .expect(201);
-
-      const bypassed = await prisma.deliveryPinVerification.findUniqueOrThrow({
-        where: { orderId },
-      });
-      expect(bypassed.verificationResult).toBe("BYPASSED");
-      expect(bypassed.bypassReason).toContain("Customer lost PIN");
+      expect(afterWrongAttempts.failedAttempts).toBe(5);
+      expect(afterWrongAttempts.verificationResult).toBe("PENDING");
+      expect(afterWrongAttempts.lockedAt).toBeNull();
 
       const completeRes = await authedPost(
         server,
@@ -2227,7 +2207,7 @@ describe("API (e2e)", () => {
         managerToken,
         locationId,
       )
-        .send({})
+        .send({ pin: pinRow.pinPlaintext ?? "0000" })
         .expect(201);
       expect(completeRes.body.data.status).toBe("DELIVERED");
     });
