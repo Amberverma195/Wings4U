@@ -15,6 +15,27 @@ const HELPER_TEXTS = [
   "Other issue",
 ];
 
+function OrderChatSkeleton() {
+  return (
+    <div className="chat-loading-skeleton" role="status" aria-label="Loading chat messages">
+      <span className="chat-loading-sr">Loading chat messages</span>
+      <div className="chat-skeleton-bubble chat-skeleton-bubble--other">
+        <span className="chat-skeleton-line chat-skeleton-line--label" />
+        <span className="chat-skeleton-line chat-skeleton-line--long" />
+        <span className="chat-skeleton-line chat-skeleton-line--short" />
+      </div>
+      <div className="chat-skeleton-bubble chat-skeleton-bubble--own">
+        <span className="chat-skeleton-line chat-skeleton-line--label" />
+        <span className="chat-skeleton-line chat-skeleton-line--mid" />
+      </div>
+      <div className="chat-skeleton-bubble chat-skeleton-bubble--other chat-skeleton-bubble--compact">
+        <span className="chat-skeleton-line chat-skeleton-line--label" />
+        <span className="chat-skeleton-line chat-skeleton-line--mid" />
+      </div>
+    </div>
+  );
+}
+
 function isOwnChatMessage(
   message: ChatMessage,
   viewerSide: "CUSTOMER" | "STAFF",
@@ -52,25 +73,29 @@ export function OrderChat({
   viewerSide?: "CUSTOMER" | "STAFF";
 }) {
   const session = useSession();
+  const { refresh: refreshSession, clear: clearSession } = session;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isClosed, setIsClosed] = useState(false);
   const [draft, setDraft] = useState("");
   const [selectedHelper, setSelectedHelper] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await withSilentRefresh(
-        () => apiFetch(`/api/v1/orders/${orderId}/chat`, { locationId }),
-        session.refresh,
-        session.clear,
+        () => apiFetch(`/api/v1/orders/${orderId}/chat`, { locationId, signal }),
+        refreshSession,
+        clearSession,
       );
+      if (signal?.aborted) return;
       if (!res.ok) {
         return;
       }
       const body = (await res.json()) as { data?: ChatResponse };
+      if (signal?.aborted) return;
       const data = body.data;
       if (!data) {
         return;
@@ -80,10 +105,22 @@ export function OrderChat({
     } catch {
       /* first load may 404 if no conversation yet */
     }
-  }, [orderId, locationId, session]);
+  }, [orderId, locationId, refreshSession, clearSession]);
 
   useEffect(() => {
-    void fetchMessages();
+    const controller = new AbortController();
+    setIsInitialLoading(true);
+    setMessages([]);
+    setIsClosed(false);
+    setError(null);
+    void fetchMessages(controller.signal).finally(() => {
+      if (!controller.signal.aborted) {
+        setIsInitialLoading(false);
+      }
+    });
+    return () => {
+      controller.abort();
+    };
   }, [fetchMessages]);
 
   useEffect(() => {
@@ -122,8 +159,8 @@ export function OrderChat({
             body: JSON.stringify({ message_body: messageBody }),
             locationId,
           }),
-        session.refresh,
-        session.clear,
+        refreshSession,
+        clearSession,
       );
       if (!res.ok) {
         const body = await res.json();
@@ -137,7 +174,7 @@ export function OrderChat({
     } finally {
       setSending(false);
     }
-  }, [orderId, locationId, draft, selectedHelper, fetchMessages, session]);
+  }, [orderId, locationId, draft, selectedHelper, fetchMessages, refreshSession, clearSession]);
 
   const canSend = !isTerminal && !isClosed;
   const resolvedViewerSide =
@@ -150,13 +187,18 @@ export function OrderChat({
         {isClosed && <span className="surface-muted"> (closed)</span>}
       </h3>
 
-      <div ref={messagesContainerRef} className="chat-messages">
-        {messages.length === 0 && (
+      <div
+        ref={messagesContainerRef}
+        className="chat-messages"
+        aria-busy={isInitialLoading}
+      >
+        {isInitialLoading && <OrderChatSkeleton />}
+        {!isInitialLoading && messages.length === 0 && (
           <p className="surface-muted" style={{ textAlign: "center", padding: "1rem 0" }}>
             {canSend ? "No messages yet. Start a conversation." : "No chat messages for this order."}
           </p>
         )}
-        {messages.map((msg) => (
+        {!isInitialLoading && messages.map((msg) => (
           <div
             key={msg.id}
             className={`chat-bubble chat-${isOwnChatMessage(msg, resolvedViewerSide) ? "own" : "other"}`}
@@ -168,7 +210,7 @@ export function OrderChat({
         ))}
       </div>
 
-      {canSend && (
+      {canSend && !isInitialLoading && (
         <div style={{ marginTop: "1rem" }}>
           {messages.length === 0 && (
             <div className="chat-helpers" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
@@ -228,7 +270,7 @@ export function OrderChat({
 
       {error && <p className="surface-error" style={{ marginTop: "0.5rem", fontSize: "0.875rem" }}>{error}</p>}
 
-      {isTerminal && !isClosed && messages.length > 0 && (
+      {isTerminal && !isClosed && !isInitialLoading && messages.length > 0 && (
         <p className="surface-muted" style={{ marginTop: "0.5rem", fontSize: "0.875rem" }}>
           This order has ended. Chat is read-only.
         </p>

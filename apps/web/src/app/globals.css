@@ -2415,6 +2415,93 @@ main {
   gap: 0.5rem;
 }
 
+.chat-loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.15rem 0;
+  pointer-events: none;
+}
+
+.chat-loading-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chat-skeleton-bubble {
+  width: min(74%, 18rem);
+  padding: 0.7rem 0.9rem;
+  border-radius: 16px;
+  border-bottom-left-radius: 4px;
+  background: rgba(23, 18, 13, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-self: flex-start;
+}
+
+.chat-skeleton-bubble--own {
+  align-self: flex-end;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 4px;
+  background: rgba(245, 166, 35, 0.18);
+}
+
+.chat-skeleton-bubble--compact {
+  width: min(62%, 14rem);
+}
+
+.chat-skeleton-line {
+  display: block;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(23, 18, 13, 0.06) 0%,
+    rgba(23, 18, 13, 0.14) 50%,
+    rgba(23, 18, 13, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: chatSkeleton 1.45s ease-in-out infinite;
+}
+
+.chat-skeleton-bubble--own .chat-skeleton-line {
+  background: linear-gradient(
+    90deg,
+    rgba(194, 73, 20, 0.12) 0%,
+    rgba(194, 73, 20, 0.24) 50%,
+    rgba(194, 73, 20, 0.12) 100%
+  );
+  background-size: 200% 100%;
+}
+
+.chat-skeleton-line--label {
+  width: 3.2rem;
+  height: 0.5rem;
+}
+
+.chat-skeleton-line--long { width: 82%; }
+.chat-skeleton-line--mid { width: 64%; }
+.chat-skeleton-line--short { width: 46%; }
+
+@keyframes chatSkeleton {
+  0% { background-position: 0% 50%; }
+  100% { background-position: -200% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-skeleton-line {
+    animation: none;
+  }
+}
+
 .chat-bubble {
   max-width: 80%;
   padding: 0.6rem 0.9rem;

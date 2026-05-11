@@ -383,7 +383,7 @@ export class KdsService {
       // (`+1519...`, `+1 (519)...`, `(519)...`). Fetch phone-bearing rows and
       // do normalized digit matching below so the customer counter survives
       // formatting differences.
-      orFilters.push({ customerPhoneSnapshot: { not: null } });
+      orFilters.push({ customerPhoneSnapshot: { not: "" } });
       orFilters.push({ deliveryPhoneSnapshot: { not: null } });
     }
 
