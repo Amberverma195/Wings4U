@@ -183,6 +183,34 @@
   margin-bottom: 2rem;
 }
 
+.hubTabButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.hubTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.35rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.hubTabCount[data-active="true"] {
+  background: #f97316;
+  color: white;
+}
+
 .eyebrow {
   font-size: 0.8rem;
   font-weight: 700;

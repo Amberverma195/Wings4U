@@ -359,6 +359,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setHubTab("coupons"); }}
+                    className={styles.hubTabButton}
                     style={{
                       background: "none",
                       border: "none",
@@ -371,7 +372,13 @@ export default function ProfilePage() {
                       letterSpacing: "0.15em",
                     }}
                   >
-                    Coupons
+                    <span>Coupons</span>
+                    <span
+                      className={styles.hubTabCount}
+                      data-active={hubTab === "coupons"}
+                    >
+                      {promos.length}
+                    </span>
                   </button>
                 </div>
                 

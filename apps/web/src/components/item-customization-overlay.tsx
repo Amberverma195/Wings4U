@@ -695,21 +695,6 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
       submitLabel={builderSubmitLabel(Boolean(editingLine))}
       onSubmit={handleAdd}
     >
-      <div
-        className="item-customization-banner"
-        style={
-          item.image_url
-            ? {
-                backgroundImage: `linear-gradient(rgba(0,0,0,0.24), rgba(0,0,0,0.6)), url(${item.image_url})`,
-              }
-            : undefined
-        }
-      >
-        {!item.image_url ? (
-          <span className="item-customization-banner-fallback">W4U</span>
-        ) : null}
-      </div>
-
       {sizeGroups.map((group) => (
         <section
           key={group.id}

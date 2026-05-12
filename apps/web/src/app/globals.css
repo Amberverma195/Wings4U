@@ -3181,28 +3181,6 @@ main {
   transform: rotate(90deg);
 }
 
-.item-customization-banner {
-  min-height: 140px;
-  max-height: 180px;
-  flex-shrink: 0;
-  margin-bottom: 1.1rem;
-  background:
-    linear-gradient(135deg, rgba(194, 73, 20, 0.92), rgba(23, 18, 13, 0.9)),
-    radial-gradient(circle at top left, rgba(255, 189, 0, 0.22), transparent 55%);
-  background-size: cover;
-  background-position: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.item-customization-banner-fallback {
-  font-size: clamp(1.5rem, 5vw, 3rem);
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: rgba(255, 255, 255, 0.92);
-}
-
 .builder-panel-body {
   flex: 1;
   min-height: 0;
