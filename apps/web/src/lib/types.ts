@@ -490,6 +490,9 @@ export type OrderDetail = {
   ready_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
+  assigned_driver_user_id: string | null;
+  estimated_arrival_at: string | null;
+  delivery_started_at: string | null;
   cancellation_reason: string | null;
   customer_name_snapshot: string | null;
   customer_phone_snapshot: string | null;
@@ -515,6 +518,13 @@ export type OrderDetail = {
   cancel_allowed_until: string | null;
   location_phone: string | null;
   location_name: string | null;
+  assigned_driver: {
+    user_id: string;
+    full_name: string;
+    phone: string | null;
+    vehicle_type: string | null;
+    vehicle_identifier: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
   items: OrderItem[];
@@ -529,7 +539,7 @@ export type ChatMessage = {
   conversation_id: string;
   order_id: string;
   sender_user_id: string;
-  sender_surface: "CUSTOMER" | "KDS" | "MANAGER" | "ADMIN";
+  sender_surface: "CUSTOMER" | "KDS" | "MANAGER" | "ADMIN" | "DRIVER";
   message_body: string;
   is_system_message: boolean;
   visibility: "BOTH" | "STAFF_ONLY";

@@ -56,6 +56,15 @@ function serializeOrderDetail(order: Record<string, unknown>) {
     cancellationRequests?: Record<string, unknown>[];
     payments?: Record<string, unknown>[];
     location?: { phoneNumber?: string | null; name?: string | null } | null;
+    assignedDriver?: {
+      userId?: string;
+      phoneNumberMirror?: string | null;
+      vehicleType?: string | null;
+      vehicleIdentifier?: string | null;
+      employeeProfile?: {
+        user?: { displayName?: string | null } | null;
+      } | null;
+    } | null;
   };
 
   const items = (o.orderItems ?? []).map((item: Record<string, unknown>) => ({
@@ -132,6 +141,9 @@ function serializeOrderDetail(order: Record<string, unknown>) {
     ready_at: o.readyAt,
     completed_at: o.completedAt,
     cancelled_at: o.cancelledAt,
+    assigned_driver_user_id: o.assignedDriverUserId,
+    estimated_arrival_at: o.estimatedArrivalAt,
+    delivery_started_at: o.deliveryStartedAt,
     cancellation_reason: o.cancellationReason,
     customer_name_snapshot: o.customerNameSnapshot,
     customer_phone_snapshot: o.customerPhoneSnapshot,
@@ -158,6 +170,16 @@ function serializeOrderDetail(order: Record<string, unknown>) {
     // PRD §12.2: Help → "Contact us" needs a click-to-call target.
     location_phone: o.location?.phoneNumber ?? null,
     location_name: o.location?.name ?? null,
+    assigned_driver: o.assignedDriver
+      ? {
+          user_id: o.assignedDriver.userId,
+          full_name:
+            o.assignedDriver.employeeProfile?.user?.displayName ?? "Delivery driver",
+          phone: o.assignedDriver.phoneNumberMirror ?? null,
+          vehicle_type: o.assignedDriver.vehicleType ?? null,
+          vehicle_identifier: o.assignedDriver.vehicleIdentifier ?? null,
+        }
+      : null,
     created_at: o.createdAt,
     updated_at: o.updatedAt,
     items,
@@ -262,6 +284,19 @@ export class OrdersService {
         statusEvents: { orderBy: { createdAt: "asc" } },
         payments: { orderBy: { createdAt: "desc" } },
         location: { select: { phoneNumber: true, name: true } },
+        assignedDriver: {
+          select: {
+            userId: true,
+            phoneNumberMirror: true,
+            vehicleType: true,
+            vehicleIdentifier: true,
+            employeeProfile: {
+              select: {
+                user: { select: { displayName: true } },
+              },
+            },
+          },
+        },
       },
     });
 

@@ -13,7 +13,7 @@ import { RateLimiterService } from "../rate-limit/rate-limit.service";
 const CHAT_MESSAGE_RATE_LIMIT = 5;
 const CHAT_MESSAGE_RATE_WINDOW_MS = 60_000;
 
-type SenderSurface = "CUSTOMER" | "KDS" | "MANAGER" | "ADMIN";
+type SenderSurface = "CUSTOMER" | "KDS" | "MANAGER" | "ADMIN" | "DRIVER";
 type ReaderSide = "CUSTOMER" | "STAFF";
 
 const TERMINAL_ORDER_STATUSES = new Set([
@@ -49,7 +49,7 @@ export class ChatService {
 
   /**
    * Derive the canonical sender_surface from the authenticated user.
-   * CASHIER and DRIVER are not allowed to send order chat messages.
+   * CASHIER users are not allowed to send order chat messages.
    */
   deriveSenderSurface(
     role: "CUSTOMER" | "STAFF" | "ADMIN",
@@ -63,6 +63,8 @@ export class ChatService {
         return "KDS";
       case "MANAGER":
         return "MANAGER";
+      case "DRIVER":
+        return "DRIVER";
       default:
         throw new ForbiddenException(
           `Employee role "${employeeRole ?? "unknown"}" cannot send order chat messages`,

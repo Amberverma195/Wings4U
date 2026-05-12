@@ -97,13 +97,27 @@ export class ChatController {
     orderId: string,
     user: NonNullable<Request["user"]>,
   ) {
-    if (user.role !== "CUSTOMER") return;
-
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { customerUserId: true },
+      select: { customerUserId: true, assignedDriverUserId: true },
     });
-    if (!order || order.customerUserId !== user.userId) {
+
+    if (!order) {
+      throw new ForbiddenException("You do not have access to this order");
+    }
+
+    if (user.role === "CUSTOMER") {
+      if (order.customerUserId !== user.userId) {
+        throw new ForbiddenException("You do not have access to this order");
+      }
+      return;
+    }
+
+    if (
+      user.role === "STAFF" &&
+      user.employeeRole === "DRIVER" &&
+      order.assignedDriverUserId !== user.userId
+    ) {
       throw new ForbiddenException("You do not have access to this order");
     }
   }

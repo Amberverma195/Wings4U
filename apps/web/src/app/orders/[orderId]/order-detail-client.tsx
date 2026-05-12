@@ -58,6 +58,48 @@ function goToCustomerOrdersHome() {
   }
 }
 
+function formatDriverPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return phone.trim() || null;
+}
+
+function formatDeliveryPreference(value: string | null): string | null {
+  switch (value) {
+    case "HAND_TO_ME":
+      return "Hand it to me";
+    case "LEAVE_AT_DOOR":
+      return "Leave at door";
+    case "CALL_ON_ARRIVAL":
+      return "Call on arrival";
+    case "TEXT_ON_ARRIVAL":
+      return "Text on arrival";
+    default:
+      return null;
+  }
+}
+
+function formatDeliveryAddress(
+  address: OrderDetail["address_snapshot_json"],
+): string | null {
+  if (!address || typeof address !== "object") return null;
+  const postalCode = address.postal_code ?? address.postalCode;
+  const parts = [
+    address.line1,
+    address.line2,
+    address.city,
+    address.province,
+    postalCode,
+  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 export function OrderDetailClient({ orderId }: { orderId: string }) {
   const session = useSession();
   const [order, setOrder] = useState<OrderDetail | null>(null);
@@ -68,6 +110,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const [showSupport, setShowSupport] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
+  const [showDriverChatModal, setShowDriverChatModal] = useState(false);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPinResponse | null>(null);
   const [orderStatusHistoryOpen, setOrderStatusHistoryOpen] = useState(false);
   const orderStatusAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -86,6 +129,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     setShowSupport(false);
     setShowHelpModal(false);
     setShowChatModal(false);
+    setShowDriverChatModal(false);
     setDeliveryPin(null);
     setOrderStatusHistoryOpen(false);
   }, []);
@@ -402,6 +446,18 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   const sortedStatusEvents = [...order.status_events].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
+  const assignedDriver = order.assigned_driver;
+  const driverPhone = formatDriverPhone(assignedDriver?.phone);
+  const vehicleLabel = [assignedDriver?.vehicle_type, assignedDriver?.vehicle_identifier]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .join(" · ");
+  const deliveryAddress = formatDeliveryAddress(order.address_snapshot_json);
+  const deliveryPreference = formatDeliveryPreference(order.contactless_pref);
+  const showDeliveryInfoCard =
+    order.fulfillment_type === "DELIVERY" &&
+    (assignedDriver || deliveryAddress || deliveryPreference);
+  const driverStatusTitle =
+    order.status === "OUT_FOR_DELIVERY" ? "Driver is on the way" : "Delivery details";
 
   return (
     <div className={styles.pageShell}>
@@ -516,6 +572,86 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                   <p className={styles.pinLabel}>Delivery PIN</p>
                   <p className={styles.pinValue}>{deliveryPin.pin}</p>
                   <p className={styles.pinHint}>Share this PIN with your driver at handoff.</p>
+                </div>
+              )}
+
+              {showDeliveryInfoCard && (
+                <div className={styles.driverCard}>
+                  <div className={styles.driverCardHeader}>
+                    <div>
+                      <p className={styles.driverEyebrow}>Delivery</p>
+                      <h3 className={styles.driverTitle}>{driverStatusTitle}</h3>
+                    </div>
+                    {order.estimated_arrival_at && !terminal ? (
+                      <span className={styles.driverEta}>
+                        ETA {shortTime(order.estimated_arrival_at)}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {assignedDriver ? (
+                    <div className={styles.driverProfileGrid}>
+                      <div className={styles.driverProfileMain}>
+                        <span className={styles.driverAvatar} aria-hidden>
+                          {assignedDriver.full_name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <div>
+                          <p className={styles.driverName}>{assignedDriver.full_name}</p>
+                          <p className={styles.driverMeta}>
+                            {driverPhone ?? "Phone not available"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className={styles.driverVehicle}>
+                        <span className={styles.driverMetaLabel}>Plate / vehicle</span>
+                        <span className={styles.driverMetaValue}>
+                          {vehicleLabel || "Not added"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={styles.driverNotice}>
+                      We will show your driver here once the store assigns one.
+                    </p>
+                  )}
+
+                  {assignedDriver && !terminal ? (
+                    <div className={styles.driverActions}>
+                      <button
+                        type="button"
+                        className={styles.driverChatBtn}
+                        onClick={() => setShowDriverChatModal(true)}
+                      >
+                        Chat with driver
+                      </button>
+                      {assignedDriver.phone ? (
+                        <a
+                          className={styles.driverCallBtn}
+                          href={`tel:${assignedDriver.phone}`}
+                        >
+                          Call driver
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {(deliveryAddress || deliveryPreference) && (
+                    <div className={styles.deliveryInfoGrid}>
+                      {deliveryAddress ? (
+                        <div className={styles.deliveryInfoItem}>
+                          <span className={styles.driverMetaLabel}>Delivery address</span>
+                          <span className={styles.driverMetaValue}>{deliveryAddress}</span>
+                        </div>
+                      ) : null}
+                      {deliveryPreference ? (
+                        <div className={styles.deliveryInfoItem}>
+                          <span className={styles.driverMetaLabel}>Delivery preference</span>
+                          <span className={styles.driverMetaValue}>{deliveryPreference}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -834,6 +970,34 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               type="button"
               className={styles.modalCloseBtn}
               onClick={() => setShowChatModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Driver chat modal */}
+      {showDriverChatModal && !terminal && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setShowDriverChatModal(false)}
+        >
+          <div
+            className={`${styles.modalContent} ${styles.chatModalContent}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <OrderChat
+              orderId={orderId}
+              locationId={order.location_id}
+              isTerminal={false}
+              viewerSide="CUSTOMER"
+              title="Driver chat"
+            />
+            <button
+              type="button"
+              className={styles.modalCloseBtn}
+              onClick={() => setShowDriverChatModal(false)}
             >
               Close
             </button>

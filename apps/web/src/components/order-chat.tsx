@@ -50,7 +50,9 @@ function chatSenderLabel(
   viewerSide: "CUSTOMER" | "STAFF",
 ): string {
   if (viewerSide === "CUSTOMER") {
-    return message.sender_surface === "CUSTOMER" ? "You" : "Staff";
+    if (message.sender_surface === "CUSTOMER") return "You";
+    if (message.sender_surface === "DRIVER") return "Driver";
+    return "Staff";
   }
   return message.sender_surface === "CUSTOMER" ? "Customer" : "You";
 }
@@ -60,6 +62,7 @@ export function OrderChat({
   locationId,
   isTerminal,
   viewerSide,
+  title = "Order Chat",
 }: {
   orderId: string;
   /**
@@ -71,6 +74,7 @@ export function OrderChat({
   locationId: string;
   isTerminal: boolean;
   viewerSide?: "CUSTOMER" | "STAFF";
+  title?: string;
 }) {
   const session = useSession();
   const { refresh: refreshSession, clear: clearSession } = session;
@@ -183,7 +187,7 @@ export function OrderChat({
   return (
     <div className="chat-container">
       <h3 style={{ margin: "0 0 0.75rem" }}>
-        Order Chat
+        {title}
         {isClosed && <span className="surface-muted"> (closed)</span>}
       </h3>
 

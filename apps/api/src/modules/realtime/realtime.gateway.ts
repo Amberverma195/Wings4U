@@ -467,7 +467,7 @@ export class RealtimeGateway
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { customerUserId: true, locationId: true },
+      select: { customerUserId: true, locationId: true, assignedDriverUserId: true },
     });
     if (!order) {
       return "Order not found";
@@ -491,6 +491,10 @@ export class RealtimeGateway
 
     if (!user.locationId || user.locationId !== order.locationId) {
       return "Insufficient permissions - wrong location";
+    }
+
+    if (user.employeeRole === "DRIVER" && order.assignedDriverUserId !== user.userId) {
+      return "Insufficient permissions - assigned driver required";
     }
 
     return null;
