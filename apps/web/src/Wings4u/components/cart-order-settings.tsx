@@ -109,6 +109,7 @@ export function CartOrderSettings({ menu }: Props) {
         ? {
             pickup: menu.location.pickup_hours,
             delivery: menu.location.delivery_hours,
+            store: menu.location.store_hours ?? [],
           }
         : undefined,
     [menu],

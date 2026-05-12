@@ -4342,6 +4342,62 @@ describe("API (e2e)", () => {
       }
     });
 
+    it("Store hour enforcement: falls back to overnight store hours when pickup hours are not configured", async () => {
+      const previousStoreHours = await prisma.locationHours.findMany({
+        where: { locationId, serviceType: "STORE" },
+      });
+
+      try {
+        await prisma.locationHours.deleteMany({
+          where: { locationId, serviceType: { in: ["PICKUP", "STORE"] } },
+        });
+        await prisma.locationHours.create({
+          data: {
+            locationId,
+            serviceType: "STORE",
+            dayOfWeek: 1,
+            timeFrom: new Date(Date.UTC(1970, 0, 1, 11, 0, 0)),
+            timeTo: new Date(Date.UTC(1970, 0, 1, 1, 0, 0)),
+            isClosed: false,
+          },
+        });
+
+        const quoteRes = await request(server)
+          .post(`${BASE}/cart/quote`)
+          .set("X-Location-Id", locationId)
+          .send({
+            fulfillment_type: "PICKUP",
+            scheduled_for: "2026-05-12T03:30:00.000Z",
+            items: [
+              {
+                menu_item_id: wingItemId,
+                quantity: 1,
+                modifier_selections: [],
+              },
+            ],
+          });
+
+        expect(quoteRes.status).toBe(200);
+      } finally {
+        await prisma.locationHours.deleteMany({
+          where: { locationId, serviceType: "STORE" },
+        });
+        if (previousStoreHours.length > 0) {
+          await prisma.locationHours.createMany({
+            data: previousStoreHours.map((hour) => ({
+              locationId,
+              serviceType: "STORE",
+              dayOfWeek: hour.dayOfWeek,
+              timeFrom: hour.timeFrom,
+              timeTo: hour.timeTo,
+              isClosed: hour.isClosed,
+            })),
+          });
+        }
+        await setAlwaysOpenLocationHours(prisma, locationId);
+      }
+    });
+
     it("Salad child-item validation: should reject quote if salad is archived", async () => {
       // Archive the salad
       await request(server)

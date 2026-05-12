@@ -60,6 +60,33 @@ function minutesFromTime(value: Date): number {
   return value.getUTCHours() * 60 + value.getUTCMinutes();
 }
 
+function isHourOpenAt(
+  hour: { dayOfWeek: number; timeFrom: Date; timeTo: Date; isClosed: boolean },
+  context: ScheduleContext,
+): boolean {
+  if (hour.isClosed) return false;
+
+  const fromMinutes = minutesFromTime(new Date(hour.timeFrom));
+  const toMinutes = minutesFromTime(new Date(hour.timeTo));
+  if (fromMinutes === toMinutes) {
+    return hour.dayOfWeek === context.dow;
+  }
+
+  if (fromMinutes < toMinutes) {
+    return (
+      hour.dayOfWeek === context.dow &&
+      context.hhmm >= fromMinutes &&
+      context.hhmm < toMinutes
+    );
+  }
+
+  const previousDow = (context.dow + 6) % 7;
+  return (
+    (hour.dayOfWeek === context.dow && context.hhmm >= fromMinutes) ||
+    (hour.dayOfWeek === previousDow && context.hhmm < toMinutes)
+  );
+}
+
 function isWithinMinuteWindow(params: {
   nowMinutes: number;
   fromMinutes: number;
@@ -181,21 +208,19 @@ export async function assertLocationOpenForFulfillment(params: {
 }) {
   const { db, locationId, fulfillmentType, context } = params;
   const hours = await db.locationHours.findMany({
-    where: { locationId, serviceType: fulfillmentType },
+    where: { locationId, serviceType: { in: [fulfillmentType, "STORE"] } },
   });
+  const fulfillmentHours = hours.filter(
+    (hour) => hour.serviceType === fulfillmentType,
+  );
+  const storeHours = hours.filter((hour) => hour.serviceType === "STORE");
+  const hoursForFulfillment =
+    fulfillmentHours.length > 0 ? fulfillmentHours : storeHours;
 
   const isOpen =
-    hours.length === 0
+    hoursForFulfillment.length === 0
       ? context.hhmm >= 660 && context.hhmm < 1380
-      : hours
-          .filter((hour) => hour.dayOfWeek === context.dow)
-          .some((hour) => {
-            if (hour.isClosed) return false;
-            return (
-              context.hhmm >= minutesFromTime(new Date(hour.timeFrom)) &&
-              context.hhmm < minutesFromTime(new Date(hour.timeTo))
-            );
-          });
+      : hoursForFulfillment.some((hour) => isHourOpenAt(hour, context));
 
   if (!isOpen) {
     throw new UnprocessableEntityException({

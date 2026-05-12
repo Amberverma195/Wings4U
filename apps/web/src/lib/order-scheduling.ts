@@ -15,6 +15,7 @@ export type SchedulingConfig = {
 export type SchedulingHours = {
   pickup: LocationServiceHours[];
   delivery: LocationServiceHours[];
+  store: LocationServiceHours[];
 };
 
 export type ScheduleDateOption = {
@@ -47,6 +48,12 @@ export const DEFAULT_SCHEDULING_HOURS: SchedulingHours = {
     is_closed: false,
   })),
   delivery: Array.from({ length: 7 }, (_, day) => ({
+    day_of_week: day,
+    time_from: FALLBACK_TIME_FROM,
+    time_to: FALLBACK_TIME_TO,
+    is_closed: false,
+  })),
+  store: Array.from({ length: 7 }, (_, day) => ({
     day_of_week: day,
     time_from: FALLBACK_TIME_FROM,
     time_to: FALLBACK_TIME_TO,
@@ -115,6 +122,10 @@ function minutesFromHHMM(value: string): number {
   return hour * 60 + minute;
 }
 
+function nextDayOfWeek(dayOfWeek: number): number {
+  return (dayOfWeek + 1) % 7;
+}
+
 function buildIsoForDateAndMinutes(dateKey: string, totalMinutes: number): string {
   const [year, month, day] = dateKey.split("-").map((part) => Number.parseInt(part, 10));
   const hours = Math.floor(totalMinutes / 60);
@@ -137,9 +148,49 @@ function getHoursForType(
 ): LocationServiceHours[] {
   const source = fulfillmentType === "DELIVERY" ? hours?.delivery : hours?.pickup;
   if (source && source.length > 0) return source;
+  if (hours?.store && hours.store.length > 0) return hours.store;
   return fulfillmentType === "DELIVERY"
     ? DEFAULT_SCHEDULING_HOURS.delivery
     : DEFAULT_SCHEDULING_HOURS.pickup;
+}
+
+function hourTouchesDay(slot: LocationServiceHours, dayOfWeek: number): boolean {
+  if (slot.is_closed) return false;
+  const startMinutes = minutesFromHHMM(slot.time_from);
+  const endMinutes = minutesFromHHMM(slot.time_to);
+  if (startMinutes === endMinutes) return slot.day_of_week === dayOfWeek;
+  if (startMinutes < endMinutes) return slot.day_of_week === dayOfWeek;
+  return slot.day_of_week === dayOfWeek || nextDayOfWeek(slot.day_of_week) === dayOfWeek;
+}
+
+function getWindowSegmentsForDay(
+  slot: LocationServiceHours,
+  dayOfWeek: number,
+): Array<{ startMinutes: number; endMinutes: number }> {
+  if (slot.is_closed) return [];
+
+  const startMinutes = minutesFromHHMM(slot.time_from);
+  const endMinutes = minutesFromHHMM(slot.time_to);
+  if (startMinutes === endMinutes) {
+    return slot.day_of_week === dayOfWeek
+      ? [{ startMinutes: 0, endMinutes: 24 * 60 }]
+      : [];
+  }
+
+  if (startMinutes < endMinutes) {
+    return slot.day_of_week === dayOfWeek
+      ? [{ startMinutes, endMinutes }]
+      : [];
+  }
+
+  const segments: Array<{ startMinutes: number; endMinutes: number }> = [];
+  if (slot.day_of_week === dayOfWeek) {
+    segments.push({ startMinutes, endMinutes: 24 * 60 });
+  }
+  if (nextDayOfWeek(slot.day_of_week) === dayOfWeek) {
+    segments.push({ startMinutes: 0, endMinutes });
+  }
+  return segments;
 }
 
 export function normalizeSchedulingConfig(value: unknown): SchedulingConfig {
@@ -222,7 +273,11 @@ export function buildScheduleDateOptions(
   const sourceHours = getHoursForType(fulfillmentType, hours);
   const todayKey = getDateKey(now);
   const availableDays = new Set(
-    sourceHours.filter((slot) => !slot.is_closed).map((slot) => slot.day_of_week),
+    sourceHours.flatMap((slot) =>
+      Array.from({ length: 7 }, (_, dayOfWeek) => dayOfWeek).filter((dayOfWeek) =>
+        hourTouchesDay(slot, dayOfWeek),
+      ),
+    ),
   );
 
   return Array.from({ length: DAYS_AHEAD }, (_, offset) => {
@@ -261,14 +316,8 @@ export function buildScheduleTimeOptions(params: {
   const timeFormatter = getTimeFormatter(timezone);
   const dayOfWeek = new Date(`${selectedDateKey}T00:00:00`).getDay();
   const sourceHours = getHoursForType(fulfillmentType, hours).filter(
-    (slot) => slot.day_of_week === dayOfWeek && !slot.is_closed,
+    (slot) => hourTouchesDay(slot, dayOfWeek),
   );
-  const fallbackDayHours =
-    (fulfillmentType === "DELIVERY"
-      ? DEFAULT_SCHEDULING_HOURS.delivery
-      : DEFAULT_SCHEDULING_HOURS.pickup
-    ).filter((slot) => slot.day_of_week === dayOfWeek && !slot.is_closed);
-  const windows = sourceHours.length > 0 ? sourceHours : fallbackDayHours;
   const timingWindow = getTimingWindow(config, fulfillmentType);
   const options: ScheduleTimeOption[] = [];
 
@@ -279,24 +328,29 @@ export function buildScheduleTimeOptions(params: {
     });
   }
 
-  for (const slot of windows) {
-    const startMinutes = minutesFromHHMM(slot.time_from);
-    const endMinutes = minutesFromHHMM(slot.time_to);
-    const earliestMinutes =
-      selectedDateKey === todayKey
-        ? roundUpToInterval(
-            now.getHours() * 60 + now.getMinutes() + timingWindow.minMinutes,
-            SLOT_INTERVAL_MINUTES,
-          )
-        : startMinutes;
-    const firstSlot = Math.max(startMinutes, earliestMinutes);
+  for (const slot of sourceHours) {
+    for (const segment of getWindowSegmentsForDay(slot, dayOfWeek)) {
+      const { startMinutes, endMinutes } = segment;
+      const earliestMinutes =
+        selectedDateKey === todayKey
+          ? roundUpToInterval(
+              now.getHours() * 60 + now.getMinutes() + timingWindow.minMinutes,
+              SLOT_INTERVAL_MINUTES,
+            )
+          : startMinutes;
+      const firstSlot = Math.max(startMinutes, earliestMinutes);
 
-    for (let totalMinutes = firstSlot; totalMinutes <= endMinutes - SLOT_INTERVAL_MINUTES; totalMinutes += SLOT_INTERVAL_MINUTES) {
-      const isoValue = buildIsoForDateAndMinutes(selectedDateKey, totalMinutes);
-      options.push({
-        value: isoValue,
-        label: timeFormatter.format(new Date(isoValue)),
-      });
+      for (
+        let totalMinutes = firstSlot;
+        totalMinutes <= endMinutes - SLOT_INTERVAL_MINUTES;
+        totalMinutes += SLOT_INTERVAL_MINUTES
+      ) {
+        const isoValue = buildIsoForDateAndMinutes(selectedDateKey, totalMinutes);
+        options.push({
+          value: isoValue,
+          label: timeFormatter.format(new Date(isoValue)),
+        });
+      }
     }
   }
 

@@ -212,6 +212,7 @@ export function OrderMethodModal({
         setSchedulingHours({
           pickup: response.data.location.pickup_hours,
           delivery: response.data.location.delivery_hours,
+          store: response.data.location.store_hours ?? [],
         });
         setScheduleTimezone(response.data.location.timezone);
         const nextDeliveryUnavailableMessage =
