@@ -266,6 +266,10 @@ export class AuthController {
       user: result.user,
       profile_complete: result.profileComplete,
       needs_profile_completion: result.needsProfileCompletion,
+      // Mobile clients read tokens from the body (no cookies on native).
+      // Web clients ignore these and use the httpOnly cookies set above.
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
     };
   }
 

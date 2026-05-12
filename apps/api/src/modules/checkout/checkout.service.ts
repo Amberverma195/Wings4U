@@ -540,6 +540,8 @@ export class CheckoutService {
         categoryNameSnapshot: string;
         builderType: string | null;
         quantity: number;
+        menuItemSlug: string;
+        basePriceCents: number;
         unitPriceCents: number;
         lineTotalCents: number;
         specialInstructions: string | null;
@@ -741,6 +743,8 @@ export class CheckoutService {
               ? String(normalizedBuilderPayload.builder_type)
               : menuItem.builderType,
           quantity: cartItem.quantity,
+          menuItemSlug: menuItem.slug,
+          basePriceCents: menuItem.basePriceCents,
           unitPriceCents,
           lineTotalCents,
           specialInstructions: cartItem.specialInstructions ?? null,
@@ -812,6 +816,8 @@ export class CheckoutService {
         const wingsSummary = summarizeWingsInCart(
           lineItems.map((line) => ({
             quantity: line.quantity,
+            menuItemSlug: line.menuItemSlug,
+            basePriceCents: line.basePriceCents,
             unitPriceCents: line.unitPriceCents,
             lineTotalCents: line.lineTotalCents,
             builderPayload: line.builderPayload,
@@ -820,7 +826,7 @@ export class CheckoutService {
         if (wingsSummary.poundsInCart < 1) {
           throw new UnprocessableEntityException({
             message:
-              "Add at least 1lb of wings to the cart to redeem the free-wings reward",
+              "Coupon is only applicable to 1LB individual wings",
             field: "apply_wings_reward",
           });
         }

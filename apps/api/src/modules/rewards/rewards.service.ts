@@ -16,18 +16,20 @@ type TxClient = Prisma.TransactionClient | PrismaClient;
 /** Minimal cart-line shape we need to evaluate wings-reward eligibility. */
 export interface WingsCartLine {
   quantity: number;
+  menuItemSlug?: string | null;
+  basePriceCents?: number;
   unitPriceCents: number;
   lineTotalCents: number;
   builderPayload?: Record<string, unknown> | null;
 }
 
 export interface WingsRewardEligibility {
-  /** True iff user has >=8 available stamps AND cart has >=1lb of wings. */
+  /** True iff user has >=8 available stamps AND cart has an individual 1lb wings item. */
   eligible: boolean;
   availableStamps: number;
-  /** Pounds of wings detected in the cart (sum over wing lines). */
+  /** Eligible 1lb wings units detected in the cart. Party packs, combos, and larger sizes do not count. */
   poundsInCart: number;
-  /** Discount in cents for a single free pound (price of the cheapest per-lb wing line). */
+  /** Discount in cents for a single free pound (the live DB base price of the 1lb wings SKU). */
   freeWingsDiscountCents: number;
   /**
    * Human-readable reason when !eligible — surfaced to the client so the
@@ -40,20 +42,23 @@ export interface WingsRewardEligibility {
     | "NO_WINGS_IN_CART";
 }
 
-function isWingsLine(payload?: Record<string, unknown> | null): boolean {
-  const t = payload?.builder_type;
-  return t === "WINGS" || t === "WING_COMBO";
-}
-
 function extractWeightLb(payload?: Record<string, unknown> | null): number {
   const raw = payload?.weight_lb;
   if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
   return 0;
 }
 
+function isIndividualOnePoundWingsLine(line: WingsCartLine): boolean {
+  if (line.builderPayload?.builder_type !== "WINGS") return false;
+  if (line.menuItemSlug && line.menuItemSlug !== "wings-1lb") return false;
+
+  const weightLb = extractWeightLb(line.builderPayload);
+  return Math.abs(weightLb - 1) < 0.001;
+}
+
 /**
- * Compute, from a set of cart lines, how many pounds of wings they represent
- * and the cheapest per-lb price. The per-lb price is used to discount exactly
+ * Compute, from a set of cart lines, whether the cart contains a redeemable
+ * individual 1lb wings item. The live DB base price is used to discount exactly
  * one pound when the free-wings reward is applied — we always discount the
  * cheapest pound so the user never overpays for the redemption.
  */
@@ -65,15 +70,14 @@ export function summarizeWingsInCart(lines: WingsCartLine[]): {
   let cheapestPerLbCents = Number.POSITIVE_INFINITY;
 
   for (const line of lines) {
-    if (!isWingsLine(line.builderPayload)) continue;
-    const weightLb = extractWeightLb(line.builderPayload);
-    if (weightLb <= 0 || line.quantity <= 0) continue;
+    if (!isIndividualOnePoundWingsLine(line) || line.quantity <= 0) continue;
 
-    totalPounds += weightLb * line.quantity;
+    totalPounds += line.quantity;
 
-    // unit price is for (1 line item) which contains `weightLb` pounds.
-    const perLb = line.unitPriceCents / weightLb;
-    if (perLb < cheapestPerLbCents) cheapestPerLbCents = perLb;
+    const onePoundBasePriceCents = line.basePriceCents ?? line.unitPriceCents;
+    if (onePoundBasePriceCents < cheapestPerLbCents) {
+      cheapestPerLbCents = onePoundBasePriceCents;
+    }
   }
 
   return {

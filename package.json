@@ -9,6 +9,7 @@
     "dev": "concurrently -k -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
     "dev:web": "npm run dev --workspace @wings4u/web",
     "dev:api": "npm run dev --workspace @wings4u/api",
+    "dev:app": "npm run start --workspace @wings4u/application",
     "dev:print-agent": "npm run dev --workspace @wings4u/print-agent",
     "build:web": "npm run build --workspace @wings4u/web",
     "build:api": "npm run build --workspace @wings4u/api",
@@ -31,6 +32,16 @@
     "concurrently": "^9.2.1"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3"
+    "bcryptjs": "^3.0.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native-svg": "^15.15.5",
+    "react-native-web": "^0.21.0",
+    "react-native-worklets": "^0.8.3",
+    "react-native-worklets-core": "^1.6.3"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }

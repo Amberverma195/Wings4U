@@ -358,6 +358,8 @@ export class CartService {
     // silently ignoring a non-applicable reward.
     const wingsLines = lineDetails.map((line, idx) => ({
       quantity: line.quantity,
+      menuItemSlug: menuItemMap.get(line.menu_item_id)?.slug ?? null,
+      basePriceCents: Math.max(0, line.unit_price_cents - line.modifier_total_cents),
       unitPriceCents: line.unit_price_cents,
       lineTotalCents: line.line_total_cents,
       builderPayload: items[idx].builder_payload ?? null,

@@ -34,7 +34,14 @@ export class AuthGuard implements CanActivate {
     ]);
 
     const req = context.switchToHttp().getRequest<Request>();
-    const accessToken: string | undefined = req.cookies?.access_token;
+
+    // Mobile clients send the JWT via Authorization header; web clients send
+    // it via httpOnly cookie. Prioritize Bearer token so explicit mobile headers
+    // override potentially stale native cookie jars.
+    const accessToken: string | undefined =
+      extractBearerToken(req.headers.authorization) ??
+      req.cookies?.access_token;
+
     const session = await this.sessionValidator.resolve(accessToken);
 
     if (session) {
@@ -57,4 +64,14 @@ export class AuthGuard implements CanActivate {
 
     return true;
   }
+}
+
+/**
+ * Extract a JWT from an `Authorization: Bearer <token>` header.
+ * Returns undefined when the header is missing or malformed.
+ */
+function extractBearerToken(header: string | string[] | undefined): string | undefined {
+  if (typeof header !== "string") return undefined;
+  const match = header.match(/^Bearer\s+(\S+)$/i);
+  return match?.[1];
 }

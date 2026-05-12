@@ -78,6 +78,22 @@ export function csrfMiddleware(
 
   const hasSessionCookie =
     Boolean(req.cookies?.access_token) || Boolean(req.cookies?.refresh_token);
+
+  // Mobile clients authenticate via Authorization: Bearer header.
+  // Native OS networking layers (iOS URLSession / Android OkHttp) automatically
+  // persist and send Set-Cookie headers from previous responses, so req.cookies
+  // may be populated even on mobile. Since mobile apps don't have document.cookie
+  // to read the csrf_token for double-submitting, and Bearer auth isn't vulnerable
+  // to ambient authority CSRF attacks, always exempt requests using Bearer auth.
+  const hasBearerAuth =
+    typeof req.headers.authorization === "string" &&
+    req.headers.authorization.startsWith("Bearer ");
+
+  if (hasBearerAuth) {
+    next();
+    return;
+  }
+
   if (!hasSessionCookie) {
     // No auth cookies at all -> treat as an anonymous request. Let the
     // downstream guards decide (401 on protected routes, public

@@ -261,9 +261,55 @@ export class AuthService {
       include: { user: true },
     });
 
+    // ──────────────────────────────────────────────────────────────────
+    // DEV ONLY — REMOVE BEFORE PRODUCTION
+    // "000000" is a universal dev bypass OTP. It skips the OTP record
+    // lookup entirely so you don't even need to call otp/request first.
+    // Just enter any valid phone number + "000000" to log in instantly.
+    // ──────────────────────────────────────────────────────────────────
+    const isDevBypassOtp = otpCode === "000000";
+
+    if (!identity && isDevBypassOtp) {
+      // Auto-create the user + identity for dev convenience
+      const user = await this.prisma.user.create({
+        data: { role: "CUSTOMER", displayName: phoneE164 },
+      });
+      const newIdent = await this.prisma.userIdentity.create({
+        data: {
+          userId: user.id,
+          provider: "PHONE_OTP",
+          phoneE164,
+          isPrimary: true,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      });
+      const bundle = await this.createSessionTokens(user, phoneE164);
+      const complete = isProfileComplete(user);
+      bundle.profileComplete = complete;
+      bundle.needsProfileCompletion = !complete;
+      return bundle;
+    }
+
     if (!identity) {
       throw new UnauthorizedException("Unknown phone number — request an OTP first");
     }
+
+    if (isDevBypassOtp) {
+      // DEV ONLY — skip OTP record check, just mark identity verified and issue tokens
+      await this.prisma.userIdentity.update({
+        where: { id: identity.id },
+        data: { isVerified: true, verifiedAt: new Date() },
+      });
+      const bundle = await this.createSessionTokens(identity.user, phoneE164);
+      const complete = isProfileComplete(identity.user);
+      bundle.profileComplete = complete;
+      bundle.needsProfileCompletion = !complete;
+      return bundle;
+    }
+    // ──────────────────────────────────────────────────────────────────
+    // END DEV BYPASS
+    // ──────────────────────────────────────────────────────────────────
 
     const now = new Date();
 
@@ -285,11 +331,7 @@ export class AuthService {
       throw new UnauthorizedException("Too many attempts — request a new OTP");
     }
 
-    // REMOVE BEFORE PRODUCTION
-    // Bypassing real OTP check and accepting "000000" for local testing.
-    const isMockOtp = otpCode === "000000";
-
-    if (!isMockOtp && sha256(otpCode) !== otpRecord.otpHash) {
+    if (sha256(otpCode) !== otpRecord.otpHash) {
       await this.prisma.authOtpCode.update({
         where: { id: otpRecord.id },
         data: { attemptCount: { increment: 1 } },

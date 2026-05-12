@@ -50,7 +50,10 @@ import {
 } from "@/lib/menu-item-customization";
 import { WingsBuilder } from "@/components/wings-builder";
 import { OrderMethodModal } from "./order-method-modal";
-import { CART_EDIT_STORAGE_KEY } from "./cart-page";
+import {
+  CART_EDIT_STORAGE_KEY,
+  WINGS_REWARD_ADD_ITEM_STORAGE_KEY,
+} from "./cart-page";
 import { MenuSkeleton } from "./menu-skeleton";
 
 /**
@@ -76,6 +79,24 @@ function findMenuItemForCartEditLine(
       }
     }
   }
+  return null;
+}
+
+function findWingsByThePoundBuilder(categories: MenuCategory[]): ApiMenuItem | null {
+  const wingsCategory = categories.find((category) => category.slug === "wings");
+  const searchCategories = wingsCategory
+    ? [wingsCategory, ...categories.filter((category) => category.id !== wingsCategory.id)]
+    : categories;
+
+  for (const category of searchCategories) {
+    const match = category.items.find(
+      (item) =>
+        item.slug === "wings-by-the-pound" &&
+        item.weight_options?.some((option) => option.slug === "wings-1lb"),
+    );
+    if (match) return match;
+  }
+
   return null;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { apiFetch } from "@/lib/api";
 import { cents } from "@/lib/format";
 import { useSession, withSilentRefresh } from "@/lib/session";
@@ -21,6 +21,105 @@ const CUSTOMER_SUPPORT_ISSUES: Array<{
   { value: "BURNT_FOOD", label: "Burnt food" },
   { value: "OTHER", label: "Other" },
 ];
+
+const supportFormStyles = {
+  shell: {
+    color: "#111827",
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+  },
+  title: {
+    margin: "0 0 0.35rem",
+    color: "#0f172a",
+    fontSize: "1.35rem",
+    lineHeight: 1.2,
+    fontWeight: 800,
+  },
+  muted: {
+    margin: "0 0 1rem",
+    color: "#4b5563",
+    fontSize: "0.95rem",
+    lineHeight: 1.45,
+    fontWeight: 600,
+  },
+  field: {
+    marginBottom: "1rem",
+  },
+  label: {
+    display: "block",
+    marginBottom: "0.45rem",
+    color: "#374151",
+    fontSize: "0.82rem",
+    fontWeight: 800,
+  },
+  issueGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+    gap: "0.5rem",
+  },
+  issueButton: {
+    padding: "0.78rem 0.85rem",
+    borderRadius: 12,
+    background: "#ffffff",
+    color: "#374151",
+    fontWeight: 800,
+    cursor: "pointer",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+  },
+  issueButtonActive: {
+    background: "#fff7ed",
+    color: "#c2410c",
+    border: "1px solid #f97316",
+    boxShadow: "0 0 0 3px rgba(249, 115, 22, 0.12)",
+  },
+  textarea: {
+    width: "100%",
+    minHeight: "7rem",
+    resize: "vertical",
+    padding: "0.85rem 0.95rem",
+    border: "1px solid #d1d5db",
+    borderRadius: 10,
+    background: "#ffffff",
+    color: "#111827",
+    font: "inherit",
+    fontSize: "0.95rem",
+    lineHeight: 1.45,
+    outlineColor: "#f97316",
+  },
+  actionRow: {
+    display: "flex",
+    gap: "0.75rem",
+    alignItems: "stretch",
+  },
+  primaryButton: {
+    flex: 1,
+    minHeight: 44,
+    border: "1px solid #ea580c",
+    borderRadius: 12,
+    background: "#f97316",
+    color: "#ffffff",
+    font: "inherit",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  primaryButtonDisabled: {
+    background: "#fed7aa",
+    borderColor: "#fdba74",
+    color: "#7c2d12",
+    cursor: "not-allowed",
+  },
+  secondaryButton: {
+    minHeight: 44,
+    padding: "0 1.15rem",
+    border: "1px solid #d1d5db",
+    borderRadius: 12,
+    background: "#ffffff",
+    color: "#374151",
+    font: "inherit",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+} satisfies Record<string, CSSProperties>;
 
 function itemTitle(item: OrderItem): string {
   return `${item.product_name_snapshot}${item.quantity > 1 ? ` x${item.quantity}` : ""}`;
@@ -300,58 +399,50 @@ export function SupportTicketForm({
   }
 
   return (
-    <div>
-      <h3 style={{ margin: "0 0 0.35rem" }}>Open a support ticket</h3>
+    <div style={supportFormStyles.shell}>
+      <h3 style={supportFormStyles.title}>Open a support ticket</h3>
       {selectedItems.length ? (
-        <p className="surface-muted" style={{ margin: "0 0 1rem" }}>
+        <p style={supportFormStyles.muted}>
           For {selectedItems.map((item) => itemTitle(item)).join(", ")}
         </p>
       ) : null}
 
-      <div className="checkout-field">
-        <label>Issue type</label>
+      <div style={supportFormStyles.field}>
+        <label style={supportFormStyles.label}>Issue type</label>
         <div
           role="radiogroup"
           aria-label="Issue type"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-            gap: "0.5rem",
-          }}
+          style={supportFormStyles.issueGrid}
         >
-          {CUSTOMER_SUPPORT_ISSUES.map((issue) => (
-            <button
-              key={issue.value}
-              type="button"
-              role="radio"
-              aria-checked={ticketType === issue.value}
-              onClick={() => setTicketType(issue.value)}
-              style={{
-                padding: "0.7rem 0.8rem",
-                borderRadius: 12,
-                border:
-                  ticketType === issue.value
-                    ? "1px solid #f97316"
-                    : "1px solid #e5e7eb",
-                background: ticketType === issue.value ? "#fff7ed" : "#fff",
-                color: ticketType === issue.value ? "#c2410c" : "#374151",
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-            >
-              {issue.label}
-            </button>
-          ))}
+          {CUSTOMER_SUPPORT_ISSUES.map((issue) => {
+            const active = ticketType === issue.value;
+            return (
+              <button
+                key={issue.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setTicketType(issue.value)}
+                style={{
+                  ...supportFormStyles.issueButton,
+                  ...(active ? supportFormStyles.issueButtonActive : null),
+                }}
+              >
+                {issue.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="checkout-field">
-        <label>Tell us what happened</label>
+      <div style={supportFormStyles.field}>
+        <label style={supportFormStyles.label}>Tell us what happened</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Tell us what happened..."
           rows={4}
+          style={supportFormStyles.textarea}
         />
       </div>
 
@@ -361,11 +452,11 @@ export function SupportTicketForm({
         </p>
       )}
 
-      <div style={{ display: "flex", gap: "0.75rem" }}>
+      <div style={supportFormStyles.actionRow}>
         {items.length > 1 ? (
           <button
             type="button"
-            className="btn-secondary"
+            style={supportFormStyles.secondaryButton}
             onClick={() => setStep("items")}
             disabled={submitting}
           >
@@ -374,8 +465,12 @@ export function SupportTicketForm({
         ) : null}
         <button
           type="button"
-          className="btn-primary"
-          style={{ flex: 1 }}
+          style={{
+            ...supportFormStyles.primaryButton,
+            ...(submitting || !description.trim() || !hasRequiredItemSelection
+              ? supportFormStyles.primaryButtonDisabled
+              : null),
+          }}
           disabled={submitting || !description.trim() || !hasRequiredItemSelection}
           onClick={() => void submit()}
         >
@@ -383,7 +478,7 @@ export function SupportTicketForm({
         </button>
         <button
           type="button"
-          className="btn-secondary"
+          style={supportFormStyles.secondaryButton}
           onClick={onDone}
           disabled={submitting}
         >

@@ -453,8 +453,16 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     .join(" · ");
   const deliveryAddress = formatDeliveryAddress(order.address_snapshot_json);
   const deliveryPreference = formatDeliveryPreference(order.contactless_pref);
+  const deliveryHasStarted =
+    order.fulfillment_type === "DELIVERY" &&
+    (Boolean(order.delivery_started_at) ||
+      order.status === "OUT_FOR_DELIVERY" ||
+      order.status === "DELIVERED" ||
+      order.status === "NO_PIN_DELIVERY" ||
+      order.status === "NO_SHOW_DELIVERY");
   const showDeliveryInfoCard =
     order.fulfillment_type === "DELIVERY" &&
+    deliveryHasStarted &&
     (assignedDriver || deliveryAddress || deliveryPreference);
   const driverStatusTitle =
     order.status === "OUT_FOR_DELIVERY" ? "Driver is on the way" : "Delivery details";

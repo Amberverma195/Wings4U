@@ -97,6 +97,9 @@ export const CART_EDIT_STORAGE_KEY = "wings4u.cart-edit-key";
  */
 export const WINGS_REWARD_STORAGE_KEY = "wings4u.apply-wings-reward";
 
+/** Cart -> order-page handoff for opening the wings builder with the 1lb option selected. */
+export const WINGS_REWARD_ADD_ITEM_STORAGE_KEY = "wings4u.reward-add-1lb-wings";
+
 /** Cart/checkout handoff for coupons applied from the modal (not typed in the UI). */
 export const PROMO_HANDOFF_STORAGE_KEY = "wings4u.promo-checkout-handoff";
 
@@ -146,8 +149,10 @@ export function CartPage() {
    */
   const [applyWingsReward, setApplyWingsReward] = useState(false);
   const [couponsModalOpen, setCouponsModalOpen] = useState(false);
+  const [rewardItemRequiredModalOpen, setRewardItemRequiredModalOpen] = useState(false);
   const [couponModalError, setCouponModalError] = useState<string | null>(null);
   const [validatingPromoCode, setValidatingPromoCode] = useState<string | null>(null);
+  const [validatingWingsReward, setValidatingWingsReward] = useState(false);
 
   const clearPromoRejectionMessage = useCallback(() => {
     clearTimeout(promoRejectionTimerRef.current);
@@ -174,6 +179,19 @@ export function CartPage() {
     setCouponsModalOpen(false);
     setCouponModalError(null);
   }, []);
+
+  const closeRewardItemRequiredModal = useCallback(() => {
+    setRewardItemRequiredModalOpen(false);
+  }, []);
+
+  const openRewardOnePoundBuilder = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(WINGS_REWARD_ADD_ITEM_STORAGE_KEY, "wings-1lb");
+    }
+    setRewardItemRequiredModalOpen(false);
+    setCouponsModalOpen(false);
+    router.push(`/order?fulfillment_type=${cart.fulfillmentType}&cat=wings`);
+  }, [cart.fulfillmentType, router]);
 
   const openCouponsModal = useCallback(() => {
     setCouponModalError(null);
@@ -387,6 +405,84 @@ export function CartPage() {
     tipCents,
   ]);
 
+  const validateAndApplyWingsReward = useCallback(async () => {
+    if (applyWingsReward || validatingWingsReward) return;
+
+    setValidatingWingsReward(true);
+    setCouponModalError(null);
+    setQuoteError(null);
+    clearPromoRejectionMessage();
+
+    try {
+      const env = await apiJson<CartQuoteResponse>("/api/v1/cart/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location_id: cart.locationId,
+          fulfillment_type: cart.fulfillmentType,
+          items: cart.items.map((item) => ({
+            menu_item_id: item.menu_item_id,
+            quantity: item.quantity,
+            modifier_selections: item.modifier_selections.map((modifier) => ({
+              modifier_option_id: modifier.modifier_option_id,
+            })),
+            removed_ingredients: getRemovedIngredientsForApi(item),
+            special_instructions: item.special_instructions || undefined,
+            builder_payload: item.builder_payload,
+          })),
+          scheduled_for: cart.scheduledFor ?? undefined,
+          driver_tip_cents: tipCents,
+          apply_wings_reward: true,
+        }),
+        locationId: cart.locationId,
+      });
+
+      setQuote(env.data);
+
+      if (env.data.wings_reward.applied) {
+        setApplyWingsReward(true);
+        setPromoApplied("");
+        persistPromoHandoff("");
+        closeCouponsModal();
+        return;
+      }
+
+      setApplyWingsReward(false);
+      persistPromoHandoff("");
+      if (env.data.wings_reward.not_eligible_reason === "NO_WINGS_IN_CART") {
+        closeCouponsModal();
+        setRewardItemRequiredModalOpen(true);
+        return;
+      }
+      if (env.data.wings_reward.not_eligible_reason === "NOT_ENOUGH_STAMPS") {
+        setCouponModalError("You no longer have 8 stamps to redeem this reward.");
+        return;
+      }
+      if (env.data.wings_reward.not_eligible_reason === "NOT_SIGNED_IN") {
+        setCouponModalError("Sign in to apply this reward.");
+        return;
+      }
+      setCouponModalError("Coupon is only applicable to 1LB individual wings.");
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "Failed to validate reward";
+      setQuoteError(null);
+      setCouponModalError(message);
+    } finally {
+      setValidatingWingsReward(false);
+    }
+  }, [
+    applyWingsReward,
+    cart.fulfillmentType,
+    cart.items,
+    cart.locationId,
+    cart.scheduledFor,
+    clearPromoRejectionMessage,
+    closeCouponsModal,
+    tipCents,
+    validatingWingsReward,
+  ]);
+
   const fetchQuote = useCallback(async () => {
     if (cart.items.length === 0) {
       setQuote(null);
@@ -459,9 +555,9 @@ export function CartPage() {
     clearRejectedPromo(quoteError);
   }, [promoApplied, quoteError, clearRejectedPromo]);
 
-  // Lock body scroll + wire Escape while the Coupons modal is open.
+  // Lock body scroll + wire Escape while reward modals are open.
   useEffect(() => {
-    if (!couponsModalOpen || typeof document === "undefined") return;
+    if ((!couponsModalOpen && !rewardItemRequiredModalOpen) || typeof document === "undefined") return;
     const { body, documentElement } = document;
     const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
     const prevOverflow = body.style.overflow;
@@ -469,7 +565,12 @@ export function CartPage() {
     body.style.overflow = "hidden";
     if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") closeCouponsModal();
+      if (e.key !== "Escape") return;
+      if (rewardItemRequiredModalOpen) {
+        closeRewardItemRequiredModal();
+        return;
+      }
+      closeCouponsModal();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -477,7 +578,12 @@ export function CartPage() {
       body.style.paddingRight = prevPaddingRight;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [closeCouponsModal, couponsModalOpen]);
+  }, [
+    closeCouponsModal,
+    closeRewardItemRequiredModal,
+    couponsModalOpen,
+    rewardItemRequiredModalOpen,
+  ]);
 
   const wingsReward = quote?.wings_reward;
   const confirmedPromoCodes = new Set(
@@ -982,13 +1088,8 @@ export function CartPage() {
             {showWingsRewardCard ? (
               <button
                 type="button"
-                disabled={applyWingsReward}
-                onClick={() => {
-                  setApplyWingsReward(true);
-                  setPromoApplied("");
-                  persistPromoHandoff("");
-                  closeCouponsModal();
-                }}
+                disabled={applyWingsReward || validatingWingsReward}
+                onClick={() => void validateAndApplyWingsReward()}
                 style={{
                   ...styles.couponCard,
                   ...(applyWingsReward ? styles.couponCardApplied : null),
@@ -1003,13 +1104,17 @@ export function CartPage() {
                   </strong>
                   <span style={styles.couponCardSubtitle}>From My Rewards</span>
                   <span style={styles.couponCardMeta}>
-                    {wingsReward && wingsReward.pounds_in_cart >= 1
-                      ? "Ready to redeem — applies to the cheapest pound in your cart."
-                      : "Add 1lb of wings to your cart to redeem."}
+                    {wingsReward?.eligible
+                      ? "Ready to redeem on an individual 1LB wings item."
+                      : "Add 1LB individual wings to your cart to redeem."}
                   </span>
                 </div>
                 <div style={styles.couponCardAction}>
-                  {applyWingsReward ? "Applied ✓" : "Apply"}
+                  {validatingWingsReward
+                    ? "Checking..."
+                    : applyWingsReward
+                      ? "Applied"
+                      : "Apply"}
                 </div>
               </button>
             ) : null}
@@ -1122,6 +1227,75 @@ export function CartPage() {
                 Clear all rewards
               </button>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {rewardItemRequiredModalOpen ? (
+        <div
+          style={styles.couponsModalOverlay}
+          onMouseDown={closeRewardItemRequiredModal}
+          role="presentation"
+        >
+          <div
+            style={{ ...styles.couponsModalCard, width: "min(420px, 100%)" }}
+            onMouseDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wings-reward-item-required-title"
+          >
+            <header style={{ ...styles.couponsModalHeader, marginBottom: 20 }}>
+              <p style={styles.couponsModalEyebrow}>Rewards</p>
+              <h2
+                id="wings-reward-item-required-title"
+                style={{ ...styles.couponsModalTitle, textAlign: "center" }}
+              >
+                No relevant item in the cart
+              </h2>
+              <p
+                style={{
+                  ...styles.couponsEmptyDesc,
+                  maxWidth: "none",
+                  margin: "12px auto 0",
+                  color: "#475569",
+                }}
+              >
+                Coupon is only applicable to 1LB individual wings.
+              </p>
+            </header>
+
+            <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+              <button
+                type="button"
+                onClick={closeRewardItemRequiredModal}
+                style={{
+                  ...styles.couponRemoveBtn,
+                  marginTop: 0,
+                  flex: 1,
+                  width: "auto",
+                  background: "#ffffff",
+                  color: "#475569",
+                  borderColor: "#cbd5e1",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={openRewardOnePoundBuilder}
+                style={{
+                  ...styles.couponRemoveBtn,
+                  marginTop: 0,
+                  flex: 1,
+                  width: "auto",
+                  background: "#f97316",
+                  color: "#ffffff",
+                  borderColor: "#f97316",
+                }}
+              >
+                Add to cart
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
