@@ -591,38 +591,36 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           </button>
         </form>
 
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <button
-            type="button"
-            className="wk-otp-resend"
-            disabled={busy}
-            onClick={handleResend}
-            aria-label="Resend verification code"
-          >
-            <span className="wk-otp-resend-icon" aria-hidden>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 12a9 9 0 1 1-3.2-6.9" />
-                <path d="M21 4v5h-5" />
-              </svg>
-            </span>
-            <span className="wk-otp-resend-label">
-              {busyAction === "resend"
-                ? "Sending..."
-                : busyAction === "verify"
-                  ? "Verifying..."
-                  : "Resend code"}
-            </span>
-          </button>
-        </div>
+        {busyAction !== "verify" && (
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <button
+              type="button"
+              className="wk-otp-resend"
+              disabled={busy}
+              onClick={handleResend}
+              aria-label="Resend verification code"
+            >
+              <span className="wk-otp-resend-icon" aria-hidden>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 12a9 9 0 1 1-3.2-6.9" />
+                  <path d="M21 4v5h-5" />
+                </svg>
+              </span>
+              <span className="wk-otp-resend-label">
+                {busyAction === "resend" ? "Sending..." : "Resend code"}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     );
   }
