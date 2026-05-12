@@ -7,12 +7,13 @@ import {
 import { createHash, randomBytes } from "crypto";
 import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../../database/prisma.service";
+import { getJwtSecret } from "../../common/utils/jwt-secret";
 import { signJwt } from "../../common/utils/jwt";
 import { isAllowedStoreIp } from "../../common/utils/store-ip";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { createOtpSender, OtpSender } from "./otp-sender";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const JWT_SECRET = getJwtSecret();
 const ACCESS_TOKEN_TTL = 900; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const OTP_TTL_SECONDS = 300; // 5 minutes

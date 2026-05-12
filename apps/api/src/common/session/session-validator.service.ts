@@ -1,8 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
+import { getJwtSecret } from "../utils/jwt-secret";
 import { verifyJwt } from "../utils/jwt";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const JWT_SECRET = getJwtSecret();
 
 export type UserRole = "CUSTOMER" | "STAFF" | "ADMIN";
 export type EmployeeRole = "MANAGER" | "CASHIER" | "KITCHEN" | "DRIVER";

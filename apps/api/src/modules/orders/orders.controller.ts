@@ -89,7 +89,12 @@ export class OrdersController {
   @Get(":id")
   @Roles("CUSTOMER", "STAFF", "ADMIN")
   async getOne(@Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
-    return this.ordersService.getOrderDetail(id, req.user!.userId, req.user!.role);
+    return this.ordersService.getOrderDetail(
+      id,
+      req.user!.userId,
+      req.user!.role,
+      req.locationId,
+    );
   }
 
   // PRD §7.8.5: customer sees their delivery PIN on the order detail page

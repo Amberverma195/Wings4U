@@ -273,7 +273,12 @@ export class OrdersService {
     };
   }
 
-  async getOrderDetail(orderId: string, userId: string, userRole: string) {
+  async getOrderDetail(
+    orderId: string,
+    userId: string,
+    userRole: string,
+    locationId?: string,
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -305,6 +310,14 @@ export class OrdersService {
     }
 
     if (userRole === "CUSTOMER" && order.customerUserId !== userId) {
+      throw new ForbiddenException("You do not have access to this order");
+    }
+
+    if (
+      userRole !== "CUSTOMER" &&
+      locationId &&
+      order.locationId !== locationId
+    ) {
       throw new ForbiddenException("You do not have access to this order");
     }
 
