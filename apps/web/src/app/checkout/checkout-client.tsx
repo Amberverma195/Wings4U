@@ -119,6 +119,14 @@ export function CheckoutClient() {
     }, 10000);
   }, []);
 
+  const clearRejectedPromo = useCallback((message: string) => {
+    showPromoRejectionMessage(message);
+    clearPromoHandoffStorage();
+    setPromoApplied(undefined);
+    setQuoteError(null);
+    setQuote(null);
+  }, [showPromoRejectionMessage]);
+
   useEffect(() => {
     return () => clearTimeout(promoRejectionTimerRef.current);
   }, []);
@@ -132,10 +140,8 @@ export function CheckoutClient() {
     ) {
       return;
     }
-    showPromoRejectionMessage(quoteError);
-    clearPromoHandoffStorage();
-    setPromoApplied(undefined);
-  }, [promoApplied, quoteError, showPromoRejectionMessage]);
+    clearRejectedPromo(quoteError);
+  }, [promoApplied, quoteError, clearRejectedPromo]);
   const [contactlessPref, setContactlessPref] = useState("");
   const [notes, setNotes] = useState("");
   const [deliveryAddressError, setDeliveryAddressError] = useState<string | null>(null);
@@ -265,8 +271,13 @@ export function CheckoutClient() {
           setQuoteError(null);
           return;
         }
+        const message = getApiErrorMessage(body, `Quote failed (${res.status})`);
+        if (promoApplied && isPromoRejectedQuoteError(message)) {
+          clearRejectedPromo(message);
+          return;
+        }
         setQuote(null);
-        setQuoteError(getApiErrorMessage(body, `Quote failed (${res.status})`));
+        setQuoteError(message);
       } catch {
         /* quote is optional context; checkout will re-validate server-side */
       }
@@ -279,6 +290,7 @@ export function CheckoutClient() {
     tipCents,
     applyWingsReward,
     promoApplied,
+    clearRejectedPromo,
   ]);
 
   const handleAuthComplete = useCallback(() => {
@@ -375,10 +387,7 @@ export function CheckoutClient() {
       if (!res.ok || !("data" in body) || !body.data) {
         const message = getApiErrorMessage(body, `Checkout failed (${res.status})`);
         if (isPromoRejectedQuoteError(message)) {
-          clearPromoHandoffStorage();
-          setPromoApplied(undefined);
-          showPromoRejectionMessage(message);
-          setQuoteError(message);
+          clearRejectedPromo(message);
           setState({ step: "review" });
           return;
         }
@@ -403,7 +412,18 @@ export function CheckoutClient() {
         message: e instanceof Error ? e.message : "Network error",
       });
     }
-  }, [cart, notes, contactlessPref, addressLine1, addressPostal, session, tipCents, applyWingsReward, promoApplied]);
+  }, [
+    cart,
+    notes,
+    contactlessPref,
+    addressLine1,
+    addressPostal,
+    session,
+    tipCents,
+    applyWingsReward,
+    promoApplied,
+    clearRejectedPromo,
+  ]);
 
   const submit = useCallback(() => {
     if (lunchScheduleConflict) {

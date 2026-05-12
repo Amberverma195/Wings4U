@@ -146,6 +146,8 @@ export function CartPage() {
    */
   const [applyWingsReward, setApplyWingsReward] = useState(false);
   const [couponsModalOpen, setCouponsModalOpen] = useState(false);
+  const [couponModalError, setCouponModalError] = useState<string | null>(null);
+  const [validatingPromoCode, setValidatingPromoCode] = useState<string | null>(null);
 
   const clearPromoRejectionMessage = useCallback(() => {
     clearTimeout(promoRejectionTimerRef.current);
@@ -158,6 +160,24 @@ export function CartPage() {
     promoRejectionTimerRef.current = setTimeout(() => {
       setPromoRejectionMessage(null);
     }, 10000);
+  }, []);
+
+  const clearRejectedPromo = useCallback((message: string) => {
+    showPromoRejectionMessage(message);
+    setQuoteError(null);
+    setQuote(null);
+    setPromoApplied("");
+    persistPromoHandoff("");
+  }, [showPromoRejectionMessage]);
+
+  const closeCouponsModal = useCallback(() => {
+    setCouponsModalOpen(false);
+    setCouponModalError(null);
+  }, []);
+
+  const openCouponsModal = useCallback(() => {
+    setCouponModalError(null);
+    setCouponsModalOpen(true);
   }, []);
 
   useEffect(() => {
@@ -306,6 +326,67 @@ export function CartPage() {
     [cart.items],
   );
 
+  const validateAndApplyPromo = useCallback(async (promo: ActivePromo) => {
+    const code = promo.code.trim();
+    if (!code) return;
+
+    setValidatingPromoCode(code);
+    setCouponModalError(null);
+    setQuoteError(null);
+    clearPromoRejectionMessage();
+
+    try {
+      const env = await apiJson<CartQuoteResponse>("/api/v1/cart/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location_id: cart.locationId,
+          fulfillment_type: cart.fulfillmentType,
+          items: cart.items.map((item) => ({
+            menu_item_id: item.menu_item_id,
+            quantity: item.quantity,
+            modifier_selections: item.modifier_selections.map((modifier) => ({
+              modifier_option_id: modifier.modifier_option_id,
+            })),
+            removed_ingredients: getRemovedIngredientsForApi(item),
+            special_instructions: item.special_instructions || undefined,
+            builder_payload: item.builder_payload,
+          })),
+          scheduled_for: cart.scheduledFor ?? undefined,
+          promo_code: code,
+          driver_tip_cents: tipCents,
+        }),
+        locationId: cart.locationId,
+      });
+
+      setQuote(env.data);
+      setApplyWingsReward(false);
+      setPromoApplied(code);
+      persistPromoHandoff(code);
+      closeCouponsModal();
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "Failed to validate coupon";
+      setQuoteError(null);
+      if (isPromoRejectedQuoteError(message)) {
+        setPromoApplied("");
+        persistPromoHandoff("");
+        setQuote(null);
+      }
+      setCouponModalError(message);
+    } finally {
+      setValidatingPromoCode(null);
+    }
+  }, [
+    cart.fulfillmentType,
+    cart.items,
+    cart.locationId,
+    cart.scheduledFor,
+    clearPromoRejectionMessage,
+    closeCouponsModal,
+    tipCents,
+  ]);
+
   const fetchQuote = useCallback(async () => {
     if (cart.items.length === 0) {
       setQuote(null);
@@ -340,7 +421,12 @@ export function CartPage() {
       });
       setQuote(env.data);
     } catch (cause) {
-      setQuoteError(cause instanceof Error ? cause.message : "Quote failed");
+      const message = cause instanceof Error ? cause.message : "Quote failed";
+      if (promoApplied.trim() && isPromoRejectedQuoteError(message)) {
+        clearRejectedPromo(message);
+        return;
+      }
+      setQuoteError(message);
       setQuote(null);
     } finally {
       setLoading(false);
@@ -353,6 +439,7 @@ export function CartPage() {
     promoApplied,
     tipCents,
     applyWingsReward,
+    clearRejectedPromo,
   ]);
 
   useEffect(() => {
@@ -369,10 +456,8 @@ export function CartPage() {
     ) {
       return;
     }
-    showPromoRejectionMessage(quoteError);
-    setPromoApplied("");
-    persistPromoHandoff("");
-  }, [promoApplied, quoteError, showPromoRejectionMessage]);
+    clearRejectedPromo(quoteError);
+  }, [promoApplied, quoteError, clearRejectedPromo]);
 
   // Lock body scroll + wire Escape while the Coupons modal is open.
   useEffect(() => {
@@ -384,7 +469,7 @@ export function CartPage() {
     body.style.overflow = "hidden";
     if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setCouponsModalOpen(false);
+      if (e.key === "Escape") closeCouponsModal();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -392,7 +477,7 @@ export function CartPage() {
       body.style.paddingRight = prevPaddingRight;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [couponsModalOpen]);
+  }, [closeCouponsModal, couponsModalOpen]);
 
   const wingsReward = quote?.wings_reward;
   const confirmedPromoCodes = new Set(
@@ -651,7 +736,7 @@ export function CartPage() {
                   type="button"
                   className="cart-see-coupons-btn"
                   style={styles.cartSeeCouponsBtn}
-                  onClick={() => setCouponsModalOpen(true)}
+                  onClick={openCouponsModal}
                 >
                   <span style={styles.cartSeeCouponsIcon} aria-hidden>🎁</span>
                   <span style={{ flex: 1, textAlign: "left" }}>
@@ -834,7 +919,13 @@ export function CartPage() {
                       persistPromoHandoff(promoApplied.trim());
                       router.push("/checkout");
                     } catch (cause) {
-                      setQuoteError(cause instanceof Error ? cause.message : "Failed to validate cart");
+                      const message =
+                        cause instanceof Error ? cause.message : "Failed to validate cart";
+                      if (promoApplied.trim() && isPromoRejectedQuoteError(message)) {
+                        clearRejectedPromo(message);
+                        return;
+                      }
+                      setQuoteError(message);
                     } finally {
                       setCheckoutValidating(false);
                     }
@@ -859,7 +950,7 @@ export function CartPage() {
       {couponsModalOpen ? (
         <div
           style={styles.couponsModalOverlay}
-          onMouseDown={() => setCouponsModalOpen(false)}
+          onMouseDown={closeCouponsModal}
           role="presentation"
         >
           <div
@@ -880,7 +971,7 @@ export function CartPage() {
                 <button
                   type="button"
                   style={styles.couponsModalClose}
-                  onClick={() => setCouponsModalOpen(false)}
+                  onClick={closeCouponsModal}
                   aria-label="Close coupons"
                 >
                   ✕
@@ -896,7 +987,7 @@ export function CartPage() {
                   setApplyWingsReward(true);
                   setPromoApplied("");
                   persistPromoHandoff("");
-                  setCouponsModalOpen(false);
+                  closeCouponsModal();
                 }}
                 style={{
                   ...styles.couponCard,
@@ -938,15 +1029,10 @@ export function CartPage() {
                 <button
                   key={promo.id}
                   type="button"
-                  disabled={isApplied || isAutomatic}
+                  disabled={isApplied || isAutomatic || Boolean(validatingPromoCode)}
                   onClick={() => {
                     if (isAutomatic) return;
-                    setApplyWingsReward(false);
-                    setQuoteError(null);
-                    clearPromoRejectionMessage();
-                    setPromoApplied(promo.code);
-                    persistPromoHandoff(promo.code);
-                    setCouponsModalOpen(false);
+                    void validateAndApplyPromo(promo);
                   }}
                   style={{
                     ...styles.couponCard,
@@ -1008,10 +1094,25 @@ export function CartPage() {
               </div>
             ) : null}
 
+            {couponModalError ? (
+              <p
+                role="alert"
+                style={{
+                  ...styles.cartLineRemoved,
+                  margin: "14px 0 0",
+                  textAlign: "center",
+                  fontWeight: 700,
+                }}
+              >
+                {couponModalError}
+              </p>
+            ) : null}
+
             {applyWingsReward || promoApplied ? (
               <button
                 type="button"
                 onClick={() => {
+                  setCouponModalError(null);
                   setApplyWingsReward(false);
                   setPromoApplied("");
                   persistPromoHandoff("");
