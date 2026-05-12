@@ -31,6 +31,7 @@ import {
   formatScheduleDateLabel,
   formatScheduleTimeLabel,
 } from "@/lib/order-scheduling";
+import { isPromoRejectedQuoteError } from "@/lib/promo-errors";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { CartQuoteResponse, CheckoutResponse } from "@/lib/types";
 import type { ApiEnvelope } from "@wings4u/contracts";
@@ -84,6 +85,8 @@ export function CheckoutClient() {
   const [state, setState] = useState<CheckoutState>({ step: "review" });
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [promoRejectionMessage, setPromoRejectionMessage] = useState<string | null>(null);
+  const promoRejectionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   /**
    * Reward-redemption intent carried over from the cart page via
    * sessionStorage. If the user removed wings after checking out, the
@@ -108,12 +111,31 @@ export function CheckoutClient() {
     }
   }, []);
 
-  /** Drop invalid/expired handoff codes so quotes recover instead of staying wedged. */
+  const showPromoRejectionMessage = useCallback((message: string) => {
+    clearTimeout(promoRejectionTimerRef.current);
+    setPromoRejectionMessage(message);
+    promoRejectionTimerRef.current = setTimeout(() => {
+      setPromoRejectionMessage(null);
+    }, 10000);
+  }, []);
+
   useEffect(() => {
-    if (!quoteError || !/invalid or expired promo/i.test(quoteError)) return;
+    return () => clearTimeout(promoRejectionTimerRef.current);
+  }, []);
+
+  /** Drop rejected handoff codes so quotes recover instead of staying wedged. */
+  useEffect(() => {
+    if (
+      !promoApplied ||
+      typeof quoteError !== "string" ||
+      !isPromoRejectedQuoteError(quoteError)
+    ) {
+      return;
+    }
+    showPromoRejectionMessage(quoteError);
     clearPromoHandoffStorage();
     setPromoApplied(undefined);
-  }, [quoteError]);
+  }, [promoApplied, quoteError, showPromoRejectionMessage]);
   const [contactlessPref, setContactlessPref] = useState("");
   const [notes, setNotes] = useState("");
   const [deliveryAddressError, setDeliveryAddressError] = useState<string | null>(null);
@@ -352,6 +374,14 @@ export function CheckoutClient() {
 
       if (!res.ok || !("data" in body) || !body.data) {
         const message = getApiErrorMessage(body, `Checkout failed (${res.status})`);
+        if (isPromoRejectedQuoteError(message)) {
+          clearPromoHandoffStorage();
+          setPromoApplied(undefined);
+          showPromoRejectionMessage(message);
+          setQuoteError(message);
+          setState({ step: "review" });
+          return;
+        }
         setState({ step: "error", message });
         return;
       }
@@ -760,6 +790,11 @@ export function CheckoutClient() {
             {quoteError}
           </p>
         )}
+      {!quoteError && promoRejectionMessage && state.step !== "error" ? (
+        <p className="surface-error" style={{ marginBottom: "1rem" }}>
+          {promoRejectionMessage}
+        </p>
+      ) : null}
 
       <button
         type="button"

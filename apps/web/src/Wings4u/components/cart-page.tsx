@@ -18,6 +18,7 @@ import {
   isMinimumDeliverySubtotalError,
 } from "@/lib/delivery-restrictions";
 import { getLunchScheduleConflict } from "@/lib/lunch-hours";
+import { isPromoRejectedQuoteError } from "@/lib/promo-errors";
 import type {
   ActivePromo,
   CartBuilderPayload,
@@ -121,9 +122,11 @@ export function CartPage() {
   const { setLocationTimezone, driverTipPercent, setDriverTipPercent } = cart;
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [promoRejectionMessage, setPromoRejectionMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkoutValidating, setCheckoutValidating] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const promoRejectionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
@@ -143,6 +146,23 @@ export function CartPage() {
    */
   const [applyWingsReward, setApplyWingsReward] = useState(false);
   const [couponsModalOpen, setCouponsModalOpen] = useState(false);
+
+  const clearPromoRejectionMessage = useCallback(() => {
+    clearTimeout(promoRejectionTimerRef.current);
+    setPromoRejectionMessage(null);
+  }, []);
+
+  const showPromoRejectionMessage = useCallback((message: string) => {
+    clearTimeout(promoRejectionTimerRef.current);
+    setPromoRejectionMessage(message);
+    promoRejectionTimerRef.current = setTimeout(() => {
+      setPromoRejectionMessage(null);
+    }, 10000);
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimeout(promoRejectionTimerRef.current);
+  }, []);
 
   // Hydrate the reward intent from sessionStorage on mount so that if
   // the user navigates cart -> checkout -> back-to-cart their choice
@@ -342,10 +362,17 @@ export function CartPage() {
   }, [fetchQuote]);
 
   useEffect(() => {
-    if (!quoteError || !/invalid or expired promo/i.test(quoteError)) return;
+    if (
+      !promoApplied.trim() ||
+      typeof quoteError !== "string" ||
+      !isPromoRejectedQuoteError(quoteError)
+    ) {
+      return;
+    }
+    showPromoRejectionMessage(quoteError);
     setPromoApplied("");
     persistPromoHandoff("");
-  }, [quoteError]);
+  }, [promoApplied, quoteError, showPromoRejectionMessage]);
 
   // Lock body scroll + wire Escape while the Coupons modal is open.
   useEffect(() => {
@@ -749,8 +776,13 @@ export function CartPage() {
                   {quoteError &&
                     quoteError !== lunchScheduleConflict?.message &&
                     quoteError !== deliveryBlockedMessage && (
-                    <p style={{ ...styles.cartLineRemoved, marginTop: 4 }}>{quoteError}</p>
-                  )}
+                      <p style={{ ...styles.cartLineRemoved, marginTop: 4 }}>{quoteError}</p>
+                    )}
+                  {!quoteError && promoRejectionMessage ? (
+                    <p style={{ ...styles.cartLineRemoved, marginTop: 4 }}>
+                      {promoRejectionMessage}
+                    </p>
+                  ) : null}
                   {deliveryMinimumBlocked &&
                     !isMinimumDeliverySubtotalError(quoteError) &&
                     menu &&
@@ -910,6 +942,8 @@ export function CartPage() {
                   onClick={() => {
                     if (isAutomatic) return;
                     setApplyWingsReward(false);
+                    setQuoteError(null);
+                    clearPromoRejectionMessage();
                     setPromoApplied(promo.code);
                     persistPromoHandoff(promo.code);
                     setCouponsModalOpen(false);
