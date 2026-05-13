@@ -92,6 +92,20 @@
 .navLinkActive {
   background: #fff7ed;
   color: #f97316;
+  cursor: default;
+}
+
+.navLinkLogout {
+  color: #ef4444 !important;
+}
+
+.navLinkLogout:hover {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+}
+
+.navLinkLogout .navLinkArrow {
+  color: #ef4444;
 }
 
 .navLinkArrow {
@@ -503,6 +517,10 @@
     background: #fff7ed;
     border-color: #fed7aa;
     color: #f97316;
+  }
+
+  .navLinkLogout {
+    color: #ef4444 !important;
   }
 
   .navLinkArrow {

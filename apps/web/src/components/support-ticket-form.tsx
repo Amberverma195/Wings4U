@@ -436,7 +436,7 @@ export function SupportTicketForm({
       </div>
 
       <div style={supportFormStyles.field}>
-        <label style={supportFormStyles.label}>Tell us what happened</label>
+        <label style={supportFormStyles.label}>Please Explain the Issue</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}

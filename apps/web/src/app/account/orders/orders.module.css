@@ -4,12 +4,14 @@
   background-color: #F8C676; 
   padding-bottom: 4rem;
   z-index: 10;
+  overflow-x: hidden;
 }
 
 .hub {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 3rem 1.5rem;
+  width: 100%;
+  padding: 3rem clamp(1rem, 4vw, 1.5rem);
   font-family: "DM Sans", system-ui, sans-serif;
   color: #111827;
 }
@@ -90,6 +92,20 @@
 .navLinkActive {
   background: #fff7ed;
   color: #f97316;
+  cursor: default;
+}
+
+.navLinkLogout {
+  color: #ef4444 !important;
+}
+
+.navLinkLogout:hover {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+}
+
+.navLinkLogout .navLinkArrow {
+  color: #ef4444;
 }
 
 .navLinkArrow {
@@ -111,6 +127,7 @@
   grid-template-columns: 320px 1fr;
   gap: 2rem;
   align-items: start;
+  min-width: 0;
 }
 
 .contentStack {
@@ -118,6 +135,7 @@
   flex-direction: column;
   gap: 2rem;
   animation: ordersFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  min-width: 0;
 }
 
 /* ========================================================= */
@@ -132,6 +150,7 @@
   justify-content: space-between;
   align-items: flex-end;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  min-width: 0;
 }
 
 .titleArea {
@@ -178,6 +197,7 @@
   margin-bottom: 2rem;
   animation: ordersFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
   opacity: 0;
+  min-width: 0;
 }
 
 .tabs {
@@ -277,10 +297,11 @@
 /* ========================================================= */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
   gap: 1.5rem;
   animation: ordersFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
   opacity: 0;
+  min-width: 0;
 }
 
 .card {
@@ -462,6 +483,7 @@
   animation: ordersFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
   opacity: 0;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  min-width: 0;
 }
 
 .emptyIcon {
@@ -603,31 +625,22 @@
 }
 
 /* Responsive adjustments */
-@media (max-width: 1024px) {
+@media (max-width: 1100px) {
+  .pageShell {
+    padding-bottom: 3rem;
+  }
+
+  .hub {
+    padding: 2rem clamp(1rem, 5vw, 2.5rem);
+  }
+
   .mainContainer {
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.5rem;
   }
 
   .sidebar {
     max-width: none;
-    margin: 0;
-    width: 100%;
-  }
-
-  .hub {
-    padding: 2rem 5vw;
-  }
-}
-
-@media (max-width: 768px) {
-  .mainContainer {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-  }
-
-  .sidebar {
-    max-width: 100%;
     margin: 0;
     width: 100%;
   }
@@ -676,6 +689,10 @@
     color: #f97316;
   }
 
+  .navLinkLogout {
+    color: #ef4444 !important;
+  }
+
   .navLinkArrow {
     display: none;
   }
@@ -686,6 +703,17 @@
 
   .grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .name {
+    font-size: 1.75rem;
+  }
+
+  .phone {
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
   }
 }
 
@@ -712,7 +740,13 @@
 
 @media (max-width: 520px) {
   .hub {
-    padding: 1rem 0.5rem;
+    padding: 1rem clamp(0.75rem, 4vw, 1rem);
+  }
+
+  .hero,
+  .emptyState {
+    padding: 1.25rem;
+    border-radius: 18px;
   }
 
   .identityCard {

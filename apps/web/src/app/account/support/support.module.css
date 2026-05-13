@@ -99,6 +99,19 @@
   cursor: default;
 }
 
+.navLinkLogout {
+  color: #ef4444 !important;
+}
+
+.navLinkLogout:hover {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+}
+
+.navLinkLogout .navLinkArrow {
+  color: #ef4444;
+}
+
 .navLinkBack {
   justify-content: flex-start !important;
   gap: 0.5rem;
@@ -803,6 +816,10 @@
     background: #fff7ed;
     border-color: #fed7aa;
     color: #f97316;
+  }
+
+  .navLinkLogout {
+    color: #ef4444 !important;
   }
 
   .navLinkArrow {

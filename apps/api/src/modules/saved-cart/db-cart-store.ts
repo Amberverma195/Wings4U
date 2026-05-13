@@ -192,7 +192,7 @@ export class DbCartStore implements CartStore {
         });
       }
 
-      await tx.savedCart.delete({ where: { id: guestCart.id } });
+      await tx.savedCart.deleteMany({ where: { id: guestCart.id } });
 
       return {
         snapshot: toSnapshot(savedUserCart, false),

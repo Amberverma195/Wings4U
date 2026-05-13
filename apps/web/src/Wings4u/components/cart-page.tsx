@@ -344,6 +344,16 @@ export function CartPage() {
     [cart.items],
   );
 
+  const menuImageByItemId = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const category of menu?.categories ?? []) {
+      for (const item of category.items) {
+        if (item.image_url) byId.set(item.id, item.image_url);
+      }
+    }
+    return byId;
+  }, [menu?.categories]);
+
   const validateAndApplyPromo = useCallback(async (promo: ActivePromo) => {
     const code = promo.code.trim();
     if (!code) return;
@@ -723,14 +733,15 @@ export function CartPage() {
             const instructionsForDisplay = getCustomerVisibleInstructions(item);
             const lineTotal = getCartItemUnitPrice(item) * item.quantity;
             const canEdit = isBuilderLine(item.builder_payload);
+            const imageUrl = item.image_url ?? menuImageByItemId.get(item.menu_item_id) ?? null;
 
             return (
               <div key={item.key} className="wk-cart-line-card" style={styles.cartItemLineCard}>
                 <div className="wk-cart-line-card-row">
                   <div className="wk-cart-line-thumb" style={styles.cartItemThumbWrap}>
-                    {item.image_url ? (
+                    {imageUrl ? (
                       <img
-                        src={item.image_url}
+                        src={imageUrl}
                         alt={item.name}
                         style={styles.cartItemThumbImage}
                       />
@@ -1114,12 +1125,13 @@ export function CartPage() {
                       : "Add 1LB individual wings to your cart to redeem."}
                   </span>
                 </div>
-                <div style={styles.couponCardAction}>
-                  {validatingWingsReward
-                    ? "Checking..."
-                    : applyWingsReward
-                      ? "Applied"
-                      : "Apply"}
+                <div
+                  style={{
+                    ...styles.couponCardAction,
+                    opacity: validatingWingsReward ? 0.45 : 1,
+                  }}
+                >
+                  {applyWingsReward ? "Applied" : "Apply"}
                 </div>
               </button>
             ) : null}
@@ -1131,10 +1143,11 @@ export function CartPage() {
                 promo.discountType === "BXGY" ? formatBxgyDetails(promo) : null;
               const redeemTypeLabel =
                 promo.eligibleFulfillmentType === "PICKUP"
-                  ? "Pickup only"
-                  : promo.eligibleFulfillmentType === "DELIVERY"
-                    ? "Delivery only"
-                    : null;
+                ? "Pickup only"
+                : promo.eligibleFulfillmentType === "DELIVERY"
+                  ? "Delivery only"
+                  : null;
+              const promoValidationInProgress = Boolean(validatingPromoCode);
               return (
                 <button
                   key={promo.id}
@@ -1184,6 +1197,7 @@ export function CartPage() {
                     style={{
                       ...styles.couponCardAction,
                       display: isAutomatic ? "none" : undefined,
+                      opacity: promoValidationInProgress && !isApplied ? 0.45 : 1,
                     }}
                   >
                     {isApplied ? "Applied ✓" : "Apply"}

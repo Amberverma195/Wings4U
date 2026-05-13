@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { relativeTime } from "@/lib/format";
@@ -84,6 +85,20 @@ export function SupportClient() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const router = useRouter();
+
+  const handleLogout = useCallback(async () => {
+    setIsLoggingOut(true);
+    try {
+      await apiFetch("/api/v1/auth/logout", { method: "POST" });
+    } catch {
+      // best-effort
+    }
+    session.clear();
+    router.replace("/");
+  }, [session, router]);
 
 
 
@@ -132,8 +147,8 @@ export function SupportClient() {
 
   const isInitialLoading = loading && tickets.length === 0;
 
-  if (!session.loaded) {
-    return <AccountSkeleton />;
+  if (!session.loaded || isLoggingOut) {
+    return <AccountSkeleton isLoggingOut={isLoggingOut} />;
   }
 
   return (
@@ -162,6 +177,10 @@ export function SupportClient() {
                   <span className={styles.navLinkArrowLeft}>←</span>
                   <span>Back to Account</span>
                 </Link>
+                <button onClick={handleLogout} className={`${styles.navLink} ${styles.navLinkLogout}`}>
+                  <span>Logout</span>
+                  <span className={styles.navLinkArrow}>→</span>
+                </button>
 
 
               </nav>
