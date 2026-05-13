@@ -132,6 +132,11 @@
   font-size: 0.9rem;
   color: #4b5563;
   transition: all 0.2s ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
 }
 
 .navLink:not(.navLinkActive):hover {
@@ -147,6 +152,9 @@
 
 .navLinkLogout {
   color: #ef4444 !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
 }
 
 .navLinkLogout:hover {
@@ -822,13 +830,22 @@
   }
 
   .navLinks {
-    padding: 1.5rem 0 0.5rem;
-    gap: 0.5rem;
+    padding: 1rem 0 0.5rem;
+    gap: 0.35rem;
     flex-direction: row;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     justify-content: flex-start;
+    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  }
+
+  .navLinksWrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
   }
 
   .navLinks::-webkit-scrollbar {
@@ -836,8 +853,10 @@
   }
 
   .navLink {
-    padding: 0.6rem 1rem;
-    font-size: 0.85rem;
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.74rem;
     border-radius: 999px;
     flex-shrink: 0;
     background: #fafafa;
@@ -853,6 +872,9 @@
 
   .navLinkLogout {
     color: #ef4444 !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
   }
 
   .navLinkArrow {
@@ -923,8 +945,8 @@
   }
 
   .navLink {
-    padding: 0.5rem 0.85rem;
-    font-size: 0.8rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.74rem;
   }
 
   .navLinkArrow {

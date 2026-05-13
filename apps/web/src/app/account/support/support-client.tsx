@@ -164,26 +164,26 @@ export function SupportClient() {
                 <span>{formatPhoneNumber(session.user?.phone) || "No phone"}</span>
               </div>
 
-              <nav className={styles.supportNavLinks}>
-                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
-                  <span>Tickets</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </div>
-                <Link href="/account/support/help" className={styles.navLink}>
-                  <span>Help</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
-                  <span className={styles.navLinkArrowLeft}>←</span>
-                  <span>Back to Account</span>
-                </Link>
-                <button onClick={handleLogout} className={`${styles.navLink} ${styles.navLinkLogout}`}>
-                  <span>Logout</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </button>
-
-
-              </nav>
+              <div className={styles.navLinksWrapper}>
+                <nav className={styles.supportNavLinks}>
+                  <div className={`${styles.navLink} ${styles.navLinkActive}`}>
+                    <span>Tickets</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </div>
+                  <Link href="/account/support/help" className={styles.navLink}>
+                    <span>Help</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
+                    <span className={styles.navLinkArrowLeft}>←</span>
+                    <span>Back to Account</span>
+                  </Link>
+                  <button onClick={handleLogout} className={`${styles.navLink} ${styles.navLinkLogout}`}>
+                    <span>Logout</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </button>
+                </nav>
+              </div>
             </div>
           </aside>
 

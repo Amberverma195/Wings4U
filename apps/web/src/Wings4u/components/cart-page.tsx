@@ -399,7 +399,6 @@ export function CartPage() {
       if (isPromoRejectedQuoteError(message)) {
         setPromoApplied("");
         persistPromoHandoff("");
-        setQuote(null);
       }
       setCouponModalError(message);
     } finally {

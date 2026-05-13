@@ -285,45 +285,47 @@ export default function ProfilePage() {
               </div>
 
               
-              <nav className={styles.navLinks}>
-                <div className={`${styles.navLink} ${styles.navLinkActive}`}>
-                  <span>My Profile</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </div>
-                <AccountSurfaceLinks
-                  user={session.user}
-                  navLinkClassName={styles.navLink}
-                  navLinkArrowClassName={styles.navLinkArrow}
-                />
-                <Link href="/account" className={styles.navLink}>
-                  <span>My Account</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <Link href="/account/orders" className={styles.navLink}>
-                  <span>Order History</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <Link href="/account/addresses" className={styles.navLink}>
-                  <span>My Addresses</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <Link href="/account/cards" className={styles.navLink}>
-                  <span>My Cards</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <Link href="/account/support" className={styles.navLink}>
-                  <span>Support</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setLogoutConfirmOpen(true)}
-                  className={`${styles.navLink} ${styles.navLinkLogout}`}
-                >
-                  <span>Logout</span>
-                  <span className={styles.navLinkArrow}>→</span>
-                </button>
-              </nav>
+              <div className={styles.navLinksWrapper}>
+                <nav className={styles.navLinks}>
+                  <div className={`${styles.navLink} ${styles.navLinkActive}`}>
+                    <span>My Profile</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </div>
+                  <AccountSurfaceLinks
+                    user={session.user}
+                    navLinkClassName={styles.navLink}
+                    navLinkArrowClassName={styles.navLinkArrow}
+                  />
+                  <Link href="/account" className={styles.navLink}>
+                    <span>My Account</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <Link href="/account/orders" className={styles.navLink}>
+                    <span>Order History</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <Link href="/account/addresses" className={styles.navLink}>
+                    <span>My Addresses</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <Link href="/account/cards" className={styles.navLink}>
+                    <span>My Cards</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <Link href="/account/support" className={styles.navLink}>
+                    <span>Support</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setLogoutConfirmOpen(true)}
+                    className={`${styles.navLink} ${styles.navLinkLogout}`}
+                  >
+                    <span>Logout</span>
+                    <span className={styles.navLinkArrow}>→</span>
+                  </button>
+                </nav>
+              </div>
             </div>
 
 

@@ -6,14 +6,18 @@
   min-height: 100vh;
   background-color: #F8C676;
   padding-bottom: 4rem;
+  overflow-x: hidden;
 }
 
 .hub {
   max-width: 1200px;
   margin: 0 auto;
+  width: 100%;
   padding: 3rem 1.5rem;
   font-family: "DM Sans", system-ui, sans-serif;
   color: #111827;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* ========================================================= */
@@ -36,6 +40,10 @@
   flex-direction: column;
   align-items: center;
   animation: addressesFadeIn 0.5s ease-out;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .name {
@@ -49,12 +57,22 @@
 .phone {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.6rem;
   color: #4b5563;
   font-size: 1.1rem;
   font-weight: 700;
   margin-top: 0.4rem;
   margin-bottom: 2rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.phone span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .phone svg {
@@ -69,6 +87,7 @@
   gap: 0.5rem;
   border-top: 1px solid #f3f4f6;
   padding-top: 1.5rem;
+  box-sizing: border-box;
 }
 
 .navLink {
@@ -82,6 +101,12 @@
   font-size: 0.9rem;
   color: #4b5563;
   transition: all 0.2s ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+  box-sizing: border-box;
 }
 
 .navLink:hover {
@@ -97,6 +122,9 @@
 
 .navLinkLogout {
   color: #ef4444 !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
 }
 
 .navLinkLogout:hover {
@@ -127,6 +155,7 @@
   grid-template-columns: 320px 1fr;
   gap: 2rem;
   align-items: start;
+  min-width: 0;
 }
 
 .contentStack {
@@ -134,6 +163,7 @@
   flex-direction: column;
   gap: 2rem;
   animation: addressesFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  min-width: 0;
 }
 
 .section {
@@ -142,6 +172,10 @@
   border: 1px solid #e5e7eb;
   padding: 2.25rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sectionHeader {
@@ -183,6 +217,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-sizing: border-box;
 }
 
 .addBtn:hover {
@@ -195,6 +230,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .addressCard {
@@ -207,6 +243,8 @@
   gap: 1rem;
   transition: all 0.2s ease;
   position: relative;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .addressCard:hover {
@@ -226,12 +264,14 @@
   font-weight: 800;
   font-size: 1.1rem;
   color: #111827;
+  overflow-wrap: anywhere;
 }
 
 .addressCity {
   font-size: 0.9rem;
   color: #6b7280;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .addressActions {
@@ -490,13 +530,22 @@
   }
 
   .navLinks {
-    padding: 1.5rem 0 0.5rem;
-    gap: 0.5rem;
+    padding: 1rem 0 0.5rem;
+    gap: 0.35rem;
     flex-direction: row;
+    flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .navLinksWrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
   }
 
   .navLinks::-webkit-scrollbar {
@@ -504,13 +553,16 @@
   }
 
   .navLink {
-    padding: 0.6rem 1rem;
-    font-size: 0.85rem;
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.74rem;
     border-radius: 999px;
     flex-shrink: 0;
     background: #fafafa;
     border: 1px solid #f3f4f6;
     justify-content: center;
+    white-space: nowrap;
   }
 
   .navLinkActive {
@@ -521,6 +573,9 @@
 
   .navLinkLogout {
     color: #ef4444 !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
   }
 
   .navLinkArrow {
@@ -528,13 +583,30 @@
   }
 
   .addressGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 520px) {
   .hub {
-    padding: 1rem 0.5rem;
+    padding: 1rem clamp(0.75rem, 4vw, 1rem);
+  }
+
+  .section {
+    padding: 1.25rem;
+    border-radius: 18px;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .addBtn {
+    width: 100%;
+    justify-content: center;
+    max-width: 100%;
   }
 
   .identityCard {
@@ -558,8 +630,8 @@
   }
 
   .navLink {
-    padding: 0.5rem 0.85rem;
-    font-size: 0.8rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.74rem;
   }
 
   .navLinkArrow {
@@ -573,5 +645,97 @@
   
   .modalActions {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 819px) and (max-height: 1179px) {
+  .pageShell {
+    width: 100%;
+    max-width: 100dvw;
+    overflow-x: clip;
+  }
+
+  .hub {
+    width: 100%;
+    max-width: 100dvw;
+    padding: 1rem;
+    overflow-x: hidden;
+  }
+
+  .mainContainer,
+  .sidebar,
+  .contentStack,
+  .identityCard,
+  .section {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .mainContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .identityCard {
+    padding: 1.5rem 1rem;
+    overflow: hidden;
+  }
+
+  .navLinksWrapper {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .navLinks {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+    width: 100%;
+    overflow: visible;
+    padding: 1rem 0 0;
+  }
+
+  .navLink {
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.35rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .section {
+    padding: 1.25rem;
+    overflow: hidden;
+  }
+
+  .sectionHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+
+  .sectionTitle {
+    font-size: 1.55rem;
+    line-height: 1.15;
+  }
+
+  .addBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .addressGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .addressCard {
+    width: 100%;
+    padding: 1.25rem;
   }
 }
