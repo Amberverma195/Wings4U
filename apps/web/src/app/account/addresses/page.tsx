@@ -125,7 +125,7 @@ function AddressesContent() {
               <div className={styles.navLinksWrapper}>
                 <nav className={styles.navLinks}>
                   <Link href="/account/profile" className={styles.navLink}>
-                    <span>My Profile</span>
+                    <span>Profile</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <AccountSurfaceLinks
@@ -134,7 +134,7 @@ function AddressesContent() {
                     navLinkArrowClassName={styles.navLinkArrow}
                   />
                   <Link href="/account" className={styles.navLink}>
-                    <span>My Account</span>
+                    <span>Account</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <Link href="/account/orders" className={styles.navLink}>
@@ -142,7 +142,7 @@ function AddressesContent() {
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <div className={`${styles.navLink} ${styles.navLinkActive}`}>
-                    <span>My Addresses</span>
+                    <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </div>
                   <Link href="/account/cards" className={styles.navLink}>

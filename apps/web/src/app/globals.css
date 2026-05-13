@@ -790,6 +790,46 @@ main {
   white-space: nowrap;
 }
 
+.order-review-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.order-review-prompt-copy {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(194, 73, 20, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: #2a1a08;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.order-review-prompt-action.btn-primary {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.72rem 1.25rem;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+
+.order-review-prompt-action.btn-primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
 @media (max-width: 420px) {
   .reorder-modal-card {
     width: min(100%, calc(100vw - 1.5rem));
@@ -3792,7 +3832,7 @@ main {
   padding: 0.78rem 1rem;
   border-radius: 14px;
   background: rgba(245, 166, 35, 0.16);
-  color: #ffd075;
+  color: #7f1d1d;
   font-weight: 800;
   font-size: 0.95rem;
   border: 1px solid rgba(245, 166, 35, 0.45);

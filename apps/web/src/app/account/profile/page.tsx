@@ -288,7 +288,7 @@ export default function ProfilePage() {
               <div className={styles.navLinksWrapper}>
                 <nav className={styles.navLinks}>
                   <div className={`${styles.navLink} ${styles.navLinkActive}`}>
-                    <span>My Profile</span>
+                    <span>Profile</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </div>
                   <AccountSurfaceLinks
@@ -297,7 +297,7 @@ export default function ProfilePage() {
                     navLinkArrowClassName={styles.navLinkArrow}
                   />
                   <Link href="/account" className={styles.navLink}>
-                    <span>My Account</span>
+                    <span>Account</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <Link href="/account/orders" className={styles.navLink}>
@@ -305,7 +305,7 @@ export default function ProfilePage() {
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <Link href="/account/addresses" className={styles.navLink}>
-                    <span>My Addresses</span>
+                    <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <Link href="/account/cards" className={styles.navLink}>

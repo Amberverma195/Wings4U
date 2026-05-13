@@ -292,38 +292,14 @@ export function OrderReviews({
       <h3 style={{ margin: "0 0 0.75rem" }}>Reviews</h3>
       {loading && <p className="surface-muted">Loading…</p>}
       {!loading && multipleItems && !multiItemExpanded && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <div
-            style={{
-              width: "100%",
-              textAlign: "center",
-              padding: "0.65rem 1rem",
-              borderRadius: 9999,
-              boxSizing: "border-box",
-              background: "rgba(255, 255, 255, 0.72)",
-              border: "1px solid rgba(194, 73, 20, 0.22)",
-              color: "#2a1a08",
-              fontWeight: 600,
-              fontSize: "0.95rem",
-              lineHeight: 1.35,
-            }}
-          >
-            Tell us how it did
+        <div className="order-review-prompt">
+          <div className="order-review-prompt-copy">
+            Tell us how we Did
           </div>
           <button
             type="button"
             onClick={() => setMultiItemExpanded(true)}
-            className="wk-builder-add-btn"
-            style={{
-              width: "100%",
-              padding: "0.55rem 1rem",
-              borderRadius: "10px",
-              fontSize: "0.85rem",
-              fontWeight: 700,
-              fontFamily: '"DM Sans", sans-serif',
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-            }}
+            className="btn-primary order-review-prompt-action"
           >
             Review items
           </button>

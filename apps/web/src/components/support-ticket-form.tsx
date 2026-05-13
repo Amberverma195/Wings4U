@@ -81,7 +81,7 @@ const supportFormStyles = {
     borderRadius: 10,
     background: "#ffffff",
     color: "#111827",
-    font: "inherit",
+    fontFamily: "inherit",
     fontSize: "0.95rem",
     lineHeight: 1.45,
     outlineColor: "#f97316",
@@ -98,7 +98,7 @@ const supportFormStyles = {
     borderRadius: 12,
     background: "#f97316",
     color: "#ffffff",
-    font: "inherit",
+    fontFamily: "inherit",
     fontWeight: 800,
     cursor: "pointer",
   },
@@ -115,7 +115,7 @@ const supportFormStyles = {
     borderRadius: 12,
     background: "#ffffff",
     color: "#374151",
-    font: "inherit",
+    fontFamily: "inherit",
     fontWeight: 800,
     cursor: "pointer",
   },
@@ -299,14 +299,27 @@ export function SupportTicketForm({
     return (
       <div>
         <h3 style={{ margin: "0 0 0.35rem" }}>Which item had an issue?</h3>
-        <p className="surface-muted" style={{ margin: "0 0 1rem" }}>
+        <p
+          className="surface-muted"
+          style={{
+            margin: "0 0 1rem",
+            color: "#3f2414",
+            fontWeight: 700,
+          }}
+        >
           Select one or more items from your order.
         </p>
 
         <button
           type="button"
           className="btn-secondary"
-          style={{ marginBottom: "0.75rem" }}
+          style={{
+            marginBottom: "0.75rem",
+            color: "#7c2d12",
+            borderColor: "#fdba74",
+            background: "#fff7ed",
+            fontWeight: 800,
+          }}
           onClick={() =>
             setSelectedItemIds(allSelected ? [] : items.map((item) => item.id))
           }
@@ -331,6 +344,9 @@ export function SupportTicketForm({
                   borderRadius: 14,
                   border: checked ? "1px solid #f97316" : "1px solid #e5e7eb",
                   background: checked ? "#fff7ed" : "#fff",
+                  boxShadow: checked
+                    ? "0 0 0 3px rgba(249, 115, 22, 0.12)"
+                    : "0 1px 2px rgba(15, 23, 42, 0.04)",
                   textAlign: "left",
                   cursor: "pointer",
                 }}
@@ -350,9 +366,10 @@ export function SupportTicketForm({
                       style={{
                         display: "block",
                         marginTop: 3,
-                        color: "#6b7280",
+                        color: "#334155",
                         fontSize: "0.85rem",
                         lineHeight: 1.35,
+                        fontWeight: 700,
                       }}
                     >
                       {summary}
@@ -377,7 +394,14 @@ export function SupportTicketForm({
           <button
             type="button"
             className="btn-primary"
-            style={{ flex: 1 }}
+            style={{
+              flex: 1,
+              opacity: 1,
+              color: hasRequiredItemSelection ? "#ffffff" : "#7c2d12",
+              background: hasRequiredItemSelection ? undefined : "#fed7aa",
+              border: hasRequiredItemSelection ? undefined : "1px solid #fdba74",
+              fontWeight: 800,
+            }}
             disabled={!hasRequiredItemSelection}
             onClick={() => {
               if (!hasRequiredItemSelection) {
@@ -390,7 +414,17 @@ export function SupportTicketForm({
           >
             Continue
           </button>
-          <button type="button" className="btn-secondary" onClick={onDone}>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{
+              color: "#374151",
+              background: "#ffffff",
+              borderColor: "#d1d5db",
+              fontWeight: 800,
+            }}
+            onClick={onDone}
+          >
             Cancel
           </button>
         </div>

@@ -689,8 +689,9 @@
   }
 
   .navLinks {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 0.45rem;
     width: 100%;
     overflow: visible;
@@ -698,13 +699,20 @@
   }
 
   .navLink {
-    width: 100%;
+    width: auto;
     min-width: 0;
-    padding: 0.5rem 0.35rem;
+    flex: 0 0 auto;
+    padding: 0.45rem 0.85rem;
     font-size: 0.72rem;
     line-height: 1.15;
     text-align: center;
-    white-space: normal;
+    white-space: nowrap;
+  }
+
+  .navLinkLogout {
+    background: #fff !important;
+    border: 1px solid #fecaca !important;
+    color: #ef4444 !important;
   }
 
   .section {

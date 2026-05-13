@@ -149,6 +149,7 @@ export function CartPage() {
    */
   const [applyWingsReward, setApplyWingsReward] = useState(false);
   const [couponsModalOpen, setCouponsModalOpen] = useState(false);
+  const [couponsRefreshing, setCouponsRefreshing] = useState(false);
   const [rewardItemRequiredModalOpen, setRewardItemRequiredModalOpen] = useState(false);
   const [couponModalError, setCouponModalError] = useState<string | null>(null);
   const [validatingPromoCode, setValidatingPromoCode] = useState<string | null>(null);
@@ -184,6 +185,25 @@ export function CartPage() {
     setRewardItemRequiredModalOpen(false);
   }, []);
 
+  const refreshActivePromos = useCallback(async (clearFirst = false) => {
+    if (clearFirst) setActivePromos([]);
+    setCouponsRefreshing(true);
+    try {
+      const promosEnv = await apiJson<ActivePromo[]>(
+        `/api/v1/promotions/active?ts=${Date.now()}`,
+        {
+          locationId: cart.locationId,
+          cache: "no-store",
+        },
+      );
+      setActivePromos(promosEnv.data ?? []);
+    } catch {
+      setActivePromos([]);
+    } finally {
+      setCouponsRefreshing(false);
+    }
+  }, [cart.locationId]);
+
   const openRewardOnePoundBuilder = useCallback(() => {
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem(WINGS_REWARD_ADD_ITEM_STORAGE_KEY, "wings-1lb");
@@ -196,7 +216,8 @@ export function CartPage() {
   const openCouponsModal = useCallback(() => {
     setCouponModalError(null);
     setCouponsModalOpen(true);
-  }, []);
+    void refreshActivePromos(true);
+  }, [refreshActivePromos]);
 
   useEffect(() => {
     return () => clearTimeout(promoRejectionTimerRef.current);
@@ -698,7 +719,7 @@ export function CartPage() {
           )}
 
           <div style={styles.cartOrderTopRow}>
-            <header style={styles.cartOrderHeaderBlock}>
+            <header className="wk-cart-order-header-block" style={styles.cartOrderHeaderBlock}>
               <h1 style={styles.cartOrderTitleLeft}>YOUR ORDER</h1>
               <Link
                 href={`/order?fulfillment_type=${cart.fulfillmentType}`}
@@ -1135,7 +1156,7 @@ export function CartPage() {
               </button>
             ) : null}
 
-            {activePromos.map((promo) => {
+            {!couponsRefreshing ? activePromos.map((promo) => {
               const isApplied = confirmedPromoCodes.has(promo.code.toUpperCase());
               const isAutomatic = Boolean(promo.autoApply);
               const bxgyDetails =
@@ -1203,9 +1224,21 @@ export function CartPage() {
                   </div>
                 </button>
               );
-            })}
+            }) : null}
 
-            {!showWingsRewardCard && activePromos.length === 0 ? (
+            {!showWingsRewardCard && couponsRefreshing ? (
+              <div style={styles.couponsEmpty}>
+                <div style={styles.couponsEmptyIcon} aria-hidden>
+                  ðŸ·ï¸
+                </div>
+                <p style={styles.couponsEmptyTitle}>Checking coupons</p>
+                <p style={styles.couponsEmptyDesc}>
+                  Looking for offers available to your account.
+                </p>
+              </div>
+            ) : null}
+
+            {!showWingsRewardCard && !couponsRefreshing && activePromos.length === 0 ? (
               <div style={styles.couponsEmpty}>
                 <div style={styles.couponsEmptyIcon} aria-hidden>
                   🏷️

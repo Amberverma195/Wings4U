@@ -4368,6 +4368,39 @@ export function WingKingsGlobalStyle() {
         }
       }
 
+      @media (min-width: 761px) and (max-width: 900px) {
+        .wk-cart-order-header-block {
+          flex: 0 1 190px !important;
+          min-width: 170px !important;
+        }
+
+        .wk-cart-order-settings-top {
+          flex: 0 1 clamp(315px, 42vw, 340px) !important;
+          max-width: clamp(315px, 42vw, 340px) !important;
+          margin-left: auto !important;
+          margin-right: 0 !important;
+        }
+
+        .wk-cart-order-settings-top .wk-order-settings-bar {
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+
+        .wk-cart-order-settings-top .wk-order-settings-meta {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .wk-cart-order-settings-top .wk-order-settings-meta.wk-order-settings-meta--delivery {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .wk-cart-order-settings-top .wk-order-settings-meta > .wk-order-settings-chip--address,
+        .wk-cart-order-settings-top .wk-order-settings-meta > .wk-order-settings-action {
+          grid-column: 1 / -1;
+        }
+      }
+
       /* Cart: pickup/delivery bar layout (right column or top row beside YOUR ORDER). */
       .wk-cart-right-column .wk-order-settings-shell,
       .wk-cart-order-settings-top .wk-order-settings-shell {

@@ -170,7 +170,7 @@ export function OrdersListClient() {
               <div className={styles.navLinksWrapper}>
                 <nav className={styles.navLinks}>
                   <Link href="/account/profile" className={styles.navLink}>
-                    <span>My Profile</span>
+                    <span>Profile</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <AccountSurfaceLinks
@@ -179,7 +179,7 @@ export function OrdersListClient() {
                     navLinkArrowClassName={styles.navLinkArrow}
                   />
                   <Link href="/account" className={styles.navLink}>
-                    <span>My Account</span>
+                    <span>Account</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <div className={`${styles.navLink} ${styles.navLinkActive}`}>
@@ -187,7 +187,7 @@ export function OrdersListClient() {
                     <span className={styles.navLinkArrow}>→</span>
                   </div>
                   <Link href="/account/addresses" className={styles.navLink}>
-                    <span>My Addresses</span>
+                    <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
                   <Link href="/account/cards" className={styles.navLink}>
