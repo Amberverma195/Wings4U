@@ -320,13 +320,21 @@ const AUTH_PAGE_STYLES = `
     padding: 3rem 1.5rem 4rem;
   }
 
-  @media (min-width: 960px) {
+  @media (min-width: 768px) {
     .wk-auth-frame {
-      grid-template-columns: minmax(0, 1fr) minmax(min(100%, 560px), 1.2fr);
+      grid-template-columns: minmax(0, 1fr) minmax(min(100%, 480px), 1.1fr);
       /* Top-align so welcome copy and sign-in card share the same vertical start */
       align-items: start;
-      gap: 3.5rem;
-      padding: 4.5rem 2rem 5rem;
+      gap: 2.5rem;
+      padding: 4rem 2rem 5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .wk-auth-frame {
+      grid-template-columns: minmax(0, 1.2fr) minmax(min(100%, 600px), 1.4fr);
+      gap: 4rem;
+      padding: 5rem 2.5rem;
     }
   }
 
@@ -459,6 +467,20 @@ const AUTH_PAGE_STYLES = `
       transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 0.45s ease;
     transform-origin: center center;
+  }
+
+  @media (min-width: 768px) {
+    .wk-auth-card {
+      max-width: 480px;
+      padding: 2rem 2.25rem 1.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .wk-auth-card {
+      max-width: 600px;
+      padding: 2.25rem 2.75rem 2rem;
+    }
   }
 
   .wk-auth-card:hover {
@@ -613,6 +635,14 @@ const AUTH_PAGE_STYLES = `
     font-size: 1.0625rem !important;
     border-radius: 10px !important;
   }
+
+  @media (min-width: 768px) {
+    .wk-auth-card-body input:not([placeholder="000000"]) {
+      padding: 1.05rem 1.25rem !important;
+      font-size: 1.125rem !important;
+    }
+  }
+
   .wk-auth-card-body input[placeholder="000000"] {
     padding: 0.9rem 1rem !important;
     font-size: 1.5rem !important;
@@ -630,6 +660,17 @@ const AUTH_PAGE_STYLES = `
     font-size: 1.0625rem !important;
     border-radius: 10px !important;
     min-height: 52px;
+  }
+
+  @media (min-width: 768px) {
+    .wk-auth-card-body h2 {
+      font-size: 2.375rem !important;
+    }
+    .wk-auth-card-body button {
+      padding: 1.1rem 2rem !important;
+      font-size: 1.125rem !important;
+      min-height: 58px;
+    }
   }
 
   .wk-auth-card-fineprint {

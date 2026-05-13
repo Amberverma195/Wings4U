@@ -490,7 +490,7 @@ export default function ProfilePage() {
                       padding: "1rem 0 0 0"
                     }}
                   >
-                    Tap for stamp history
+                    View history
                     <span aria-hidden>  →</span>
                   </button>
                 </>

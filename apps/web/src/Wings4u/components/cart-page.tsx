@@ -437,9 +437,14 @@ export function CartPage() {
         locationId: cart.locationId,
       });
 
-      setQuote(env.data);
+      const nextQuote = env.data;
+      if (!nextQuote) {
+        throw new Error("Quote response was empty");
+      }
 
-      if (env.data.wings_reward.applied) {
+      setQuote(nextQuote);
+
+      if (nextQuote.wings_reward.applied) {
         setApplyWingsReward(true);
         setPromoApplied("");
         persistPromoHandoff("");
@@ -449,16 +454,16 @@ export function CartPage() {
 
       setApplyWingsReward(false);
       persistPromoHandoff("");
-      if (env.data.wings_reward.not_eligible_reason === "NO_WINGS_IN_CART") {
+      if (nextQuote.wings_reward.not_eligible_reason === "NO_WINGS_IN_CART") {
         closeCouponsModal();
         setRewardItemRequiredModalOpen(true);
         return;
       }
-      if (env.data.wings_reward.not_eligible_reason === "NOT_ENOUGH_STAMPS") {
+      if (nextQuote.wings_reward.not_eligible_reason === "NOT_ENOUGH_STAMPS") {
         setCouponModalError("You no longer have 8 stamps to redeem this reward.");
         return;
       }
-      if (env.data.wings_reward.not_eligible_reason === "NOT_SIGNED_IN") {
+      if (nextQuote.wings_reward.not_eligible_reason === "NOT_SIGNED_IN") {
         setCouponModalError("Sign in to apply this reward.");
         return;
       }

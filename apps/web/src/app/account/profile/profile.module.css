@@ -779,17 +779,128 @@
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .mainContainer {
-    grid-template-columns: 1fr;
+    grid-template-columns: 280px 1fr;
+    gap: 1.5rem;
   }
 
   .sidebar {
-    max-width: 400px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
     width: 100%;
+  }
+
+  .hub {
+    padding: 2rem 5vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .mainContainer {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .sidebar {
+    max-width: 100%;
+    margin: 0;
+    width: 100%;
+  }
+
+  .identityCard {
+    padding: 2rem;
+    border-radius: 24px;
+  }
+
+  .name {
+    font-size: 1.75rem;
+  }
+
+  .phone {
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+  }
+
+  .navLinks {
+    padding: 1.5rem 0 0.5rem;
+    gap: 0.5rem;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+
+  .navLinks::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navLink {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+    background: #fafafa;
+    border: 1px solid #f3f4f6;
+    justify-content: center;
+  }
+
+  .navLinkActive {
+    background: #fff7ed;
+    border-color: #fed7aa;
+    color: #f97316;
+  }
+
+  .navLinkArrow {
+    display: none;
+  }
+
+  .innerGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .rewardsGrid {
+    grid-template-columns: 1fr;
+    text-align: center;
+    gap: 1.5rem;
+    padding: 1.5rem;
   }
 }
 
 @media (max-width: 520px) {
+  .hub {
+    padding: 1rem 0.5rem;
+  }
+
+  .identityCard {
+    padding: 1.5rem 1rem;
+    border-radius: 16px;
+    width: 100%;
+  }
+
+  .name {
+    font-size: 1.5rem;
+  }
+
+  .phone {
+    font-size: 1rem;
+    gap: 0.4rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .phone svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .navLink {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  .navLinkArrow {
+    display: none;
+  }
+
   .stampModalSummary {
     grid-template-columns: 1fr;
   }
@@ -811,17 +922,6 @@
   .stampSlot {
     width: 36px;
     height: 36px;
-  }
-}
-
-@media (max-width: 768px) {
-  .innerGrid {
-    grid-template-columns: 1fr;
-  }
-  
-  .rewardsGrid {
-    grid-template-columns: 1fr;
-    text-align: center;
   }
 }
 
