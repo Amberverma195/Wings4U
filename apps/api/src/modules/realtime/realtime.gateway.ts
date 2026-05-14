@@ -101,21 +101,23 @@ export class RealtimeGateway
 
   async handleConnection(socket: Socket): Promise<void> {
     const cookieHeader = socket.handshake.headers.cookie;
-    if (!cookieHeader) {
-      this.logger.warn(`Connection rejected - no cookies (${socket.id})`);
+    const accessToken = this.readHandshakeAccessToken(socket);
+    if (!cookieHeader && !accessToken) {
+      this.logger.warn(`Connection rejected - no auth credentials (${socket.id})`);
       socket.emit("error", { message: "Authentication required" });
       socket.disconnect(true);
       return;
     }
 
-    const cookies = parseCookies(cookieHeader);
+    const cookies = cookieHeader ? parseCookies(cookieHeader) : {};
     const preferredStationSurface = this.readPreferredStationSurface(socket);
     const resolved = await this.resolveSocketUserFromCookies(
       cookies,
       preferredStationSurface,
+      accessToken,
     );
     if (!resolved) {
-      this.logger.warn(`Connection rejected - no valid session cookie (${socket.id})`);
+      this.logger.warn(`Connection rejected - no valid auth session (${socket.id})`);
       socket.emit("error", { message: "Invalid or expired session" });
       socket.disconnect(true);
       return;
@@ -284,9 +286,15 @@ export class RealtimeGateway
       : null;
   }
 
+  private readHandshakeAccessToken(socket: Socket): string | undefined {
+    const token = socket.handshake.auth?.token;
+    return typeof token === "string" && token.trim() ? token.trim() : undefined;
+  }
+
   private async resolveSocketUserFromCookies(
     cookies: Record<string, string>,
     preferredStationSurface: "kds" | "pos" | null = null,
+    explicitAccessToken?: string,
   ): Promise<{
     user: SocketUser;
     accessToken?: string;
@@ -302,7 +310,7 @@ export class RealtimeGateway
       if (posUser) return posUser;
     }
 
-    const accessToken = cookies["access_token"];
+    const accessToken = explicitAccessToken ?? cookies["access_token"];
     if (accessToken) {
       const session = await this.sessionValidator.resolve(accessToken);
       if (session) {

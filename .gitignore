@@ -42,6 +42,25 @@ coverage/
 .vite/
 **/.vite/
 
+# Expo / React Native app generated files
+apps/application/.expo/
+apps/application/web-build/
+apps/application/expo-env.d.ts
+apps/application/.metro-health-check*
+apps/application/.kotlin/
+apps/application/ios/
+apps/application/android/
+*.orig.*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+google-services.json
+GoogleService-Info.plist
+
 # Logs and runtime files
 logs/
 *.log

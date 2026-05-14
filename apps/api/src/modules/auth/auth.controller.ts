@@ -42,6 +42,12 @@ class OtpVerifyDto {
   otp_code!: string;
 }
 
+class RefreshDto {
+  @IsOptional()
+  @IsString()
+  refresh_token?: string;
+}
+
 class ProfileUpdateDto {
   @IsString()
   @MinLength(4)
@@ -292,10 +298,14 @@ export class AuthController {
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
   async refresh(
+    @Body() body: RefreshDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken: string | undefined = req.cookies?.refresh_token;
+    // Web clients use the httpOnly cookie; native mobile clients send the
+    // refresh token explicitly because they do not have browser cookie storage.
+    const refreshToken: string | undefined =
+      req.cookies?.refresh_token ?? body.refresh_token;
     if (!refreshToken) {
       clearAuthCookies(res);
       return { refreshed: false };
