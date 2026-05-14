@@ -142,16 +142,16 @@ export const styles = {
   },
   menuCardImageWrap: {
     width:"100%",
-    height:"clamp(104px, 15svh, 142px)",
     background:"rgba(18,14,11,0.88)",
     borderBottom:"1px solid rgba(255,255,255,0.06)",
     overflow:"hidden",
+    lineHeight:0,
   },
   menuCardImage: {
     display:"block",
     width:"100%",
-    height:"100%",
-    objectFit:"cover" as const,
+    height:"auto",
+    objectFit:"contain" as const,
   },
   menuCardBody: {
     padding:"clamp(12px, 1.7svh, 14px) clamp(12px, 1vw, 14px) clamp(13px, 1.9svh, 15px)",
