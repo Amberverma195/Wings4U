@@ -671,12 +671,11 @@
     padding: 1rem 0 0.5rem;
     gap: 0.35rem;
     flex-direction: row;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    justify-content: flex-start;
-    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
   }
 
   .navLinksWrapper {
@@ -692,14 +691,23 @@
 
   .navLink {
     width: auto;
-    flex: 0 0 auto;
-    padding: 0.4rem 0.65rem;
-    font-size: 0.74rem;
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
     border-radius: 999px;
-    flex-shrink: 0;
     background: #fafafa;
     border: 1px solid #f3f4f6;
     justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .navLink span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .navLinkActive {
@@ -710,8 +718,8 @@
 
   .navLinkLogout {
     color: #ef4444 !important;
-    background: transparent !important;
-    border: none !important;
+    background: #fff !important;
+    border: 1px solid #fecaca !important;
     outline: none !important;
   }
 
@@ -792,8 +800,17 @@
   }
 
   .navLink {
-    padding: 0.4rem 0.65rem;
-    font-size: 0.74rem;
+    flex: 0 0 auto;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.72rem;
+  }
+
+  .navLinks {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.45rem;
+    overflow: visible;
+    padding: 1rem 0 0;
   }
 
   .navLinkArrow {
