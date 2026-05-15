@@ -1136,8 +1136,9 @@
 
   .reorderSideCard :global(.btn-primary),
   .reorderSideCard :global(.btn-secondary) {
-    min-height: 100%;
-    padding: 0.85rem 0.75rem;
+    min-height: 40px;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.8rem;
     white-space: normal;
     text-align: center;
   }

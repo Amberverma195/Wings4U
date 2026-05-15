@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiFetch } from "@/lib/api";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderItem } from "@/lib/types";
@@ -217,10 +218,9 @@ export function OrderReviews({
   const session = useSession();
   const [reviews, setReviews] = useState<Record<string, ReviewRecord>>({});
   const [loading, setLoading] = useState(true);
-  const [multiItemExpanded, setMultiItemExpanded] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   const eligible = orderStatus === "PICKED_UP" || orderStatus === "DELIVERED";
-  const multipleItems = items.length > 1;
 
   const fetchReviews = useCallback(async () => {
     try {
@@ -248,80 +248,117 @@ export function OrderReviews({
     void fetchReviews();
   }, [eligible, fetchReviews]);
 
+  const closeReviewModal = useCallback(() => {
+    setReviewModalOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!reviewModalOpen) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeReviewModal();
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [reviewModalOpen, closeReviewModal]);
+
   if (!eligible) return null;
   if (items.length === 0) return null;
 
-  const reviewList =
-    multipleItems && !multiItemExpanded ? null : (
-      <>
-        {items.map((item, idx) => {
-          const existing = reviews[item.id];
-          const last = idx === items.length - 1;
-          return (
-            <div
-              key={item.id}
-              style={{
-                paddingBottom: last ? 0 : "0.75rem",
-                marginBottom: last ? 0 : "0.75rem",
-                borderBottom: last ? "none" : "1px solid #eee",
-              }}
-            >
-              <p style={{ margin: 0, fontWeight: 600 }}>
-                {item.product_name_snapshot}
-              </p>
-              {existing ? (
-                <ExistingReview review={existing} />
-              ) : (
-                <ReviewForm
-                  orderId={orderId}
-                  orderItemId={item.id}
-                  locationId={locationId}
-                  onSubmitted={(r) =>
-                    setReviews((prev) => ({ ...prev, [item.id]: r }))
-                  }
-                />
-              )}
-            </div>
-          );
-        })}
-      </>
-    );
+  const reviewList = (
+    <>
+      {items.map((item, idx) => {
+        const existing = reviews[item.id];
+        const last = idx === items.length - 1;
+        return (
+          <div
+            key={item.id}
+            style={{
+              paddingBottom: last ? 0 : "0.75rem",
+              marginBottom: last ? 0 : "0.75rem",
+              borderBottom: last ? "none" : "1px solid #eee",
+            }}
+          >
+            <p className="order-review-item-title">
+              {item.product_name_snapshot}
+            </p>
+            {existing ? (
+              <ExistingReview review={existing} />
+            ) : (
+              <ReviewForm
+                orderId={orderId}
+                orderItemId={item.id}
+                locationId={locationId}
+                onSubmitted={(r) =>
+                  setReviews((prev) => ({ ...prev, [item.id]: r }))
+                }
+              />
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
 
   return (
+    <>
     <section className="surface-card" style={{ marginTop: "1rem" }}>
       {loading && <p className="surface-muted">Loading…</p>}
-      {!loading && multipleItems && !multiItemExpanded && (
+      {!loading && (
         <div className="order-review-prompt">
           <button
             type="button"
-            onClick={() => setMultiItemExpanded(true)}
+            onClick={() => setReviewModalOpen(true)}
             className="btn-primary order-review-prompt-action"
           >
             Rate your Order
           </button>
         </div>
       )}
-      {!loading && multipleItems && multiItemExpanded && (
-        <button
-          type="button"
-          onClick={() => setMultiItemExpanded(false)}
-          className="surface-muted"
-          style={{
-            display: "block",
-            margin: "0 0 0.75rem",
-            padding: 0,
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            fontSize: "0.85rem",
-            textDecoration: "underline",
-            textUnderlineOffset: "2px",
-          }}
-        >
-          Show less
-        </button>
-      )}
-      {!loading && reviewList}
     </section>
+
+    {reviewModalOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="reorder-modal-backdrop"
+            onClick={closeReviewModal}
+            role="presentation"
+          >
+            <div
+              className="reorder-modal-card order-review-modal-card"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="order-review-modal-title"
+              >
+                <h3
+                  id="order-review-modal-title"
+                  className="reorder-modal-title order-review-modal-title"
+                >
+                  Rate your Order
+                </h3>
+              <div className="order-review-modal-list">{reviewList}</div>
+              <div className="reorder-modal-actions order-review-modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={closeReviewModal}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null}
+    </>
   );
 }

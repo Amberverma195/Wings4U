@@ -830,6 +830,49 @@ main {
   background: var(--accent-strong);
 }
 
+.order-review-modal-card {
+  width: min(680px, calc(100vw - 2rem));
+}
+
+.order-review-modal-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 1.1rem;
+  color: #111827;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.order-review-modal-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.order-review-item-title {
+  display: inline-block;
+  margin: 0;
+  padding: 0.12rem 0.48rem;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-weight: 900;
+}
+
+.order-review-modal-list .btn-primary {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+}
+
+.order-review-modal-actions {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 420px) {
   .reorder-modal-card {
     width: min(100%, calc(100vw - 1.5rem));
