@@ -289,19 +289,15 @@ export function OrderReviews({
 
   return (
     <section className="surface-card" style={{ marginTop: "1rem" }}>
-      <h3 style={{ margin: "0 0 0.75rem" }}>Reviews</h3>
       {loading && <p className="surface-muted">Loading…</p>}
       {!loading && multipleItems && !multiItemExpanded && (
         <div className="order-review-prompt">
-          <div className="order-review-prompt-copy">
-            Tell us how we Did
-          </div>
           <button
             type="button"
             onClick={() => setMultiItemExpanded(true)}
             className="btn-primary order-review-prompt-action"
           >
-            Review items
+            Rate your Order
           </button>
         </div>
       )}

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import {
+  Fragment,
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { apiFetch } from "@/lib/api";
 import { cents } from "@/lib/format";
 import { useSession, withSilentRefresh } from "@/lib/session";
@@ -40,6 +46,27 @@ const supportFormStyles = {
     fontSize: "0.95rem",
     lineHeight: 1.45,
     fontWeight: 600,
+  },
+  selectedItemsLine: {
+    margin: "0 0 1rem",
+    color: "#4b5563",
+    fontSize: "0.95rem",
+    lineHeight: 1.65,
+    fontWeight: 700,
+  },
+  selectedItemChip: {
+    display: "inline-block",
+    margin: "0.12rem 0",
+    padding: "0.12rem 0.48rem",
+    borderRadius: 999,
+    border: "1px solid #fed7aa",
+    background: "#fff7ed",
+    color: "#c2410c",
+    fontWeight: 900,
+  },
+  selectedItemSeparator: {
+    color: "#6b7280",
+    fontWeight: 700,
   },
   field: {
     marginBottom: "1rem",
@@ -436,8 +463,18 @@ export function SupportTicketForm({
     <div style={supportFormStyles.shell}>
       <h3 style={supportFormStyles.title}>Open a support ticket</h3>
       {selectedItems.length ? (
-        <p style={supportFormStyles.muted}>
-          For {selectedItems.map((item) => itemTitle(item)).join(", ")}
+        <p style={supportFormStyles.selectedItemsLine}>
+          <span>For </span>
+          {selectedItems.map((item, index) => (
+            <Fragment key={item.id}>
+              {index > 0 ? (
+                <span style={supportFormStyles.selectedItemSeparator}>, </span>
+              ) : null}
+              <span style={supportFormStyles.selectedItemChip}>
+                {itemTitle(item)}
+              </span>
+            </Fragment>
+          ))}
         </p>
       ) : null}
 

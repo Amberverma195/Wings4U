@@ -443,6 +443,8 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   }
 
   const terminal = isTerminal(order.status);
+  const postOrderSupportAvailable = canOpenPostOrderSupport(order.status);
+  const showOrderActionsColumn = terminal || postOrderSupportAvailable;
   const sortedStatusEvents = [...order.status_events].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
@@ -550,6 +552,21 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                     </div>
                   </div>
                 )}
+                {postOrderSupportAvailable ? (
+                  <div className={styles.statusRowActions}>
+                    <button
+                      type="button"
+                      className={styles.helpBtn}
+                      aria-haspopup="dialog"
+                      onClick={() => {
+                        setOrderStatusHistoryOpen(false);
+                        setShowSupport(true);
+                      }}
+                    >
+                      Help
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               {/* Meta chips */}
@@ -821,9 +838,13 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               />
             )}
 
-            {/* Footer actions for terminal orders */}
+          </div>
+
+          {/* RIGHT — support + reviews */}
+          {showOrderActionsColumn ? (
+          <div className={styles.rightColumn}>
             {terminal && (
-              <div className={styles.footerActions}>
+              <div className={`${styles.sideCard} ${styles.reorderSideCard}`}>
                 <ReorderButton
                   orderId={orderId}
                   locationId={order.location_id}
@@ -831,10 +852,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
                 />
               </div>
             )}
-          </div>
 
-          {/* RIGHT — support + reviews */}
-          <div className={styles.rightColumn}>
             {/* Reviews */}
             <OrderReviews
               orderId={orderId}
@@ -843,19 +861,8 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               orderStatus={order.status}
             />
 
-            {/* Support ticket */}
-            {canOpenPostOrderSupport(order.status) ? (
-              <div className={styles.sideCard}>
-                <button
-                  type="button"
-                  className={styles.supportBtn}
-                  onClick={() => setShowSupport(true)}
-                >
-                  Need help? Open a support ticket
-                </button>
-              </div>
-            ) : null}
           </div>
+          ) : null}
         </div>
       </main>
 

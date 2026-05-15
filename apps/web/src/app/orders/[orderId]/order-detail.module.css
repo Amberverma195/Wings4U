@@ -97,6 +97,7 @@
 @media (max-width: 1024px) {
   .mainGrid {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 }
 
@@ -807,6 +808,19 @@
 @media (max-width: 1024px) {
   .rightColumn {
     position: static;
+    order: -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .rightColumn > * {
+    min-width: 0;
+  }
+
+  .rightColumn > :only-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -817,6 +831,16 @@
   padding: 1.5rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
   animation: fadeSlideUp 0.5s ease-out 0.15s both;
+}
+
+.reorderSideCard {
+  display: flex;
+  align-items: stretch;
+}
+
+.reorderSideCard :global(.btn-primary),
+.reorderSideCard :global(.btn-secondary) {
+  width: 100%;
 }
 
 /* Chat card */
@@ -1101,6 +1125,43 @@
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02) !important;
   color: #111827 !important;
   margin-top: 0 !important;
+}
+
+@media (max-width: 1024px) {
+  .rightColumn :global(.surface-card),
+  .reorderSideCard {
+    border-radius: 16px !important;
+    padding: 1rem !important;
+  }
+
+  .reorderSideCard :global(.btn-primary),
+  .reorderSideCard :global(.btn-secondary) {
+    min-height: 100%;
+    padding: 0.85rem 0.75rem;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .rightColumn :global(.surface-card h3) {
+    margin-bottom: 0.55rem !important;
+    font-size: 0.9rem;
+  }
+
+  .rightColumn :global(.order-review-prompt) {
+    gap: 0.55rem;
+  }
+
+  .rightColumn :global(.order-review-prompt-copy) {
+    padding: 0.55rem 0.65rem;
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
+
+  .rightColumn :global(.order-review-prompt-action.btn-primary) {
+    min-height: 40px;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.8rem;
+  }
 }
 
 /* ── Chat overrides inside our light theme ───────────── */

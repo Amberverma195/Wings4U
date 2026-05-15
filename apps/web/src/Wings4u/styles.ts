@@ -23,7 +23,7 @@ export const styles = {
   navLinks: { display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" },
   navActions: { display:"flex", gap:12, alignItems:"center" },
   navBtn: { background:"transparent", border:"1px solid #333", color:"#fff", padding:"5px 14px", borderRadius:4, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:13, letterSpacing:1, transition:"all 0.2s" },
-  navProfileBtn: { background:"rgba(18, 13, 26, 0.72)", border:"1px solid rgba(255,255,255,0.11)", color:"#d8d2df", width:52, height:46, padding:0, borderRadius:14, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", transition:"all 0.2s", boxShadow:"inset 0 1px 0 rgba(255,255,255,0.04)" },
+  navProfileBtn: { background:"rgba(18, 13, 26, 0.72)", border:"1px solid rgba(255,255,255,0.11)", color:"#d8d2df", width:52, height:46, padding:0, borderRadius:10, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", transition:"all 0.2s", boxShadow:"inset 0 1px 0 rgba(255,255,255,0.04)" },
 
   landing: { paddingBottom:0 },
   /* Shorter vertical footprint than full-viewport + center so ORDER NOW / PICK UP stay in view on laptop 100% zoom */
