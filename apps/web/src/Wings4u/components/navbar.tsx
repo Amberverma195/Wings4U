@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FaCartShopping } from "react-icons/fa6";
+import { UserRound } from "lucide-react";
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
 import { useCart } from "@/lib/cart";
 import { useSession } from "@/lib/session";
@@ -46,14 +47,28 @@ export function Navbar() {
       <div style={styles.navActions}>
         {isCustomerSession ? (
           <>
-            <Link href="/account/profile" style={styles.navBtn}>
-              {session.user?.displayName ?? "Account"}
+            <Link
+              href="/account/profile"
+              style={styles.navProfileBtn}
+              aria-label="Open profile"
+              title="Profile"
+            >
+              <UserRound size={18} strokeWidth={1.9} aria-hidden />
             </Link>
           </>
         ) : staffSurfaceHref ? (
           <>
-            <Link href={staffSurfaceHref} style={styles.navBtn}>
-              {session.user?.role === "ADMIN" ? "Admin" : "KDS"}
+            <Link
+              href={staffSurfaceHref}
+              style={styles.navProfileBtn}
+              aria-label={
+                session.user?.role === "ADMIN"
+                  ? "Open admin profile"
+                  : "Open staff profile"
+              }
+              title={session.user?.role === "ADMIN" ? "Admin profile" : "Staff profile"}
+            >
+              <UserRound size={18} strokeWidth={1.9} aria-hidden />
             </Link>
           </>
         ) : (
