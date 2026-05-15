@@ -145,10 +145,13 @@ function AddressesContent() {
                     <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </div>
+                  {/* My Cards is paused while online payments are disabled. */}
+                  {/*
                   <Link href="/account/cards" className={styles.navLink}>
                     <span>My Cards</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
+                  */}
                   <Link href="/account/support" className={styles.navLink}>
                     <span>Support</span>
                     <span className={styles.navLinkArrow}>→</span>

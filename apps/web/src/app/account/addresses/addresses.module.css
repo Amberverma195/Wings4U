@@ -636,11 +636,6 @@
     height: 14px;
   }
 
-  .navLink {
-    padding: 0.4rem 0.65rem;
-    font-size: 0.74rem;
-  }
-
   .navLinkArrow {
     display: none;
   }
@@ -697,23 +692,56 @@
 
   .navLinks {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
     gap: 0.45rem;
     width: 100%;
-    overflow: visible;
-    padding: 1rem 0 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1rem 2.75rem 0.5rem 0.75rem;
+    scroll-padding-inline: 0.75rem;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .navLinksWrapper::before,
+  .navLinksWrapper::after {
+    content: "";
+    position: absolute;
+    top: 0.75rem;
+    bottom: 0;
+    width: 1.75rem;
+    pointer-events: none;
+    z-index: 2;
+    backdrop-filter: blur(1px);
+  }
+
+  .navLinksWrapper::before {
+    left: 0;
+    background: linear-gradient(to right, white 10%, rgba(255, 255, 255, 0));
+  }
+
+  .navLinksWrapper::after {
+    right: 0;
+    background: linear-gradient(to left, white 10%, rgba(255, 255, 255, 0));
+  }
+
+  .navLinks::-webkit-scrollbar {
+    display: none;
   }
 
   .navLink {
     width: auto;
-    min-width: 0;
+    min-width: 5.25rem;
     flex: 0 0 auto;
     padding: 0.45rem 0.85rem;
     font-size: 0.72rem;
     line-height: 1.15;
     text-align: center;
     white-space: nowrap;
+    scroll-snap-align: start;
   }
 
   .navLinkLogout {
@@ -752,5 +780,64 @@
   .addressCard {
     width: 100%;
     padding: 1.25rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .navLinksWrapper {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .navLinksWrapper::before,
+  .navLinksWrapper::after {
+    content: "";
+    position: absolute;
+    top: 0.75rem;
+    bottom: 0;
+    width: 1.75rem;
+    pointer-events: none;
+    z-index: 2;
+    backdrop-filter: blur(1px);
+  }
+
+  .navLinksWrapper::before {
+    left: 0;
+    background: linear-gradient(to right, white 10%, rgba(255, 255, 255, 0));
+  }
+
+  .navLinksWrapper::after {
+    right: 0;
+    background: linear-gradient(to left, white 10%, rgba(255, 255, 255, 0));
+  }
+
+  .navLinks {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 0.45rem;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1rem 2.75rem 0.5rem 0.75rem;
+    scroll-padding-inline: 0.75rem;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .navLinks::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navLink {
+    flex: 0 0 auto;
+    min-width: 5.25rem;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    scroll-snap-align: start;
   }
 }
