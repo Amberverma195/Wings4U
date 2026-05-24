@@ -42,11 +42,12 @@ export function getPublicApiBase(): string {
  * Priority:
  *   1. `NEXT_PUBLIC_REALTIME_ORIGIN` - explicit override for any env.
  *   2. `NEXT_PUBLIC_API_ORIGIN`      - direct API origin (dev default).
- *   3. In dev on localhost:3000      - hard fallback to the Nest API on
- *      localhost:3001. Required because Next's dev `rewrites()` cannot
- *      proxy WebSocket upgrades, and `window.location.origin` would
- *      point at the Next server which can never serve `/ws` over WS.
- *      Without this, a missing `.env.local` silently breaks realtime.
+ *   3. In dev on :3000               - hard fallback to the Nest API on
+ *      the same hostname at :3001. Required because Next's dev
+ *      `rewrites()` cannot proxy WebSocket upgrades, and
+ *      `window.location.origin` would point at the Next server which can
+ *      never serve `/ws` over WS. This includes LAN testing URLs like
+ *      `http://10.0.0.192:3000`, not just localhost.
  *   4. `window.location.origin`      - same-origin fallback (prod behind
  *      a reverse proxy that handles WS upgrades, e.g. nginx / Vercel).
  */
@@ -58,10 +59,15 @@ export function getRealtimeOrigin(): string {
   if (api) return api.replace(/\/$/, "");
 
   if (typeof window !== "undefined") {
-    // Dev safeguard: when the page is served by `next dev` on localhost,
+    // Dev safeguard: when the page is served by `next dev` on port 3000,
     // routing the socket through `window.location.origin` lands on the
     // Next dev server which does not terminate WebSocket upgrades for `/ws`.
-    const { hostname, protocol, origin } = window.location;
+    const { hostname, port, protocol, origin } = window.location;
+    if (process.env.NODE_ENV === "development" && port === "3000") {
+      const scheme = protocol === "https:" ? "https" : "http";
+      return `${scheme}://${hostname}:3001`;
+    }
+
     const isLocalDev =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
     if (isLocalDev) {
