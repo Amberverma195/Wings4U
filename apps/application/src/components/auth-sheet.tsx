@@ -8,7 +8,7 @@
  *   4. If new user (needs_profile_completion), show name form
  *   5. Session refreshes, sheet closes
  */
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -30,9 +30,13 @@ type AuthStep = 'phone' | 'otp' | 'profile';
 export function AuthSheet({
   visible,
   onClose,
+  onComplete,
+  initialStep = 'phone',
 }: {
   visible: boolean;
   onClose: () => void;
+  onComplete?: () => void;
+  initialStep?: Extract<AuthStep, 'phone' | 'profile'>;
 }) {
   const { requestOtp, verifyOtp, updateProfile, loading, error, clearError } = useAuth();
   const [step, setStep] = useState<AuthStep>('phone');
@@ -44,6 +48,11 @@ export function AuthSheet({
   const otpInputRef = useRef<TextInput>(null);
 
   const displayError = localError || error;
+
+  useEffect(() => {
+    if (!visible) return;
+    setStep(initialStep);
+  }, [initialStep, visible]);
 
   const resetState = useCallback(() => {
     setStep('phone');
@@ -110,12 +119,13 @@ export function AuthSheet({
       if (result.needs_profile_completion) {
         setStep('profile');
       } else {
+        onComplete?.();
         handleClose();
       }
     } catch {
       // error is set by the hook
     }
-  }, [otpCode, phone, verifyOtp, clearError, handleClose]);
+  }, [otpCode, phone, verifyOtp, clearError, handleClose, onComplete]);
 
   /* Step 3: Profile completion */
   const handleUpdateProfile = useCallback(async () => {
@@ -130,11 +140,12 @@ export function AuthSheet({
 
     try {
       await updateProfile(fullName.trim(), email.trim() || undefined);
+      onComplete?.();
       handleClose();
     } catch {
       // error is set by the hook
     }
-  }, [fullName, email, updateProfile, clearError, handleClose]);
+  }, [fullName, email, updateProfile, clearError, handleClose, onComplete]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>

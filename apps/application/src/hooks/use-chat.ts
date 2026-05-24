@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { apiJson, apiFetch } from "../lib/api";
+import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { ChatResponse, ChatMessage } from "../lib/types";
 
 export type UseChatResult = {
@@ -43,7 +44,8 @@ export function useChat(orderId: string | null): UseChatResult {
     void (async () => {
       try {
         const envelope = await apiJson<ChatResponse>(
-          `/api/v1/orders/${orderId}/chat`
+          `/api/v1/orders/${orderId}/chat`,
+          { locationId: DEFAULT_LOCATION_ID },
         );
         if (!cancelled && envelope.data) {
           setMessages(envelope.data.messages);
@@ -70,6 +72,7 @@ export function useChat(orderId: string | null): UseChatResult {
       try {
         await apiFetch(`/api/v1/orders/${orderId}/chat`, {
           method: "POST",
+          locationId: DEFAULT_LOCATION_ID,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message_body: body }),
         });

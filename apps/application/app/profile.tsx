@@ -984,8 +984,9 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 }
 
 function OrderRow({ order }: { order: OrderSummary }) {
+  const router = useRouter();
   return (
-    <View style={styles.orderRow}>
+    <TouchableOpacity style={styles.orderRow} onPress={() => router.push(`/orders/${order.id}`)}>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>Order #{order.order_number}</Text>
         <Text style={styles.rowMeta}>
@@ -993,7 +994,7 @@ function OrderRow({ order }: { order: OrderSummary }) {
         </Text>
       </View>
       <Text style={styles.amount}>{cents(order.final_payable_cents)}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 

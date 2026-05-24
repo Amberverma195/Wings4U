@@ -364,10 +364,16 @@ export default function CartScreen() {
               >
                 <Text style={styles.secondaryButtonText}>Add more</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.clearButton} onPress={cart.clear}>
-                <Text style={styles.clearButtonText}>Clear cart</Text>
+              <TouchableOpacity
+                style={styles.checkoutButton}
+                onPress={() => router.push("/checkout")}
+              >
+                <Text style={styles.checkoutButtonText}>Checkout</Text>
               </TouchableOpacity>
             </View>
+            <TouchableOpacity style={styles.clearButton} onPress={cart.clear}>
+              <Text style={styles.clearButtonText}>Clear cart</Text>
+            </TouchableOpacity>
           </>
         )}
       </ScrollView>
@@ -628,7 +634,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   clearButton: {
-    width: 112,
+    marginTop: 10,
     height: 48,
     borderRadius: 12,
     alignItems: "center",
@@ -638,5 +644,17 @@ const styles = StyleSheet.create({
   clearButtonText: {
     color: "#FF4D4D",
     fontWeight: "800",
+  },
+  checkoutButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FF4D4D",
+  },
+  checkoutButtonText: {
+    color: "#FFF",
+    fontWeight: "900",
   },
 });

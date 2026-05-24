@@ -40,6 +40,18 @@ export default function RootLayout() {
                 title: "Cart",
               }}
             />
+            <Stack.Screen
+              name="checkout"
+              options={{
+                title: "Checkout",
+              }}
+            />
+            <Stack.Screen
+              name="orders/[id]"
+              options={{
+                title: "Track Order",
+              }}
+            />
           </Stack>
           <StatusBar style="auto" />
         </CartProvider>

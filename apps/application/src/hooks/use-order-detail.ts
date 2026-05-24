@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { apiJson } from "../lib/api";
+import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { OrderDetail } from "../lib/types";
 
 export type UseOrderDetailResult = {
@@ -37,7 +38,8 @@ export function useOrderDetail(orderId: string | null): UseOrderDetailResult {
     void (async () => {
       try {
         const envelope = await apiJson<OrderDetail>(
-          `/api/v1/orders/${orderId}`
+          `/api/v1/orders/${orderId}`,
+          { locationId: DEFAULT_LOCATION_ID },
         );
         if (!cancelled && envelope.data) {
           setOrder(envelope.data);

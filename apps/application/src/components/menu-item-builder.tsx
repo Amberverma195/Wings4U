@@ -107,13 +107,8 @@ function initialSelections(groups: ModifierGroup[]): SelectionMap {
   const next: SelectionMap = {};
   for (const group of groups) {
     const defaults = group.options.filter((option) => option.is_default);
-    const requiredCount = Math.max(group.min_select, group.is_required ? 1 : 0);
     const max = group.max_select ?? group.options.length;
     const picked = defaults.slice(0, max).map((option) => option.id);
-    for (const option of group.options) {
-      if (picked.length >= requiredCount || picked.length >= max) break;
-      if (!picked.includes(option.id)) picked.push(option.id);
-    }
     next[group.id] = group.selection_mode === "SINGLE" ? picked.slice(0, 1) : picked;
   }
   return next;

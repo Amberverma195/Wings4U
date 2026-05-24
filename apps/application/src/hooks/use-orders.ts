@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { apiJson } from "../lib/api";
+import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { OrderSummary } from "../lib/types";
 
 export type UseOrdersResult = {
@@ -31,7 +32,8 @@ export function useOrders(): UseOrdersResult {
     void (async () => {
       try {
         const envelope = await apiJson<{ orders: OrderSummary[] }>(
-          "/api/v1/orders/me"
+          "/api/v1/orders/customer",
+          { locationId: DEFAULT_LOCATION_ID },
         );
         if (!cancelled && envelope.data) {
           setOrders(envelope.data.orders);
