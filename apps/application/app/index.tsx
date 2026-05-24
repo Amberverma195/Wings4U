@@ -12,12 +12,14 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { ShoppingBag, Clock, MapPin, ChevronRight, Flame, AlertCircle, User } from 'lucide-react-native';
 import { useMenu } from '../src/hooks/use-menu';
-import { useAuth } from '../src/hooks/use-auth';
 import { useSession } from '../src/context/session';
+import { useCart } from '../src/context/cart';
 import { AuthSheet } from '../src/components/auth-sheet';
-import type { MenuCategory, MenuItem, FulfillmentType } from '../src/lib/types';
+import { MenuItemBuilder } from '../src/components/menu-item-builder';
+import type { MenuCategory, MenuItem } from '../src/lib/types';
 
 const { width } = Dimensions.get('window');
 
@@ -101,13 +103,15 @@ function sortCategories(categories: MenuCategory[]): MenuCategory[] {
 /* ------------------------------------------------------------------ */
 
 export default function Home() {
-  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>('PICKUP');
+  const cart = useCart();
+  const fulfillmentType = cart.fulfillmentType;
   const { menu, loading, error, refetch } = useMenu(fulfillmentType);
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const session = useSession();
-  const { logout } = useAuth();
+  const router = useRouter();
 
   const sortedCategories = useMemo(() => {
     if (!menu) return [];
@@ -134,9 +138,12 @@ export default function Home() {
   }, []);
 
   const toggleFulfillment = useCallback(() => {
-    setFulfillmentType((prev) => (prev === 'PICKUP' ? 'DELIVERY' : 'PICKUP'));
+    cart.setFulfillmentType(fulfillmentType === 'PICKUP' ? 'DELIVERY' : 'PICKUP');
+    if (fulfillmentType === 'DELIVERY') {
+      cart.setDriverTipPercent('none');
+    }
     setActiveCategorySlug(null);
-  }, []);
+  }, [cart, fulfillmentType]);
 
   /* Greeting based on time of day */
   const greeting = useMemo(() => {
@@ -201,7 +208,7 @@ export default function Home() {
           <View style={styles.headerActions}>
             {/* Auth button */}
             {session.authenticated ? (
-              <TouchableOpacity style={styles.authAvatarBtn} onPress={logout}>
+              <TouchableOpacity style={styles.authAvatarBtn} onPress={() => router.push('/profile')}>
                 <User size={18} color="#FFF" />
               </TouchableOpacity>
             ) : (
@@ -210,15 +217,27 @@ export default function Home() {
               </TouchableOpacity>
             )}
             {/* Cart button */}
-            <TouchableOpacity style={styles.cartButton}>
+            <TouchableOpacity style={styles.cartButton} onPress={() => router.push('/cart')}>
               <ShoppingBag size={24} color="#000" />
-              <View style={styles.cartBadge} />
+              {cart.itemCount > 0 ? (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>
+                    {cart.itemCount > 9 ? '9+' : cart.itemCount}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Auth Sheet Modal */}
         <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} />
+        <MenuItemBuilder
+          visible={Boolean(selectedItem)}
+          item={selectedItem}
+          categories={sortedCategories}
+          onClose={() => setSelectedItem(null)}
+        />
 
         {/* Location Bar */}
         <TouchableOpacity style={styles.locationBar}>
@@ -316,6 +335,7 @@ export default function Home() {
                   key={item.id}
                   item={item}
                   categorySlug={activeCategory.slug}
+                  onPress={() => setSelectedItem(item)}
                 />
               ))
             )}
@@ -332,7 +352,15 @@ export default function Home() {
 /*  Menu Item Card                                                     */
 /* ------------------------------------------------------------------ */
 
-function MenuItemCard({ item, categorySlug }: { item: MenuItem; categorySlug: string }) {
+function MenuItemCard({
+  item,
+  categorySlug,
+  onPress,
+}: {
+  item: MenuItem;
+  categorySlug: string;
+  onPress: () => void;
+}) {
   const emoji = emojiForCategorySlug(categorySlug);
   const isUnavailable = item.stock_status === 'UNAVAILABLE';
   const isLowStock = item.stock_status === 'LOW_STOCK';
@@ -354,6 +382,7 @@ function MenuItemCard({ item, categorySlug }: { item: MenuItem; categorySlug: st
       style={[styles.itemCard, isUnavailable && styles.itemCardUnavailable]}
       disabled={isUnavailable}
       activeOpacity={0.7}
+      onPress={onPress}
     >
       {/* Image or emoji placeholder */}
       {hasImage ? (
@@ -493,14 +522,23 @@ const styles = StyleSheet.create({
   },
   cartBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 10,
-    height: 10,
+    top: 8,
+    right: 6,
+    minWidth: 18,
+    height: 18,
     backgroundColor: '#FF4D4D',
-    borderRadius: 5,
+    borderRadius: 9,
     borderWidth: 2,
     borderColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  cartBadgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 10,
   },
   headerActions: {
     flexDirection: 'row',

@@ -319,7 +319,13 @@ export class AuthController {
         result.refreshToken,
         result.csrfToken,
       );
-      return { refreshed: true };
+      return {
+        refreshed: true,
+        // Native mobile clients cannot read httpOnly cookies, so they need the
+        // rotated tokens in the response body.
+        access_token: result.accessToken,
+        refresh_token: result.refreshToken,
+      };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         clearAuthCookies(res);
