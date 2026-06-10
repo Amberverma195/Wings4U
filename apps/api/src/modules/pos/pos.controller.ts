@@ -4,7 +4,6 @@ import {
   Get,
   Param,
   Post,
-  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -29,6 +28,7 @@ import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { PosStationGuard } from "../../common/guards/pos-station.guard";
 import { Public } from "../../common/decorators/roles.decorator";
+import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
 import { PosService } from "./pos.service";
 
 class PosModifierSelectionDto {
@@ -156,6 +156,24 @@ class ApplyManualDiscountDto {
   description?: string;
 }
 
+class PosRewardsLookupDto {
+  @IsString()
+  @MaxLength(32)
+  phone!: string;
+}
+
+class PosRewardsIssueDto extends PosRewardsLookupDto {
+  @IsInt()
+  @Min(1)
+  @Max(STAMPS_PER_REWARD)
+  stamps!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  reason?: string;
+}
+
 /**
  * POS business endpoints.
  *
@@ -219,9 +237,18 @@ export class PosController {
     return this.posService.listStaff(req.locationId!);
   }
 
-  @Get("customer-lookup")
-  async lookupCustomer(@Query("phone") phone: string) {
-    return this.posService.lookupCustomer(phone);
+  @Post("rewards/customer")
+  async lookupRewardsCustomer(@Body() body: PosRewardsLookupDto) {
+    return this.posService.lookupRewardsCustomerByPhone(body.phone);
+  }
+
+  @Post("rewards/issue")
+  async issueRewardsStamps(@Body() body: PosRewardsIssueDto) {
+    return this.posService.issueRewardsStampsByPhone({
+      phone: body.phone,
+      stamps: body.stamps,
+      reason: body.reason,
+    });
   }
 
   @Post("orders/:id/discounts")

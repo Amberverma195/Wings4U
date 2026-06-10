@@ -32,6 +32,7 @@ import {
   throwScheduleViolations,
   type ValidationMenuItem,
 } from "../shared/order-validation";
+import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
 
 type RemovableIngredientRow = {
   id: string;
@@ -121,6 +122,12 @@ interface ApplyManualDiscountParams {
   discountAmountCents: number;
   reason: string;
   description?: string;
+}
+
+interface IssueRewardsStampsParams {
+  phone: string;
+  stamps: number;
+  reason?: string;
 }
 
 /**
@@ -222,6 +229,88 @@ export class PosService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
   ) {}
+
+  private phoneCandidates(phone: string): string[] {
+    const raw = phone.trim();
+    const digits = raw.replace(/\D/g, "");
+    const candidates = [raw];
+
+    if (digits) {
+      candidates.push(digits, `+${digits}`);
+      if (digits.length === 10) {
+        candidates.push(`+1${digits}`);
+      }
+      if (digits.length === 11 && digits.startsWith("1")) {
+        const withoutCountryCode = digits.slice(1);
+        candidates.push(withoutCountryCode, `+1${withoutCountryCode}`);
+      }
+    }
+
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
+
+  private async findCustomerIdentityByPhone(phone: string) {
+    const candidates = this.phoneCandidates(phone);
+    if (candidates.length === 0) {
+      throw new BadRequestException("Customer phone number is required");
+    }
+
+    return this.prisma.userIdentity.findFirst({
+      where: {
+        phoneE164: { in: candidates },
+        user: {
+          role: "CUSTOMER",
+          isActive: true,
+          archivedAt: null,
+        },
+      },
+      select: {
+        phoneE164: true,
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+  }
+
+  private rewardsPayload(summary: {
+    availableStamps: number;
+    lifetimeStamps: number;
+    lifetimeRedemptions: number;
+    updatedAt: Date;
+  }) {
+    return {
+      available_stamps: summary.availableStamps,
+      total_stamps: summary.availableStamps,
+      lifetime_stamps: summary.lifetimeStamps,
+      lifetime_redemptions: summary.lifetimeRedemptions,
+      stamps_per_reward: STAMPS_PER_REWARD,
+      updated_at: summary.updatedAt,
+    };
+  }
+
+  private customerRewardsPayload(
+    identity: NonNullable<
+      Awaited<ReturnType<PosService["findCustomerIdentityByPhone"]>>
+    >,
+    summary: Parameters<PosService["rewardsPayload"]>[0],
+  ) {
+    return {
+      customer: {
+        id: identity.user.id,
+        display_name: identity.user.displayName,
+        first_name: identity.user.firstName,
+        last_name: identity.user.lastName,
+        phone: identity.phoneE164,
+      },
+      rewards: this.rewardsPayload(summary),
+    };
+  }
 
   async createPosOrder(params: CreatePosOrderParams) {
     const result = await this.prisma.$transaction(async (tx) => {
@@ -1166,35 +1255,84 @@ export class PosService {
     }));
   }
 
-  async lookupCustomer(phone: string) {
-    const digits = phone.replace(/\D/g, "");
-    if (!digits) return null;
+  async lookupRewardsCustomerByPhone(phone: string) {
+    const identity = await this.findCustomerIdentityByPhone(phone);
+    if (!identity) {
+      return { found: false };
+    }
 
-    // Search multiple possible formats to be resilient to data entry variations
-    const identities = await this.prisma.userIdentity.findMany({
-      where: {
-        OR: [
-          { phoneE164: digits },
-          { phoneE164: `+1${digits}` },
-          { phoneE164: `+${digits}` },
-        ],
-      },
-      include: {
-        user: true,
-      },
+    const summary = await this.prisma.customerWingsRewards.upsert({
+      where: { customerUserId: identity.user.id },
+      update: {},
+      create: { customerUserId: identity.user.id },
     });
 
-    const identity = identities.find((id) => id.user?.role === "CUSTOMER");
-
-    if (identity?.user) {
-      return {
-        id: identity.user.id,
-        display_name: identity.user.displayName,
-        first_name: identity.user.firstName,
-        last_name: identity.user.lastName,
-        phone: identity.phoneE164,
-      };
-    }
-    return null;
+    return {
+      found: true,
+      ...this.customerRewardsPayload(identity, summary),
+    };
   }
+
+  async issueRewardsStampsByPhone(params: IssueRewardsStampsParams) {
+    if (!Number.isInteger(params.stamps) || params.stamps <= 0) {
+      throw new BadRequestException("Stamp amount must be a positive number");
+    }
+
+    const identity = await this.findCustomerIdentityByPhone(params.phone);
+    if (!identity) {
+      throw new NotFoundException("No customer found for that phone number");
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const summary = await tx.customerWingsRewards.upsert({
+        where: { customerUserId: identity.user.id },
+        update: {},
+        create: { customerUserId: identity.user.id },
+      });
+
+      const room = STAMPS_PER_REWARD - summary.availableStamps;
+      if (room <= 0) {
+        throw new BadRequestException(
+          "Customer already has enough stamps for a reward",
+        );
+      }
+      if (params.stamps > room) {
+        throw new BadRequestException(
+          `Customer can receive at most ${room} more stamp${room === 1 ? "" : "s"} before redeeming`,
+        );
+      }
+
+      const updated = await tx.customerWingsRewards.update({
+        where: { customerUserId: identity.user.id },
+        data: {
+          availableStamps: { increment: params.stamps },
+          lifetimeStamps: { increment: params.stamps },
+        },
+      });
+
+      const reason = params.reason?.trim();
+      await tx.customerWingsStampLedger.create({
+        data: {
+          customerUserId: identity.user.id,
+          orderId: null,
+          entryType: "EARNED",
+          deltaStamps: params.stamps,
+          balanceAfterStamps: updated.availableStamps,
+          poundsAwarded: null,
+          reasonText: reason
+            ? `POS manual stamp issue: ${reason}`
+            : `POS manual stamp issue (${params.stamps} stamp${params.stamps === 1 ? "" : "s"})`,
+        },
+      });
+
+      return updated;
+    });
+
+    return {
+      found: true,
+      issued_stamps: params.stamps,
+      ...this.customerRewardsPayload(identity, result),
+    };
+  }
+
 }

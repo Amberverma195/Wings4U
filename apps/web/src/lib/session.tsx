@@ -97,11 +97,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [data, setData] = useState<SessionApiResponse>(SIGNED_OUT_SESSION);
 
-  // KDS is excluded from this list because it uses station password access
-  // instead of redirecting to /auth/login.
+  // KDS and POS use station password access instead of redirecting to
+  // /auth/login. Their server layouts perform the store-network gate first.
   const isProtectedSurface =
-    pathname?.startsWith("/admin") === true ||
-    pathname?.startsWith("/pos") === true;
+    pathname?.startsWith("/admin") === true;
 
   const applySignedOut = useCallback(() => {
     setData(SIGNED_OUT_SESSION);

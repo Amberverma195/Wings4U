@@ -75,6 +75,33 @@ type PosOrder = {
   items?: any[];
 };
 
+type PosRewardsCustomer = {
+  id: string;
+  display_name: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+};
+
+type PosRewardsSummary = {
+  available_stamps: number;
+  total_stamps: number;
+  lifetime_stamps: number;
+  lifetime_redemptions: number;
+  stamps_per_reward: number;
+  updated_at: string;
+};
+
+type PosRewardsLookupResponse = {
+  found: boolean;
+  customer?: PosRewardsCustomer;
+  rewards?: PosRewardsSummary;
+};
+
+type PosRewardsIssueResponse = PosRewardsLookupResponse & {
+  issued_stamps: number;
+};
+
 type Envelope<T> = { data?: T; errors?: { message: string }[] | null };
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
@@ -433,6 +460,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [showEmployeeDiscountModal, setShowEmployeeDiscountModal] = useState(false);
   const [showCustomDiscountModal, setShowCustomDiscountModal] = useState(false);
   const [showOpenFoodModal, setShowOpenFoodModal] = useState(false);
+  const [showIssueStampsModal, setShowIssueStampsModal] = useState(false);
   const [showCashModal, setShowCashModal] = useState(false);
   const [appliedDiscount, setAppliedDiscount] = useState<{
     label: string;
@@ -451,11 +479,8 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [showOrdersModal, setShowOrdersModal] = useState(false);
   const [ordersSearchQuery, setOrdersSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null);
-  const [showCustomerLookupModal, setShowCustomerLookupModal] = useState(false);
   const [showSpecialInstructionsModal, setShowSpecialInstructionsModal] = useState(false);
   const [staff, setStaff] = useState<Array<{ user_id: string; display_name: string }>>([]);
-  const [customerFound, setCustomerFound] = useState<any | null>(null);
-  const [lookupError, setLookupError] = useState<string | null>(null);
   const posDeliveryUnavailableMessage =
     menu?.location.delivery_currently_available === false
       ? menu.location.delivery_unavailable_reason ||
@@ -598,38 +623,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
       socket.disconnect();
     };
   }, []);
-
-  /* ---------- Customer Lookup ---------- */
-
-  const performLookup = useCallback(async (phone: string) => {
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length !== 10) {
-      setCustomerFound(null);
-      setLookupError(null);
-      return;
-    }
-    try {
-      const data = await posJson<any>(
-        `/api/v1/pos/customer-lookup?phone=${encodeURIComponent(phone)}`,
-        { locationId: DEFAULT_LOCATION_ID },
-      );
-      if (data) {
-        setCustomerFound(data);
-        setCustomerName(data.display_name);
-        setLookupError(null);
-      } else {
-        setCustomerFound(null);
-        setLookupError("No User");
-      }
-    } catch (err) {
-      console.error("Lookup failed", err);
-      setLookupError(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void performLookup(customerPhone);
-  }, [customerPhone, performLookup]);
 
   /* ---------- Cart management ---------- */
 
@@ -793,8 +786,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setOrderNotes("");
     setCustomerName("");
     setCustomerPhone("");
-    setCustomerFound(null);
-    setLookupError(null);
     setAppliedDiscount(null);
     setPlaceError(null);
     setPlaceSuccess(null);
@@ -955,7 +946,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
       }
       if (customerName.trim()) payload.customer_name = customerName.trim();
       if (customerPhone.trim()) payload.customer_phone = customerPhone.trim();
-      if (customerFound) payload.customer_id = customerFound.id;
       if (
         finalAmountTenderedCents != null &&
         Number.isFinite(finalAmountTenderedCents)
@@ -995,7 +985,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     cart,
     customerName,
     customerPhone,
-    customerFound,
     discountCents,
     fulfillmentType,
     loadOrders,
@@ -1216,65 +1205,29 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
             ) : null}
 
             <div className="pos-customer-fields" style={{ marginBottom: "0.75rem" }}>
-              {customerFound ? (
-                <div className="pos-customer-profile-card">
-                  <div className="pos-customer-profile-info">
-                    <strong>{customerFound.display_name}</strong>
-                    <span>{customerPhone}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="pos-customer-change-btn"
-                    onClick={() => {
-                      setCustomerFound(null);
-                      setCustomerName("");
-                      setCustomerPhone("");
-                      setLookupError(null);
-                    }}
-                  >
-                    Change
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <label className="pos-field">
-                    CUSTOMER NAME
-                    <input
-                      type="text"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Optional"
-                      autoComplete="off"
-                    />
-                  </label>
-                  {orderSource === "PHONE" && (
-                    <label className="pos-field">
-                      {fulfillmentType === "DELIVERY" ? "PHONE (REQUIRED FOR DELIVERY)" : "PHONE"}{" "}
-                      {lookupError && (
-                        <span
-                          style={{
-                            color: "var(--pos-accent)",
-                            fontSize: "0.7rem",
-                            marginLeft: "0.5rem",
-                            fontWeight: 900,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          ({lookupError})
-                        </span>
-                      )}
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        value={customerPhone}
-                        onChange={(e) => updatePhone(e.target.value)}
-                        placeholder="(519) 000-0000"
-                        autoComplete="off"
-                        required={fulfillmentType === "DELIVERY"}
-                      />
-                    </label>
-                  )}
-                </>
+              <label className="pos-field">
+                CUSTOMER NAME
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Optional"
+                  autoComplete="off"
+                />
+              </label>
+              {orderSource === "PHONE" && (
+                <label className="pos-field">
+                  {fulfillmentType === "DELIVERY" ? "PHONE (REQUIRED FOR DELIVERY)" : "PHONE"}
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={customerPhone}
+                    onChange={(e) => updatePhone(e.target.value)}
+                    placeholder="(519) 000-0000"
+                    autoComplete="off"
+                    required={fulfillmentType === "DELIVERY"}
+                  />
+                </label>
               )}
             </div>
             {currentOrderId && (
@@ -1596,21 +1549,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                     });
                     return;
                   }
-                  setShowCustomerLookupModal(true);
-                }}
-              >
-                CUST Lookup
-              </button>
-              <button
-                type="button"
-                className="pos-btn pos-nav-btn"
-                onClick={() => {
-                  if (cart.length === 0) {
-                    toast.error("No open order", {
-                      description: "Add items to the cart first.",
-                    });
-                    return;
-                  }
                   setShowSpecialInstructionsModal(true);
                 }}
               >
@@ -1891,6 +1829,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
               setShowStaffModal(false);
               setShowOpenFoodModal(true);
             }}
+            onIssueStamps={() => {
+              setShowStaffModal(false);
+              setShowIssueStampsModal(true);
+            }}
           />
         )}
 
@@ -1899,6 +1841,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
             onClose={() => setShowOpenFoodModal(false)}
             onDone={handleOpenFood}
           />
+        )}
+
+        {showIssueStampsModal && (
+          <IssueStampsModal onClose={() => setShowIssueStampsModal(false)} />
         )}
 
         {showCustomDiscountModal && (
@@ -2025,17 +1971,6 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
           />
         ) : null}
 
-        {showCustomerLookupModal && (
-          <CustomerLookupModal
-            onClose={() => setShowCustomerLookupModal(false)}
-            onSelect={(c) => {
-              setCustomerFound(c);
-              setCustomerName(c.display_name);
-              setCustomerPhone(c.phone);
-              setLookupError(null);
-            }}
-          />
-        )}
         {showSpecialInstructionsModal && (
           <SpecialInstructionsModal
             notes={orderNotes}
@@ -2201,7 +2136,7 @@ function ModifierPicker({
             onClick={onClose}
             aria-label="Close"
           >
-            ×
+            &times;
           </button>
         </div>
 
@@ -2359,7 +2294,7 @@ function ManualDiscountModal({
             onClick={onClose}
             aria-label="Close"
           >
-            ×
+            &times;
           </button>
         </div>
 
@@ -2423,113 +2358,6 @@ function ManualDiscountModal({
 }
 
 /* ================================================================== */
-/*  Customer Lookup Modal                                              */
-/* ================================================================== */
-
-function CustomerLookupModal({
-  onClose,
-  onSelect,
-}: {
-  onClose: () => void;
-  onSelect: (c: any) => void;
-}) {
-  const [phone, setPhone] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handlePhoneChange = (val: string) => {
-    const digits = val.replace(/\D/g, "").slice(0, 10);
-    setPhone(digits);
-  };
-
-  const displayPhone = useMemo(() => {
-    if (!phone) return "";
-    if (phone.length <= 3) return phone;
-    if (phone.length <= 6) return `(${phone.slice(0, 3)}) ${phone.slice(3)}`;
-    return `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6, 10)}`;
-  }, [phone]);
-
-  const handleSearch = async () => {
-    if (phone.length !== 10) {
-      setError("Please enter a valid 10-digit phone number");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await posJson<any>(
-        `/api/v1/pos/customer-lookup?phone=${encodeURIComponent(phone)}`,
-        { locationId: DEFAULT_LOCATION_ID },
-      );
-      if (data) {
-        onSelect(data);
-        onClose();
-      } else {
-        setError("No customer found with this number");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      className="pos-modal-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="pos-modal pos-modal--small">
-        <div className="pos-modal-header pos-modal-header--centered">
-          <h3>Customer Lookup</h3>
-          <button
-            type="button"
-            className="pos-modal-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="pos-modal-body pos-modal-body--centered">
-          <div className="pos-field pos-field--centered">
-            <label>Customer Phone (Required)</label>
-            <input
-              type="tel"
-              value={displayPhone}
-              onChange={(e) => handlePhoneChange(e.target.value)}
-              placeholder="(519) 000-0000"
-              autoFocus
-            />
-          </div>
-
-          <div className="pos-modal-actions">
-            <button
-              type="button"
-              className="pos-btn pos-btn--primary pos-btn--rounded pos-btn--small"
-              onClick={() => void handleSearch()}
-              disabled={busy || phone.length !== 10}
-            >
-              {busy ? "Searching..." : "Search"}
-            </button>
-          </div>
-
-          {error ? (
-            <div
-              className="pos-cart-message"
-              style={{ marginTop: "0.5rem", color: "#ef4444" }}
-            >
-              {error}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
 /*  Special Instructions Modal                                         */
 /* ================================================================== */
 
@@ -2558,7 +2386,7 @@ function SpecialInstructionsModal({
             onClick={onClose}
             aria-label="Close"
           >
-            ×
+            &times;
           </button>
         </div>
 
@@ -2601,12 +2429,14 @@ function StaffModal({
   onEmployeeDiscount,
   onCustomDiscount,
   onOpenFood,
+  onIssueStamps,
 }: {
   onClose: () => void;
   onOpenDrawer: () => void;
   onEmployeeDiscount: () => void;
   onCustomDiscount: () => void;
   onOpenFood: () => void;
+  onIssueStamps: () => void;
 }) {
   return (
     <div
@@ -2617,7 +2447,7 @@ function StaffModal({
         <div className="pos-modal-header pos-modal-header--centered">
           <h3>Staff Functions</h3>
           <button type="button" className="pos-modal-close" onClick={onClose}>
-            ×
+            &times;
           </button>
         </div>
         <div
@@ -2665,6 +2495,276 @@ function StaffModal({
               </small>
             </div>
           </button>
+          <button className="pos-staff-opt" onClick={onIssueStamps}>
+            <span style={{ fontSize: "1.15rem", fontWeight: 900 }}>ST</span>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <strong>Issue Stamps</strong>
+              <small style={{ opacity: 0.6, fontSize: "0.8rem" }}>
+                Credit customer rewards
+              </small>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IssueStampsModal({ onClose }: { onClose: () => void }) {
+  const [phone, setPhone] = useState("");
+  const [stampCount, setStampCount] = useState("1");
+  const [reason, setReason] = useState("");
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [issueBusy, setIssueBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [result, setResult] = useState<PosRewardsLookupResponse | null>(null);
+
+  const phoneDigits = phone.replace(/\D/g, "");
+  const customer = result?.found ? result.customer : null;
+  const rewards = result?.found ? result.rewards : null;
+  const room = rewards
+    ? Math.max(0, rewards.stamps_per_reward - rewards.available_stamps)
+    : 0;
+
+  const updatePhone = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) {
+      formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    } else if (digits.length > 3) {
+      formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    } else if (digits.length > 0) {
+      formatted = `(${digits}`;
+    }
+    setPhone(formatted);
+    setResult(null);
+    setSuccess(null);
+    setError(null);
+  };
+
+  const lookupCustomer = async () => {
+    if (phoneDigits.length !== 10) {
+      setError("Enter a valid 10-digit customer phone number.");
+      setResult(null);
+      return;
+    }
+
+    setLookupBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const data = await posJson<PosRewardsLookupResponse>(
+        "/api/v1/pos/rewards/customer",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone }),
+          locationId: DEFAULT_LOCATION_ID,
+        },
+      );
+      setResult(data);
+      if (!data.found) {
+        setError("No customer found for that phone number.");
+      }
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : "Customer lookup failed");
+    } finally {
+      setLookupBusy(false);
+    }
+  };
+
+  const issueStamps = async () => {
+    if (!customer || !rewards) {
+      setError("Find a customer before issuing stamps.");
+      return;
+    }
+
+    const stamps = Number.parseInt(stampCount, 10);
+    if (!Number.isInteger(stamps) || stamps <= 0) {
+      setError("Enter the number of stamps to issue.");
+      return;
+    }
+    if (stamps > room) {
+      setError(
+        room > 0
+          ? `This customer can receive up to ${room} more stamp${room === 1 ? "" : "s"} before redeeming.`
+          : "This customer already has enough stamps for a reward.",
+      );
+      return;
+    }
+
+    setIssueBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const data = await posJson<PosRewardsIssueResponse>(
+        "/api/v1/pos/rewards/issue",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone,
+            stamps,
+            reason: reason.trim() || undefined,
+          }),
+          locationId: DEFAULT_LOCATION_ID,
+        },
+      );
+      setResult(data);
+      setStampCount("1");
+      setReason("");
+      setSuccess(
+        `Issued ${data.issued_stamps} stamp${data.issued_stamps === 1 ? "" : "s"}. New total ${data.rewards?.available_stamps ?? 0}/${data.rewards?.stamps_per_reward ?? 8}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not issue stamps");
+    } finally {
+      setIssueBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="pos-modal-overlay"
+      onClick={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div className="pos-modal pos-modal--small">
+        <div className="pos-modal-header pos-modal-header--centered">
+          <h3>Issue Stamps</h3>
+          <button
+            type="button"
+            className="pos-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div
+          className="pos-modal-body"
+          style={{
+            padding: "1.5rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1rem",
+          }}
+        >
+          <label className="pos-field">
+            Customer Phone
+            <input
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(event) => updatePhone(event.target.value)}
+              placeholder="(519) 000-0000"
+              autoFocus
+            />
+          </label>
+
+          <button
+            type="button"
+            className="pos-btn pos-btn--primary"
+            onClick={() => void lookupCustomer()}
+            disabled={lookupBusy || phoneDigits.length !== 10}
+          >
+            {lookupBusy ? "Searching..." : "Find Customer"}
+          </button>
+
+          {customer && rewards ? (
+            <div
+              style={{
+                border: "1px solid var(--pos-border)",
+                borderRadius: "10px",
+                background: "#222",
+                padding: "1rem",
+                display: "grid",
+                gap: "0.75rem",
+              }}
+            >
+              <div>
+                <strong style={{ display: "block", color: "#fff" }}>
+                  {customer.display_name}
+                </strong>
+                <span style={{ color: "var(--pos-text-muted)" }}>
+                  {customer.phone ?? phone}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "0.75rem",
+                }}
+              >
+                <div>
+                  <span style={{ color: "var(--pos-text-muted)", fontSize: "0.75rem" }}>
+                    Available
+                  </span>
+                  <strong style={{ display: "block", fontSize: "1.35rem" }}>
+                    {rewards.available_stamps}/{rewards.stamps_per_reward}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--pos-text-muted)", fontSize: "0.75rem" }}>
+                    Lifetime
+                  </span>
+                  <strong style={{ display: "block", fontSize: "1.35rem" }}>
+                    {rewards.lifetime_stamps}
+                  </strong>
+                </div>
+              </div>
+
+              <label className="pos-field">
+                Stamps to Issue
+                <input
+                  type="number"
+                  min="1"
+                  max={Math.max(1, room)}
+                  step="1"
+                  value={stampCount}
+                  onChange={(event) => setStampCount(event.target.value)}
+                  disabled={room <= 0}
+                />
+              </label>
+              <label className="pos-field">
+                Reason
+                <input
+                  type="text"
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Optional note"
+                  disabled={room <= 0}
+                />
+              </label>
+              {room <= 0 ? (
+                <div style={{ color: "var(--pos-accent)", fontWeight: 800 }}>
+                  Reward is ready. Redeem before issuing more stamps.
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="pos-btn pos-btn--primary"
+                onClick={() => void issueStamps()}
+                disabled={issueBusy || room <= 0}
+              >
+                {issueBusy ? "Issuing..." : "Issue Stamps"}
+              </button>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="pos-cart-message" style={{ color: "#ef4444" }}>
+              {error}
+            </div>
+          ) : null}
+          {success ? (
+            <div className="pos-cart-message" style={{ color: "#10b981" }}>
+              {success}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -2690,7 +2790,7 @@ function EmployeeDiscountModal({
         <div className="pos-modal-header pos-modal-header--centered">
           <h3>Select Employee</h3>
           <button type="button" className="pos-modal-close" onClick={onClose}>
-            ×
+            &times;
           </button>
         </div>
         <div
@@ -2748,7 +2848,7 @@ function CustomDiscountModal({
         <div className="pos-modal-header pos-modal-header--centered">
           <h3>Apply Discount</h3>
           <button type="button" className="pos-modal-close" onClick={onClose}>
-            ×
+            &times;
           </button>
         </div>
         <div
@@ -2937,7 +3037,7 @@ function OpenFoodModal({
             onClick={onClose}
             aria-label="Close"
           >
-            ×
+            &times;
           </button>
         </div>
         <div
