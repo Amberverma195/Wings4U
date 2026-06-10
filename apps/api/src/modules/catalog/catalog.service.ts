@@ -3,6 +3,9 @@ import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import { getDeliveryAvailability } from "../../common/utils/delivery-availability";
 import { getDeliveryEligibilityForCustomer } from "../customers/no-show-policy";
+import { CatalogCacheService } from "./catalog-cache.service";
+
+export type CatalogFulfillmentType = "PICKUP" | "DELIVERY";
 
 type LocationCatalogPayload = Prisma.LocationGetPayload<{
   include: {
@@ -105,6 +108,14 @@ type SerializedMenuItem = {
   builder_sku_map?: Record<string, string>;
 };
 
+type SerializedMenuCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  sort_order: number;
+  items: SerializedMenuItem[];
+};
+
 function getLocationLocalDate(referenceDate: Date, locationTz: string): Date {
   let localStr: string;
   try {
@@ -193,6 +204,53 @@ function serializeLocationHours(hours: LocationCatalogPayload["hours"]) {
     };
   });
 }
+
+type SerializedLocationHours = ReturnType<typeof serializeLocationHours>;
+
+export type CatalogMenuBasePayload = {
+  categories: SerializedMenuCategory[];
+  location: {
+    id: string;
+    name: string;
+    timezone: string;
+    is_open: boolean;
+    busy_mode: boolean;
+    estimated_prep_minutes: number;
+    delivery_fee_cents: number;
+    tax_rate_bps: number;
+    free_delivery_threshold_cents: number | null;
+    minimum_delivery_subtotal_cents: number;
+    delivery_disabled: boolean;
+    delivery_available_from_minutes: number | null;
+    delivery_available_until_minutes: number | null;
+    delivery_currently_available: boolean;
+    delivery_unavailable_reason: string | null;
+    pickup_min_minutes: number;
+    pickup_max_minutes: number;
+    delivery_min_minutes: number;
+    delivery_max_minutes: number;
+    prepayment_threshold_no_shows: number;
+    pickup_hours: SerializedLocationHours;
+    delivery_hours: SerializedLocationHours;
+    store_hours: SerializedLocationHours;
+  };
+};
+
+export type CatalogMenuResponse = Omit<CatalogMenuBasePayload, "location"> & {
+  location: CatalogMenuBasePayload["location"] & {
+    customer_total_no_shows: number | null;
+    delivery_blocked_due_to_no_shows: boolean;
+  };
+};
+
+export type WingFlavourDto = {
+  id: string;
+  name: string;
+  slug: string;
+  heat_level: string;
+  is_plain: boolean;
+  sort_order: number;
+};
 
 function serializeModifierGroups(item: CatalogItem): SerializedModifierGroup[] {
   return item.modifierGroups.map((mappedGroup) => ({
@@ -329,14 +387,43 @@ function buildSyntheticCard(params: {
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalogCache: CatalogCacheService,
+  ) {}
 
   async getMenu(
     locationId: string,
-    fulfillmentType: "PICKUP" | "DELIVERY",
+    fulfillmentType: CatalogFulfillmentType,
     scheduledFor?: string,
     customerUserId?: string,
-  ) {
+  ): Promise<CatalogMenuResponse> {
+    const scheduleReference = scheduledFor ? new Date(scheduledFor) : new Date();
+    const cached = await this.catalogCache.getMenuBase({
+      locationId,
+      fulfillmentType,
+      scheduleReference,
+    });
+    const baseMenu =
+      cached.value ??
+      (await this.buildMenuBase(locationId, fulfillmentType, scheduleReference));
+
+    if (!cached.value) {
+      await this.catalogCache.setMenuBase(cached.key, baseMenu);
+    }
+
+    return this.withCustomerDeliveryEligibility(
+      baseMenu,
+      locationId,
+      customerUserId,
+    );
+  }
+
+  private async buildMenuBase(
+    locationId: string,
+    fulfillmentType: CatalogFulfillmentType,
+    scheduleReference: Date,
+  ): Promise<CatalogMenuBasePayload> {
     const location = (await this.prisma.location.findUnique({
       where: { id: locationId },
       include: {
@@ -393,18 +480,11 @@ export class CatalogService {
 
     const settings = location.settings;
     const timezone = location.timezoneName ?? "America/Toronto";
-    const scheduleReference = scheduledFor ? new Date(scheduledFor) : new Date();
     const deliveryAvailability = getDeliveryAvailability({
       settings,
       timezone,
       referenceDate: scheduleReference,
     });
-    const deliveryEligibility = await getDeliveryEligibilityForCustomer(
-      this.prisma,
-      locationId,
-      customerUserId,
-      settings?.prepaymentThresholdNoShows,
-    );
 
     const categories = location.menuCategories
       .filter((category) =>
@@ -488,10 +568,7 @@ export class CatalogService {
         delivery_min_minutes: settings?.defaultDeliveryMinMinutes ?? 40,
         delivery_max_minutes: settings?.defaultDeliveryMaxMinutes ?? 60,
         prepayment_threshold_no_shows:
-          deliveryEligibility.prepaymentThresholdNoShows,
-        customer_total_no_shows: deliveryEligibility.customerTotalNoShows,
-        delivery_blocked_due_to_no_shows:
-          deliveryEligibility.deliveryBlockedDueToNoShows,
+          settings?.prepaymentThresholdNoShows ?? 3,
         pickup_hours: serializeLocationHours(
           location.hours.filter((hour) => hour.serviceType === "PICKUP"),
         ),
@@ -505,13 +582,41 @@ export class CatalogService {
     };
   }
 
-  async getWingFlavours(locationId: string) {
+  private async withCustomerDeliveryEligibility(
+    baseMenu: CatalogMenuBasePayload,
+    locationId: string,
+    customerUserId?: string,
+  ): Promise<CatalogMenuResponse> {
+    const deliveryEligibility = await getDeliveryEligibilityForCustomer(
+      this.prisma,
+      locationId,
+      customerUserId,
+      baseMenu.location.prepayment_threshold_no_shows,
+    );
+
+    return {
+      ...baseMenu,
+      location: {
+        ...baseMenu.location,
+        prepayment_threshold_no_shows:
+          deliveryEligibility.prepaymentThresholdNoShows,
+        customer_total_no_shows: deliveryEligibility.customerTotalNoShows,
+        delivery_blocked_due_to_no_shows:
+          deliveryEligibility.deliveryBlockedDueToNoShows,
+      },
+    };
+  }
+
+  async getWingFlavours(locationId: string): Promise<WingFlavourDto[]> {
+    const cached = await this.catalogCache.getWingFlavours(locationId);
+    if (cached.value) return cached.value;
+
     const flavours = await this.prisma.wingFlavour.findMany({
       where: { locationId, isActive: true, archivedAt: null },
       orderBy: { sortOrder: "asc" },
     });
 
-    return flavours.map((flavour) => ({
+    const serialized = flavours.map((flavour) => ({
       id: flavour.id,
       name: flavour.name,
       slug: flavour.slug,
@@ -519,5 +624,7 @@ export class CatalogService {
       is_plain: flavour.isPlain,
       sort_order: flavour.sortOrder,
     }));
+    await this.catalogCache.setWingFlavours(cached.key, serialized);
+    return serialized;
   }
 }

@@ -9,6 +9,7 @@ import {
   normalizeTrustedIpRanges,
 } from "../../common/utils/store-ip";
 import * as bcrypt from "bcryptjs";
+import { CatalogCacheService } from "../catalog/catalog-cache.service";
 
 const STORE_HOURS_SERVICE_TYPE = "STORE";
 const STORE_HOURS_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -126,7 +127,10 @@ function normalizeStoreHoursInput(value: unknown) {
 
 @Injectable()
 export class LocationSettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalogCache: CatalogCacheService,
+  ) {}
 
   async getSettings(locationId: string) {
     const [settings, storeHours] = await Promise.all([
@@ -279,6 +283,7 @@ export class LocationSettingsService {
     });
 
     const { kdsPasswordHash, ...rest } = updated;
+    await this.catalogCache.invalidateLocation(locationId);
     return {
       ...rest,
       kdsPasswordConfigured: !!kdsPasswordHash,

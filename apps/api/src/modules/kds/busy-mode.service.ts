@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
+import { CatalogCacheService } from "../catalog/catalog-cache.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 const HISTORY_MAX_LIMIT = 100;
@@ -14,6 +15,7 @@ export class BusyModeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly catalogCache: CatalogCacheService,
   ) {}
 
   async getCurrent(locationId: string) {
@@ -92,6 +94,7 @@ export class BusyModeService {
             where: { locationId },
             data: { busyModePrepTimeMinutes: prepMinutes },
           });
+          await this.catalogCache.invalidateLocation(locationId);
         }
       }
       return this.getCurrent(locationId);
@@ -154,6 +157,7 @@ export class BusyModeService {
     }
 
     const current = await this.getCurrent(locationId);
+    await this.catalogCache.invalidateLocation(locationId);
     this.realtime.emitAdminEvent(locationId, "admin.busy_mode_changed", {
       location_id: locationId,
       enabled: current.enabled,

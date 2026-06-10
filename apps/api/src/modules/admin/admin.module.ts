@@ -3,6 +3,7 @@ import { ChatModule } from "../chat/chat.module";
 import { WalletsModule } from "../wallets/wallets.module";
 import { RefundModule } from "../refunds/refund.module";
 import { SupportModule } from "../support/support.module";
+import { CatalogModule } from "../catalog/catalog.module";
 import { AdminController } from "./admin.controller";
 import { AdminService } from "./admin.service";
 import { AdminMenuController } from "./admin-menu.controller";
@@ -13,7 +14,7 @@ import { AdminPromosController } from "./admin-promos.controller";
 import { AdminPromosService } from "./admin-promos.service";
 
 @Module({
-  imports: [ChatModule, WalletsModule, RefundModule, SupportModule],
+  imports: [ChatModule, WalletsModule, RefundModule, SupportModule, CatalogModule],
   controllers: [AdminController, AdminMenuController, AdminStaffController, AdminPromosController],
   providers: [AdminService, AdminMenuService, AdminStaffService, AdminPromosService],
   exports: [AdminService],

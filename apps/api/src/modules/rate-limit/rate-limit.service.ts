@@ -1,6 +1,6 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import Redis from "ioredis";
-import { apiEnvironment } from "../../config/env";
+import { Injectable, Logger } from "@nestjs/common";
+import type Redis from "ioredis";
+import { RedisService } from "../redis/redis.service";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -12,66 +12,16 @@ export interface RateLimitResult {
  * Sliding-window rate limiter.
  *
  * Uses Redis (ZSET) when REDIS_URL is configured and reachable. Falls back to
- * an in-process Map when Redis is unavailable — dev and tests run without
- * Redis, and a single API process remains correctly limited. In a
- * multi-process deployment without Redis the limit becomes per-process only,
- * which is an explicit fail-open tradeoff.
+ * an in-process Map when Redis is unavailable. In a multi-process deployment
+ * without Redis the limit becomes per-process only, which is an explicit
+ * fail-open tradeoff.
  */
 @Injectable()
-export class RateLimiterService implements OnModuleInit, OnModuleDestroy {
+export class RateLimiterService {
   private readonly logger = new Logger(RateLimiterService.name);
-  private redis: Redis | null = null;
-  private redisReady = false;
   private readonly memory = new Map<string, number[]>();
 
-  onModuleInit() {
-    const url = apiEnvironment.redisUrl;
-    if (!url) {
-      this.logger.log("REDIS_URL not set — using in-process rate limiter");
-      return;
-    }
-
-    try {
-      this.redis = new Redis(url, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 1,
-        enableOfflineQueue: false,
-      });
-      this.redis.on("ready", () => {
-        this.redisReady = true;
-        this.logger.log("Redis rate limiter connected");
-      });
-      this.redis.on("error", (err) => {
-        if (this.redisReady) this.logger.warn(`Redis error: ${err.message}`);
-        this.redisReady = false;
-      });
-      this.redis.on("end", () => {
-        this.redisReady = false;
-      });
-      void this.redis.connect().catch((err) => {
-        this.logger.warn(
-          `Redis connect failed, falling back to in-process limiter: ${err.message}`,
-        );
-      });
-    } catch (err) {
-      this.logger.warn(
-        `Redis init failed, falling back to in-process limiter: ${(err as Error).message}`,
-      );
-      this.redis = null;
-    }
-  }
-
-  async onModuleDestroy() {
-    if (this.redis) {
-      try {
-        await this.redis.quit();
-      } catch {
-        this.redis.disconnect();
-      }
-      this.redis = null;
-      this.redisReady = false;
-    }
-  }
+  constructor(private readonly redisService: RedisService) {}
 
   /**
    * Sliding-window check. Returns `allowed: false` if the key has already had
@@ -80,10 +30,11 @@ export class RateLimiterService implements OnModuleInit, OnModuleDestroy {
   async check(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
     const now = Date.now();
     const windowStart = now - windowMs;
+    const redis = this.redisService.getClient();
 
-    if (this.redis && this.redisReady) {
+    if (redis) {
       try {
-        return await this.checkRedis(key, limit, windowMs, now, windowStart);
+        return await this.checkRedis(redis, key, limit, windowMs, now, windowStart);
       } catch (err) {
         this.logger.warn(
           `Redis rate-limit check failed, using in-process fallback: ${(err as Error).message}`,
@@ -95,13 +46,13 @@ export class RateLimiterService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async checkRedis(
+    redis: Redis,
     key: string,
     limit: number,
     windowMs: number,
     now: number,
     windowStart: number,
   ): Promise<RateLimitResult> {
-    const redis = this.redis!;
     const member = `${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const pipe = redis.multi();
@@ -149,7 +100,6 @@ export class RateLimiterService implements OnModuleInit, OnModuleDestroy {
     arr.push(now);
     this.memory.set(key, arr);
     if (this.memory.size > 5000) {
-      // keep footprint bounded in long-lived dev processes
       for (const [k, v] of this.memory) {
         if (v.length === 0 || v[v.length - 1] < windowStart) this.memory.delete(k);
       }

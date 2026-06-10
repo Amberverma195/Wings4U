@@ -12,6 +12,7 @@ import {
   LocalMenuImageStorage,
   type MenuImageStorage,
 } from "./menu-image-storage";
+import { CatalogCacheService } from "../catalog/catalog-cache.service";
 
 // ── DTO types (used by the controller validation classes) ──
 
@@ -142,8 +143,20 @@ function generateSlug(name: string): string {
 export class AdminMenuService {
   private readonly imageStorage: MenuImageStorage;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalogCache: CatalogCacheService,
+  ) {
     this.imageStorage = new LocalMenuImageStorage();
+  }
+
+  private async invalidateCatalogAfter<T>(
+    locationId: string,
+    resultPromise: Promise<T>,
+  ): Promise<T> {
+    const result = await resultPromise;
+    await this.catalogCache.invalidateLocation(locationId);
+    return result;
   }
 
   // ────────── Categories ──────────
@@ -173,17 +186,20 @@ export class AdminMenuService {
       ? `${slug}-${crypto.randomBytes(2).toString("hex")}`
       : slug;
 
-    return this.prisma.menuCategory.create({
-      data: {
-        locationId,
-        name: data.name,
-        slug: finalSlug,
-        sortOrder: data.sort_order,
-        isActive: data.is_active,
-        availableFromMinutes: availability.availableFromMinutes,
-        availableUntilMinutes: availability.availableUntilMinutes,
-      },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.menuCategory.create({
+        data: {
+          locationId,
+          name: data.name,
+          slug: finalSlug,
+          sortOrder: data.sort_order,
+          isActive: data.is_active,
+          availableFromMinutes: availability.availableFromMinutes,
+          availableUntilMinutes: availability.availableUntilMinutes,
+        },
+      }),
+    );
   }
 
   async updateCategory(
@@ -197,17 +213,20 @@ export class AdminMenuService {
     if (!category) throw new NotFoundException("Category not found");
     const availability = normalizeCategoryAvailability(data);
 
-    return this.prisma.menuCategory.update({
-      where: { id },
-      data: {
-        name: data.name,
-        sortOrder: data.sort_order,
-        isActive: data.is_active,
-        availableFromMinutes: availability.availableFromMinutes,
-        availableUntilMinutes: availability.availableUntilMinutes,
-        // slug stays stable on rename (v1)
-      },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.menuCategory.update({
+        where: { id },
+        data: {
+          name: data.name,
+          sortOrder: data.sort_order,
+          isActive: data.is_active,
+          availableFromMinutes: availability.availableFromMinutes,
+          availableUntilMinutes: availability.availableUntilMinutes,
+          // slug stays stable on rename (v1)
+        },
+      }),
+    );
   }
 
   async archiveCategory(locationId: string, id: string) {
@@ -225,10 +244,13 @@ export class AdminMenuService {
       );
     }
 
-    return this.prisma.menuCategory.update({
-      where: { id },
-      data: { archivedAt: new Date() },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.menuCategory.update({
+        where: { id },
+        data: { archivedAt: new Date() },
+      }),
+    );
   }
 
   // ────────── Modifier Groups (read-only for link/unlink) ──────────
@@ -278,17 +300,20 @@ export class AdminMenuService {
     });
     const finalSlug = existing ? `${slug}-${crypto.randomBytes(2).toString("hex")}` : slug;
 
-    return this.prisma.wingFlavour.create({
-      data: {
-        locationId,
-        name: data.name,
-        slug: finalSlug,
-        heatLevel: data.category,
-        isPlain: false,
-        isActive: data.is_active,
-        sortOrder: data.sort_order,
-      },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.wingFlavour.create({
+        data: {
+          locationId,
+          name: data.name,
+          slug: finalSlug,
+          heatLevel: data.category,
+          isPlain: false,
+          isActive: data.is_active,
+          sortOrder: data.sort_order,
+        },
+      }),
+    );
   }
 
   async updateWingFlavour(locationId: string, id: string, data: CreateUpdateWingFlavourPayload) {
@@ -300,16 +325,19 @@ export class AdminMenuService {
       throw new UnprocessableEntityException("Plain sauce is managed by the system");
     }
 
-    return this.prisma.wingFlavour.update({
-      where: { id },
-      data: {
-        name: data.name,
-        heatLevel: data.category,
-        isPlain: false,
-        isActive: data.is_active,
-        sortOrder: data.sort_order,
-      },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.wingFlavour.update({
+        where: { id },
+        data: {
+          name: data.name,
+          heatLevel: data.category,
+          isPlain: false,
+          isActive: data.is_active,
+          sortOrder: data.sort_order,
+        },
+      }),
+    );
   }
 
   async archiveWingFlavour(locationId: string, id: string) {
@@ -321,10 +349,13 @@ export class AdminMenuService {
       throw new UnprocessableEntityException("Plain sauce is managed by the system");
     }
 
-    return this.prisma.wingFlavour.update({
-      where: { id },
-      data: { archivedAt: new Date(), isActive: false },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.wingFlavour.update({
+        where: { id },
+        data: { archivedAt: new Date(), isActive: false },
+      }),
+    );
   }
 
   // ────────── Menu Items ──────────
@@ -406,51 +437,54 @@ export class AdminMenuService {
       ? `${slug}-${crypto.randomBytes(2).toString("hex")}`
       : slug;
 
-    return this.prisma.$transaction(async (tx) => {
-      const item = await tx.menuItem.create({
-        data: {
-          locationId,
-          categoryId: data.category_id,
-          name: data.name,
-          slug: finalSlug,
-          description: data.description ?? null,
-          basePriceCents: data.base_price_cents,
-          stockStatus: data.stock_status,
-          isHidden: data.is_hidden,
-          isAvailable: data.stock_status !== "UNAVAILABLE",
-          allowedFulfillmentType: data.allowed_fulfillment_type,
-          removableIngredients: data.removable_ingredients?.length
-            ? {
-                create: data.removable_ingredients.map((ri) => ({
-                  name: ri.name,
-                  sortOrder: ri.sortOrder,
-                })),
-              }
-            : undefined,
-          modifierGroups: data.modifier_groups?.length
-            ? {
-                create: data.modifier_groups.map((mg, i) => ({
-                  modifierGroupId: mg.id,
-                  sortOrder: i,
-                })),
-              }
-            : undefined,
-        },
-      });
-
-      if (data.schedules?.length) {
-        await tx.menuItemSchedule.createMany({
-          data: data.schedules.map((s) => ({
-            menuItemId: item.id,
-            dayOfWeek: s.day_of_week,
-            timeFrom: hhmmToTimeDate(s.time_from),
-            timeTo: hhmmToTimeDate(s.time_to),
-          })),
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.$transaction(async (tx) => {
+        const item = await tx.menuItem.create({
+          data: {
+            locationId,
+            categoryId: data.category_id,
+            name: data.name,
+            slug: finalSlug,
+            description: data.description ?? null,
+            basePriceCents: data.base_price_cents,
+            stockStatus: data.stock_status,
+            isHidden: data.is_hidden,
+            isAvailable: data.stock_status !== "UNAVAILABLE",
+            allowedFulfillmentType: data.allowed_fulfillment_type,
+            removableIngredients: data.removable_ingredients?.length
+              ? {
+                  create: data.removable_ingredients.map((ri) => ({
+                    name: ri.name,
+                    sortOrder: ri.sortOrder,
+                  })),
+                }
+              : undefined,
+            modifierGroups: data.modifier_groups?.length
+              ? {
+                  create: data.modifier_groups.map((mg, i) => ({
+                    modifierGroupId: mg.id,
+                    sortOrder: i,
+                  })),
+                }
+              : undefined,
+          },
         });
-      }
 
-      return item;
-    });
+        if (data.schedules?.length) {
+          await tx.menuItemSchedule.createMany({
+            data: data.schedules.map((s) => ({
+              menuItemId: item.id,
+              dayOfWeek: s.day_of_week,
+              timeFrom: hhmmToTimeDate(s.time_from),
+              timeTo: hhmmToTimeDate(s.time_to),
+            })),
+          });
+        }
+
+        return item;
+      }),
+    );
   }
 
   async updateItem(
@@ -477,77 +511,83 @@ export class AdminMenuService {
       validateScheduleRows(data.schedules);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // Replace-all: ingredients
-      if (data.removable_ingredients) {
-        await tx.removableIngredient.deleteMany({
-          where: { menuItemId: id },
-        });
-        if (data.removable_ingredients.length > 0) {
-          await tx.removableIngredient.createMany({
-            data: data.removable_ingredients.map((ri) => ({
-              menuItemId: id,
-              name: ri.name,
-              sortOrder: ri.sortOrder,
-            })),
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.$transaction(async (tx) => {
+        // Replace-all: ingredients
+        if (data.removable_ingredients) {
+          await tx.removableIngredient.deleteMany({
+            where: { menuItemId: id },
           });
+          if (data.removable_ingredients.length > 0) {
+            await tx.removableIngredient.createMany({
+              data: data.removable_ingredients.map((ri) => ({
+                menuItemId: id,
+                name: ri.name,
+                sortOrder: ri.sortOrder,
+              })),
+            });
+          }
         }
-      }
 
-      // Replace-all: modifier group links
-      if (data.modifier_groups) {
-        await tx.menuItemModifierGroup.deleteMany({
-          where: { menuItemId: id },
-        });
-        if (data.modifier_groups.length > 0) {
-          await tx.menuItemModifierGroup.createMany({
-            data: data.modifier_groups.map((mg, i) => ({
-              menuItemId: id,
-              modifierGroupId: mg.id,
-              sortOrder: i,
-            })),
+        // Replace-all: modifier group links
+        if (data.modifier_groups) {
+          await tx.menuItemModifierGroup.deleteMany({
+            where: { menuItemId: id },
           });
+          if (data.modifier_groups.length > 0) {
+            await tx.menuItemModifierGroup.createMany({
+              data: data.modifier_groups.map((mg, i) => ({
+                menuItemId: id,
+                modifierGroupId: mg.id,
+                sortOrder: i,
+              })),
+            });
+          }
         }
-      }
 
-      // Replace-all: schedules
-      if (data.schedules !== undefined) {
-        await tx.menuItemSchedule.deleteMany({
-          where: { menuItemId: id },
-        });
-        if (data.schedules.length > 0) {
-          await tx.menuItemSchedule.createMany({
-            data: data.schedules.map((s) => ({
-              menuItemId: id,
-              dayOfWeek: s.day_of_week,
-              timeFrom: hhmmToTimeDate(s.time_from),
-              timeTo: hhmmToTimeDate(s.time_to),
-            })),
+        // Replace-all: schedules
+        if (data.schedules !== undefined) {
+          await tx.menuItemSchedule.deleteMany({
+            where: { menuItemId: id },
           });
+          if (data.schedules.length > 0) {
+            await tx.menuItemSchedule.createMany({
+              data: data.schedules.map((s) => ({
+                menuItemId: id,
+                dayOfWeek: s.day_of_week,
+                timeFrom: hhmmToTimeDate(s.time_from),
+                timeTo: hhmmToTimeDate(s.time_to),
+              })),
+            });
+          }
         }
-      }
 
-      return tx.menuItem.update({
-        where: { id },
-        data: {
-          name: data.name,
-          description: data.description ?? null,
-          basePriceCents: data.base_price_cents,
-          categoryId: data.category_id,
-          stockStatus: data.stock_status,
-          isHidden: data.is_hidden,
-          isAvailable: data.stock_status !== "UNAVAILABLE",
-          allowedFulfillmentType: data.allowed_fulfillment_type,
-        },
-      });
-    });
+        return tx.menuItem.update({
+          where: { id },
+          data: {
+            name: data.name,
+            description: data.description ?? null,
+            basePriceCents: data.base_price_cents,
+            categoryId: data.category_id,
+            stockStatus: data.stock_status,
+            isHidden: data.is_hidden,
+            isAvailable: data.stock_status !== "UNAVAILABLE",
+            allowedFulfillmentType: data.allowed_fulfillment_type,
+          },
+        });
+      }),
+    );
   }
 
   async deleteItem(locationId: string, id: string) {
-    return this.prisma.menuItem.updateMany({
-      where: { id, locationId },
-      data: { archivedAt: new Date() },
-    });
+    return this.invalidateCatalogAfter(
+      locationId,
+      this.prisma.menuItem.updateMany({
+        where: { id, locationId },
+        data: { archivedAt: new Date() },
+      }),
+    );
   }
 
   // ────────── Image management ──────────
@@ -582,6 +622,7 @@ export class AdminMenuService {
         imageUrl,
       },
     });
+    await this.catalogCache.invalidateLocation(locationId);
 
     return { image_url: imageUrl };
   }
@@ -626,6 +667,7 @@ export class AdminMenuService {
         }),
       ),
     );
+    await this.catalogCache.invalidateLocation(locationId);
 
     await Promise.all(previousImageUrls.map((url) => this.imageStorage.remove(url)));
 
@@ -664,6 +706,7 @@ export class AdminMenuService {
       where: { id: { in: items.map((item) => item.id) } },
       data: { imageUrl: null },
     });
+    await this.catalogCache.invalidateLocation(locationId);
 
     await Promise.all(previousImageUrls.map((url) => this.imageStorage.remove(url)));
 
@@ -687,6 +730,7 @@ export class AdminMenuService {
       where: { id },
       data: { imageUrl: null },
     });
+    await this.catalogCache.invalidateLocation(locationId);
 
     return { image_url: null };
   }

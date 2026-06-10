@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ChatModule } from "../chat/chat.module";
+import { CatalogModule } from "../catalog/catalog.module";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { RefundModule } from "../refunds/refund.module";
@@ -16,7 +17,7 @@ import { KdsAuthService } from "./kds-auth.service";
 import { KdsAuthController } from "./kds-auth.controller";
 
 @Module({
-  imports: [ChatModule, SupportModule, RefundModule, RewardsModule],
+  imports: [ChatModule, SupportModule, RefundModule, RewardsModule, CatalogModule],
   controllers: [KdsController, KdsAuthController],
   providers: [
     KdsService,
