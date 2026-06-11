@@ -2174,6 +2174,17 @@ export function KdsClient() {
     loadOrdersRef.current = loadOrders;
   }, [loadOrders]);
 
+  // Realtime should be the fast path, but a KDS board is operationally too
+  // important to rely on a single long-lived socket. This quiet fallback keeps
+  // tickets moving if the socket drops, reconnects slowly, or a room
+  // subscription is denied by a stale station session.
+  useEffect(() => {
+    if (!canUseBoard) return;
+    const intervalId = window.setInterval(() => {
+      void loadOrdersRef.current();
+    }, 10_000);
+    return () => window.clearInterval(intervalId);
+  }, [canUseBoard]);
   // Socket.IO realtime — subscribe to location-level orders channel.
   // `subscribeToChannels` keeps the subscription alive across reconnects
   // so KDS updates come from realtime events after the initial load.

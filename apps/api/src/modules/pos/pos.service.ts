@@ -1099,8 +1099,22 @@ export class PosService {
       };
     });
 
-    // 9. Emit realtime events so KDS boards refresh immediately
+    // 9. Emit realtime events so KDS boards refresh immediately.
+    // POS orders are created already accepted/preparing, but KDS treats
+    // order.placed as the canonical "new ticket" signal for alerts.
     const orderId = String(result.id);
+    this.realtime.emitOrderEvent(
+      params.locationId,
+      orderId,
+      "order.placed",
+      {
+        order_id: orderId,
+        order_number: Number(result.order_number),
+        status: result.status,
+        fulfillment_type: result.fulfillment_type,
+      },
+    );
+
     this.realtime.emitOrderEvent(
       params.locationId,
       orderId,
