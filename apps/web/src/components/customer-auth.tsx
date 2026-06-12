@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
-import { formatPhoneForDisplay, phoneInputPlaceholder, toE164 } from "@/lib/phone";
+import { toE164 } from "@/lib/phone";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 
@@ -13,10 +13,24 @@ import type { ApiEnvelope } from "@wings4u/contracts";
 export type CustomerAuthMode = "login" | "signup" | "checkout";
 
 type Step =
-  | { name: "phone" }
-  | { name: "otp"; phone: string }
-  | { name: "profile"; phone: string }
+  | { name: "signup-form" }
+  | { name: "verify-email"; email: string }
+  | { name: "login-id" }
+  | { name: "login-password"; identifier: string }
+  | { name: "reset-request"; identifier: string }
+  | { name: "reset-verify"; identifier: string; emailMasked: string }
+  | { name: "profile" }
   | { name: "done" };
+
+type BusyAction =
+  | "signup"
+  | "verify"
+  | "resend"
+  | "login"
+  | "profile"
+  | "reset-request"
+  | "reset-confirm"
+  | null;
 
 interface Props {
   mode: CustomerAuthMode;
@@ -24,6 +38,30 @@ interface Props {
   onComplete?: () => void;
   /** Called when user cancels (only relevant in checkout modal) */
   onCancel?: () => void;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_HINT =
+  "Password must be at least 8 characters and include a letter and a number.";
+
+function isEmailIdentifier(value: string): boolean {
+  return value.includes("@");
+}
+
+function formatPhoneInput(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length > 6) {
+    return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  }
+  if (digits.length > 3) {
+    return `(${digits.slice(0, 3)})-${digits.slice(3)}`;
+  }
+  return digits;
 }
 
 /* ------------------------------------------------------------------ */
@@ -75,13 +113,12 @@ const s = {
     textAlign: "center" as const,
     margin: 0,
   },
-  subtitlePhone: {
+  subtitleStrong: {
     color: "#ffd28a",
     fontFamily: "'DM Sans', sans-serif",
     fontWeight: 700,
     fontSize: 13.5,
     letterSpacing: "0.04em",
-    fontVariantNumeric: "tabular-nums" as const,
   },
   field: {
     display: "flex",
@@ -102,6 +139,11 @@ const s = {
     fontSize: 15,
     fontFamily: "'DM Sans', sans-serif",
     outline: "none",
+  },
+  hint: {
+    fontSize: 12,
+    color: "#888",
+    margin: 0,
   },
   btn: {
     padding: "0.7rem 1.5rem",
@@ -141,7 +183,33 @@ const s = {
     textDecoration: "none",
     fontSize: 13,
   },
+  linkButton: {
+    background: "none",
+    border: "none",
+    padding: 0,
+    color: "#f5a623",
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: "'DM Sans', sans-serif",
+    textDecoration: "underline",
+    alignSelf: "center",
+  },
+  otpInput: {
+    textAlign: "center" as const,
+    fontSize: 22,
+    letterSpacing: 6,
+  },
 };
+
+const SHAKE_KEYFRAMES = `@keyframes wkBtnShake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+  90% { transform: translateX(1px); }
+}`;
 
 function AuthHeading({ children }: { children: ReactNode }) {
   return (
@@ -153,6 +221,47 @@ function AuthHeading({ children }: { children: ReactNode }) {
   );
 }
 
+function ResendButton({
+  busy,
+  sending,
+  onClick,
+}: {
+  busy: boolean;
+  sending: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "center" }}>
+      <button
+        type="button"
+        className="wk-otp-resend"
+        disabled={busy}
+        onClick={onClick}
+        aria-label="Resend verification code"
+      >
+        <span className="wk-otp-resend-icon" aria-hidden>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-3.2-6.9" />
+            <path d="M21 4v5h-5" />
+          </svg>
+        </span>
+        <span className="wk-otp-resend-label">
+          {sending ? "Sending..." : "Resend code"}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -160,27 +269,36 @@ function AuthHeading({ children }: { children: ReactNode }) {
 export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const session = useSession();
 
-  // If already authenticated but profile incomplete, skip to profile step
   const initialStep: Step =
     session.authenticated && session.needsProfileCompletion
-      ? { name: "profile", phone: session.user?.phone ?? "" }
-      : { name: "phone" };
+      ? { name: "profile" }
+      : mode === "signup"
+        ? { name: "signup-form" }
+        : { name: "login-id" };
 
   const [step, setStep] = useState<Step>(initialStep);
 
-  // -- Phone step state --
-  const [phone, setPhone] = useState("");
+  // -- Signup state --
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  // -- OTP step state --
+  // -- Login state --
+  const [identifier, setIdentifier] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+
+  // -- OTP state --
   const [otpCode, setOtpCode] = useState("");
+
+  // -- Reset state --
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   // -- Shared state --
   const [error, setError] = useState("");
-  const [busyAction, setBusyAction] = useState<
-    "send" | "verify" | "resend" | "profile" | null
-  >(null);
+  const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const busy = busyAction !== null;
   const [shaking, setShaking] = useState(false);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -191,154 +309,265 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     shakeTimer.current = setTimeout(() => setShaking(false), 450);
   }, []);
 
-  const shakeStyle = shaking
-    ? { animation: "wkBtnShake 0.4s ease" }
-    : {};
+  const shakeStyle = shaking ? { animation: "wkBtnShake 0.4s ease" } : {};
 
-  const telPlaceholder = useMemo(
-    () => phoneInputPlaceholder(session.user?.phone),
-    [session.user?.phone],
+  const fail = useCallback(
+    (message: string) => {
+      setError(message);
+      triggerShake();
+    },
+    [triggerShake],
   );
-  const profileNameReady = fullName.trim().length >= 4;
 
-  /* ---------------------------------------------------------------- */
-  /*  Phone step: request OTP                                         */
-  /* ---------------------------------------------------------------- */
-
-  const handlePhoneSubmit = useCallback(async () => {
-    setError("");
-
-    if (!phone.trim()) {
-      setError("Please enter your phone number");
-      triggerShake();
-      return;
-    }
-
-    let normalized: string;
-    try {
-      normalized = toE164(phone);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid phone number");
-      triggerShake();
-      return;
-    }
-
-    // Signup mode: check if phone/email already exist before sending OTP
-    if (mode === "signup") {
-      const trimmedName = fullName.trim();
-      if (trimmedName.length < 4) {
-        setError("Full name must be at least 4 characters");
-        triggerShake();
-        return;
-      }
-
-      setBusyAction("send");
-      try {
-        const checkRes = await apiFetch("/api/v1/auth/check-signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: normalized,
-            ...(email.trim() ? { email: email.trim() } : {}),
-          }),
-        });
-        const checkBody = (await checkRes.json()) as ApiEnvelope<{
-          phone_exists: boolean;
-          email_taken: boolean;
-        }>;
-
-        if (checkRes.ok && checkBody.data) {
-          if (checkBody.data.phone_exists) {
-            setError(
-              "An account already exists with this phone number. Try signing in.",
-            );
-            setBusyAction(null);
-            return;
-          }
-          if (checkBody.data.email_taken) {
-            setError("This email is already in use by another account.");
-            setBusyAction(null);
-            return;
-          }
-        }
-      } catch {
-        // Non-fatal: if the check fails, let the OTP request proceed normally
-      }
-    } else {
-      setBusyAction("send");
-    }
-
-    try {
-      const res = await apiFetch("/api/v1/auth/otp/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: normalized }),
-      });
-      const body = (await res.json()) as ApiEnvelope<{ otp_sent: boolean }>;
-      if (!res.ok) {
-        setError(body.errors?.[0]?.message ?? "Failed to send OTP");
-        return;
-      }
-      setStep({ name: "otp", phone: normalized });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error");
-    } finally {
-      setBusyAction(null);
-    }
-  }, [phone, mode, fullName, email, triggerShake]);
-
-  /* ---------------------------------------------------------------- */
-  /*  OTP step: verify code                                           */
-  /* ---------------------------------------------------------------- */
-
-  const handleOtpSubmit = useCallback(async () => {
-    if (step.name !== "otp") return;
-    setError("");
-    setBusyAction("verify");
-    try {
-      const res = await apiFetch("/api/v1/auth/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: step.phone, otp_code: otpCode.trim() }),
-      });
-      const body = (await res.json()) as ApiEnvelope<{
-        user: { id: string };
-        needs_profile_completion: boolean;
-      }>;
-      if (!res.ok) {
-        setError(body.errors?.[0]?.message ?? "OTP verification failed");
-        return;
-      }
-
+  const finishAuth = useCallback(
+    async (needsProfile: boolean) => {
       await session.refresh();
-
-      if (body.data?.needs_profile_completion) {
-        // For signup mode, pre-fill name/email if entered
-        setStep({ name: "profile", phone: step.phone });
+      if (needsProfile) {
+        setStep({ name: "profile" });
       } else {
         setStep({ name: "done" });
         onComplete?.();
       }
+    },
+    [session, onComplete],
+  );
+
+  /* ---------------------------------------------------------------- */
+  /*  Signup: create account + send email OTP                         */
+  /* ---------------------------------------------------------------- */
+
+  const handleSignup = useCallback(async () => {
+    setError("");
+
+    const trimmedName = fullName.trim();
+    if (trimmedName.length < 4) return fail("Full name must be at least 4 characters");
+
+    let normalizedPhone: string;
+    try {
+      normalizedPhone = toE164(phone);
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : "Invalid phone number");
+    }
+
+    const trimmedEmail = email.trim();
+    if (!EMAIL_RE.test(trimmedEmail)) return fail("Please enter a valid email address");
+    if (!PASSWORD_POLICY.test(password)) return fail(PASSWORD_HINT);
+    if (password !== confirmPassword) return fail("Passwords do not match");
+
+    setBusyAction("signup");
+    try {
+      const res = await apiFetch("/api/v1/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: trimmedName,
+          phone: normalizedPhone,
+          email: trimmedEmail,
+          password,
+          confirm_password: confirmPassword,
+        }),
+      });
+      const body = (await res.json()) as ApiEnvelope<{ email: string }>;
+      if (!res.ok) {
+        setError(body.errors?.[0]?.message ?? "Sign up failed");
+        return;
+      }
+      setStep({ name: "verify-email", email: body.data?.email ?? trimmedEmail });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setBusyAction(null);
     }
-  }, [step, otpCode, session, onComplete]);
+  }, [fullName, phone, email, password, confirmPassword, fail]);
 
   /* ---------------------------------------------------------------- */
-  /*  Profile step: complete name (+ optional email)                  */
+  /*  Signup: verify email OTP                                        */
   /* ---------------------------------------------------------------- */
+
+  const handleVerifyEmail = useCallback(async () => {
+    if (step.name !== "verify-email") return;
+    setError("");
+    setBusyAction("verify");
+    try {
+      const res = await apiFetch("/api/v1/auth/signup/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: step.email, otp_code: otpCode.trim() }),
+      });
+      const body = (await res.json()) as ApiEnvelope<{
+        needs_profile_completion: boolean;
+      }>;
+      if (!res.ok) {
+        setError(body.errors?.[0]?.message ?? "Verification failed");
+        return;
+      }
+      await finishAuth(Boolean(body.data?.needs_profile_completion));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [step, otpCode, finishAuth]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Login: identifier -> password                                   */
+  /* ---------------------------------------------------------------- */
+
+  const handleIdentifierContinue = useCallback(() => {
+    setError("");
+    const value = identifier.trim();
+    if (!value) return fail("Please enter your phone or email");
+    if (!isEmailIdentifier(value)) {
+      try {
+        toE164(value);
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : "Invalid phone number");
+      }
+    }
+    setStep({ name: "login-password", identifier: value });
+  }, [identifier, fail]);
+
+  const handleLogin = useCallback(async () => {
+    if (step.name !== "login-password") return;
+    setError("");
+    if (!loginPassword) return fail("Please enter your password");
+
+    setBusyAction("login");
+    try {
+      const res = await apiFetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: step.identifier, password: loginPassword }),
+      });
+      const body = (await res.json()) as ApiEnvelope<{
+        needs_profile_completion: boolean;
+      }>;
+      if (!res.ok) {
+        setError(body.errors?.[0]?.message ?? "Sign in failed");
+        return;
+      }
+      await finishAuth(Boolean(body.data?.needs_profile_completion));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [step, loginPassword, finishAuth, fail]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Password reset                                                  */
+  /* ---------------------------------------------------------------- */
+
+  const handleResetRequest = useCallback(async () => {
+    if (step.name !== "reset-request") return;
+    setError("");
+    const value = identifier.trim();
+    if (!value) return fail("Please enter your phone or email");
+
+    setBusyAction("reset-request");
+    try {
+      const res = await apiFetch("/api/v1/auth/password-reset/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: value }),
+      });
+      const body = (await res.json()) as ApiEnvelope<{ email_masked: string }>;
+      if (!res.ok) {
+        setError(body.errors?.[0]?.message ?? "Could not send reset code");
+        return;
+      }
+      setStep({
+        name: "reset-verify",
+        identifier: value,
+        emailMasked: body.data?.email_masked ?? "your email",
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [step, identifier, fail]);
+
+  const handleResetConfirm = useCallback(async () => {
+    if (step.name !== "reset-verify") return;
+    setError("");
+    if (!PASSWORD_POLICY.test(newPassword)) return fail(PASSWORD_HINT);
+    if (newPassword !== confirmNewPassword) return fail("Passwords do not match");
+
+    setBusyAction("reset-confirm");
+    try {
+      const res = await apiFetch("/api/v1/auth/password-reset/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: step.identifier,
+          otp_code: otpCode.trim(),
+          new_password: newPassword,
+          confirm_password: confirmNewPassword,
+        }),
+      });
+      const body = (await res.json()) as ApiEnvelope<{
+        needs_profile_completion: boolean;
+      }>;
+      if (!res.ok) {
+        setError(body.errors?.[0]?.message ?? "Could not reset password");
+        return;
+      }
+      await finishAuth(Boolean(body.data?.needs_profile_completion));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [step, otpCode, newPassword, confirmNewPassword, finishAuth, fail]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Resend OTP (signup verify + reset verify)                       */
+  /* ---------------------------------------------------------------- */
+
+  const handleResend = useCallback(async () => {
+    setError("");
+    setBusyAction("resend");
+    try {
+      if (step.name === "verify-email") {
+        const res = await apiFetch("/api/v1/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            full_name: fullName.trim(),
+            phone: toE164(phone),
+            email: step.email,
+            password,
+            confirm_password: confirmPassword,
+          }),
+        });
+        const body = (await res.json()) as ApiEnvelope<unknown>;
+        if (!res.ok) setError(body.errors?.[0]?.message ?? "Resend failed");
+      } else if (step.name === "reset-verify") {
+        const res = await apiFetch("/api/v1/auth/password-reset/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: step.identifier }),
+        });
+        const body = (await res.json()) as ApiEnvelope<unknown>;
+        if (!res.ok) setError(body.errors?.[0]?.message ?? "Resend failed");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [step, fullName, phone, password, confirmPassword]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Profile completion (legacy / incomplete accounts)               */
+  /* ---------------------------------------------------------------- */
+
+  const profileNameReady = fullName.trim().length >= 4;
 
   const handleProfileSubmit = useCallback(async () => {
     setError("");
-
-    // Client-side name validation
-    if (fullName.trim().length < 4) {
-      setError("Full name must be at least 4 characters");
-      triggerShake();
-      return;
-    }
+    if (fullName.trim().length < 4) return fail("Full name must be at least 4 characters");
 
     setBusyAction("profile");
     try {
@@ -357,8 +586,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       );
       const body = (await res.json()) as ApiEnvelope<{ profile_complete: boolean }>;
       if (!res.ok) {
-        const msg = body.errors?.[0]?.message ?? "Profile update failed";
-        setError(msg);
+        setError(body.errors?.[0]?.message ?? "Profile update failed");
         return;
       }
 
@@ -370,111 +598,46 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } finally {
       setBusyAction(null);
     }
-  }, [fullName, email, session, onComplete, triggerShake]);
+  }, [fullName, email, session, onComplete, fail]);
 
-  /* ---------------------------------------------------------------- */
-  /*  Resend OTP                                                      */
-  /* ---------------------------------------------------------------- */
-
-  const handleResend = useCallback(async () => {
-    if (step.name !== "otp") return;
-    setError("");
-    setBusyAction("resend");
-    try {
-      const res = await apiFetch("/api/v1/auth/otp/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: step.phone }),
-      });
-      const body = (await res.json()) as ApiEnvelope<{ otp_sent: boolean }>;
-      if (!res.ok) {
-        setError(body.errors?.[0]?.message ?? "Resend failed");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error");
-    } finally {
-      setBusyAction(null);
-    }
-  }, [step]);
-
-  /* ---------------------------------------------------------------- */
-  /*  Render: done                                                    */
-  /* ---------------------------------------------------------------- */
+  /* ================================================================ */
+  /*  Render                                                          */
+  /* ================================================================ */
 
   if (step.name === "done") {
     return (
       <div style={s.container}>
-        {/* Shake keyframe injected once */}
-        <style>{`@keyframes wkBtnShake {
-          0%, 100% { transform: translateX(0); }
-          15% { transform: translateX(-6px); }
-          30% { transform: translateX(5px); }
-          45% { transform: translateX(-4px); }
-          60% { transform: translateX(3px); }
-          75% { transform: translateX(-2px); }
-          90% { transform: translateX(1px); }
-        }`}</style>
-        <AuthHeading>You're signed in</AuthHeading>
+        <style>{SHAKE_KEYFRAMES}</style>
+        <AuthHeading>You&apos;re signed in</AuthHeading>
         <p style={s.subtitle}>Welcome back!</p>
       </div>
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /*  Render: phone step                                              */
-  /* ---------------------------------------------------------------- */
-
-  if (step.name === "phone") {
-    const isSignup = mode === "signup";
+  /* ---- Signup form ---- */
+  if (step.name === "signup-form") {
     return (
       <div style={s.container}>
-        <style>{`@keyframes wkBtnShake {
-          0%, 100% { transform: translateX(0); }
-          15% { transform: translateX(-6px); }
-          30% { transform: translateX(5px); }
-          45% { transform: translateX(-4px); }
-          60% { transform: translateX(3px); }
-          75% { transform: translateX(-2px); }
-          90% { transform: translateX(1px); }
-        }`}</style>
-        <AuthHeading>
-          {mode === "checkout"
-            ? "Sign in to place your order"
-            : isSignup
-              ? "Create your account"
-              : "Log into your account"}
-        </AuthHeading>
+        <style>{SHAKE_KEYFRAMES}</style>
+        <AuthHeading>Create your account</AuthHeading>
 
         <form
           style={{ display: "contents" }}
           onSubmit={(e) => {
             e.preventDefault();
-            if (!busy) void handlePhoneSubmit();
+            if (!busy) void handleSignup();
           }}
         >
-          {isSignup && (
-            <>
-              <div style={s.field}>
-                <label style={s.label}>Full name</label>
-                <input
-                  style={s.input}
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Jane Doe"
-                />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>Email (optional)</label>
-                <input
-                  style={s.input}
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="jane@example.com"
-                />
-              </div>
-            </>
-          )}
+          <div style={s.field}>
+            <label style={s.label}>Full name</label>
+            <input
+              style={s.input}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Jane Doe"
+              autoComplete="name"
+            />
+          </div>
 
           <div style={s.field}>
             <label style={s.label}>Phone number</label>
@@ -484,18 +647,46 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
               inputMode="tel"
               autoComplete="tel"
               value={phone}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, "");
-                let formatted = digits;
-                if (digits.length > 6) {
-                  formatted = `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-                } else if (digits.length > 3) {
-                  formatted = `(${digits.slice(0, 3)})-${digits.slice(3)}`;
-                }
-                setPhone(formatted);
-              }}
+              onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
               placeholder="(123)-456-7890"
               maxLength={14}
+            />
+          </div>
+
+          <div style={s.field}>
+            <label style={s.label}>Email</label>
+            <input
+              style={s.input}
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane@example.com"
+            />
+          </div>
+
+          <div style={s.field}>
+            <label style={s.label}>Password</label>
+            <input
+              style={s.input}
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+            <p style={s.hint}>{PASSWORD_HINT}</p>
+          </div>
+
+          <div style={s.field}>
+            <label style={s.label}>Confirm password</label>
+            <input
+              style={s.input}
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter your password"
             />
           </div>
 
@@ -506,27 +697,16 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
             disabled={busy}
           >
-            {busyAction === "send" ? "Sending..." : "Send verification code"}
+            {busyAction === "signup" ? "Sending..." : "Send verification code"}
           </button>
         </form>
 
-        {mode === "login" && (
-          <p style={s.subtitle}>
-            No account?{" "}
-            <a href="/auth/signup" style={s.link}>
-              Sign up
-            </a>
-          </p>
-        )}
-
-        {mode === "signup" && (
-          <p style={s.subtitle}>
-            Already have an account?{" "}
-            <a href="/auth/login" style={s.link}>
-              Sign in
-            </a>
-          </p>
-        )}
+        <p style={s.subtitle}>
+          Already have an account?{" "}
+          <a href="/auth/login" style={s.link}>
+            Sign in
+          </a>
+        </p>
 
         {onCancel && (
           <button style={s.btnSecondary} onClick={onCancel}>
@@ -537,19 +717,138 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /*  Render: OTP step                                                */
-  /* ---------------------------------------------------------------- */
-
-  if (step.name === "otp") {
+  /* ---- Login: identifier ---- */
+  if (step.name === "login-id") {
     return (
       <div style={s.container}>
-        <AuthHeading>Enter verification code</AuthHeading>
+        <style>{SHAKE_KEYFRAMES}</style>
+        <AuthHeading>
+          {mode === "checkout" ? "Sign in to place your order" : "Log into your account"}
+        </AuthHeading>
+
+        <form
+          style={{ display: "contents" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy) handleIdentifierContinue();
+          }}
+        >
+          <div style={s.field}>
+            <label style={s.label}>Phone or email</label>
+            <input
+              style={s.input}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="Phone number or email"
+              autoComplete="username"
+              autoFocus
+            />
+          </div>
+
+          {error && <p style={s.error}>{error}</p>}
+
+          <button
+            type="submit"
+            style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
+            disabled={busy}
+          >
+            Continue
+          </button>
+        </form>
+
         <p style={s.subtitle}>
-          We sent a code to{" "}
-          <span style={s.subtitlePhone} title={step.phone}>
-            {formatPhoneForDisplay(step.phone)}
-          </span>
+          No account?{" "}
+          <a href="/auth/signup" style={s.link}>
+            Sign up
+          </a>
+        </p>
+
+        {onCancel && (
+          <button style={s.btnSecondary} onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  /* ---- Login: password ---- */
+  if (step.name === "login-password") {
+    return (
+      <div style={s.container}>
+        <style>{SHAKE_KEYFRAMES}</style>
+        <AuthHeading>Enter your password</AuthHeading>
+        <p style={s.subtitle}>
+          Signing in as{" "}
+          <span style={s.subtitleStrong}>{step.identifier}</span>
+        </p>
+
+        <form
+          style={{ display: "contents" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy) void handleLogin();
+          }}
+        >
+          <div style={s.field}>
+            <label style={s.label}>Password</label>
+            <input
+              style={s.input}
+              type="password"
+              autoComplete="current-password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              placeholder="Your password"
+              autoFocus
+            />
+          </div>
+
+          {error && <p style={s.error}>{error}</p>}
+
+          <button
+            type="submit"
+            style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
+            disabled={busy}
+          >
+            {busyAction === "login" ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          style={s.linkButton}
+          disabled={busy}
+          onClick={() => {
+            setError("");
+            setStep({ name: "reset-request", identifier: step.identifier });
+          }}
+        >
+          Forgot password?
+        </button>
+
+        <button
+          type="button"
+          style={s.btnSecondary}
+          disabled={busy}
+          onClick={() => {
+            setError("");
+            setLoginPassword("");
+            setStep({ name: "login-id" });
+          }}
+        >
+          Use a different account
+        </button>
+      </div>
+    );
+  }
+
+  /* ---- Signup: verify email ---- */
+  if (step.name === "verify-email") {
+    return (
+      <div style={s.container}>
+        <AuthHeading>Verify your email</AuthHeading>
+        <p style={s.subtitle}>
+          We sent a code to <span style={s.subtitleStrong}>{step.email}</span>
         </p>
 
         <form
@@ -557,12 +856,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           onSubmit={(e) => {
             e.preventDefault();
             if (busy || otpCode.replace(/\D/g, "").length < 4) return;
-            void handleOtpSubmit();
+            void handleVerifyEmail();
           }}
         >
           <div style={s.field}>
             <input
-              style={{ ...s.input, textAlign: "center", fontSize: 22, letterSpacing: 6 }}
+              style={{ ...s.input, ...s.otpInput }}
               value={otpCode}
               onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
@@ -571,12 +870,6 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
               inputMode="numeric"
               autoComplete="one-time-code"
               name="otp"
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                e.preventDefault();
-                if (busy || otpCode.replace(/\D/g, "").length < 4) return;
-                void handleOtpSubmit();
-              }}
             />
           </div>
 
@@ -592,54 +885,154 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         </form>
 
         {busyAction !== "verify" && (
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <button
-              type="button"
-              className="wk-otp-resend"
-              disabled={busy}
-              onClick={handleResend}
-              aria-label="Resend verification code"
-            >
-              <span className="wk-otp-resend-icon" aria-hidden>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 12a9 9 0 1 1-3.2-6.9" />
-                  <path d="M21 4v5h-5" />
-                </svg>
-              </span>
-              <span className="wk-otp-resend-label">
-                {busyAction === "resend" ? "Sending..." : "Resend code"}
-              </span>
-            </button>
-          </div>
+          <ResendButton
+            busy={busy}
+            sending={busyAction === "resend"}
+            onClick={handleResend}
+          />
         )}
       </div>
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /*  Render: profile completion step                                 */
-  /* ---------------------------------------------------------------- */
+  /* ---- Reset: request ---- */
+  if (step.name === "reset-request") {
+    return (
+      <div style={s.container}>
+        <style>{SHAKE_KEYFRAMES}</style>
+        <AuthHeading>Reset your password</AuthHeading>
+        <p style={s.subtitle}>
+          Enter your phone or email and we&apos;ll send a reset code to the email on
+          file.
+        </p>
 
+        <form
+          style={{ display: "contents" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy) void handleResetRequest();
+          }}
+        >
+          <div style={s.field}>
+            <label style={s.label}>Phone or email</label>
+            <input
+              style={s.input}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="Phone number or email"
+              autoFocus
+            />
+          </div>
+
+          {error && <p style={s.error}>{error}</p>}
+
+          <button
+            type="submit"
+            style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
+            disabled={busy}
+          >
+            {busyAction === "reset-request" ? "Sending..." : "Send reset code"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          style={s.btnSecondary}
+          disabled={busy}
+          onClick={() => {
+            setError("");
+            setStep({ name: "login-id" });
+          }}
+        >
+          Back to sign in
+        </button>
+      </div>
+    );
+  }
+
+  /* ---- Reset: verify + new password ---- */
+  if (step.name === "reset-verify") {
+    return (
+      <div style={s.container}>
+        <style>{SHAKE_KEYFRAMES}</style>
+        <AuthHeading>Set a new password</AuthHeading>
+        <p style={s.subtitle}>
+          We sent a code to <span style={s.subtitleStrong}>{step.emailMasked}</span>
+        </p>
+
+        <form
+          style={{ display: "contents" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy) void handleResetConfirm();
+          }}
+        >
+          <div style={s.field}>
+            <label style={s.label}>Verification code</label>
+            <input
+              style={{ ...s.input, ...s.otpInput }}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              maxLength={6}
+              autoFocus
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              name="otp"
+            />
+          </div>
+
+          <div style={s.field}>
+            <label style={s.label}>New password</label>
+            <input
+              style={s.input}
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+            <p style={s.hint}>{PASSWORD_HINT}</p>
+          </div>
+
+          <div style={s.field}>
+            <label style={s.label}>Confirm new password</label>
+            <input
+              style={s.input}
+              type="password"
+              autoComplete="new-password"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              placeholder="Re-enter your password"
+            />
+          </div>
+
+          {error && <p style={s.error}>{error}</p>}
+
+          <button
+            type="submit"
+            style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
+            disabled={busy || otpCode.length < 4}
+          >
+            {busyAction === "reset-confirm" ? "Resetting..." : "Reset password"}
+          </button>
+        </form>
+
+        {busyAction !== "reset-confirm" && (
+          <ResendButton
+            busy={busy}
+            sending={busyAction === "resend"}
+            onClick={handleResend}
+          />
+        )}
+      </div>
+    );
+  }
+
+  /* ---- Profile completion ---- */
   return (
     <div style={s.container}>
-      <style>{`@keyframes wkBtnShake {
-        0%, 100% { transform: translateX(0); }
-        15% { transform: translateX(-6px); }
-        30% { transform: translateX(5px); }
-        45% { transform: translateX(-4px); }
-        60% { transform: translateX(3px); }
-        75% { transform: translateX(-2px); }
-        90% { transform: translateX(1px); }
-      }`}</style>
+      <style>{SHAKE_KEYFRAMES}</style>
       <AuthHeading>Complete your profile</AuthHeading>
       <p style={s.subtitle}>We need your name to finalize your account.</p>
 

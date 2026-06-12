@@ -132,6 +132,14 @@ class PlaceOrderDto {
   @IsOptional()
   @IsString()
   promo_code?: string;
+
+  @IsOptional()
+  @IsIn(["PAY_AT_STORE", "ONLINE_CARD"])
+  payment_method?: "PAY_AT_STORE" | "ONLINE_CARD";
+
+  @IsOptional()
+  @IsString()
+  stripe_payment_intent_id?: string;
 }
 
 @Controller("checkout")
@@ -193,6 +201,8 @@ export class CheckoutController {
       studentIdSnapshot: body.student_id_snapshot,
       applyWingsReward: body.apply_wings_reward,
       promoCode: body.promo_code,
+      paymentMethod: body.payment_method,
+      stripePaymentIntentId: body.stripe_payment_intent_id,
     });
   }
 }

@@ -59,6 +59,11 @@ cp .env.example .env
 cp apps/web/.env.example apps/web/.env.local
 ```
 
+Stripe online card checkout is wired with placeholders in `.env.example`.
+Replace `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and
+`STRIPE_WEBHOOK_SECRET` in your local `.env` before enabling online card
+payments in the app.
+
 Generate Prisma client:
 
 ```bash

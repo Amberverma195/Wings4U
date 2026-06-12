@@ -23,6 +23,13 @@ export interface WingsCartLine {
   builderPayload?: Record<string, unknown> | null;
 }
 
+export interface WingsAwardOrderLine {
+  quantity: number;
+  menuItemSlug?: string | null;
+  builderType?: string | null;
+  builderPayload?: Record<string, unknown> | null;
+}
+
 export interface WingsRewardEligibility {
   /** True iff user has >=8 available stamps AND cart has an individual 1lb wings item. */
   eligible: boolean;
@@ -46,6 +53,13 @@ function extractWeightLb(payload?: Record<string, unknown> | null): number {
   const raw = payload?.weight_lb;
   if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
   return 0;
+}
+
+function isRewardableWingsByPoundSlug(slug?: string | null): boolean {
+  return (
+    /^wings-\d+(?:\.\d+)?lb$/i.test(slug ?? "") ||
+    /^combo-\d+(?:\.\d+)?lb$/i.test(slug ?? "")
+  );
 }
 
 function isIndividualOnePoundWingsLine(line: WingsCartLine): boolean {
@@ -87,6 +101,20 @@ export function summarizeWingsInCart(lines: WingsCartLine[]): {
         ? 0
         : Math.round(cheapestPerLbCents),
   };
+}
+
+export function sumRewardablePaidWingsPounds(
+  lines: WingsAwardOrderLine[],
+): number {
+  return lines.reduce((acc, line) => {
+    if (line.builderType !== "WINGS" && line.builderType !== "WING_COMBO") {
+      return acc;
+    }
+    if (!isRewardableWingsByPoundSlug(line.menuItemSlug)) {
+      return acc;
+    }
+    return acc + extractWeightLb(line.builderPayload) * line.quantity;
+  }, 0);
 }
 
 @Injectable()
@@ -247,7 +275,9 @@ export class RewardsService {
    *
    * Stamping rules:
    *   - 1 stamp per whole pound of wings (`floor(sum(weight_lb * quantity))`
-   *     across wing lines).
+   *     across rewardable by-the-pound wing SKUs only). Some non-pound menu
+   *     items (lunch 5-wings, party packs) reuse the WINGS builder for flavour
+   *     picking, but they must not accrue pound-based stamps.
    *   - `availableStamps` is capped at `STAMPS_PER_REWARD` (8). Extra paid
    *     pounds are recorded in the ledger reason text, but the redeemable
    *     balance itself does not stockpile past one reward.
@@ -271,6 +301,9 @@ export class RewardsService {
             quantity: true,
             builderType: true,
             builderPayloadJson: true,
+            menuItem: {
+              select: { slug: true },
+            },
           },
         },
       },
@@ -287,14 +320,14 @@ export class RewardsService {
     });
     if (existing) return;
 
-    const poundsExact = order.orderItems.reduce((acc, item) => {
-      if (item.builderType !== "WINGS" && item.builderType !== "WING_COMBO") {
-        return acc;
-      }
-      const payload = item.builderPayloadJson as Record<string, unknown> | null;
-      const weightLb = extractWeightLb(payload);
-      return acc + weightLb * item.quantity;
-    }, 0);
+    const poundsExact = sumRewardablePaidWingsPounds(
+      order.orderItems.map((item) => ({
+        quantity: item.quantity,
+        builderType: item.builderType,
+        builderPayload: item.builderPayloadJson as Record<string, unknown> | null,
+        menuItemSlug: item.menuItem?.slug ?? null,
+      })),
+    );
 
     // If this order also redeemed a free-wings reward (1lb for 8 stamps),
     // that 1lb was not paid for by the customer, so it must not accrue new

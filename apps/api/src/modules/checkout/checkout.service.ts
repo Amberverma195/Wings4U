@@ -17,6 +17,10 @@ import {
   getDeliveryEligibilityForCustomer,
 } from "../customers/no-show-policy";
 import {
+  StripePaymentsService,
+  type VerifiedStripePayment,
+} from "../payments/stripe-payments.service";
+import {
   RewardsService,
   STAMPS_PER_REWARD,
   summarizeWingsInCart,
@@ -71,6 +75,8 @@ type PlaceOrderParams = {
    */
   applyWingsReward?: boolean;
   promoCode?: string;
+  paymentMethod?: "PAY_AT_STORE" | "ONLINE_CARD";
+  stripePaymentIntentId?: string;
 };
 
 function getRemovedIngredientsFromInput(params: {
@@ -208,6 +214,7 @@ export class CheckoutService {
     private readonly realtime: RealtimeGateway,
     private readonly rewardsService: RewardsService,
     private readonly promotionsService: PromotionsService,
+    private readonly stripePaymentsService: StripePaymentsService,
   ) {}
 
   async placeOrder(params: PlaceOrderParams) {
@@ -928,6 +935,49 @@ export class CheckoutService {
         policy,
       );
 
+      let stripePayment: VerifiedStripePayment | null = null;
+      const paymentMethod = params.paymentMethod ?? "PAY_AT_STORE";
+      if (paymentMethod === "ONLINE_CARD") {
+        if (!params.stripePaymentIntentId?.trim()) {
+          throw new UnprocessableEntityException({
+            message: "Stripe payment confirmation is required for online card checkout.",
+            field: "stripe_payment_intent_id",
+          });
+        }
+        if (pricing.finalPayableCents <= 0) {
+          throw new UnprocessableEntityException({
+            message: "Online card payment is only needed when the payable total is above $0.",
+            field: "payment_method",
+          });
+        }
+
+        const existingStripePayment = await tx.orderPayment.findFirst({
+          where: {
+            provider: "stripe",
+            providerTransactionId: params.stripePaymentIntentId,
+            transactionStatus: "SUCCESS",
+          },
+          select: { orderId: true },
+        });
+        if (existingStripePayment) {
+          throw new ConflictException("Stripe payment has already been used for an order");
+        }
+
+        stripePayment =
+          await this.stripePaymentsService.verifySucceededPaymentIntent({
+            paymentIntentId: params.stripePaymentIntentId,
+            userId: params.userId,
+            locationId: params.locationId,
+            amountCents: pricing.finalPayableCents,
+            currency: "CAD",
+          });
+      } else if (params.stripePaymentIntentId?.trim()) {
+        throw new UnprocessableEntityException({
+          message: "stripe_payment_intent_id can only be sent with ONLINE_CARD payment.",
+          field: "stripe_payment_intent_id",
+        });
+      }
+
       const orderNumber = await allocateNextOrderNumber(tx, params.locationId);
 
       const prepMinutes =
@@ -1020,7 +1070,10 @@ export class CheckoutService {
           driverTipCents: pricing.driverTipCents,
           walletAppliedCents: pricing.walletAppliedCents,
           finalPayableCents: pricing.finalPayableCents,
-          paymentStatusSummary: "UNPAID",
+          paymentMethod: stripePayment ? "CARD" : null,
+          paymentStatusSummary: stripePayment ? "PAID" : "UNPAID",
+          netPaidAmountCents: stripePayment ? pricing.finalPayableCents : 0,
+          remainingRefundableCents: stripePayment ? pricing.finalPayableCents : 0,
           customerOrderNotes: params.specialInstructions ?? null,
           estimatedReadyAt,
           estimatedWindowMinMinutes: windowMin,
@@ -1030,6 +1083,28 @@ export class CheckoutService {
         },
         select: { id: true },
       });
+
+      if (stripePayment) {
+        await tx.orderPayment.create({
+          data: {
+            orderId: createdOrder.id,
+            locationId: params.locationId,
+            paymentMethod: "CARD",
+            transactionType: "CAPTURE",
+            transactionStatus: "SUCCESS",
+            signedAmountCents: stripePayment.amountReceivedCents,
+            currency: stripePayment.currency,
+            provider: "stripe",
+            providerTransactionId: stripePayment.paymentIntentId,
+            processorPayloadJson:
+              stripePayment.providerPayload as Parameters<
+                typeof tx.orderPayment.create
+              >[0]["data"]["processorPayloadJson"],
+            initiatedByUserId: params.userId,
+            createdByUserId: params.userId,
+          },
+        });
+      }
 
       await tx.orderStatusEvent.create({
         data: {

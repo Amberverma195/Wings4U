@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -23,6 +24,79 @@ import { AuthService } from "./auth.service";
 /* ------------------------------------------------------------------ */
 /*  DTOs                                                              */
 /* ------------------------------------------------------------------ */
+
+// At least 8 chars, with at least one letter and one digit.
+const PASSWORD_POLICY_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+const PASSWORD_POLICY_MESSAGE =
+  "Password must be at least 8 characters and include a letter and a number.";
+
+class SignupDto {
+  @IsString()
+  @MinLength(4)
+  @MaxLength(80)
+  full_name!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(32)
+  phone!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @Matches(PASSWORD_POLICY_REGEX, { message: PASSWORD_POLICY_MESSAGE })
+  password!: string;
+
+  @IsString()
+  confirm_password!: string;
+}
+
+class SignupVerifyDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @Length(4, 8)
+  otp_code!: string;
+}
+
+class PasswordLoginDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  identifier!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  password!: string;
+}
+
+class PasswordResetRequestDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  identifier!: string;
+}
+
+class PasswordResetConfirmDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  identifier!: string;
+
+  @IsString()
+  @Length(4, 8)
+  otp_code!: string;
+
+  @IsString()
+  @Matches(PASSWORD_POLICY_REGEX, { message: PASSWORD_POLICY_MESSAGE })
+  new_password!: string;
+
+  @IsString()
+  confirm_password!: string;
+}
 
 class OtpRequestDto {
   @IsString()
@@ -274,6 +348,111 @@ export class AuthController {
       needs_profile_completion: result.needsProfileCompletion,
       // Mobile clients read tokens from the body (no cookies on native).
       // Web clients ignore these and use the httpOnly cookies set above.
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+    };
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Email + password auth                                           */
+  /* ---------------------------------------------------------------- */
+
+  /** Signup step 1: create the account + email an OTP to verify the address. */
+  @Public()
+  @Post("signup")
+  @HttpCode(HttpStatus.OK)
+  async signup(@Body() body: SignupDto) {
+    if (body.password !== body.confirm_password) {
+      throw new BadRequestException("Passwords do not match");
+    }
+    const result = await this.authService.signupWithPassword({
+      fullName: body.full_name,
+      phone: body.phone,
+      email: body.email,
+      password: body.password,
+    });
+    return {
+      otp_sent: result.otpSent,
+      email: result.email,
+      expires_in_seconds: result.expiresInSeconds,
+    };
+  }
+
+  /** Signup step 2: verify the email OTP and start a session. */
+  @Public()
+  @Post("signup/verify")
+  @HttpCode(HttpStatus.OK)
+  async verifySignup(
+    @Body() body: SignupVerifyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.verifyEmailOtp(body.email, body.otp_code);
+    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
+    return {
+      user: result.user,
+      profile_complete: result.profileComplete,
+      needs_profile_completion: result.needsProfileCompletion,
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+    };
+  }
+
+  /** Password login by phone OR email. */
+  @Public()
+  @Post("login")
+  @HttpCode(HttpStatus.OK)
+  async login(
+    @Body() body: PasswordLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.loginWithPassword(
+      body.identifier,
+      body.password,
+    );
+    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
+    return {
+      user: result.user,
+      profile_complete: result.profileComplete,
+      needs_profile_completion: result.needsProfileCompletion,
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+    };
+  }
+
+  /** Password reset step 1: email an OTP if the account (and its email) exist. */
+  @Public()
+  @Post("password-reset/request")
+  @HttpCode(HttpStatus.OK)
+  async passwordResetRequest(@Body() body: PasswordResetRequestDto) {
+    const result = await this.authService.requestPasswordReset(body.identifier);
+    return {
+      otp_sent: result.otpSent,
+      email_masked: result.emailMasked,
+      expires_in_seconds: result.expiresInSeconds,
+    };
+  }
+
+  /** Password reset step 2: verify OTP, set the new password, auto-login. */
+  @Public()
+  @Post("password-reset/confirm")
+  @HttpCode(HttpStatus.OK)
+  async passwordResetConfirm(
+    @Body() body: PasswordResetConfirmDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (body.new_password !== body.confirm_password) {
+      throw new BadRequestException("Passwords do not match");
+    }
+    const result = await this.authService.resetPassword(
+      body.identifier,
+      body.otp_code,
+      body.new_password,
+    );
+    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
+    return {
+      user: result.user,
+      profile_complete: result.profileComplete,
+      needs_profile_completion: result.needsProfileCompletion,
       access_token: result.accessToken,
       refresh_token: result.refreshToken,
     };

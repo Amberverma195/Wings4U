@@ -66,3 +66,12 @@ export const DEFAULT_LOCATION_ID: string = (() => {
   if (typeof id === "string" && id.trim()) return id;
   return "00000000-0000-4000-8000-000000000000";
 })();
+
+export const STRIPE_PUBLISHABLE_KEY: string = (() => {
+  const extra = Constants.expoConfig?.extra as
+    | Record<string, unknown>
+    | undefined;
+  const key = extra?.stripePublishableKey;
+  if (typeof key === "string" && key.trim()) return key;
+  return "pk_test_placeholder";
+})();

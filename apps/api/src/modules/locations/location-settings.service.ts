@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
 import {
+  MAX_TRUSTED_IP_RANGES,
   isValidTrustedIpEntry,
   normalizeTrustedIpRanges,
 } from "../../common/utils/store-ip";
@@ -169,7 +170,12 @@ export class LocationSettingsService {
     delete nextData.storeHours;
     if ("trustedIpRanges" in nextData) {
       const normalized = normalizeTrustedIpRanges(nextData.trustedIpRanges);
-      if (normalized.length > 0 && !isValidTrustedIpEntry(normalized[0]!)) {
+      if (normalized.length > MAX_TRUSTED_IP_RANGES) {
+        throw new BadRequestException(
+          `You can store at most ${MAX_TRUSTED_IP_RANGES} allowed IP addresses`,
+        );
+      }
+      if (normalized.some((entry) => !isValidTrustedIpEntry(entry))) {
         throw new BadRequestException(
           "Allowed IP address must be a valid non-localhost IPv4 address or CIDR range",
         );

@@ -330,11 +330,41 @@ function valueToInput(value: unknown, kind: FieldDef["kind"]): string {
   return String(value);
 }
 
-function getAllowedIp(settings: Settings | null): string {
-  if (!settings || !Array.isArray(settings.trustedIpRanges)) return "";
-  return settings.trustedIpRanges.find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  )?.trim() ?? "";
+const MAX_ALLOWED_IPS = 3;
+
+function getAllowedIps(settings: Settings | null): string[] {
+  if (!settings || !Array.isArray(settings.trustedIpRanges)) return [];
+  return settings.trustedIpRanges
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    )
+    .map((value) => value.trim())
+    .slice(0, MAX_ALLOWED_IPS);
+}
+
+/** Trim, drop blanks, de-dupe, and cap the draft IP list at MAX_ALLOWED_IPS. */
+function cleanAllowedIps(drafts: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const draft of drafts) {
+    const value = draft.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+    if (result.length >= MAX_ALLOWED_IPS) break;
+  }
+  return result;
+}
+
+function allowedIpsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+/** Seed the editor with the configured IPs, or a single blank row when none. */
+function toAllowedIpDrafts(ips: string[]): string[] {
+  return ips.length > 0 ? [...ips] : [""];
 }
 
 function isValidAllowedIp(value: string): boolean {
@@ -370,7 +400,9 @@ export function SettingsClient() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [storeHoursDraft, setStoreHoursDraft] =
     useState<StoreHour[]>(DEFAULT_STORE_HOURS);
-  const [allowedIpDraft, setAllowedIpDraft] = useState("");
+  const [allowedIpDrafts, setAllowedIpDrafts] = useState<string[]>(
+    toAllowedIpDrafts([]),
+  );
   const [editingAllowedIp, setEditingAllowedIp] = useState(false);
   const [kdsPasswordDraft, setKdsPasswordDraft] = useState("");
   const [editingKdsPassword, setEditingKdsPassword] = useState(false);
@@ -407,7 +439,7 @@ export function SettingsClient() {
       }
       setDraft(seeded);
       setStoreHoursDraft(normalizeStoreHours(settings.storeHours));
-      setAllowedIpDraft(getAllowedIp(settings));
+      setAllowedIpDrafts(toAllowedIpDrafts(getAllowedIps(settings)));
       setEditingAllowedIp(false);
       setKdsPasswordDraft("");
       setEditingKdsPassword(false);
@@ -424,15 +456,16 @@ export function SettingsClient() {
     void load();
   }, [load]);
 
+  const cleanedAllowedIps = cleanAllowedIps(allowedIpDrafts);
   const dirty = data
     ? FIELDS.some((f) => valueToInput(data[f.key], f.kind) !== draft[f.key]) ||
       !storeHoursEqual(storeHoursDraft, data.storeHours) ||
-      getAllowedIp(data) !== allowedIpDraft.trim() ||
+      !allowedIpsEqual(getAllowedIps(data), cleanedAllowedIps) ||
       (editingKdsPassword && kdsPasswordDraft !== "") ||
       removingKdsPassword
     : false;
-  const configuredAllowedIp = getAllowedIp(data);
-  const hasAllowedIp = allowedIpDraft.trim().length > 0;
+  const configuredAllowedIps = getAllowedIps(data);
+  const hasAllowedIps = configuredAllowedIps.length > 0;
 
   const onSave = async () => {
     if (!data) return;
@@ -442,8 +475,8 @@ export function SettingsClient() {
     setSaving(true);
     setError(null);
     try {
-      const normalizedAllowedIp = allowedIpDraft.trim();
-      if (!isValidAllowedIp(normalizedAllowedIp)) {
+      const normalizedAllowedIps = cleanAllowedIps(allowedIpDrafts);
+      if (normalizedAllowedIps.some((ip) => !isValidAllowedIp(ip))) {
         throw new Error(
           "Allowed IP address must be a valid IPv4 address and cannot be localhost.",
         );
@@ -472,8 +505,8 @@ export function SettingsClient() {
           payload[f.key] = parseValue(after, f.kind);
         }
       }
-      if (getAllowedIp(data) !== normalizedAllowedIp) {
-        payload.trustedIpRanges = normalizedAllowedIp ? [normalizedAllowedIp] : [];
+      if (!allowedIpsEqual(getAllowedIps(data), normalizedAllowedIps)) {
+        payload.trustedIpRanges = normalizedAllowedIps;
       }
       if (!storeHoursEqual(storeHoursDraft, data.storeHours)) {
         payload.storeHours = storeHoursDraft;
@@ -519,7 +552,7 @@ export function SettingsClient() {
       }
       setDraft(seeded);
       setStoreHoursDraft(normalizeStoreHours(settings.storeHours));
-      setAllowedIpDraft(getAllowedIp(settings));
+      setAllowedIpDrafts(toAllowedIpDrafts(getAllowedIps(settings)));
       setEditingAllowedIp(false);
       setKdsPasswordDraft("");
       setEditingKdsPassword(false);
@@ -953,17 +986,20 @@ export function SettingsClient() {
               className="surface-muted"
               style={{ marginTop: 0, marginBottom: "0.9rem" }}
             >
-              Store exactly one station IP here. Localhost is never allowed.
-              Changes apply when you save the page.
+              Store up to {MAX_ALLOWED_IPS} station IPs here. Localhost is never
+              allowed. Changes apply when you save the page.
             </p>
 
-            {!editingAllowedIp && !hasAllowedIp ? (
+            {!editingAllowedIp && !hasAllowedIps ? (
               <button
                 type="button"
                 className="btn-primary"
                 disabled={!isAdmin}
                 style={{ width: "auto" }}
-                onClick={() => setEditingAllowedIp(true)}
+                onClick={() => {
+                  setAllowedIpDrafts(toAllowedIpDrafts(configuredAllowedIps));
+                  setEditingAllowedIp(true);
+                }}
               >
                 Add allowed IP
               </button>
@@ -977,26 +1013,76 @@ export function SettingsClient() {
                   gap: "0.75rem",
                 }}
               >
-                <label style={{ display: "block", fontSize: "0.85rem" }}>
-                  <span style={{ fontWeight: 600 }}>IPv4 address</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={allowedIpDraft}
-                    onChange={(e) => setAllowedIpDraft(e.target.value)}
+                {allowedIpDrafts.map((ipDraft, index) => (
+                  <label
+                    key={index}
+                    style={{ display: "block", fontSize: "0.85rem" }}
+                  >
+                    <span style={{ fontWeight: 600 }}>
+                      IPv4 address {index + 1}
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={ipDraft}
+                        onChange={(e) =>
+                          setAllowedIpDrafts((current) =>
+                            current.map((value, i) =>
+                              i === index ? e.target.value : value,
+                            ),
+                          )
+                        }
+                        disabled={!isAdmin}
+                        placeholder="e.g. 192.168.1.24"
+                        style={{
+                          flex: 1,
+                          padding: "0.4rem 0.5rem",
+                          borderRadius: "0.375rem",
+                          border: "1px solid #d4d4d4",
+                          fontFamily: "inherit",
+                        }}
+                      />
+                      {allowedIpDrafts.length > 1 ? (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={!isAdmin}
+                          aria-label={`Remove IP address ${index + 1}`}
+                          style={{ width: "auto" }}
+                          onClick={() =>
+                            setAllowedIpDrafts((current) =>
+                              current.filter((_, i) => i !== index),
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </label>
+                ))}
+
+                {allowedIpDrafts.length < MAX_ALLOWED_IPS ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
                     disabled={!isAdmin}
-                    placeholder="e.g. 192.168.1.24"
-                    style={{
-                      display: "block",
-                      marginTop: "0.25rem",
-                      padding: "0.4rem 0.5rem",
-                      borderRadius: "0.375rem",
-                      border: "1px solid #d4d4d4",
-                      width: "100%",
-                      fontFamily: "inherit",
-                    }}
-                  />
-                </label>
+                    style={{ width: "auto", justifySelf: "start" }}
+                    onClick={() =>
+                      setAllowedIpDrafts((current) => [...current, ""])
+                    }
+                  >
+                    + Add another IP
+                  </button>
+                ) : null}
 
                 <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
                   <button
@@ -1014,7 +1100,9 @@ export function SettingsClient() {
                     disabled={!isAdmin}
                     style={{ width: "auto" }}
                     onClick={() => {
-                      setAllowedIpDraft(configuredAllowedIp);
+                      setAllowedIpDrafts(
+                        toAllowedIpDrafts(configuredAllowedIps),
+                      );
                       setEditingAllowedIp(false);
                     }}
                   >
@@ -1022,7 +1110,7 @@ export function SettingsClient() {
                   </button>
                 </div>
               </div>
-            ) : hasAllowedIp ? (
+            ) : hasAllowedIps ? (
               <div
                 style={{
                   display: "flex",
@@ -1034,19 +1122,32 @@ export function SettingsClient() {
               >
                 <div>
                   <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-                    Current IP
+                    {configuredAllowedIps.length > 1
+                      ? "Current IPs"
+                      : "Current IP"}
                   </div>
-                  <code
+                  <div
                     style={{
-                      display: "inline-block",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.4rem",
                       marginTop: "0.25rem",
-                      padding: "0.3rem 0.45rem",
-                      borderRadius: "0.35rem",
-                      background: "#f6f3ee",
                     }}
                   >
-                    {allowedIpDraft}
-                  </code>
+                    {configuredAllowedIps.map((ip) => (
+                      <code
+                        key={ip}
+                        style={{
+                          display: "inline-block",
+                          padding: "0.3rem 0.45rem",
+                          borderRadius: "0.35rem",
+                          background: "#f6f3ee",
+                        }}
+                      >
+                        {ip}
+                      </code>
+                    ))}
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
@@ -1055,7 +1156,10 @@ export function SettingsClient() {
                     className="btn-secondary"
                     disabled={!isAdmin}
                     style={{ width: "auto" }}
-                    onClick={() => setEditingAllowedIp(true)}
+                    onClick={() => {
+                      setAllowedIpDrafts(toAllowedIpDrafts(configuredAllowedIps));
+                      setEditingAllowedIp(true);
+                    }}
                   >
                     Edit
                   </button>
@@ -1065,7 +1169,7 @@ export function SettingsClient() {
                     disabled={!isAdmin}
                     style={{ width: "auto" }}
                     onClick={() => {
-                      setAllowedIpDraft("");
+                      setAllowedIpDrafts(toAllowedIpDrafts([]));
                       setEditingAllowedIp(false);
                     }}
                   >

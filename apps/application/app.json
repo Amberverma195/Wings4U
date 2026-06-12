@@ -30,11 +30,13 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "@stripe/stripe-react-native"
     ],
     "extra": {
       "defaultLocationId": "a68bcda6-3295-42d8-9e53-c2c49dcfc765",
-      "apiOrigin": "http://10.0.0.192:3001"
+      "apiOrigin": "http://10.0.0.192:3001",
+      "stripePublishableKey": "pk_test_placeholder"
     }
   }
 }

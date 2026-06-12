@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,7 +14,15 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
-import { CheckCircle2, MapPin, MessageSquareText, ShoppingBag } from "lucide-react-native";
+import { initStripe, useStripe } from "@stripe/stripe-react-native";
+import {
+  CheckCircle2,
+  CreditCard,
+  MapPin,
+  MessageSquareText,
+  ShoppingBag,
+  Wallet,
+} from "lucide-react-native";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AuthSheet } from "../src/components/auth-sheet";
 import { useCart } from "../src/context/cart";
@@ -23,6 +32,25 @@ import { cents } from "../src/lib/format";
 import type { CartItem, CartQuoteResponse, CheckoutResponse } from "../src/lib/types";
 
 const FIXED_DELIVERY_CITY = "London";
+const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
+const STRIPE_RETURN_URL = Linking.createURL("stripe-redirect");
+
+type PaymentMethod = "PAY_AT_STORE" | "ONLINE_CARD";
+
+type StripeConfigResponse = {
+  configured: boolean;
+  publishable_key: string;
+  currency: string;
+  merchant_display_name: string;
+};
+
+type StripePaymentIntentResponse = StripeConfigResponse & {
+  payment_intent_id: string | null;
+  client_secret: string | null;
+  amount_cents: number | null;
+  message?: string;
+  quote?: CartQuoteResponse;
+};
 
 function cartItemUnitCents(item: CartItem): number {
   return (
@@ -73,6 +101,7 @@ export default function CheckoutScreen() {
   const router = useRouter();
   const cart = useCart();
   const session = useSession();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -85,6 +114,9 @@ export default function CheckoutScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("PAY_AT_STORE");
+  const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
+  const [stripeConfigLoading, setStripeConfigLoading] = useState(true);
   const pendingSubmitRef = useRef(false);
 
   const subtotal = useMemo(
@@ -113,6 +145,35 @@ export default function CheckoutScreen() {
       }),
     [cart.fulfillmentType, cart.items, cart.scheduledFor, tipCents],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setStripeConfigLoading(true);
+    void (async () => {
+      try {
+        const envelope = await apiJson<StripeConfigResponse>(
+          "/api/v1/payments/stripe/config",
+        );
+        if (cancelled) return;
+        const config = envelope.data ?? null;
+        setStripeConfig(config);
+        if (config?.configured && config.publishable_key) {
+          await initStripe({
+            publishableKey: config.publishable_key,
+            merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
+          });
+        }
+      } catch {
+        if (!cancelled) setStripeConfig(null);
+      } finally {
+        if (!cancelled) setStripeConfigLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (cart.items.length === 0) {
@@ -159,6 +220,16 @@ export default function CheckoutScreen() {
     };
   }, [cart, quoteKey, tipCents]);
 
+  const payableCents = quote?.final_payable_cents ?? subtotal;
+  const stripeOnlineEnabled =
+    Boolean(stripeConfig?.configured) && payableCents > 0 && !stripeConfigLoading;
+
+  useEffect(() => {
+    if (paymentMethod === "ONLINE_CARD" && !stripeOnlineEnabled) {
+      setPaymentMethod("PAY_AT_STORE");
+    }
+  }, [paymentMethod, stripeOnlineEnabled]);
+
   const placeOrder = useCallback(async () => {
     if (cart.items.length === 0 || submitting) return;
 
@@ -198,8 +269,72 @@ export default function CheckoutScreen() {
       };
     }
 
-    const idempotencyKey = makeIdempotencyKey();
     try {
+      let stripePaymentIntentId: string | null = null;
+      if (paymentMethod === "ONLINE_CARD") {
+        if (!stripeOnlineEnabled) {
+          throw new Error(
+            stripeConfigLoading
+              ? "Stripe is still loading. Try again in a moment."
+              : "Online card payments are not configured yet.",
+          );
+        }
+
+        const intentRes = await withSilentRefresh(
+          () =>
+            apiFetch("/api/v1/payments/stripe/payment-intent", {
+              method: "POST",
+              locationId: cart.locationId,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                location_id: cart.locationId,
+                fulfillment_type: cart.fulfillmentType,
+                items: checkoutItems(cart.items),
+                scheduled_for: cart.scheduledFor ?? undefined,
+                driver_tip_cents: tipCents,
+              }),
+            }),
+          session.refresh,
+          session.clear,
+        );
+        const intentBody = (await intentRes.json().catch(() => null)) as
+          | ApiEnvelope<StripePaymentIntentResponse>
+          | null;
+        const intent = intentBody?.data;
+        if (!intentRes.ok || !intent) {
+          throw new Error(getApiErrorMessage(intentBody, `Payment setup failed (${intentRes.status})`));
+        }
+        if (!intent.configured || !intent.client_secret || !intent.payment_intent_id) {
+          throw new Error(intent.message ?? "Online card payments are not configured yet.");
+        }
+
+        await initStripe({
+          publishableKey: intent.publishable_key,
+          merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
+        });
+
+        const sheet = await initPaymentSheet({
+          merchantDisplayName: intent.merchant_display_name || "Wings4U",
+          paymentIntentClientSecret: intent.client_secret,
+          returnURL: STRIPE_RETURN_URL,
+        });
+        if (sheet.error) {
+          throw new Error(sheet.error.message);
+        }
+
+        const payment = await presentPaymentSheet();
+        if (payment.error) {
+          throw new Error(payment.error.message || "Payment was cancelled.");
+        }
+        stripePaymentIntentId = intent.payment_intent_id;
+      }
+
+      payload.payment_method = paymentMethod;
+      if (stripePaymentIntentId) {
+        payload.stripe_payment_intent_id = stripePaymentIntentId;
+      }
+
+      const idempotencyKey = makeIdempotencyKey();
       const res = await withSilentRefresh(
         () =>
           apiFetch("/api/v1/checkout", {
@@ -231,11 +366,16 @@ export default function CheckoutScreen() {
   }, [
     cart,
     contactlessPref,
+    initPaymentSheet,
     line1,
     orderNotes,
+    paymentMethod,
     postalCode,
+    presentPaymentSheet,
     router,
     session,
+    stripeConfigLoading,
+    stripeOnlineEnabled,
     submitting,
     tipCents,
   ]);
@@ -371,6 +511,34 @@ export default function CheckoutScreen() {
                 </View>
               </Section>
 
+              <Section title="Payment">
+                <PaymentOption
+                  title={cart.fulfillmentType === "DELIVERY" ? "Pay on delivery" : "Pay on pickup"}
+                  detail={
+                    cart.fulfillmentType === "DELIVERY"
+                      ? "Settle when the order arrives."
+                      : "Settle with cash or card at the restaurant."
+                  }
+                  icon={<Wallet size={20} color={paymentMethod === "PAY_AT_STORE" ? "#FFF" : "#FF4D4D"} />}
+                  active={paymentMethod === "PAY_AT_STORE"}
+                  onPress={() => setPaymentMethod("PAY_AT_STORE")}
+                />
+                <PaymentOption
+                  title="Card online"
+                  detail={
+                    stripeConfigLoading
+                      ? "Checking Stripe..."
+                      : stripeOnlineEnabled
+                        ? "Secure checkout powered by Stripe."
+                        : "Add Stripe keys to enable this option."
+                  }
+                  icon={<CreditCard size={20} color={paymentMethod === "ONLINE_CARD" ? "#FFF" : "#FF4D4D"} />}
+                  active={paymentMethod === "ONLINE_CARD"}
+                  disabled={!stripeOnlineEnabled}
+                  onPress={() => setPaymentMethod("ONLINE_CARD")}
+                />
+              </Section>
+
               <Section title="Total">
                 <SummaryRow label="Subtotal" value={cents(quote?.item_subtotal_cents ?? subtotal)} />
                 <SummaryRow label="Tax" value={quoteLoading ? "..." : cents(quote?.tax_cents ?? 0)} />
@@ -407,7 +575,9 @@ export default function CheckoutScreen() {
                 {submitting ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.placeButtonText}>Place order</Text>
+                  <Text style={styles.placeButtonText}>
+                    {paymentMethod === "ONLINE_CARD" ? "Pay and place order" : "Place order"}
+                  </Text>
                 )}
               </TouchableOpacity>
             </>
@@ -430,6 +600,48 @@ function Section({
       <Text style={styles.sectionTitle}>{title}</Text>
       {children}
     </View>
+  );
+}
+
+function PaymentOption({
+  title,
+  detail,
+  icon,
+  active,
+  disabled,
+  onPress,
+}: {
+  title: string;
+  detail: string;
+  icon: React.ReactNode;
+  active: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.paymentOption,
+        active && styles.paymentOptionActive,
+        disabled && styles.paymentOptionDisabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.paymentIcon, active && styles.paymentIconActive]}>
+        {icon}
+      </View>
+      <View style={styles.paymentTextWrap}>
+        <Text style={[styles.paymentTitle, active && styles.paymentTitleActive]}>
+          {title}
+        </Text>
+        <Text style={[styles.paymentDetail, active && styles.paymentDetailActive]}>
+          {detail}
+        </Text>
+      </View>
+      <View style={[styles.paymentRadio, active && styles.paymentRadioActive]} />
+    </TouchableOpacity>
   );
 }
 
@@ -606,6 +818,68 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: "#FFF",
+  },
+  paymentOption: {
+    minHeight: 72,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#ECECEC",
+    backgroundColor: "#FFF",
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 8,
+  },
+  paymentOptionActive: {
+    borderColor: "#FF4D4D",
+    backgroundColor: "#FF4D4D",
+  },
+  paymentOptionDisabled: {
+    opacity: 0.52,
+  },
+  paymentIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF0F0",
+  },
+  paymentIconActive: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  paymentTextWrap: {
+    flex: 1,
+  },
+  paymentTitle: {
+    color: "#1A1A1A",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  paymentTitleActive: {
+    color: "#FFF",
+  },
+  paymentDetail: {
+    color: "#777",
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+  },
+  paymentDetailActive: {
+    color: "#FFE6E6",
+  },
+  paymentRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: "#D9D9D9",
+  },
+  paymentRadioActive: {
+    borderColor: "#FFF",
+    backgroundColor: "#FFF",
   },
   summaryRow: {
     flexDirection: "row",

@@ -68,6 +68,8 @@ function matchesEntry(ip: string, entry: string): boolean {
   return normalizeIpCandidate(entry) === ip;
 }
 
+export const MAX_TRUSTED_IP_RANGES = 3;
+
 export function normalizeTrustedIpRanges(value: unknown): string[] {
   const source = Array.isArray(value)
     ? value
@@ -75,14 +77,20 @@ export function normalizeTrustedIpRanges(value: unknown): string[] {
       ? [value]
       : [];
 
+  const result: string[] = [];
+  const seen = new Set<string>();
+
   for (const entry of source) {
     if (typeof entry !== "string") continue;
     const normalized = entry.trim();
     if (!normalized) continue;
-    return [normalized];
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+    if (result.length >= MAX_TRUSTED_IP_RANGES) break;
   }
 
-  return [];
+  return result;
 }
 
 export function isLocalhostIp(ip: string | null | undefined): boolean {
@@ -110,7 +118,7 @@ export function isAllowedStoreIp(
   const allowedRanges = normalizeTrustedIpRanges(rawAllowedRanges);
   if (allowedRanges.length === 0) return false;
 
-  return matchesEntry(normalizedIp, allowedRanges[0]!);
+  return allowedRanges.some((entry) => matchesEntry(normalizedIp, entry));
 }
 
 export function extractClientIp(
