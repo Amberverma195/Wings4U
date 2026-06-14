@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
+    "prebuild": "npm run prisma:generate --workspace @wings4u/database",
     "build": "nest build",
     "start": "node dist/main.js",
     "test:e2e": "jest --config ./test/jest-e2e.json"
