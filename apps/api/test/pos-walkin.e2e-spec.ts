@@ -23,8 +23,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const BASE = "/api/v1";
 const CSRF = "e2e-csrf-token";
 
-process.env.SMS_PROVIDER ??= "console";
-
 function sha256(data: string): string {
   return createHash("sha256").update(data).digest("hex");
 }

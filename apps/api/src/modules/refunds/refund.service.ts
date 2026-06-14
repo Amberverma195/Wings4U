@@ -108,6 +108,15 @@ export class RefundService {
       );
     }
 
+    // Store credit lands in a customer's wallet, so it requires a real
+    // account. Guest orders (e.g. anonymous walk-in POS) have no
+    // `customer_user_id`; those must be refunded as cash / original payment.
+    if (params.refundMethod === "STORE_CREDIT" && !refund.order.customerUserId) {
+      throw new BadRequestException(
+        "Store credit requires a registered customer. Refund this guest order as cash or to the original payment method.",
+      );
+    }
+
     const now = new Date();
 
     const issued = await this.prisma.refundRequest.update({
@@ -122,7 +131,7 @@ export class RefundService {
       },
     });
 
-    if (params.refundMethod === "STORE_CREDIT") {
+    if (params.refundMethod === "STORE_CREDIT" && refund.order.customerUserId) {
       await this.walletsService.credit({
         userId: refund.order.customerUserId,
         amountCents: refund.amountCents,

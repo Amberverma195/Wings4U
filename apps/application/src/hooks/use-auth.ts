@@ -1,15 +1,3 @@
-/**
- * useAuth - OTP-based login / logout for the mobile app.
- *
- * Auth flow (mirrors the web site):
- *   1. POST /api/v1/auth/otp/request  { phone }         -> sends OTP
- *   2. POST /api/v1/auth/otp/verify   { phone, otp_code } -> returns tokens
- *   3. Store tokens in expo-secure-store
- *   4. Refresh session context
- *
- * Profile completion (PUT /api/v1/auth/profile) is also handled here
- * for new users whose displayName hasn't been set yet.
- */
 import { useCallback, useState } from "react";
 import { apiFetch } from "../lib/api";
 import {
@@ -19,12 +7,7 @@ import {
 } from "../lib/token-store";
 import { useSession } from "../context/session";
 
-type OtpRequestResult = {
-  otp_sent: boolean;
-  expires_in_seconds: number;
-};
-
-type OtpVerifyResult = {
+type LoginResult = {
   user: {
     id: string;
     role: string;
@@ -43,13 +26,8 @@ type ProfileUpdateResult = {
 };
 
 export type UseAuthResult = {
-  /** Step 1: Request OTP - sends a 6-digit code to the phone */
-  requestOtp: (phone: string) => Promise<OtpRequestResult>;
-  /** Step 2: Verify OTP - returns tokens + user profile */
-  verifyOtp: (phone: string, otpCode: string) => Promise<OtpVerifyResult>;
-  /** Complete profile for new users */
+  login: (identifier: string, password: string) => Promise<LoginResult>;
   updateProfile: (fullName: string, email?: string) => Promise<ProfileUpdateResult>;
-  /** Logout */
   logout: () => Promise<void>;
   loading: boolean;
   error: string | null;
@@ -89,70 +67,26 @@ export function useAuth(): UseAuthResult {
 
   const clearError = useCallback(() => setError(null), []);
 
-  /* ---------------------------------------------------------------- */
-  /*  Step 1: Request OTP                                              */
-  /* ---------------------------------------------------------------- */
-  const requestOtp = useCallback(async (phone: string): Promise<OtpRequestResult> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/v1/auth/otp/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
-      });
-
-      const body = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        const msg = extractErrorMessage(body, "Failed to send OTP");
-        throw new Error(msg);
-      }
-
-      return (body?.data ?? body) as OtpRequestResult;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /* ---------------------------------------------------------------- */
-  /*  Step 2: Verify OTP                                               */
-  /* ---------------------------------------------------------------- */
-  const verifyOtp = useCallback(
-    async (phone: string, otpCode: string): Promise<OtpVerifyResult> => {
+  const login = useCallback(
+    async (identifier: string, password: string): Promise<LoginResult> => {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch("/api/v1/auth/otp/verify", {
+        const res = await apiFetch("/api/v1/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone, otp_code: otpCode }),
+          body: JSON.stringify({ identifier, password }),
         });
 
         const body = await res.json().catch(() => null);
-
         if (!res.ok) {
-          const msg = extractErrorMessage(body, "OTP verification failed");
-          throw new Error(msg);
+          throw new Error(extractErrorMessage(body, "Sign in failed"));
         }
 
-        const result = (body?.data ?? body) as OtpVerifyResult;
-
-        // Store tokens from the response body
-        if (result.access_token) {
-          await setAccessToken(result.access_token);
-        }
-        if (result.refresh_token) {
-          await setRefreshToken(result.refresh_token);
-        }
-
-        // Refresh the session context
+        const result = (body?.data ?? body) as LoginResult;
+        if (result.access_token) await setAccessToken(result.access_token);
+        if (result.refresh_token) await setRefreshToken(result.refresh_token);
         await session.refresh();
-
         return result;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -165,9 +99,6 @@ export function useAuth(): UseAuthResult {
     [session],
   );
 
-  /* ---------------------------------------------------------------- */
-  /*  Profile completion                                               */
-  /* ---------------------------------------------------------------- */
   const updateProfile = useCallback(
     async (fullName: string, email?: string): Promise<ProfileUpdateResult> => {
       setLoading(true);
@@ -183,14 +114,11 @@ export function useAuth(): UseAuthResult {
         });
 
         const body = await res.json().catch(() => null);
-
         if (!res.ok) {
-          const msg = extractErrorMessage(body, "Profile update failed");
-          throw new Error(msg);
+          throw new Error(extractErrorMessage(body, "Profile update failed"));
         }
 
         await session.refresh();
-
         return (body?.data ?? body) as ProfileUpdateResult;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -203,9 +131,6 @@ export function useAuth(): UseAuthResult {
     [session],
   );
 
-  /* ---------------------------------------------------------------- */
-  /*  Logout                                                           */
-  /* ---------------------------------------------------------------- */
   const logout = useCallback(async () => {
     setLoading(true);
     try {
@@ -217,5 +142,5 @@ export function useAuth(): UseAuthResult {
     }
   }, [session]);
 
-  return { requestOtp, verifyOtp, updateProfile, logout, loading, error, clearError };
+  return { login, updateProfile, logout, loading, error, clearError };
 }

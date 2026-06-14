@@ -28,6 +28,7 @@
 import { INestApplication } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { randomBytes, randomUUID, createHash } from "crypto";
+import * as bcrypt from "bcryptjs";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.setup";
@@ -543,56 +544,13 @@ describe("Admin access (e2e, hardening plan)", () => {
       csrfToken: string;
       accessToken: string;
     }> {
-      const phone = `+15195551${Date.now().toString().slice(-4)}`;
-
-      const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-      let otpCode: string | undefined;
-      try {
-        await request(server)
-          .post(`${BASE}/auth/otp/request`)
-          .send({ phone })
-          .expect(200);
-        const line = logSpy.mock.calls
-          .map((call) => call.map((value) => String(value)).join(" "))
-          .find((text) => text.includes(`[DEV OTP] ${phone}:`));
-        otpCode = line?.match(/: (\d{6})$/)?.[1];
-      } finally {
-        logSpy.mockRestore();
-      }
-
-      const verifyRes = await request(server)
-        .post(`${BASE}/auth/otp/verify`)
-        .send({ phone, otp_code: otpCode })
-        .expect(200);
-
-      const setCookies = Array.isArray(verifyRes.headers["set-cookie"])
-        ? (verifyRes.headers["set-cookie"] as string[])
-        : verifyRes.headers["set-cookie"]
-          ? [verifyRes.headers["set-cookie"] as string]
-          : [];
-
-      // `setAuthCookies` prepends migration clear Set-Cookies (legacy Path=/api
-      // access_token + csrf_token) ahead of the fresh values so browsers with
-      // stale cookies get them evicted on the next login. Filter those out so
-      // we only extract the real session tokens here.
-      const freshSetCookies = setCookies.filter(
-        (c) =>
-          !/Expires=Thu,\s*01\s*Jan\s*1970/i.test(c) && !/Max-Age=0/i.test(c),
-      );
-      const cookiePairs = freshSetCookies.map((c) => c.split(";")[0]);
-      const csrf =
-        cookiePairs
-          .find((c) => c.startsWith("csrf_token="))
-          ?.slice("csrf_token=".length) ?? "";
-      const access =
-        cookiePairs
-          .find((c) => c.startsWith("access_token="))
-          ?.slice("access_token=".length) ?? "";
+      const session = await createSession(customerUserId, "CUSTOMER");
+      const cookiePairs = [`access_token=${session.token}`, `csrf_token=${CSRF}`];
 
       return {
         cookieHeader: cookiePairs.join("; "),
-        csrfToken: csrf,
-        accessToken: access,
+        csrfToken: CSRF,
+        accessToken: session.token,
       };
     }
 
@@ -1090,29 +1048,28 @@ describe("Admin access (e2e, hardening plan)", () => {
   });
 
   describe("access_token cookie shape (Set-Cookie)", () => {
-    it("OTP verify sets access_token on Path=/ so middleware can read it", async () => {
-      const phone = `+15195550${Date.now().toString().slice(-4)}`;
+    it("password login sets access_token on Path=/ so middleware can read it", async () => {
+      const email = `cookie-shape.${Date.now()}@example.com`;
+      const password = "CookieShape123";
 
-      const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-      let otpCode: string | undefined;
-      try {
-        await request(server)
-          .post(`${BASE}/auth/otp/request`)
-          .send({ phone })
-          .expect(200);
-
-        const line = logSpy.mock.calls
-          .map((call) => call.map((value) => String(value)).join(" "))
-          .find((text) => text.includes(`[DEV OTP] ${phone}:`));
-        otpCode = line?.match(/: (\d{6})$/)?.[1];
-      } finally {
-        logSpy.mockRestore();
-      }
-      expect(otpCode).toBeDefined();
+      await prisma.user.update({
+        where: { id: customerUserId },
+        data: { passwordHash: await bcrypt.hash(password, 10) },
+      });
+      await prisma.userIdentity.create({
+        data: {
+          userId: customerUserId,
+          provider: "EMAIL",
+          providerSubject: email,
+          emailNormalized: email,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      });
 
       const res = await request(server)
-        .post(`${BASE}/auth/otp/verify`)
-        .send({ phone, otp_code: otpCode })
+        .post(`${BASE}/auth/login`)
+        .send({ identifier: email, password })
         .expect(200);
 
       const setCookies = Array.isArray(res.headers["set-cookie"])

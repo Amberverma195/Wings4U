@@ -47,7 +47,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
  *
  * This endpoint is public (no auth cookie required) so that unsigned-out
  * visitors on the store network still reach the KDS PIN screen instead of
- * being redirected to `/auth/login`.
+ * being redirected to `/login`.
  */
 export async function requireKdsNetworkAccess(
   locationId: string,

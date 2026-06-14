@@ -1,6 +1,6 @@
 "use client";
 
-import { AUTH_FEATURE_BULLETS } from "@/app/auth/auth-feature-bullets";
+import { AUTH_FEATURE_BULLETS } from "@/components/auth-feature-bullets";
 import { AuthShell } from "@/components/auth-shell";
 
 export default function LoginPage() {
@@ -12,7 +12,7 @@ export default function LoginPage() {
         { text: "WELCOME" },
         { text: "BACK", accent: true },
       ]}
-      subline="One number. One code. Straight to the wings."
+      subline="Sign in with your phone or email and password."
       features={[...AUTH_FEATURE_BULLETS]}
     />
   );

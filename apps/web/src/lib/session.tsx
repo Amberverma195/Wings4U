@@ -98,7 +98,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<SessionApiResponse>(SIGNED_OUT_SESSION);
 
   // KDS and POS use station password access instead of redirecting to
-  // /auth/login. Their server layouts perform the store-network gate first.
+  // /login. Their server layouts perform the store-network gate first.
   const isProtectedSurface =
     pathname?.startsWith("/admin") === true;
 
@@ -108,8 +108,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchSession = useCallback(async () => {
+    let timeoutId: number | undefined;
     try {
-      const res = await apiFetch("/api/v1/auth/session");
+      const controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), 4000);
+      const res = await apiFetch("/api/v1/auth/session", {
+        signal: controller.signal,
+      });
       if (res.ok) {
         const envelope = (await res.json()) as ApiEnvelope<SessionApiResponse>;
         setData(envelope.data ?? SIGNED_OUT_SESSION);
@@ -118,8 +123,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         notifyAuthSessionCleared();
       }
     } catch {
-      // Session fetch is best-effort; stay signed out on failure
+      applySignedOut();
     } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
       setLoaded(true);
     }
   }, [applySignedOut]);
@@ -156,7 +162,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return addAuthSessionClearedListener(() => {
       applySignedOut();
       if (isProtectedSurface) {
-        router.replace("/auth/login");
+        router.replace("/login");
       }
     });
   }, [applySignedOut, isProtectedSurface, router]);
@@ -165,7 +171,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!loaded || data.authenticated || !isProtectedSurface) {
       return;
     }
-    router.replace("/auth/login");
+    router.replace("/login");
   }, [data.authenticated, isProtectedSurface, loaded, router]);
 
   const clear = useCallback(() => {

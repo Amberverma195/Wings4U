@@ -139,7 +139,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (session.loaded && !session.authenticated) {
-      router.push("/auth/login");
+      router.push("/login");
     }
   }, [session.loaded, session.authenticated, router]);
 

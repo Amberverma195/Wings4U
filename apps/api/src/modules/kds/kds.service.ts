@@ -504,7 +504,7 @@ export class KdsService {
 
     return {
       items: orders.map((o) => {
-        const identityPhone = o.customer.identities.find(
+        const identityPhone = o.customer?.identities.find(
           (identity) => identity.phoneE164,
         )?.phoneE164;
 

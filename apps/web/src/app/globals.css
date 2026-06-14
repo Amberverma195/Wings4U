@@ -249,7 +249,7 @@ main {
 
 /* ============================================================
    Reusable auth card surface
-   - Used by /auth/login and /auth/signup (via auth-shell.tsx) and
+   - Used by /login and /signup (via auth-shell.tsx) and
      by the checkout sign-in modal. Layout-specific tweaks (sizing,
      alignment) live in the consuming page; this provides only the
      visual treatment so all sign-in surfaces look identical.
@@ -386,7 +386,7 @@ main {
 }
 
 /* ----------------------------------------------------------------
-   Large variant — matches the /auth/login + /auth/signup card.
+   Large variant — matches the /login + /signup card.
    Used by RequireAuthModal so the sign-in pop-up that appears on
    /orders, /account/orders, etc. is visually identical to the
    dedicated login page (same dimensions, same scaled-up heading,
@@ -411,12 +411,12 @@ main {
 .wk-auth-card--lg .wk-auth-card-body label {
   font-size: 0.95rem !important;
 }
-.wk-auth-card--lg .wk-auth-card-body input:not([placeholder="000000"]) {
+.wk-auth-card--lg .wk-auth-card-body input:not(.wk-otp-input) {
   padding: 0.9rem 1.1rem !important;
   font-size: 1.0625rem !important;
   border-radius: 10px !important;
 }
-.wk-auth-card--lg .wk-auth-card-body input[placeholder="000000"] {
+.wk-auth-card--lg .wk-auth-card-body .wk-otp-input {
   padding: 0.9rem 1rem !important;
   font-size: 1.5rem !important;
   letter-spacing: 0.35em !important;
@@ -3959,7 +3959,7 @@ main {
 /* ============================================================
    Order detail page (/orders/[id] and /account/orders/[id])
    Warm cream surface + amber/orange accents, mirroring the
-   /auth/login + /auth/signup language: gradient lines, animated
+   /login + /signup language: gradient lines, animated
    amber halo on the hero card, glowing timeline dots, gradient
    status pill — all on a light page so it never feels "all dark".
    ============================================================ */

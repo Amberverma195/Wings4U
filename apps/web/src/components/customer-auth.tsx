@@ -18,7 +18,7 @@ type Step =
   | { name: "login-id" }
   | { name: "login-password"; identifier: string }
   | { name: "reset-request"; identifier: string }
-  | { name: "reset-verify"; identifier: string; emailMasked: string }
+  | { name: "reset-verify"; identifier: string }
   | { name: "profile" }
   | { name: "done" };
 
@@ -44,17 +44,33 @@ interface Props {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_HINT =
-  "Password must be at least 8 characters and include a letter and a number.";
+  "Password must be at least 8 characters and include a letter, a number, and a special character.";
 
-function isEmailIdentifier(value: string): boolean {
-  return value.includes("@");
+function getPasswordChecks(value: string) {
+  return [
+    {
+      label: `At least 8 characters (${Math.min(value.length, 8)}/8)`,
+      met: value.length >= 8,
+    },
+    { label: "Includes a letter", met: /[A-Za-z]/.test(value) },
+    { label: "Includes a number", met: /\d/.test(value) },
+    {
+      label: "Includes a special character",
+      met: /[^A-Za-z0-9]/.test(value),
+    },
+  ];
 }
 
+function stripControlChars(value: string): string {
+  return value.replace(/[\x00-\x1F\x7F]/g, "").trim();
+}
+
+/** NANP phone: up to 10 digits, formatted as (AAA)-BBB-CCCC while typing. */
 function formatPhoneInput(value: string): string {
-  const digits = value.replace(/\D/g, "");
+  const digits = stripControlChars(value).replace(/\D/g, "").slice(0, 10);
   if (digits.length > 6) {
     return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
   }
@@ -62,6 +78,19 @@ function formatPhoneInput(value: string): string {
     return `(${digits.slice(0, 3)})-${digits.slice(3)}`;
   }
   return digits;
+}
+
+/** Combined phone-or-email field: slice/format phones; leave email typing alone. */
+function formatPhoneOrEmailInput(value: string): string {
+  const cleaned = stripControlChars(value);
+  if (cleaned.includes("@") || /[a-zA-Z]/.test(cleaned)) {
+    return cleaned;
+  }
+  return formatPhoneInput(cleaned);
+}
+
+function isPhoneIdentifier(value: string): boolean {
+  return !value.includes("@") && !/[a-zA-Z]/.test(value);
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,6 +149,25 @@ const s = {
     fontSize: 13.5,
     letterSpacing: "0.04em",
   },
+  loginAsLine: {
+    fontSize: 15,
+    color: "#aaa",
+    textAlign: "center" as const,
+    margin: 0,
+    lineHeight: 1.4,
+  },
+  loginIdentifier: {
+    display: "block" as const,
+    marginTop: "0.4rem",
+    color: "#ffd28a",
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 700,
+    fontSize: 26,
+    letterSpacing: "0.03em",
+    fontVariantNumeric: "tabular-nums" as const,
+    lineHeight: 1.2,
+    textShadow: "0 0 24px rgba(255, 106, 0, 0.2)",
+  },
   field: {
     display: "flex",
     flexDirection: "column" as const,
@@ -140,10 +188,85 @@ const s = {
     fontFamily: "'DM Sans', sans-serif",
     outline: "none",
   },
+  passwordWrap: {
+    position: "relative" as const,
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+  },
+  passwordInput: {
+    padding: "0.65rem 0.75rem",
+    paddingRight: "2.75rem",
+    borderRadius: 6,
+    border: "1px solid #333",
+    background: "#111",
+    color: "#fff",
+    fontSize: 15,
+    fontFamily: "'DM Sans', sans-serif",
+    outline: "none",
+    width: "100%",
+    boxSizing: "border-box" as const,
+  },
+  passwordToggle: {
+    position: "absolute" as const,
+    right: "0.55rem",
+    top: "50%",
+    transform: "translateY(-50%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 32,
+    height: 32,
+    padding: 0,
+    border: "none",
+    borderRadius: 6,
+    background: "transparent",
+    color: "#aaa",
+    cursor: "pointer",
+  },
   hint: {
     fontSize: 12,
     color: "#888",
     margin: 0,
+  },
+  passwordChecklist: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "0.35rem 0.75rem",
+    margin: "0.1rem 0 0",
+    padding: 0,
+    listStyle: "none",
+  },
+  passwordCheckItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    minWidth: 0,
+    color: "#858585",
+    fontSize: 12,
+    lineHeight: 1.25,
+  },
+  passwordCheckItemMet: {
+    color: "#9fe870",
+  },
+  passwordCheckIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: 15,
+    height: 15,
+    borderRadius: 999,
+    border: "1px solid #3a3a3a",
+    color: "transparent",
+    fontSize: 10,
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+  passwordCheckIconMet: {
+    borderColor: "#9fe870",
+    background: "rgba(159, 232, 112, 0.12)",
+    color: "#9fe870",
   },
   btn: {
     padding: "0.7rem 1.5rem",
@@ -218,6 +341,104 @@ function AuthHeading({ children }: { children: ReactNode }) {
       <h2 style={s.title}>{children}</h2>
       <span style={s.titleBar} aria-hidden />
     </div>
+  );
+}
+
+function PasswordInput({
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  autoFocus?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div style={s.passwordWrap}>
+      <input
+        style={s.passwordInput}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        autoFocus={autoFocus}
+      />
+      <button
+        type="button"
+        style={s.passwordToggle}
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        tabIndex={-1}
+      >
+        {visible ? (
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+            <path d="M1 1l22 22" />
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+          </svg>
+        ) : (
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function PasswordChecklist({ value }: { value: string }) {
+  return (
+    <ul style={s.passwordChecklist} aria-label="Password requirements">
+      {getPasswordChecks(value).map((check) => (
+        <li
+          key={check.label}
+          style={{
+            ...s.passwordCheckItem,
+            ...(check.met ? s.passwordCheckItemMet : {}),
+          }}
+        >
+          <span
+            style={{
+              ...s.passwordCheckIcon,
+              ...(check.met ? s.passwordCheckIconMet : {}),
+            }}
+            aria-hidden
+          >
+            ✓
+          </span>
+          <span>{check.label}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -417,14 +638,28 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     setError("");
     const value = identifier.trim();
     if (!value) return fail("Please enter your phone or email");
-    if (!isEmailIdentifier(value)) {
+    let normalizedIdentifier: string;
+    if (isPhoneIdentifier(value)) {
+      const digits = value.replace(/\D/g, "");
+      if (digits.length !== 10) {
+        return fail("Please enter a valid 10 digit phone number");
+      }
       try {
-        toE164(value);
+        normalizedIdentifier = toE164(value);
       } catch (e) {
         return fail(e instanceof Error ? e.message : "Invalid phone number");
       }
+    } else {
+      if (!EMAIL_RE.test(value)) {
+        return fail("Please enter a valid phone number or an email address");
+      }
+      normalizedIdentifier = value.toLowerCase();
     }
-    setStep({ name: "login-password", identifier: value });
+
+    // No account-existence pre-check here: probing whether an identifier is
+    // registered is an enumeration vector. Advance straight to the password
+    // step; a wrong identifier just fails login with a generic error.
+    setStep({ name: "login-password", identifier: normalizedIdentifier });
   }, [identifier, fail]);
 
   const handleLogin = useCallback(async () => {
@@ -441,9 +676,18 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       });
       const body = (await res.json()) as ApiEnvelope<{
         needs_profile_completion: boolean;
+        needs_email_verification?: boolean;
+        email?: string;
       }>;
       if (!res.ok) {
         setError(body.errors?.[0]?.message ?? "Sign in failed");
+        return;
+      }
+      // Correct password but the email was never verified: the server emailed a
+      // fresh code and withheld the session. Route to email verification.
+      if (body.data?.needs_email_verification) {
+        setOtpCode("");
+        setStep({ name: "verify-email", email: body.data.email ?? "" });
         return;
       }
       await finishAuth(Boolean(body.data?.needs_profile_completion));
@@ -463,6 +707,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     setError("");
     const value = identifier.trim();
     if (!value) return fail("Please enter your phone or email");
+    if (isPhoneIdentifier(value)) {
+      const digits = value.replace(/\D/g, "");
+      if (digits.length !== 10) {
+        return fail("Please enter a valid 10 digit phone number");
+      }
+    }
 
     setBusyAction("reset-request");
     try {
@@ -471,16 +721,13 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier: value }),
       });
-      const body = (await res.json()) as ApiEnvelope<{ email_masked: string }>;
+      const body = (await res.json()) as ApiEnvelope<unknown>;
       if (!res.ok) {
         setError(body.errors?.[0]?.message ?? "Could not send reset code");
         return;
       }
-      setStep({
-        name: "reset-verify",
-        identifier: value,
-        emailMasked: body.data?.email_masked ?? "your email",
-      });
+      setOtpCode("");
+      setStep({ name: "reset-verify", identifier: value });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -530,16 +777,10 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     setBusyAction("resend");
     try {
       if (step.name === "verify-email") {
-        const res = await apiFetch("/api/v1/auth/signup", {
+        const res = await apiFetch("/api/v1/auth/signup/resend", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            full_name: fullName.trim(),
-            phone: toE164(phone),
-            email: step.email,
-            password,
-            confirm_password: confirmPassword,
-          }),
+          body: JSON.stringify({ email: step.email }),
         });
         const body = (await res.json()) as ApiEnvelope<unknown>;
         if (!res.ok) setError(body.errors?.[0]?.message ?? "Resend failed");
@@ -557,7 +798,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } finally {
       setBusyAction(null);
     }
-  }, [step, fullName, phone, password, confirmPassword]);
+  }, [step]);
 
   /* ---------------------------------------------------------------- */
   /*  Profile completion (legacy / incomplete accounts)               */
@@ -667,26 +908,22 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
           <div style={s.field}>
             <label style={s.label}>Password</label>
-            <input
-              style={s.input}
-              type="password"
-              autoComplete="new-password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               placeholder="At least 8 characters"
+              autoComplete="new-password"
             />
-            <p style={s.hint}>{PASSWORD_HINT}</p>
+            <PasswordChecklist value={password} />
           </div>
 
           <div style={s.field}>
             <label style={s.label}>Confirm password</label>
-            <input
-              style={s.input}
-              type="password"
-              autoComplete="new-password"
+            <PasswordInput
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={setConfirmPassword}
               placeholder="Re-enter your password"
+              autoComplete="new-password"
             />
           </div>
 
@@ -703,7 +940,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
         <p style={s.subtitle}>
           Already have an account?{" "}
-          <a href="/auth/login" style={s.link}>
+          <a href="/login" style={s.link}>
             Sign in
           </a>
         </p>
@@ -730,17 +967,20 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           style={{ display: "contents" }}
           onSubmit={(e) => {
             e.preventDefault();
-            if (!busy) handleIdentifierContinue();
+            if (!busy) void handleIdentifierContinue();
           }}
         >
           <div style={s.field}>
             <label style={s.label}>Phone or email</label>
             <input
               style={s.input}
+              type={isPhoneIdentifier(identifier) ? "tel" : "text"}
+              inputMode={isPhoneIdentifier(identifier) ? "tel" : "email"}
               value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="Phone number or email"
+              onChange={(e) => setIdentifier(formatPhoneOrEmailInput(e.target.value))}
+              placeholder="(123)-456-7890 or abc@gmail.com"
               autoComplete="username"
+              maxLength={isPhoneIdentifier(identifier) ? 14 : undefined}
               autoFocus
             />
           </div>
@@ -752,13 +992,13 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             style={{ ...s.btn, ...(busy ? s.btnDisabled : {}), ...shakeStyle }}
             disabled={busy}
           >
-            Continue
+            {busyAction === "login" ? "Continuing..." : "Continue"}
           </button>
         </form>
 
         <p style={s.subtitle}>
           No account?{" "}
-          <a href="/auth/signup" style={s.link}>
+          <a href="/signup" style={s.link}>
             Sign up
           </a>
         </p>
@@ -778,9 +1018,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       <div style={s.container}>
         <style>{SHAKE_KEYFRAMES}</style>
         <AuthHeading>Enter your password</AuthHeading>
-        <p style={s.subtitle}>
-          Signing in as{" "}
-          <span style={s.subtitleStrong}>{step.identifier}</span>
+        <p style={s.loginAsLine}>
+          Signing in as
+          <span style={s.loginIdentifier}>{step.identifier}</span>
         </p>
 
         <form
@@ -792,13 +1032,11 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         >
           <div style={s.field}>
             <label style={s.label}>Password</label>
-            <input
-              style={s.input}
-              type="password"
-              autoComplete="current-password"
+            <PasswordInput
               value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
+              onChange={setLoginPassword}
               placeholder="Your password"
+              autoComplete="current-password"
               autoFocus
             />
           </div>
@@ -826,18 +1064,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           Forgot password?
         </button>
 
-        <button
-          type="button"
-          style={s.btnSecondary}
-          disabled={busy}
-          onClick={() => {
-            setError("");
-            setLoginPassword("");
-            setStep({ name: "login-id" });
-          }}
-        >
-          Use a different account
-        </button>
+        <p style={s.subtitle}>
+          No account?{" "}
+          <a href="/signup" style={s.link}>
+            Sign up
+          </a>
+        </p>
       </div>
     );
   }
@@ -861,10 +1093,11 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         >
           <div style={s.field}>
             <input
+              className="wk-otp-input"
               style={{ ...s.input, ...s.otpInput }}
               value={otpCode}
               onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
+              placeholder="Code"
               maxLength={6}
               autoFocus
               inputMode="numeric"
@@ -917,9 +1150,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             <label style={s.label}>Phone or email</label>
             <input
               style={s.input}
+              type={isPhoneIdentifier(identifier) ? "tel" : "text"}
+              inputMode={isPhoneIdentifier(identifier) ? "tel" : "email"}
               value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="Phone number or email"
+              onChange={(e) => setIdentifier(formatPhoneOrEmailInput(e.target.value))}
+              placeholder="(123)-456-7890 or abc@gmail.com"
+              maxLength={isPhoneIdentifier(identifier) ? 14 : undefined}
               autoFocus
             />
           </div>
@@ -957,7 +1193,8 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         <style>{SHAKE_KEYFRAMES}</style>
         <AuthHeading>Set a new password</AuthHeading>
         <p style={s.subtitle}>
-          We sent a code to <span style={s.subtitleStrong}>{step.emailMasked}</span>
+          If an account exists for that phone or email, we&apos;ve sent a 6-digit
+          code to the email on file. Enter it below to set a new password.
         </p>
 
         <form
@@ -970,10 +1207,11 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           <div style={s.field}>
             <label style={s.label}>Verification code</label>
             <input
+              className="wk-otp-input"
               style={{ ...s.input, ...s.otpInput }}
               value={otpCode}
               onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
+              placeholder="Code"
               maxLength={6}
               autoFocus
               inputMode="numeric"
@@ -984,26 +1222,22 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
           <div style={s.field}>
             <label style={s.label}>New password</label>
-            <input
-              style={s.input}
-              type="password"
-              autoComplete="new-password"
+            <PasswordInput
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={setNewPassword}
               placeholder="At least 8 characters"
+              autoComplete="new-password"
             />
-            <p style={s.hint}>{PASSWORD_HINT}</p>
+            <PasswordChecklist value={newPassword} />
           </div>
 
           <div style={s.field}>
             <label style={s.label}>Confirm new password</label>
-            <input
-              style={s.input}
-              type="password"
-              autoComplete="new-password"
+            <PasswordInput
               value={confirmNewPassword}
-              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              onChange={setConfirmNewPassword}
               placeholder="Re-enter your password"
+              autoComplete="new-password"
             />
           </div>
 

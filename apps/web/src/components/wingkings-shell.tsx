@@ -21,7 +21,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
   const isKdsRoute = pathname === "/kds" || pathname?.startsWith("/kds/");
   const isPosRoute = pathname === "/pos" || pathname?.startsWith("/pos/");
   const isAdminRoute = pathname === "/admin" || pathname?.startsWith("/admin/");
-  const isAuthRoute = /^\/auth\/(login|signup)\/?$/.test(pathname ?? "");
+  const isAuthRoute = /^\/(login|signup)\/?$/.test(pathname ?? "");
   /** Login/signup use a neutral background; global embers sit above main (z-index 996) and add an orange wash. */
   const hideFireEmbers = isAuthRoute;
   /** Only scroll to top on real route changes — not on mount/remount while staying on the same path (fixes scroll jumping while reading the page). */

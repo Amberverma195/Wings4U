@@ -72,7 +72,7 @@ export function Navbar() {
             </Link>
           </>
         ) : (
-          <button style={styles.navBtn} onClick={() => router.push("/auth/login")}>
+          <button style={styles.navBtn} onClick={() => router.push("/login")}>
             Login
           </button>
         )}

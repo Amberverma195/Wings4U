@@ -573,7 +573,7 @@ model SavedCartItem {
 model Order {
   id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   locationId                  String                    @map("location_id") @db.Uuid
-  customerUserId              String                    @map("customer_user_id") @db.Uuid
+  customerUserId              String?                   @map("customer_user_id") @db.Uuid
   orderNumber                 BigInt                    @map("order_number")
   orderSource                 OrderSource               @map("order_source")
   fulfillmentType             FulfillmentType           @map("fulfillment_type")
@@ -656,7 +656,7 @@ model Order {
   cancellationChatMessage     OrderMessage?             @relation("order_cancellation_pointer", fields: [cancellationChatMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_cancellation_chat_message")
   assignedDriver              DriverProfile?            @relation(fields: [assignedDriverUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
   cancelledBy                 User?                     @relation("cancelled_by", fields: [cancelledByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  customer                    User                      @relation("customer_orders", fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer                    User?                     @relation("customer_orders", fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   deliveryCompletedBy         User?                     @relation("delivery_completed_by", fields: [deliveryCompletedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   location                    Location                  @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   studentVerifiedBy           User?                     @relation("student_verified_by", fields: [studentDiscountVerifiedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)

@@ -1,6 +1,6 @@
 "use client";
 
-import { AUTH_FEATURE_BULLETS } from "@/app/auth/auth-feature-bullets";
+import { AUTH_FEATURE_BULLETS } from "@/components/auth-feature-bullets";
 import { AuthShell } from "@/components/auth-shell";
 
 export default function SignupPage() {

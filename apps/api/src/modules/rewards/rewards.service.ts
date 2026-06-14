@@ -311,6 +311,11 @@ export class RewardsService {
 
     if (!order) return;
 
+    // Guest orders (e.g. anonymous walk-in POS) have no account to accrue
+    // loyalty stamps to. Skip silently — there is nothing to credit.
+    const customerUserId = order.customerUserId;
+    if (!customerUserId) return;
+
     const existing = await tx.customerWingsStampLedger.findFirst({
       where: {
         orderId: order.id,
@@ -360,16 +365,16 @@ export class RewardsService {
     const MAX_BALANCE = STAMPS_PER_REWARD;
 
     const summary = await tx.customerWingsRewards.upsert({
-      where: { customerUserId: order.customerUserId },
+      where: { customerUserId },
       update: {},
-      create: { customerUserId: order.customerUserId },
+      create: { customerUserId },
     });
 
     const room = Math.max(0, MAX_BALANCE - summary.availableStamps);
     const stampsToCredit = Math.min(stampsEarned, room);
 
     const updated = await tx.customerWingsRewards.update({
-      where: { customerUserId: order.customerUserId },
+      where: { customerUserId },
       data: {
         availableStamps: { increment: stampsToCredit },
         lifetimeStamps: { increment: stampsEarned },
@@ -383,7 +388,7 @@ export class RewardsService {
     const redeemedNote = redeemedEntry ? " (1lb redeemed, not counted)" : "";
     await tx.customerWingsStampLedger.create({
       data: {
-        customerUserId: order.customerUserId,
+        customerUserId,
         orderId: order.id,
         entryType: LEDGER_ENTRY.EARNED,
         deltaStamps: stampsToCredit,

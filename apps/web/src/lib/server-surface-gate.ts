@@ -73,11 +73,11 @@ function describeFetchError(error: unknown): string {
  * (`/admin`, `/kds`, `/pos`). Each of those layouts is a thin wrapper
  * around this helper so the three surfaces stay in lock-step on:
  *
- *   - cookie-missing fast path: redirect to `/auth/login` without any
+ *   - cookie-missing fast path: redirect to `/login` without any
  *     network hop,
  *   - API call to `GET /api/v1/auth/session` with forwarded cookies and
  *     `cache: "no-store"` so the response is never stale,
- *   - `authenticated === false` -> redirect to `/auth/login`,
+ *   - `authenticated === false` -> redirect to `/login`,
  *   - authenticated but policy fails -> either redirect to a caller-chosen
  *     fallback or call `forbidden()` to render the shared
  *     `app/forbidden.tsx` with a real HTTP 403,
@@ -106,7 +106,7 @@ export async function requireSurfaceAccess(
     if (options.notFoundOnUnauthenticated) {
       notFound();
     }
-    redirect("/auth/login");
+    redirect("/login");
   }
 
   const cookieHeader = (await headers()).get("cookie") ?? "";
@@ -173,7 +173,7 @@ export async function requireSurfaceAccess(
     if (options.notFoundOnUnauthenticated) {
       notFound();
     }
-    redirect("/auth/login");
+    redirect("/login");
   }
   if (!data?.authenticated || !data.user?.role) {
     throw new Error(

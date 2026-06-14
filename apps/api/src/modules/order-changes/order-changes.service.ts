@@ -439,9 +439,18 @@ export class OrderChangesService {
       // approval increases the total, debit the wallet for the delta. Runs in
       // the same transaction so everything rolls back on any later failure.
       if (order.paymentMethod === "STORE_CREDIT" && priceDelta > 0) {
+        // A store-credit order is always tied to a registered customer's
+        // wallet; guard the nullable column for type-safety regardless.
+        const orderCustomerUserId = order.customerUserId;
+        if (!orderCustomerUserId) {
+          throw new UnprocessableEntityException({
+            message: "This order has no wallet to charge the change to",
+            field: "items",
+          });
+        }
         const balanceAfterLock = await lockAndReadWalletBalanceCents(
           tx,
-          order.customerUserId,
+          orderCustomerUserId,
         );
         if (balanceAfterLock < priceDelta) {
           throw new UnprocessableEntityException({
@@ -450,12 +459,12 @@ export class OrderChangesService {
           });
         }
         const updatedWallet = await tx.customerWallet.update({
-          where: { customerUserId: order.customerUserId },
+          where: { customerUserId: orderCustomerUserId },
           data: { balanceCents: { decrement: priceDelta } },
         });
         await tx.customerCreditLedger.create({
           data: {
-            customerUserId: order.customerUserId,
+            customerUserId: orderCustomerUserId,
             amountCents: -priceDelta,
             balanceAfterCents: updatedWallet.balanceCents,
             entryType: "CREDIT_USED",

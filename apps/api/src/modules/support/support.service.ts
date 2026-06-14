@@ -81,7 +81,7 @@ export class SupportService {
 
   async createTicket(params: {
     locationId: string;
-    customerUserId: string;
+    customerUserId: string | null;
     ticketType: string;
     subject: string;
     description: string;

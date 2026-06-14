@@ -39,7 +39,7 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (session.loaded && !session.authenticated) {
-      router.push("/auth/login");
+      router.push("/login");
     }
     if (session.user) {
       setFullName(session.user.displayName);

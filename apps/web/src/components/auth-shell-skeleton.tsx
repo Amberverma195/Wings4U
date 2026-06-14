@@ -1,11 +1,10 @@
 /**
- * Loading skeleton for /auth/login + /auth/signup. Mirrors the structure
+ * Loading skeleton for /login + /signup. Mirrors the structure
  * of <AuthShell /> exactly (same wrapper / grid / column / card classes)
  * so the page snaps into place without any visual jump once the real
  * client component hydrates.
  *
- * Rendered from the route-level loading.tsx files, which Next.js wraps
- * around the page in a <Suspense> boundary automatically.
+ * Rendered during post-auth handoff redirects and account-surface loading.
  */
 export function AuthShellSkeleton() {
   return (

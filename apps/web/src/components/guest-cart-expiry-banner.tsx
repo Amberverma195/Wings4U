@@ -80,7 +80,7 @@ export function GuestCartExpiryBanner() {
           Create an account to save your order and never lose your picks.
         </span>{" "}
         <a
-          href="/auth/signup"
+          href="/signup"
           style={{
             color: "#f5a623",
             textDecoration: "underline",

@@ -392,7 +392,7 @@ export default function CheckoutScreen() {
       <StatusBar style="dark" />
       <AuthSheet
         visible={authVisible}
-        initialStep={session.authenticated ? "profile" : "phone"}
+        initialStep={session.authenticated ? "profile" : "login"}
         onComplete={() => {
           pendingSubmitRef.current = true;
         }}

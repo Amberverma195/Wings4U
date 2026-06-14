@@ -9,6 +9,13 @@ import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../../database/prisma.service";
 import { getJwtSecret } from "../../common/utils/jwt-secret";
 import { signJwt } from "../../common/utils/jwt";
+import {
+  parseEmailInput,
+  parseFullNameInput,
+  parseLoginIdentifier,
+  parseNanpPhoneInput,
+  parseOtpCodeInput,
+} from "../../common/utils/auth-input";
 import { isAllowedStoreIp } from "../../common/utils/store-ip";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { createOtpSender, OtpSender } from "./otp-sender";
@@ -18,51 +25,20 @@ const ACCESS_TOKEN_TTL = 900; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const OTP_TTL_SECONDS = 300; // 5 minutes
 const MAX_OTP_ATTEMPTS = 5;
-const OTP_RESEND_COOLDOWN_SECONDS = 60; // minimum gap between OTP requests per phone
-const MAX_ACTIVE_OTP_CODES = 3; // max unconsumed/unexpired codes per phone
-const INFOBIP_PIN_HASH_PREFIX = "infobip:pin:";
+const OTP_RESEND_COOLDOWN_SECONDS = 60; // minimum gap between code sends
+const MAX_OTP_SENDS_PER_WINDOW = 5; // max code sends per identity + purpose
+const OTP_SEND_WINDOW_SECONDS = 15 * 60;
+const MAX_ACTIVE_OTP_CODES = 5; // max unconsumed/unexpired codes per identity + purpose
 
 // Email OTP purposes (stored in AuthOtpCode.purpose).
 const EMAIL_VERIFY_PURPOSE = "EMAIL_VERIFY";
 const PASSWORD_RESET_PURPOSE = "PASSWORD_RESET";
 
-// At least 8 chars, with at least one letter and one digit.
-const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// At least 8 chars, with at least one letter, one digit, and one special char.
+const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 function sha256(data: string): string {
   return createHash("sha256").update(data).digest("hex");
-}
-
-/** Mask an email for UI display, e.g. "ja***@example.com". */
-function maskEmail(email: string): string {
-  const [local, domain] = email.split("@");
-  if (!domain) return email;
-  const visible = local.slice(0, 2);
-  return `${visible}${local.length > 2 ? "***" : ""}@${domain}`;
-}
-
-/**
- * Normalize user input to E.164.
- * - Accepts `+country` with digits/spaces/punctuation.
- * - 10-digit NANP (US/Canada) without `+` → `+1` + digits.
- * - 11-digit starting with 1 (NANP) without `+` → `+` + digits.
- */
-function normalizePhone(phone: string): string {
-  const trimmed = phone.trim();
-
-  const digitsOnly = trimmed.replace(/\D/g, "");
-
-  if (digitsOnly.length === 10) {
-    return `+1${digitsOnly}`;
-  }
-  
-  // The frontend already formats this as an E.164 string with +1, giving 11 digits total.
-  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
-    return `+${digitsOnly}`;
-  }
-
-  throw new UnauthorizedException("Please Enter a valid 10 digit Phone Number");
 }
 
 function generateOtp(): string {
@@ -93,6 +69,16 @@ interface TokenBundle {
   profileComplete?: boolean;
   needsProfileCompletion?: boolean;
 }
+
+/**
+ * Outcome of a password login attempt. A correct password is necessary but not
+ * sufficient: an account whose email is still unverified must finish email
+ * verification before a session is issued, so login can resolve to either a
+ * full token bundle or an "email not verified" signal (never both).
+ */
+type PasswordLoginResult =
+  | { kind: "session"; bundle: TokenBundle }
+  | { kind: "email_unverified"; email: string };
 
 /** A profile is complete only after the profile form/admin tooling has stored a real name. */
 function isProfileComplete(user: {
@@ -151,249 +137,14 @@ export class AuthService {
   /*  OTP request                                                       */
   /* ------------------------------------------------------------------ */
 
-  /**
-   * Pre-signup eligibility check. Called from the signup form before
-   * requesting an OTP so the user gets immediate, specific feedback.
-   */
-  async checkSignupEligibility(
-    phone: string,
-    email?: string,
-  ): Promise<{ phone_exists: boolean; email_taken: boolean }> {
-    const phoneE164 = normalizePhone(phone);
-
-    const phoneIdentity = await this.prisma.userIdentity.findUnique({
-      where: { phoneE164 },
-      include: { user: { select: { role: true, displayName: true, firstName: true } } },
-    });
-
-    // Phone "exists" only when the user behind it has completed the profile
-    // form. POS-created/walk-in customer rows can have a display name but no
-    // firstName, so those still re-enter signup profile completion.
-    const phoneExists =
-      !!phoneIdentity && isProfileComplete(phoneIdentity.user);
-
-    let emailTaken = false;
-    if (email) {
-      const normalizedEmail = email.trim().toLowerCase();
-      const dup = await this.prisma.userIdentity.findFirst({
-        where: { emailNormalized: normalizedEmail, provider: "EMAIL" },
-      });
-      emailTaken = !!dup;
-    }
-
-    return { phone_exists: phoneExists, email_taken: emailTaken };
-  }
-
-  async requestOtp(phone: string): Promise<{ otpSent: true; expiresInSeconds: number }> {
-    const phoneE164 = normalizePhone(phone);
-
-    const identity = await this.prisma.$transaction(async (tx) => {
-      let ident = await tx.userIdentity.findUnique({
-        where: { phoneE164 },
-      });
-
-      if (!ident) {
-        const user = await tx.user.create({
-          data: {
-            role: "CUSTOMER",
-            displayName: phoneE164,
-          },
-        });
-
-        ident = await tx.userIdentity.create({
-          data: {
-            userId: user.id,
-            provider: "PHONE_OTP",
-            phoneE164,
-            isPrimary: true,
-          },
-        });
-      }
-
-      return ident;
-    });
-
-    // Throttle: per-phone resend cooldown
-    const now = new Date();
-    const cooldownCutoff = new Date(now.getTime() - OTP_RESEND_COOLDOWN_SECONDS * 1000);
-    const recentCode = await this.prisma.authOtpCode.findFirst({
-      where: {
-        userIdentityId: identity.id,
-        purpose: "LOGIN",
-        createdAt: { gt: cooldownCutoff },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (recentCode) {
-      const waitSeconds = Math.ceil(
-        (recentCode.createdAt.getTime() + OTP_RESEND_COOLDOWN_SECONDS * 1000 - now.getTime()) / 1000,
-      );
-      throw new UnauthorizedException(
-        `Please wait ${waitSeconds} seconds before requesting another code`,
-      );
-    }
-
-    // Throttle: max active (unconsumed + unexpired) codes
-    const activeCount = await this.prisma.authOtpCode.count({
-      where: {
-        userIdentityId: identity.id,
-        purpose: "LOGIN",
-        consumedAt: null,
-        expiresAt: { gt: now },
-      },
-    });
-
-    if (activeCount >= MAX_ACTIVE_OTP_CODES) {
-      throw new UnauthorizedException(
-        "Too many active codes — please wait for the current code to expire or verify it",
-      );
-    }
-
-    const otp = generateOtp();
-    const delivery = await this.otpSender.send(phoneE164, otp);
-    const otpHash =
-      delivery.provider === "infobip-2fa"
-        ? `${INFOBIP_PIN_HASH_PREFIX}${delivery.verificationRef}`
-        : sha256(otp);
-
-    await this.prisma.authOtpCode.create({
-      data: {
-        userIdentityId: identity.id,
-        otpHash,
-        purpose: "LOGIN",
-        expiresAt: new Date(Date.now() + OTP_TTL_SECONDS * 1000),
-      },
-    });
-
-    return { otpSent: true, expiresInSeconds: OTP_TTL_SECONDS };
-  }
-
-  /* ------------------------------------------------------------------ */
-  /*  OTP verify                                                        */
-  /* ------------------------------------------------------------------ */
-
-  async verifyOtp(phone: string, otpCode: string): Promise<TokenBundle> {
-    const phoneE164 = normalizePhone(phone);
-
-    const identity = await this.prisma.userIdentity.findUnique({
-      where: { phoneE164 },
-      include: { user: true },
-    });
-
-    // ──────────────────────────────────────────────────────────────────
-    // DEV ONLY — REMOVE BEFORE PRODUCTION
-    // "781498" is a universal dev bypass OTP. It skips the OTP record
-    // lookup entirely so you don't even need to call otp/request first.
-    // Just enter any valid phone number + "781498" to log in instantly.
-    // ──────────────────────────────────────────────────────────────────
-    const isDevBypassOtp = otpCode === "781498";
-
-    if (!identity && isDevBypassOtp) {
-      // Auto-create the user + identity for dev convenience
-      const user = await this.prisma.user.create({
-        data: { role: "CUSTOMER", displayName: phoneE164 },
-      });
-      const newIdent = await this.prisma.userIdentity.create({
-        data: {
-          userId: user.id,
-          provider: "PHONE_OTP",
-          phoneE164,
-          isPrimary: true,
-          isVerified: true,
-          verifiedAt: new Date(),
-        },
-      });
-      const bundle = await this.createSessionTokens(user, phoneE164);
-      const complete = isProfileComplete(user);
-      bundle.profileComplete = complete;
-      bundle.needsProfileCompletion = !complete;
-      return bundle;
-    }
-
-    if (!identity) {
-      throw new UnauthorizedException("Unknown phone number — request an OTP first");
-    }
-
-    if (isDevBypassOtp) {
-      // DEV ONLY — skip OTP record check, just mark identity verified and issue tokens
-      await this.prisma.userIdentity.update({
-        where: { id: identity.id },
-        data: { isVerified: true, verifiedAt: new Date() },
-      });
-      const bundle = await this.createSessionTokens(identity.user, phoneE164);
-      const complete = isProfileComplete(identity.user);
-      bundle.profileComplete = complete;
-      bundle.needsProfileCompletion = !complete;
-      return bundle;
-    }
-    // ──────────────────────────────────────────────────────────────────
-    // END DEV BYPASS
-    // ──────────────────────────────────────────────────────────────────
-
-    const now = new Date();
-
-    const otpRecord = await this.prisma.authOtpCode.findFirst({
-      where: {
-        userIdentityId: identity.id,
-        purpose: "LOGIN",
-        consumedAt: null,
-        expiresAt: { gt: now },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!otpRecord) {
-      throw new UnauthorizedException("No valid OTP found — it may have expired");
-    }
-
-    if (otpRecord.attemptCount >= MAX_OTP_ATTEMPTS) {
-      throw new UnauthorizedException("Too many attempts — request a new OTP");
-    }
-
-    const isInfobipPin = otpRecord.otpHash.startsWith(INFOBIP_PIN_HASH_PREFIX);
-    const isVerified = isInfobipPin
-      ? await this.verifyInfobipPin(otpRecord.otpHash, otpCode)
-      : sha256(otpCode) === otpRecord.otpHash;
-
-    if (!isVerified) {
-      await this.prisma.authOtpCode.update({
-        where: { id: otpRecord.id },
-        data: { attemptCount: { increment: 1 } },
-      });
-      throw new UnauthorizedException("Invalid OTP code");
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.authOtpCode.update({
-        where: { id: otpRecord.id },
-        data: { consumedAt: now },
-      }),
-      this.prisma.userIdentity.update({
-        where: { id: identity.id },
-        data: { isVerified: true, verifiedAt: now },
-      }),
-    ]);
-
-    const bundle = await this.createSessionTokens(identity.user, phoneE164);
-    const complete = isProfileComplete(identity.user);
-    bundle.profileComplete = complete;
-    bundle.needsProfileCompletion = !complete;
-    return bundle;
-  }
-
   /* ------------------------------------------------------------------ */
   /*  Email + password auth (signup / login / reset)                    */
   /* ------------------------------------------------------------------ */
 
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
-  }
-
   private validatePassword(password: string): void {
     if (!PASSWORD_POLICY.test(password)) {
       throw new UnauthorizedException(
-        "Password must be at least 8 characters and include a letter and a number.",
+        "Password must be at least 8 characters and include a letter, a number, and a special character.",
       );
     }
   }
@@ -418,6 +169,7 @@ export class AuthService {
   ): Promise<number> {
     const now = new Date();
     const cooldownCutoff = new Date(now.getTime() - OTP_RESEND_COOLDOWN_SECONDS * 1000);
+    const sendWindowCutoff = new Date(now.getTime() - OTP_SEND_WINDOW_SECONDS * 1000);
 
     const recentCode = await this.prisma.authOtpCode.findFirst({
       where: { userIdentityId, purpose, createdAt: { gt: cooldownCutoff } },
@@ -429,6 +181,15 @@ export class AuthService {
       );
       throw new UnauthorizedException(
         `Please wait ${waitSeconds} seconds before requesting another code`,
+      );
+    }
+
+    const sendCount = await this.prisma.authOtpCode.count({
+      where: { userIdentityId, purpose, createdAt: { gt: sendWindowCutoff } },
+    });
+    if (sendCount >= MAX_OTP_SENDS_PER_WINDOW) {
+      throw new UnauthorizedException(
+        "Too many verification codes requested. Please wait before requesting another code.",
       );
     }
 
@@ -499,15 +260,9 @@ export class AuthService {
     email: string;
     password: string;
   }): Promise<{ otpSent: true; email: string; expiresInSeconds: number }> {
-    const fullName = input.fullName.trim();
-    if (fullName.length < 4) {
-      throw new UnauthorizedException("Full name must be at least 4 characters");
-    }
-    const phoneE164 = normalizePhone(input.phone);
-    const email = this.normalizeEmail(input.email);
-    if (!EMAIL_RE.test(email)) {
-      throw new UnauthorizedException("Please enter a valid email address");
-    }
+    const fullName = parseFullNameInput(input.fullName);
+    const phoneE164 = parseNanpPhoneInput(input.phone);
+    const email = parseEmailInput(input.email);
     this.validatePassword(input.password);
 
     const phoneIdentity = await this.prisma.userIdentity.findUnique({
@@ -588,7 +343,8 @@ export class AuthService {
 
   /** Step 2 of signup: verify the email OTP and issue session tokens. */
   async verifyEmailOtp(emailRaw: string, otpCode: string): Promise<TokenBundle> {
-    const email = this.normalizeEmail(emailRaw);
+    const email = parseEmailInput(emailRaw);
+    const normalizedOtp = parseOtpCodeInput(otpCode);
     const identity = await this.prisma.userIdentity.findFirst({
       where: { emailNormalized: email, provider: "EMAIL" },
       include: { user: true },
@@ -597,7 +353,7 @@ export class AuthService {
       throw new UnauthorizedException("Unknown email — start sign up first");
     }
 
-    await this.consumeEmailOtp(identity.id, EMAIL_VERIFY_PURPOSE, otpCode);
+    await this.consumeEmailOtp(identity.id, EMAIL_VERIFY_PURPOSE, normalizedOtp);
 
     await this.prisma.userIdentity.update({
       where: { id: identity.id },
@@ -616,17 +372,18 @@ export class AuthService {
   async loginWithPassword(
     identifierRaw: string,
     password: string,
-  ): Promise<TokenBundle> {
-    const identifier = identifierRaw.trim();
-    const identity = identifier.includes("@")
-      ? await this.prisma.userIdentity.findFirst({
-          where: { emailNormalized: this.normalizeEmail(identifier), provider: "EMAIL" },
-          include: { user: true },
-        })
-      : await this.prisma.userIdentity.findUnique({
-          where: { phoneE164: normalizePhone(identifier) },
-          include: { user: true },
-        });
+  ): Promise<PasswordLoginResult> {
+    const parsed = parseLoginIdentifier(identifierRaw);
+    const identity =
+      parsed.kind === "email"
+        ? await this.prisma.userIdentity.findFirst({
+            where: { emailNormalized: parsed.value, provider: "EMAIL" },
+            include: { user: true },
+          })
+        : await this.prisma.userIdentity.findUnique({
+            where: { phoneE164: parsed.value },
+            include: { user: true },
+          });
 
     if (!identity?.user) {
       throw new UnauthorizedException("Invalid phone/email or password");
@@ -646,12 +403,59 @@ export class AuthService {
       throw new UnauthorizedException("Invalid phone/email or password");
     }
 
+    // Email verification gate. Signup creates the account with a password and
+    // an UNVERIFIED email identity; without this check a correct password would
+    // hand out a session even though the email was never proven (the exact
+    // bypass that also enables email squatting). Only issue tokens once the
+    // account's email is verified. We check the user's email identity directly
+    // so the gate applies whether they logged in by phone or by email.
+    const emailIdentity = await this.prisma.userIdentity.findFirst({
+      where: { userId: user.id, provider: "EMAIL" },
+      select: { id: true, emailNormalized: true, isVerified: true },
+    });
+    if (emailIdentity && !emailIdentity.isVerified && emailIdentity.emailNormalized) {
+      // Re-issue a fresh verification code so the (correctly authenticated)
+      // owner can finish verifying. Swallow throttle errors — a still-valid
+      // earlier code is fine, and we must not turn this into a hard login error.
+      try {
+        await this.issueEmailOtp(
+          emailIdentity.id,
+          EMAIL_VERIFY_PURPOSE,
+          emailIdentity.emailNormalized,
+        );
+      } catch {
+        /* cooldown / active-code limits — ignore, keep the response uniform */
+      }
+      return { kind: "email_unverified", email: emailIdentity.emailNormalized };
+    }
+
     const phone = await this.findPrimaryPhone(user.id);
     const bundle = await this.createSessionTokens(user, phone);
     const complete = isProfileComplete(user);
     bundle.profileComplete = complete;
     bundle.needsProfileCompletion = !complete;
-    return bundle;
+    return { kind: "session", bundle };
+  }
+
+  /**
+   * Re-send the signup email-verification code for an unverified account.
+   *
+   * Intentionally uniform: it never reveals whether the email maps to an
+   * account (or whether it's already verified). Callers always get a 200 with
+   * no body signal, so this cannot be used to enumerate registered emails.
+   */
+  async resendEmailVerification(emailRaw: string): Promise<void> {
+    const email = parseEmailInput(emailRaw);
+    const identity = await this.prisma.userIdentity.findFirst({
+      where: { emailNormalized: email, provider: "EMAIL" },
+      select: { id: true, isVerified: true },
+    });
+    if (!identity || identity.isVerified) return;
+    try {
+      await this.issueEmailOtp(identity.id, EMAIL_VERIFY_PURPOSE, email);
+    } catch {
+      /* throttle limits — swallow to keep the response uniform */
+    }
   }
 
   /** Resolve a user + their email identity from a phone/email identifier. */
@@ -659,14 +463,15 @@ export class AuthService {
     userId: string;
     emailIdentity: { id: string; emailNormalized: string | null } | null;
   } | null> {
-    const identifier = identifierRaw.trim();
-    const identity = identifier.includes("@")
-      ? await this.prisma.userIdentity.findFirst({
-          where: { emailNormalized: this.normalizeEmail(identifier), provider: "EMAIL" },
-        })
-      : await this.prisma.userIdentity.findUnique({
-          where: { phoneE164: normalizePhone(identifier) },
-        });
+    const parsed = parseLoginIdentifier(identifierRaw);
+    const identity =
+      parsed.kind === "email"
+        ? await this.prisma.userIdentity.findFirst({
+            where: { emailNormalized: parsed.value, provider: "EMAIL" },
+          })
+        : await this.prisma.userIdentity.findUnique({
+            where: { phoneE164: parsed.value },
+          });
 
     if (!identity) return null;
 
@@ -677,31 +482,31 @@ export class AuthService {
     return { userId: identity.userId, emailIdentity };
   }
 
-  /** Step 1 of password reset: email an OTP if the account (and its email) exist. */
+  /**
+   * Step 1 of password reset. Deliberately uniform: it always returns the same
+   * shape regardless of whether the phone/email maps to an account, or whether
+   * that account has an email on file, so it cannot be used to enumerate
+   * registered users. A reset code is only actually emailed when a matching
+   * account with an email exists, and throttle errors are swallowed for the
+   * same reason.
+   */
   async requestPasswordReset(
     identifierRaw: string,
-  ): Promise<{ otpSent: true; emailMasked: string; expiresInSeconds: number }> {
+  ): Promise<{ otpSent: true; expiresInSeconds: number }> {
     const resolved = await this.resolveUserByIdentifier(identifierRaw);
-    if (!resolved) {
-      throw new UnauthorizedException("No account found with that phone or email.");
+    const emailIdentity = resolved?.emailIdentity;
+    if (emailIdentity?.emailNormalized) {
+      try {
+        await this.issueEmailOtp(
+          emailIdentity.id,
+          PASSWORD_RESET_PURPOSE,
+          emailIdentity.emailNormalized,
+        );
+      } catch {
+        /* throttle limits — swallow to keep the response uniform */
+      }
     }
-    const { emailIdentity } = resolved;
-    if (!emailIdentity?.emailNormalized) {
-      throw new UnauthorizedException(
-        "No email on file for this account. Please contact support to reset your password.",
-      );
-    }
-
-    const expiresInSeconds = await this.issueEmailOtp(
-      emailIdentity.id,
-      PASSWORD_RESET_PURPOSE,
-      emailIdentity.emailNormalized,
-    );
-    return {
-      otpSent: true,
-      emailMasked: maskEmail(emailIdentity.emailNormalized),
-      expiresInSeconds,
-    };
+    return { otpSent: true, expiresInSeconds: OTP_TTL_SECONDS };
   }
 
   /** Step 2 of password reset: verify OTP, set the new password, auto-login. */
@@ -713,17 +518,20 @@ export class AuthService {
     this.validatePassword(newPassword);
 
     const resolved = await this.resolveUserByIdentifier(identifierRaw);
-    if (!resolved) {
-      throw new UnauthorizedException("No account found with that phone or email.");
+    const emailIdentity = resolved?.emailIdentity;
+    if (!resolved || !emailIdentity?.emailNormalized) {
+      // Stay uniform with an invalid/expired code so the confirm step cannot
+      // be used to confirm whether an identifier maps to an account.
+      throw new UnauthorizedException("Invalid or expired reset code");
     }
-    const { userId, emailIdentity } = resolved;
-    if (!emailIdentity?.emailNormalized) {
-      throw new UnauthorizedException(
-        "No email on file for this account. Please contact support.",
-      );
-    }
+    const { userId } = resolved;
 
-    await this.consumeEmailOtp(emailIdentity.id, PASSWORD_RESET_PURPOSE, otpCode);
+    const normalizedOtp = parseOtpCodeInput(otpCode);
+    try {
+      await this.consumeEmailOtp(emailIdentity.id, PASSWORD_RESET_PURPOSE, normalizedOtp);
+    } catch {
+      throw new UnauthorizedException("Invalid or expired reset code");
+    }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
     const now = new Date();
@@ -1242,10 +1050,7 @@ export class AuthService {
     fullName: string,
     email?: string,
   ): Promise<ProfileUpdateResult> {
-    const trimmedName = fullName.trim();
-    if (!trimmedName || trimmedName.length < 4) {
-      throw new UnauthorizedException("Full name must be at least 4 characters");
-    }
+    const trimmedName = parseFullNameInput(fullName);
 
     // Best-effort split into first/last
     const parts = trimmedName.split(/\s+/);
@@ -1263,7 +1068,7 @@ export class AuthService {
 
     // Upsert optional email as a UserIdentity (unverified in v1)
     if (email) {
-      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedEmail = parseEmailInput(email);
       const existing = await this.prisma.userIdentity.findFirst({
         where: { userId, provider: "EMAIL" },
       });
@@ -1312,15 +1117,6 @@ export class AuthService {
   /* ------------------------------------------------------------------ */
   /*  Helpers                                                           */
   /* ------------------------------------------------------------------ */
-
-  private async verifyInfobipPin(otpHash: string, otpCode: string): Promise<boolean> {
-    const pinId = otpHash.slice(INFOBIP_PIN_HASH_PREFIX.length);
-    if (!pinId || !this.otpSender.verify) {
-      throw new UnauthorizedException("OTP provider is not configured for verification");
-    }
-
-    return this.otpSender.verify(pinId, otpCode);
-  }
 
   private async createSessionTokens(
     user: { id: string; role: string; displayName: string },

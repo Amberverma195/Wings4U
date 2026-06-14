@@ -1,51 +1,39 @@
-/**
- * AuthSheet - OTP-based login/signup bottom sheet for the mobile app.
- *
- * Flow:
- *   1. User enters phone number -> POST /api/v1/auth/otp/request
- *   2. OTP code is sent (logged to console in dev via ConsoleOtpSender)
- *   3. User enters 6-digit code -> POST /api/v1/auth/otp/verify
- *   4. If new user (needs_profile_completion), show name form
- *   5. Session refreshes, sheet closes
- */
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Keyboard,
-} from 'react-native';
-import { X, Phone, Shield, User } from 'lucide-react-native';
-import { useAuth } from '../hooks/use-auth';
-import { toE164 } from '../lib/phone';
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { Lock, Phone, User, X } from "lucide-react-native";
+import { useAuth } from "../hooks/use-auth";
 
-type AuthStep = 'phone' | 'otp' | 'profile';
+type AuthStep = "login" | "profile";
 
 export function AuthSheet({
   visible,
   onClose,
   onComplete,
-  initialStep = 'phone',
+  initialStep = "login",
 }: {
   visible: boolean;
   onClose: () => void;
   onComplete?: () => void;
-  initialStep?: Extract<AuthStep, 'phone' | 'profile'>;
+  initialStep?: AuthStep;
 }) {
-  const { requestOtp, verifyOtp, updateProfile, loading, error, clearError } = useAuth();
-  const [step, setStep] = useState<AuthStep>('phone');
-  const [phone, setPhone] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const { login, updateProfile, loading, error, clearError } = useAuth();
+  const [step, setStep] = useState<AuthStep>(initialStep);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
-  const otpInputRef = useRef<TextInput>(null);
 
   const displayError = localError || error;
 
@@ -55,11 +43,11 @@ export function AuthSheet({
   }, [initialStep, visible]);
 
   const resetState = useCallback(() => {
-    setStep('phone');
-    setPhone('');
-    setOtpCode('');
-    setFullName('');
-    setEmail('');
+    setStep("login");
+    setIdentifier("");
+    setPassword("");
+    setFullName("");
+    setEmail("");
     setLocalError(null);
     clearError();
   }, [clearError]);
@@ -69,55 +57,24 @@ export function AuthSheet({
     onClose();
   }, [resetState, onClose]);
 
-  /* Step 1: Request OTP */
-  const handleRequestOtp = useCallback(async () => {
+  const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
     setLocalError(null);
     clearError();
 
-    let phoneE164: string;
-    try {
-      phoneE164 = toE164(phone);
-    } catch {
-      setLocalError('Please enter a valid 10-digit phone number');
+    if (!identifier.trim()) {
+      setLocalError("Please enter your phone or email");
+      return;
+    }
+    if (!password) {
+      setLocalError("Please enter your password");
       return;
     }
 
     try {
-      await requestOtp(phoneE164);
-    } catch {
-      // OTP request failed; the user can still use the 000000 dev bypass.
-    }
-
-    // Always move to the OTP step so the user can enter the code
-    // (or use "000000" dev bypass even if the send failed)
-    setStep('otp');
-    setTimeout(() => otpInputRef.current?.focus(), 300);
-  }, [phone, requestOtp, clearError]);
-
-  /* Step 2: Verify OTP */
-  const handleVerifyOtp = useCallback(async () => {
-    Keyboard.dismiss();
-    setLocalError(null);
-    clearError();
-
-    if (otpCode.length < 4) {
-      setLocalError('Please enter the 6-digit code');
-      return;
-    }
-
-    let phoneE164: string;
-    try {
-      phoneE164 = toE164(phone);
-    } catch {
-      setLocalError('Invalid phone number');
-      return;
-    }
-
-    try {
-      const result = await verifyOtp(phoneE164, otpCode);
+      const result = await login(identifier.trim(), password);
       if (result.needs_profile_completion) {
-        setStep('profile');
+        setStep("profile");
       } else {
         onComplete?.();
         handleClose();
@@ -125,16 +82,15 @@ export function AuthSheet({
     } catch {
       // error is set by the hook
     }
-  }, [otpCode, phone, verifyOtp, clearError, handleClose, onComplete]);
+  }, [identifier, password, login, clearError, handleClose, onComplete]);
 
-  /* Step 3: Profile completion */
   const handleUpdateProfile = useCallback(async () => {
     Keyboard.dismiss();
     setLocalError(null);
     clearError();
 
     if (fullName.trim().length < 4) {
-      setLocalError('Name must be at least 4 characters');
+      setLocalError("Name must be at least 4 characters");
       return;
     }
 
@@ -151,106 +107,78 @@ export function AuthSheet({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView
         style={s.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={handleClose} />
 
         <View style={s.sheet}>
-          {/* Header */}
           <View style={s.sheetHeader}>
             <Text style={s.sheetTitle}>
-              {step === 'phone' ? 'Login / Sign Up' : step === 'otp' ? 'Enter Code' : 'Complete Profile'}
+              {step === "login" ? "Sign in" : "Complete Profile"}
             </Text>
             <TouchableOpacity onPress={handleClose} style={s.closeBtn}>
               <X size={22} color="#666" />
             </TouchableOpacity>
           </View>
 
-          {/* Error */}
           {displayError ? (
             <View style={s.errorBanner}>
               <Text style={s.errorBannerText}>{displayError}</Text>
             </View>
           ) : null}
 
-          {/* Step: Phone */}
-          {step === 'phone' && (
+          {step === "login" && (
             <View style={s.formSection}>
               <View style={s.inputRow}>
                 <Phone size={20} color="#FF4D4D" />
                 <TextInput
                   style={s.input}
-                  placeholder="(416) 555-1234"
+                  placeholder="Phone or email"
                   placeholderTextColor="#BBB"
-                  keyboardType="phone-pad"
-                  value={phone}
-                  onChangeText={(t) => { setPhone(t); setLocalError(null); clearError(); }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={identifier}
+                  onChangeText={(t) => {
+                    setIdentifier(t);
+                    setLocalError(null);
+                    clearError();
+                  }}
                   autoFocus
                   returnKeyType="next"
-                  onSubmitEditing={handleRequestOtp}
                 />
               </View>
-              <Text style={s.hint}>
-                We'll send a 6-digit code to verify your number.
-              </Text>
-              <TouchableOpacity
-                style={[s.primaryBtn, loading && s.primaryBtnDisabled]}
-                onPress={handleRequestOtp}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <Text style={s.primaryBtnText}>Send Code</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Step: OTP */}
-          {step === 'otp' && (
-            <View style={s.formSection}>
-              <View style={s.inputRow}>
-                <Shield size={20} color="#FF4D4D" />
+              <View style={[s.inputRow, { marginTop: 12 }]}>
+                <Lock size={20} color="#FF4D4D" />
                 <TextInput
-                  ref={otpInputRef}
-                  style={[s.input, s.otpInput]}
-                  placeholder="000000"
+                  style={s.input}
+                  placeholder="Password"
                   placeholderTextColor="#BBB"
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  value={otpCode}
-                  onChangeText={(t) => { setOtpCode(t); setLocalError(null); clearError(); }}
-                  autoFocus
+                  secureTextEntry
+                  value={password}
+                  onChangeText={(t) => {
+                    setPassword(t);
+                    setLocalError(null);
+                    clearError();
+                  }}
                   returnKeyType="done"
-                  onSubmitEditing={handleVerifyOtp}
+                  onSubmitEditing={handleLogin}
                 />
               </View>
-              <Text style={s.hint}>
-                Enter the code sent to {phone}
-              </Text>
               <TouchableOpacity
                 style={[s.primaryBtn, loading && s.primaryBtnDisabled]}
-                onPress={handleVerifyOtp}
+                onPress={handleLogin}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFF" size="small" />
                 ) : (
-                  <Text style={s.primaryBtnText}>Verify</Text>
+                  <Text style={s.primaryBtnText}>Sign In</Text>
                 )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.secondaryBtn}
-                onPress={() => { setStep('phone'); setOtpCode(''); clearError(); setLocalError(null); }}
-              >
-                <Text style={s.secondaryBtnText}>Change Number</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          {/* Step: Profile */}
-          {step === 'profile' && (
+          {step === "profile" && (
             <View style={s.formSection}>
               <View style={s.inputRow}>
                 <User size={20} color="#FF4D4D" />
@@ -259,7 +187,11 @@ export function AuthSheet({
                   placeholder="Full Name"
                   placeholderTextColor="#BBB"
                   value={fullName}
-                  onChangeText={(t) => { setFullName(t); setLocalError(null); clearError(); }}
+                  onChangeText={(t) => {
+                    setFullName(t);
+                    setLocalError(null);
+                    clearError();
+                  }}
                   autoFocus
                   autoCapitalize="words"
                   returnKeyType="next"
@@ -274,7 +206,11 @@ export function AuthSheet({
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
-                  onChangeText={(t) => { setEmail(t); setLocalError(null); clearError(); }}
+                  onChangeText={(t) => {
+                    setEmail(t);
+                    setLocalError(null);
+                    clearError();
+                  }}
                   returnKeyType="done"
                   onSubmitEditing={handleUpdateProfile}
                 />
@@ -299,54 +235,62 @@ export function AuthSheet({
 }
 
 const s = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  overlay: { flex: 1, justifyContent: "flex-end" },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
   sheet: {
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
     paddingTop: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 12,
   },
   sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
-  sheetTitle: { fontSize: 20, fontWeight: '800', color: '#1A1A1A' },
+  sheetTitle: { fontSize: 20, fontWeight: "800", color: "#1A1A1A" },
   closeBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center', alignItems: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
+    alignItems: "center",
   },
   errorBanner: {
-    backgroundColor: 'rgba(255,77,77,0.1)',
-    borderRadius: 12, padding: 12, marginBottom: 16,
+    backgroundColor: "rgba(255,77,77,0.1)",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
   },
-  errorBannerText: { color: '#FF4D4D', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  errorBannerText: { color: "#FF4D4D", fontSize: 13, fontWeight: "600", textAlign: "center" },
   formSection: { paddingBottom: 8 },
   inputRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F8F8F8', borderRadius: 14,
-    paddingHorizontal: 16, height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8F8F8",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 52,
   },
-  input: { flex: 1, fontSize: 16, color: '#1A1A1A', marginLeft: 12, fontWeight: '500' },
-  otpInput: { fontSize: 24, letterSpacing: 8, fontWeight: '700', textAlign: 'center' },
-  atIcon: { fontSize: 18, color: '#FF4D4D', fontWeight: '700' },
-  hint: { fontSize: 13, color: '#999', marginTop: 10, marginBottom: 20, lineHeight: 18 },
+  input: { flex: 1, fontSize: 16, color: "#1A1A1A", marginLeft: 12, fontWeight: "500" },
+  atIcon: { fontSize: 18, color: "#FF4D4D", fontWeight: "700" },
   primaryBtn: {
-    backgroundColor: '#FF4D4D', height: 52, borderRadius: 14,
-    justifyContent: 'center', alignItems: 'center',
+    marginTop: 20,
+    backgroundColor: "#FF4D4D",
+    height: 52,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
   },
   primaryBtnDisabled: { opacity: 0.6 },
-  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  secondaryBtn: { marginTop: 14, alignItems: 'center', paddingVertical: 8 },
-  secondaryBtnText: { color: '#FF4D4D', fontSize: 14, fontWeight: '600' },
+  primaryBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
 });

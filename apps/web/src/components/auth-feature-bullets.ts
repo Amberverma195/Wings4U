@@ -1,5 +1,5 @@
 /**
- * Shared value props for the left column on login and signup (keeps both pages in sync).
+ * Shared value props for the left column on login and signup.
  */
 export const AUTH_FEATURE_BULLETS = [
   "Your usual order, ready instantly",

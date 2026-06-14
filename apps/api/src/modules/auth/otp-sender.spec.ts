@@ -12,7 +12,6 @@ describe("otp-sender", () => {
     jest.resetModules();
     process.env = { ...ORIGINAL_ENV };
     delete process.env.OTP_PROVIDER;
-    delete process.env.SMS_PROVIDER;
     delete process.env.RESEND_API_KEY;
     delete process.env.RESEND_FROM;
     global.fetch = jest.fn();
@@ -48,6 +47,26 @@ describe("otp-sender", () => {
     expect(createOtpSender()).toBeInstanceOf(ResendEmailOtpSender);
   });
 
+  it("refuses to fall back to console logging in production", () => {
+    process.env.NODE_ENV = "production";
+
+    expect(() => createOtpSender()).toThrow(/OTP delivery is not configured/);
+  });
+
+  it("rejects OTP_PROVIDER=console in production", () => {
+    process.env.NODE_ENV = "production";
+    process.env.OTP_PROVIDER = "console";
+
+    expect(() => createOtpSender()).toThrow(/not allowed in production/);
+  });
+
+  it("still uses Resend in production when configured", () => {
+    process.env.NODE_ENV = "production";
+    process.env.RESEND_API_KEY = "re_test";
+
+    expect(createOtpSender()).toBeInstanceOf(ResendEmailOtpSender);
+  });
+
   it("sends the OTP email through the Resend API", async () => {
     process.env.RESEND_API_KEY = "re_test";
     process.env.RESEND_FROM = "noreply@wings4u.test";
@@ -76,7 +95,7 @@ describe("otp-sender", () => {
     expect(payload.html).toContain("123456");
   });
 
-  it("defaults the from address to onboarding@resend.dev", async () => {
+  it("defaults the from address to the Wings 4 U domain sender", async () => {
     process.env.RESEND_API_KEY = "re_test";
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
@@ -87,7 +106,9 @@ describe("otp-sender", () => {
     await new ResendEmailOtpSender().send("jane@example.com", "123456");
 
     const [, init] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(JSON.parse(init.body).from).toBe("onboarding@resend.dev");
+    expect(JSON.parse(init.body).from).toBe(
+      "Wings 4 U <no-reply@wings4ulondon.ca>",
+    );
   });
 
   it("throws when the Resend API returns an error", async () => {
@@ -103,12 +124,13 @@ describe("otp-sender", () => {
     ).rejects.toThrow("Resend email send failed (422)");
   });
 
-  it("skips (does not call Resend) for non-email recipients", async () => {
+  it("rejects non-email recipients", async () => {
     process.env.RESEND_API_KEY = "re_test";
 
-    const result = await new ResendEmailOtpSender().send("+14379660600", "123456");
+    await expect(
+      new ResendEmailOtpSender().send("+14379660600", "123456"),
+    ).rejects.toThrow("Email OTP recipient must be a valid email address");
 
-    expect(result).toEqual({ provider: "local" });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });

@@ -25,20 +25,31 @@ import { AuthService } from "./auth.service";
 /*  DTOs                                                              */
 /* ------------------------------------------------------------------ */
 
-// At least 8 chars, with at least one letter and one digit.
-const PASSWORD_POLICY_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+// At least 8 chars, with at least one letter, one digit, and one special char.
+const PASSWORD_POLICY_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const PASSWORD_POLICY_MESSAGE =
-  "Password must be at least 8 characters and include a letter and a number.";
+  "Password must be at least 8 characters and include a letter, a number, and a special character.";
+
+const PHONE_CHARS_REGEX = /^[\d\s()+-]+$/;
+const PHONE_CHARS_MESSAGE = "Phone number contains invalid characters";
+const LOGIN_IDENTIFIER_REGEX = /^[\w@.+\-() ]+$/;
+const LOGIN_IDENTIFIER_MESSAGE = "Identifier contains invalid characters";
+const FULL_NAME_REGEX = /^[\p{L}\p{M}\s'.-]+$/u;
+const FULL_NAME_MESSAGE = "Full name contains invalid characters";
+const OTP_CODE_REGEX = /^\d{4,8}$/;
+const OTP_CODE_MESSAGE = "Verification code must be 4-8 digits";
 
 class SignupDto {
   @IsString()
   @MinLength(4)
   @MaxLength(80)
+  @Matches(FULL_NAME_REGEX, { message: FULL_NAME_MESSAGE })
   full_name!: string;
 
   @IsString()
-  @MinLength(8)
-  @MaxLength(32)
+  @MinLength(10)
+  @MaxLength(20)
+  @Matches(PHONE_CHARS_REGEX, { message: PHONE_CHARS_MESSAGE })
   phone!: string;
 
   @IsEmail()
@@ -57,14 +68,15 @@ class SignupVerifyDto {
   email!: string;
 
   @IsString()
-  @Length(4, 8)
+  @Matches(OTP_CODE_REGEX, { message: OTP_CODE_MESSAGE })
   otp_code!: string;
 }
 
 class PasswordLoginDto {
   @IsString()
   @MinLength(3)
-  @MaxLength(255)
+  @MaxLength(254)
+  @Matches(LOGIN_IDENTIFIER_REGEX, { message: LOGIN_IDENTIFIER_MESSAGE })
   identifier!: string;
 
   @IsString()
@@ -73,21 +85,28 @@ class PasswordLoginDto {
   password!: string;
 }
 
+class ResendVerificationDto {
+  @IsEmail()
+  email!: string;
+}
+
 class PasswordResetRequestDto {
   @IsString()
   @MinLength(3)
-  @MaxLength(255)
+  @MaxLength(254)
+  @Matches(LOGIN_IDENTIFIER_REGEX, { message: LOGIN_IDENTIFIER_MESSAGE })
   identifier!: string;
 }
 
 class PasswordResetConfirmDto {
   @IsString()
   @MinLength(3)
-  @MaxLength(255)
+  @MaxLength(254)
+  @Matches(LOGIN_IDENTIFIER_REGEX, { message: LOGIN_IDENTIFIER_MESSAGE })
   identifier!: string;
 
   @IsString()
-  @Length(4, 8)
+  @Matches(OTP_CODE_REGEX, { message: OTP_CODE_MESSAGE })
   otp_code!: string;
 
   @IsString()
@@ -96,24 +115,6 @@ class PasswordResetConfirmDto {
 
   @IsString()
   confirm_password!: string;
-}
-
-class OtpRequestDto {
-  @IsString()
-  @MinLength(8)
-  @MaxLength(32)
-  phone!: string;
-}
-
-class OtpVerifyDto {
-  @IsString()
-  @MinLength(8)
-  @MaxLength(32)
-  phone!: string;
-
-  @IsString()
-  @Length(4, 8)
-  otp_code!: string;
 }
 
 class RefreshDto {
@@ -125,18 +126,9 @@ class RefreshDto {
 class ProfileUpdateDto {
   @IsString()
   @MinLength(4)
+  @MaxLength(80)
+  @Matches(FULL_NAME_REGEX, { message: FULL_NAME_MESSAGE })
   full_name!: string;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-}
-
-class CheckSignupDto {
-  @IsString()
-  @MinLength(8)
-  @MaxLength(32)
-  phone!: string;
 
   @IsOptional()
   @IsEmail()
@@ -316,43 +308,6 @@ function clearAuthCookies(res: Response): void {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Public()
-  @Post("check-signup")
-  @HttpCode(HttpStatus.OK)
-  async checkSignup(@Body() body: CheckSignupDto) {
-    return this.authService.checkSignupEligibility(body.phone, body.email);
-  }
-
-  @Public()
-  @Post("otp/request")
-  @HttpCode(HttpStatus.OK)
-  async requestOtp(@Body() body: OtpRequestDto) {
-    const result = await this.authService.requestOtp(body.phone);
-    return { otp_sent: result.otpSent, expires_in_seconds: result.expiresInSeconds };
-  }
-
-  @Public()
-  @Post("otp/verify")
-  @HttpCode(HttpStatus.OK)
-  async verifyOtp(
-    @Body() body: OtpVerifyDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = await this.authService.verifyOtp(body.phone, body.otp_code);
-
-    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
-
-    return {
-      user: result.user,
-      profile_complete: result.profileComplete,
-      needs_profile_completion: result.needsProfileCompletion,
-      // Mobile clients read tokens from the body (no cookies on native).
-      // Web clients ignore these and use the httpOnly cookies set above.
-      access_token: result.accessToken,
-      refresh_token: result.refreshToken,
-    };
-  }
-
   /* ---------------------------------------------------------------- */
   /*  Email + password auth                                           */
   /* ---------------------------------------------------------------- */
@@ -409,14 +364,30 @@ export class AuthController {
       body.identifier,
       body.password,
     );
-    setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
+    // Correct password but the account's email isn't verified yet: do NOT
+    // issue a session. A fresh verification code has been emailed; the client
+    // routes the user to the email-verification step.
+    if (result.kind === "email_unverified") {
+      return { needs_email_verification: true, email: result.email };
+    }
+    const bundle = result.bundle;
+    setAuthCookies(res, bundle.accessToken, bundle.refreshToken, bundle.csrfToken);
     return {
-      user: result.user,
-      profile_complete: result.profileComplete,
-      needs_profile_completion: result.needsProfileCompletion,
-      access_token: result.accessToken,
-      refresh_token: result.refreshToken,
+      user: bundle.user,
+      profile_complete: bundle.profileComplete,
+      needs_profile_completion: bundle.needsProfileCompletion,
+      access_token: bundle.accessToken,
+      refresh_token: bundle.refreshToken,
     };
+  }
+
+  /** Re-send the signup email-verification code (uniform, no enumeration). */
+  @Public()
+  @Post("signup/resend")
+  @HttpCode(HttpStatus.OK)
+  async resendSignupVerification(@Body() body: ResendVerificationDto) {
+    await this.authService.resendEmailVerification(body.email);
+    return { otp_sent: true };
   }
 
   /** Password reset step 1: email an OTP if the account (and its email) exist. */
@@ -427,7 +398,6 @@ export class AuthController {
     const result = await this.authService.requestPasswordReset(body.identifier);
     return {
       otp_sent: result.otpSent,
-      email_masked: result.emailMasked,
       expires_in_seconds: result.expiresInSeconds,
     };
   }

@@ -54,6 +54,7 @@ type KdsPendingCancelRequest = {
 type KdsOrder = {
   id: string;
   order_number: number;
+  order_source: string;
   fulfillment_type: string;
   status: string;
   placed_at: string;
@@ -208,6 +209,10 @@ function fulfillmentBadge(type: string) {
       {isDelivery ? "DELIVERY" : "PICKUP"}
     </span>
   );
+}
+
+function canShowKdsOrderChat(order: KdsOrder): boolean {
+  return order.order_source !== "POS" && order.order_source !== "PHONE";
 }
 
 function getPlacedEtaSecondsRemaining(order: KdsOrder, nowMs: number): number | null {
@@ -956,6 +961,7 @@ function KdsOrderCard({
 
   /* ----- Pending add-items change request badge (Finding 5) ----- */
   const hasPendingChange = (order.pending_change_request_count ?? 0) > 0;
+  const showChat = canShowKdsOrderChat(order);
 
   return (
     <>
@@ -1009,7 +1015,7 @@ function KdsOrderCard({
                   📋 Add-Items Pending
                 </span>
               )}
-              {order.unread_customer_chat_count > 0 && (
+              {showChat && order.unread_customer_chat_count > 0 && (
                 <span
                   style={{
                     display: "inline-flex",
@@ -1546,6 +1552,7 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
   const placedDate = new Date(order.placed_at);
   const isTerminal = ["DELIVERED", "PICKED_UP", "CANCELLED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY"].includes(order.status);
   const customerCounters = formatKdsCustomerCounters(order);
+  const showChat = canShowKdsOrderChat(order);
 
   return (
     <div className="kds-modal-overlay" onClick={onClose}>
@@ -1583,7 +1590,7 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
 
         <div style={{ display: "flex", gap: "1.5rem", flex: 1, minHeight: 0 }}>
           {/* Main Left */}
-          <div style={{ flex: 2, overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.5rem", paddingRight: "0.5rem" }}>
+          <div style={{ flex: showChat ? 2 : 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.5rem", paddingRight: "0.5rem" }}>
             <div>
               <h3 style={{ margin: "0 0 1rem" }}>Items</h3>
               <ul className="kds-order-card__items" style={{ margin: 0, padding: 0, listStyle: "none" }}>
@@ -1667,15 +1674,16 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
             </div>
           </div>
 
-          {/* Right Side */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border)", paddingLeft: "1.5rem", minWidth: 0 }}>
-            <OrderChat
-              orderId={order.id}
-              locationId={DEFAULT_LOCATION_ID}
-              isTerminal={isTerminal}
-              viewerSide="STAFF"
-            />
-          </div>
+          {showChat && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border)", paddingLeft: "1.5rem", minWidth: 0 }}>
+              <OrderChat
+                orderId={order.id}
+                locationId={DEFAULT_LOCATION_ID}
+                isTerminal={isTerminal}
+                viewerSide="STAFF"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -111,7 +111,7 @@ export function AuthShell({
   }, [isHandoffActive]);
 
   useEffect(() => {
-    if (!session.loaded || isHandoffActive) return;
+    if (isHandoffActive) return;
 
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -141,7 +141,7 @@ export function AuthShell({
         window.clearTimeout(timeoutId);
       }
     };
-  }, [session.loaded, isHandoffActive]);
+  }, [isHandoffActive]);
 
   const updateAuthCardRim = useCallback((e: MouseEvent<HTMLElement>) => {
     const el = authCardRef.current;
@@ -161,10 +161,6 @@ export function AuthShell({
     el.style.removeProperty("--rim-x");
     el.style.removeProperty("--rim-y");
   }, []);
-
-  if (!session.loaded) {
-    return <AuthShellSkeleton />;
-  }
 
   if (isHandoffActive) {
     return redirectTo === "/account/profile" ? (
@@ -630,20 +626,20 @@ const AUTH_PAGE_STYLES = `
   .wk-auth-card-body label {
     font-size: 0.95rem !important;
   }
-  .wk-auth-card-body input:not([placeholder="000000"]) {
+  .wk-auth-card-body input:not(.wk-otp-input) {
     padding: 0.9rem 1.1rem !important;
     font-size: 1.0625rem !important;
     border-radius: 10px !important;
   }
 
   @media (min-width: 768px) {
-    .wk-auth-card-body input:not([placeholder="000000"]) {
+    .wk-auth-card-body input:not(.wk-otp-input) {
       padding: 1.05rem 1.25rem !important;
       font-size: 1.125rem !important;
     }
   }
 
-  .wk-auth-card-body input[placeholder="000000"] {
+  .wk-auth-card-body .wk-otp-input {
     padding: 0.9rem 1rem !important;
     font-size: 1.5rem !important;
     letter-spacing: 0.35em !important;

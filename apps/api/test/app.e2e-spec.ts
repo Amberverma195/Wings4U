@@ -14,8 +14,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const BASE = "/api/v1";
 const CSRF = "e2e-csrf-token";
 
-process.env.SMS_PROVIDER ??= "console";
-
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -105,52 +103,35 @@ function nextTestPhone(): string {
   return `+1519${suffix}`;
 }
 
-async function requestOtpAndCaptureCode(
-  server: ReturnType<INestApplication["getHttpServer"]>,
-  phone: string,
-): Promise<string> {
-  const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-
-  try {
-    await request(server)
-      .post(`${BASE}/auth/otp/request`)
-      .send({ phone })
-      .expect(200);
-
-    const otpLog = logSpy.mock.calls
-      .map((call) => call.map((value) => String(value)).join(" "))
-      .find((line) => line.includes(`[DEV OTP] ${phone}:`));
-
-    expect(otpLog).toBeDefined();
-    const match = otpLog?.match(/: (\d{6})$/);
-    expect(match).toBeDefined();
-    return match![1];
-  } finally {
-    logSpy.mockRestore();
-  }
-}
-
-async function createVerifiedCustomerSession(
-  server: ReturnType<INestApplication["getHttpServer"]>,
+async function createIncompleteCustomerSession(
+  prisma: PrismaService,
   phone = nextTestPhone(),
 ) {
-  const otpCode = await requestOtpAndCaptureCode(server, phone);
-  const verifyRes = await request(server)
-    .post(`${BASE}/auth/otp/verify`)
-    .send({ phone, otp_code: otpCode })
-    .expect(200);
+  const user = await prisma.user.create({
+    data: {
+      role: "CUSTOMER",
+      displayName: phone,
+      identities: {
+        create: {
+          provider: "PHONE_OTP",
+          providerSubject: phone,
+          phoneE164: phone,
+          isPrimary: true,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      },
+    },
+    select: { id: true },
+  });
 
-  const setCookies = cookieList(verifyRes.headers["set-cookie"]);
-
+  const token = await createSessionToken(prisma, user.id, "CUSTOMER");
   return {
     phone,
-    otpCode,
-    verifyRes,
-    cookieHeader: cookieHeader(setCookies),
-    csrfToken: cookieValue(setCookies, "csrf_token") ?? "",
+    cookieHeader: `access_token=${token}; csrf_token=${CSRF}`,
+    csrfToken: CSRF,
   };
 }
-
 async function createCheckoutOrder(
   server: ReturnType<INestApplication["getHttpServer"]>,
   token: string,
@@ -398,104 +379,6 @@ describe("API (e2e)", () => {
   /* ------------------------------------------------------------------ */
 
   describe("Auth", () => {
-    it("POST /auth/otp/request with valid phone returns success", async () => {
-      const phone = nextTestPhone();
-      const res = await request(server)
-        .post(`${BASE}/auth/otp/request`)
-        .send({ phone })
-        .expect(200);
-
-      expect(res.body.data).toMatchObject({
-        otp_sent: true,
-        expires_in_seconds: expect.any(Number),
-      });
-      expect(res.body.errors).toBeNull();
-    });
-
-    it("POST /auth/otp/request with invalid phone returns 422", async () => {
-      await request(server)
-        .post(`${BASE}/auth/otp/request`)
-        .send({ phone: "not-a-phone" })
-        .expect(422);
-    });
-
-    it("POST /auth/otp/request throttles repeat requests for the same phone", async () => {
-      const phone = nextTestPhone();
-
-      await request(server)
-        .post(`${BASE}/auth/otp/request`)
-        .send({ phone })
-        .expect(200);
-
-      const res = await request(server)
-        .post(`${BASE}/auth/otp/request`)
-        .send({ phone })
-        .expect(401);
-
-      expect(res.body.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            code: "UNAUTHORIZED",
-            message: expect.stringContaining("Please wait"),
-          }),
-        ]),
-      );
-    });
-
-    it("POST /auth/otp/verify with wrong code returns 401", async () => {
-      const phone = nextTestPhone();
-      await request(server)
-        .post(`${BASE}/auth/otp/request`)
-        .send({ phone })
-        .expect(200);
-
-      const res = await request(server)
-        .post(`${BASE}/auth/otp/verify`)
-        .send({ phone, otp_code: "0000" })
-        .expect(401);
-
-      expect(res.body.data).toBeNull();
-      expect(res.body.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: "UNAUTHORIZED" }),
-        ]),
-      );
-    });
-
-    it("POST /auth/otp/verify with invalid payload returns 422", async () => {
-      await request(server)
-        .post(`${BASE}/auth/otp/verify`)
-        .send({ phone: "bad", otp_code: "" })
-        .expect(422);
-    });
-
-    it("POST /auth/otp/verify with a valid code returns auth cookies and profile flags", async () => {
-      const phone = nextTestPhone();
-      const otpCode = await requestOtpAndCaptureCode(server, phone);
-
-      const res = await request(server)
-        .post(`${BASE}/auth/otp/verify`)
-        .send({ phone, otp_code: otpCode })
-        .expect(200);
-
-      expect(res.body.data).toMatchObject({
-        user: expect.objectContaining({
-          role: "CUSTOMER",
-          displayName: phone,
-          phone,
-        }),
-        profile_complete: false,
-        needs_profile_completion: true,
-      });
-      expect(cookieList(res.headers["set-cookie"])).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("access_token="),
-          expect.stringContaining("refresh_token="),
-          expect.stringContaining("csrf_token="),
-        ]),
-      );
-    });
-
     it("GET /auth/session without auth returns a signed-out session", async () => {
       const res = await request(server)
         .get(`${BASE}/auth/session`)
@@ -509,7 +392,7 @@ describe("API (e2e)", () => {
     });
 
     it("GET /auth/session with auth cookie returns the current customer session", async () => {
-      const session = await createVerifiedCustomerSession(server);
+      const session = await createIncompleteCustomerSession(prisma);
 
       const res = await request(server)
         .get(`${BASE}/auth/session`)
@@ -536,7 +419,7 @@ describe("API (e2e)", () => {
     });
 
     it("PUT /auth/profile completes a provisional customer profile", async () => {
-      const session = await createVerifiedCustomerSession(server);
+      const session = await createIncompleteCustomerSession(prisma);
 
       const res = await request(server)
         .put(`${BASE}/auth/profile`)
@@ -771,7 +654,7 @@ describe("API (e2e)", () => {
     });
 
     it("POST /checkout with an incomplete customer profile returns 403 PROFILE_INCOMPLETE", async () => {
-      const session = await createVerifiedCustomerSession(server);
+      const session = await createIncompleteCustomerSession(prisma);
 
       const res = await request(server)
         .post(`${BASE}/checkout`)

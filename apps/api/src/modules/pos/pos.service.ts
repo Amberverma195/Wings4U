@@ -130,22 +130,6 @@ interface IssueRewardsStampsParams {
   reason?: string;
 }
 
-/**
- * Synthetic walk-in customer per location. The Order model requires a
- * non-null `customer_user_id`, so when a POS station order is rung up
- * without a customer phone we route it to a deterministic per-location
- * walk-in user instead of attaching it to a staff/admin actor (which we
- * no longer have on station-only POS).
- *
- * The user is created lazily and reused via the unique
- * `(provider, providerSubject)` index on `user_identities`.
- */
-const POS_WALKIN_PROVIDER_SUBJECT_PREFIX = "pos-walkin:";
-
-function posWalkinSubject(locationId: string): string {
-  return `${POS_WALKIN_PROVIDER_SUBJECT_PREFIX}${locationId}`;
-}
-
 function serializePosOrder(order: Record<string, unknown>) {
   const o = order as Record<string, unknown> & {
     orderNumber: bigint;
@@ -314,8 +298,15 @@ export class PosService {
 
   async createPosOrder(params: CreatePosOrderParams) {
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Resolve customer user
-      let customerUserId: string;
+      // 1. Resolve customer.
+      //
+      // Guest counter/phone orders do NOT create a user. The order keeps the
+      // name/phone on its snapshot columns and leaves `customer_user_id` null.
+      // We only attach a real `customer_user_id` when the order belongs to an
+      // actual account: an explicit customer id, or a phone that already
+      // matches a registered customer. This keeps the `users` table limited to
+      // real accounts instead of growing one row per walk-in.
+      let customerUserId: string | null = null;
       let customerName: string;
       let customerPhone: string;
       const inputCustomerPhone = params.customerPhone?.trim()
@@ -352,30 +343,16 @@ export class PosService {
         });
 
         if (existingIdentity) {
+          // Returning customer with an account: link the order to them.
           customerUserId = existingIdentity.userId;
           customerName =
             params.customerName ?? existingIdentity.user.displayName;
           customerPhone = phoneE164;
         } else {
-          const newUser = await tx.user.create({
-            data: {
-              role: "CUSTOMER",
-              displayName: params.customerName ?? "Walk-in Customer",
-              identities: {
-                create: {
-                  provider: "PHONE_OTP",
-                  phoneE164,
-                  isPrimary: true,
-                  isVerified: false,
-                },
-              },
-              customerProfile: {
-                create: {},
-              },
-            },
-          });
-          customerUserId = newUser.id;
-          customerName = newUser.displayName;
+          // Unknown phone: guest order. Snapshot the phone/name on the order
+          // only — no user row is created.
+          customerUserId = null;
+          customerName = params.customerName ?? "Walk-in Customer";
           customerPhone = phoneE164;
         }
       } else if (params.actorUserId) {
@@ -385,38 +362,8 @@ export class PosService {
         customerName = params.customerName ?? "Walk-in";
         customerPhone = "";
       } else {
-        // Station-originated walk-in: lazily create / reuse the synthetic
-        // per-location walk-in customer so the order has a stable
-        // `customer_user_id` without inventing fake phone identities.
-        const subject = posWalkinSubject(params.locationId);
-        const walkinIdentity = await tx.userIdentity.findUnique({
-          where: {
-            provider_providerSubject: {
-              provider: "EMAIL",
-              providerSubject: subject,
-            },
-          },
-        });
-        if (walkinIdentity) {
-          customerUserId = walkinIdentity.userId;
-        } else {
-          const walkinUser = await tx.user.create({
-            data: {
-              role: "CUSTOMER",
-              displayName: "POS Walk-in",
-              identities: {
-                create: {
-                  provider: "EMAIL",
-                  providerSubject: subject,
-                  isPrimary: true,
-                  isVerified: false,
-                },
-              },
-              customerProfile: { create: {} },
-            },
-          });
-          customerUserId = walkinUser.id;
-        }
+        // Anonymous walk-in with no phone: guest order, no user row.
+        customerUserId = null;
         customerName = params.customerName ?? "Walk-in";
         customerPhone = "";
       }
@@ -776,6 +723,13 @@ export class PosService {
       // 5b. STORE_CREDIT: validate and debit wallet atomically
       let walletAppliedCents = 0;
       if (params.paymentMethod === "STORE_CREDIT") {
+        // Store credit lives in a customer's wallet, so it requires a real
+        // account. Guest orders have no `customerUserId` and cannot pay this way.
+        if (!customerUserId) {
+          throw new BadRequestException(
+            "Store credit payment requires a registered customer.",
+          );
+        }
         const balance = await lockAndReadWalletBalanceCents(tx, customerUserId);
         if (balance < finalPayableCents) {
           throw new BadRequestException(
