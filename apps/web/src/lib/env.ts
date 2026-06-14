@@ -103,6 +103,11 @@ export function getRealtimeOrigin(): string {
   return "http://127.0.0.1:3001";
 }
 
+const configuredDefaultLocationId =
+  process.env.NEXT_PUBLIC_DEFAULT_LOCATION_ID?.trim();
+
 export const DEFAULT_LOCATION_ID =
-  process.env.NEXT_PUBLIC_DEFAULT_LOCATION_ID ??
-  "00000000-0000-4000-8000-000000000000";
+  configuredDefaultLocationId &&
+  configuredDefaultLocationId !== "00000000-0000-4000-8000-000000000000"
+    ? configuredDefaultLocationId
+    : "LON01";

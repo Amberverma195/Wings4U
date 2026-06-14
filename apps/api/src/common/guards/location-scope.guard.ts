@@ -6,10 +6,9 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import type { Request } from "express";
+import { PrismaService } from "../../database/prisma.service";
 import { IS_PUBLIC_KEY } from "../decorators/roles.decorator";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { normalizeLocationRef, resolveLocationRef } from "../utils/location-ref";
 
 function isPublicRoute(context: ExecutionContext): boolean {
   return Boolean(
@@ -20,12 +19,22 @@ function isPublicRoute(context: ExecutionContext): boolean {
 
 @Injectable()
 export class LocationScopeGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
-    const id = req.headers["x-location-id"];
-    if (typeof id !== "string" || !UUID_RE.test(id)) {
+    const rawId = req.headers["x-location-id"];
+    if (typeof rawId !== "string") {
       throw new UnprocessableEntityException({
-        message: "X-Location-Id header must be a valid UUID",
+        message: "X-Location-Id header must be a valid location id or code",
+        field: "X-Location-Id"
+      });
+    }
+    const ref = normalizeLocationRef(rawId);
+    const id = await resolveLocationRef(this.prisma, ref);
+    if (!id) {
+      throw new UnprocessableEntityException({
+        message: "X-Location-Id header must be a valid active location id or code",
         field: "X-Location-Id"
       });
     }
@@ -40,6 +49,7 @@ export class LocationScopeGuard implements CanActivate {
     }
 
     req.locationId = id;
+    req.locationRef = ref;
     return true;
   }
 }

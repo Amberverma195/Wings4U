@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../../database/prisma.service";
 import * as bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
+import { resolveLocationRef } from "../../common/utils/location-ref";
 import { isAllowedStoreIp } from "../../common/utils/store-ip";
 
 export const KDS_STATION_COOKIE_NAME = "w4u_kds_session";
@@ -18,12 +19,21 @@ export class KdsAuthService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async resolveLocationId(locationRef: string): Promise<string | null> {
+    return resolveLocationRef(this.prisma, locationRef);
+  }
+
   async login(
-    locationId: string,
+    locationRef: string,
     passwordPlain: string,
     clientIp: string,
     deviceId?: string,
   ) {
+    const locationId = await this.resolveLocationId(locationRef);
+    if (!locationId) {
+      throw new ForbiddenException("KDS password is not configured for this location");
+    }
+
     console.log("[KdsAuthService] login attempt:", { locationId, clientIp, deviceId });
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },

@@ -1,13 +1,13 @@
 import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
-import { IsIn, IsOptional, IsString, IsUUID } from "class-validator";
-import { UnprocessableEntityException } from "@nestjs/common";
+import { IsIn, IsOptional, IsString } from "class-validator";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Public } from "../../common/decorators/roles.decorator";
+import { assertRequestLocationMatches } from "../../common/utils/location-ref";
 import { CatalogService } from "./catalog.service";
 
 class MenuQueryDto {
-  @IsUUID()
+  @IsString()
   location_id!: string;
 
   @IsIn(["PICKUP", "DELIVERY"])
@@ -26,14 +26,9 @@ export class MenuController {
   @Public()
   @UseGuards(LocationScopeGuard)
   async getMenu(@Query() query: MenuQueryDto, @Req() req: Request) {
-    if (query.location_id !== req.locationId) {
-      throw new UnprocessableEntityException({
-        message: "location_id must match X-Location-Id",
-        field: "location_id",
-      });
-    }
+    const locationId = assertRequestLocationMatches(query.location_id, req);
     return this.catalogService.getMenu(
-      query.location_id,
+      locationId,
       query.fulfillment_type,
       query.scheduled_for,
       req.user?.userId,

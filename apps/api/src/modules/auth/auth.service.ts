@@ -17,6 +17,7 @@ import {
   parseNanpPhoneInput,
   parseOtpCodeInput,
 } from "../../common/utils/auth-input";
+import { resolveLocationRef } from "../../common/utils/location-ref";
 import { isAllowedStoreIp } from "../../common/utils/store-ip";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { createOtpSender, OtpSender } from "./otp-sender";
@@ -722,8 +723,12 @@ export class AuthService {
       isPosSession: boolean;
     },
   ): Promise<TokenBundle> {
-    const { employeeCode, locationId, clientIp, deviceId, isPosSession } = opts;
+    const { employeeCode, clientIp, deviceId, isPosSession } = opts;
     const surfaceLabel = surface === "POS" ? "POS" : "KDS";
+    const locationId = await resolveLocationRef(this.prisma, opts.locationId);
+    if (!locationId) {
+      throw new UnauthorizedException("Invalid employee code or location");
+    }
 
     // 1. IP allowlist check
     const settings = await this.prisma.locationSettings.findUnique({
@@ -1043,9 +1048,16 @@ export class AuthService {
    */
   private async getStationNetworkStatus(
     surface: "POS" | "KDS",
-    locationId: string,
+    locationRef: string,
     clientIp: string,
   ): Promise<{ allowed: boolean; reason?: string }> {
+    const locationId = await resolveLocationRef(this.prisma, locationRef);
+    if (!locationId) {
+      return {
+        allowed: false,
+        reason: `${surface} access is restricted to in-store network only`,
+      };
+    }
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
       select: { trustedIpRanges: true },

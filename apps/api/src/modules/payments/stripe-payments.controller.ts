@@ -5,7 +5,6 @@ import {
   Headers,
   Post,
   Req,
-  UnprocessableEntityException,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -25,6 +24,7 @@ import { Type } from "class-transformer";
 import type { Request } from "express";
 import { Public, Roles } from "../../common/decorators/roles.decorator";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
+import { assertRequestLocationMatches } from "../../common/utils/location-ref";
 import { StripePaymentsService } from "./stripe-payments.service";
 
 type StripeWebhookRequest = Request & { rawBody?: Buffer };
@@ -72,7 +72,7 @@ class StripeCheckoutItemDto {
 }
 
 class CreateStripePaymentIntentDto {
-  @IsUUID()
+  @IsString()
   location_id!: string;
 
   @IsIn(["PICKUP", "DELIVERY"])
@@ -136,16 +136,11 @@ export class StripePaymentsController {
     @Body() body: CreateStripePaymentIntentDto,
     @Req() req: Request,
   ) {
-    if (body.location_id !== req.locationId) {
-      throw new UnprocessableEntityException({
-        message: "location_id must match X-Location-Id",
-        field: "location_id",
-      });
-    }
+    const locationId = assertRequestLocationMatches(body.location_id, req);
 
     return this.stripePaymentsService.createCheckoutPaymentIntent({
       userId: req.user!.userId,
-      locationId: body.location_id,
+      locationId,
       fulfillmentType: body.fulfillment_type,
       items: body.items,
       promoCode: body.promo_code,

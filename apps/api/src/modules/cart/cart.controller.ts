@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UnprocessableEntityException, UseGuards } from "@nestjs/common";
+import { Body, Controller, Post, Req, UseGuards } from "@nestjs/common";
 import {
   ArrayMinSize,
   IsArray,
@@ -16,6 +16,7 @@ import { Type } from "class-transformer";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Public } from "../../common/decorators/roles.decorator";
+import { assertRequestLocationMatches } from "../../common/utils/location-ref";
 import { CartService } from "./cart.service";
 
 class ModifierSelectionDto {
@@ -61,7 +62,7 @@ class CartItemDto {
 }
 
 class CartQuoteDto {
-  @IsUUID()
+  @IsString()
   location_id!: string;
 
   @IsIn(["PICKUP", "DELIVERY"])
@@ -111,15 +112,10 @@ export class CartController {
   @Public()
   @UseGuards(LocationScopeGuard)
   async quote(@Body() body: CartQuoteDto, @Req() req: Request) {
-    if (body.location_id !== req.locationId) {
-      throw new UnprocessableEntityException({
-        message: "location_id must match X-Location-Id",
-        field: "location_id",
-      });
-    }
+    const locationId = assertRequestLocationMatches(body.location_id, req);
 
     return this.cartService.computeQuote(
-      body.location_id,
+      locationId,
       body.fulfillment_type,
       body.items,
       body.promo_code,

@@ -4,6 +4,7 @@ declare module "express-serve-static-core" {
   interface Request {
     requestId?: string;
     locationId?: string;
+    locationRef?: string;
     user?: {
       userId: string;
       role: "CUSTOMER" | "STAFF" | "ADMIN";

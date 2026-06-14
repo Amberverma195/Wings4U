@@ -25,9 +25,6 @@ class KdsStationLoginDto {
   password!: string;
 
   @IsString()
-  @Matches(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-  )
   location_id!: string;
 
   @IsOptional()
@@ -82,9 +79,12 @@ export class KdsAuthController {
       return { authenticated: false };
     }
     const session = await this.kdsAuthService.validateSession(cookie);
+    const resolvedLocationId = locationId
+      ? await this.kdsAuthService.resolveLocationId(locationId)
+      : null;
     return {
       authenticated:
-        !!session && (!locationId || session.locationId === locationId),
+        !!session && (!locationId || session.locationId === resolvedLocationId),
     };
   }
 

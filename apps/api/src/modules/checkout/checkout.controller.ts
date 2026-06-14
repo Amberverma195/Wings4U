@@ -6,7 +6,6 @@ import {
   Headers,
   Post,
   Req,
-  UnprocessableEntityException,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -26,6 +25,7 @@ import { Type } from "class-transformer";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
+import { assertRequestLocationMatches } from "../../common/utils/location-ref";
 import { AuthService } from "../auth/auth.service";
 import { CheckoutService } from "./checkout.service";
 
@@ -72,7 +72,7 @@ class CheckoutItemDto {
 }
 
 class PlaceOrderDto {
-  @IsUUID()
+  @IsString()
   location_id!: string;
 
   @IsIn(["PICKUP", "DELIVERY"])
@@ -169,16 +169,11 @@ export class CheckoutController {
       });
     }
 
-    if (body.location_id !== req.locationId) {
-      throw new UnprocessableEntityException({
-        message: "location_id must match X-Location-Id",
-        field: "location_id",
-      });
-    }
+    const locationId = assertRequestLocationMatches(body.location_id, req);
 
     return this.checkoutService.placeOrder({
       userId: req.user!.userId,
-      locationId: body.location_id,
+      locationId,
       fulfillmentType: body.fulfillment_type,
       items: body.items.map((item) => ({
         menuItemId: item.menu_item_id,
