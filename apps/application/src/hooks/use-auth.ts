@@ -27,7 +27,7 @@ type ProfileUpdateResult = {
 
 export type UseAuthResult = {
   login: (identifier: string, password: string) => Promise<LoginResult>;
-  updateProfile: (fullName: string, email?: string) => Promise<ProfileUpdateResult>;
+  updateProfile: (fullName: string) => Promise<ProfileUpdateResult>;
   logout: () => Promise<void>;
   loading: boolean;
   error: string | null;
@@ -100,12 +100,11 @@ export function useAuth(): UseAuthResult {
   );
 
   const updateProfile = useCallback(
-    async (fullName: string, email?: string): Promise<ProfileUpdateResult> => {
+    async (fullName: string): Promise<ProfileUpdateResult> => {
       setLoading(true);
       setError(null);
       try {
         const payload: Record<string, string> = { full_name: fullName };
-        if (email) payload.email = email;
 
         const res = await apiFetch("/api/v1/auth/profile", {
           method: "PUT",

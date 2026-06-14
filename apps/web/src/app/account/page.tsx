@@ -60,6 +60,11 @@ export default function AccountPage() {
       triggerShake();
       return;
     }
+    if (!email.trim()) {
+      setError("Email address is required");
+      triggerShake();
+      return;
+    }
 
     setBusy(true);
     try {
@@ -185,12 +190,13 @@ export default function AccountPage() {
                 </label>
 
                 <label className={styles.field}>
-                  <span>Email (optional)</span>
+                  <span>Email</span>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="jane@example.com"
+                    required
                   />
                 </label>
 

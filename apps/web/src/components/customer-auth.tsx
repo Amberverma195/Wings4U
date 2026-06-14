@@ -805,10 +805,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   /* ---------------------------------------------------------------- */
 
   const profileNameReady = fullName.trim().length >= 4;
+  const profileEmailReady = email.trim().length > 0;
 
   const handleProfileSubmit = useCallback(async () => {
     setError("");
     if (fullName.trim().length < 4) return fail("Full name must be at least 4 characters");
+    if (!email.trim()) return fail("Email address is required");
 
     setBusyAction("profile");
     try {
@@ -1274,7 +1276,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         style={{ display: "contents" }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!busy && profileNameReady) void handleProfileSubmit();
+          if (!busy && profileNameReady && profileEmailReady) void handleProfileSubmit();
         }}
       >
         <div style={s.field}>
@@ -1289,13 +1291,14 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         </div>
 
         <div style={s.field}>
-          <label style={s.label}>Email (optional)</label>
+          <label style={s.label}>Email</label>
           <input
             style={s.input}
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="jane@example.com"
+            required
           />
         </div>
 
@@ -1305,10 +1308,10 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           type="submit"
           style={{
             ...s.btn,
-            ...(busy || !profileNameReady ? s.btnDisabled : {}),
+            ...(busy || !profileNameReady || !profileEmailReady ? s.btnDisabled : {}),
             ...shakeStyle,
           }}
-          disabled={busy || !profileNameReady}
+          disabled={busy || !profileNameReady || !profileEmailReady}
         >
           {busyAction === "profile" ? "Saving..." : "Save and continue"}
         </button>

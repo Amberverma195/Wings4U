@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -29,10 +30,12 @@ const OTP_RESEND_COOLDOWN_SECONDS = 60; // minimum gap between code sends
 const MAX_OTP_SENDS_PER_WINDOW = 5; // max code sends per identity + purpose
 const OTP_SEND_WINDOW_SECONDS = 15 * 60;
 const MAX_ACTIVE_OTP_CODES = 5; // max unconsumed/unexpired codes per identity + purpose
+const PROFILE_CONTACT_CHANGE_COOLDOWN_DAYS = 7;
 
 // Email OTP purposes (stored in AuthOtpCode.purpose).
 const EMAIL_VERIFY_PURPOSE = "EMAIL_VERIFY";
 const PASSWORD_RESET_PURPOSE = "PASSWORD_RESET";
+const PROFILE_CONTACT_CHANGE_PURPOSE = "PROFILE_CONTACT_CHANGE";
 
 // At least 8 chars, with at least one letter, one digit, and one special char.
 const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
@@ -122,6 +125,20 @@ interface ProfileUpdateResult {
   profile_complete: boolean;
 }
 
+type ProfileContactChangeType = "email" | "phone";
+
+interface ProfileContactChangeRequestResult {
+  otpSent: true;
+  changeType: ProfileContactChangeType;
+  deliveryTarget: string;
+  expiresInSeconds: number;
+}
+
+interface ProfileContactChangeVerifyResult extends ProfileUpdateResult {
+  email?: string;
+  phone?: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly otpSender: OtpSender;
@@ -166,6 +183,7 @@ export class AuthService {
     userIdentityId: string,
     purpose: string,
     email: string,
+    metadata: { pendingEmailNormalized?: string; pendingPhoneE164?: string } = {},
   ): Promise<number> {
     const now = new Date();
     const cooldownCutoff = new Date(now.getTime() - OTP_RESEND_COOLDOWN_SECONDS * 1000);
@@ -211,6 +229,8 @@ export class AuthService {
         otpHash: sha256(otp),
         purpose,
         expiresAt: new Date(Date.now() + OTP_TTL_SECONDS * 1000),
+        pendingEmailNormalized: metadata.pendingEmailNormalized,
+        pendingPhoneE164: metadata.pendingPhoneE164,
       },
     });
 
@@ -1048,7 +1068,7 @@ export class AuthService {
   async updateProfile(
     userId: string,
     fullName: string,
-    email?: string,
+    _email?: string,
   ): Promise<ProfileUpdateResult> {
     const trimmedName = parseFullNameInput(fullName);
 
@@ -1066,41 +1086,345 @@ export class AuthService {
       },
     });
 
-    // Upsert optional email as a UserIdentity (unverified in v1)
-    if (email) {
-      const normalizedEmail = parseEmailInput(email);
-      const existing = await this.prisma.userIdentity.findFirst({
-        where: { userId, provider: "EMAIL" },
-      });
-
-      if (existing) {
-        await this.prisma.userIdentity.update({
-          where: { id: existing.id },
-          data: { emailNormalized: normalizedEmail, providerSubject: normalizedEmail },
-        });
-      } else {
-        // Check for duplicate email across other users
-        const duplicate = await this.prisma.userIdentity.findFirst({
-          where: { emailNormalized: normalizedEmail, provider: "EMAIL", userId: { not: userId } },
-        });
-        if (duplicate) {
-          throw new ConflictException("This email is already in use by another account");
-        }
-        await this.prisma.userIdentity.create({
-          data: {
-            userId,
-            provider: "EMAIL",
-            providerSubject: normalizedEmail,
-            emailNormalized: normalizedEmail,
-            isPrimary: false,
-          },
-        });
-      }
-    }
-
     return {
       user: { id: user.id, displayName: user.displayName, firstName: user.firstName, lastName: user.lastName },
       profile_complete: isProfileComplete(user),
+    };
+  }
+
+  async requestProfileContactChange(
+    userId: string,
+    input: { email?: string; phone?: string },
+  ): Promise<ProfileContactChangeRequestResult> {
+    const hasEmail = typeof input.email === "string" && input.email.trim().length > 0;
+    const hasPhone = typeof input.phone === "string" && input.phone.trim().length > 0;
+    if (hasEmail === hasPhone) {
+      throw new BadRequestException("Submit either an email address or a phone number");
+    }
+
+    await this.assertProfileContactChangeAllowed(userId);
+
+    if (hasEmail) {
+      return this.requestEmailIdentityChange(userId, input.email!);
+    }
+
+    return this.requestPhoneIdentityChange(userId, input.phone!);
+  }
+
+  async verifyProfileContactChange(
+    userId: string,
+    changeType: ProfileContactChangeType,
+    otpCode: string,
+  ): Promise<ProfileContactChangeVerifyResult> {
+    const normalizedOtp = parseOtpCodeInput(otpCode);
+    const now = new Date();
+    const identities = await this.prisma.userIdentity.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    const identityIds = identities.map((identity) => identity.id);
+    if (identityIds.length === 0) {
+      throw new UnauthorizedException("Invalid or expired verification code");
+    }
+
+    const record = await this.prisma.authOtpCode.findFirst({
+      where: {
+        userIdentityId: { in: identityIds },
+        purpose: PROFILE_CONTACT_CHANGE_PURPOSE,
+        consumedAt: null,
+        expiresAt: { gt: now },
+        pendingEmailNormalized: changeType === "email" ? { not: null } : undefined,
+        pendingPhoneE164: changeType === "phone" ? { not: null } : undefined,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!record) {
+      throw new UnauthorizedException("Invalid or expired verification code");
+    }
+    if (record.attemptCount >= MAX_OTP_ATTEMPTS) {
+      throw new UnauthorizedException("Too many attempts. Request a new code.");
+    }
+    if (sha256(normalizedOtp) !== record.otpHash) {
+      await this.prisma.authOtpCode.update({
+        where: { id: record.id },
+        data: { attemptCount: { increment: 1 } },
+      });
+      throw new UnauthorizedException("Invalid verification code");
+    }
+
+    await this.assertProfileContactChangeAllowed(userId);
+
+    if (changeType === "email") {
+      await this.applyVerifiedEmailChange(userId, record.id, record.pendingEmailNormalized);
+    } else {
+      await this.applyVerifiedPhoneChange(userId, record.id, record.pendingPhoneE164);
+    }
+
+    return this.getProfileContactResult(userId);
+  }
+
+  private async requestEmailIdentityChange(
+    userId: string,
+    emailRaw: string,
+  ): Promise<ProfileContactChangeRequestResult> {
+    const email = parseEmailInput(emailRaw);
+    const [currentEmail, duplicate, fallbackIdentity] = await Promise.all([
+      this.prisma.userIdentity.findFirst({
+        where: { userId, provider: "EMAIL" },
+        select: { id: true, emailNormalized: true },
+      }),
+      this.prisma.userIdentity.findFirst({
+        where: { userId: { not: userId }, provider: "EMAIL", emailNormalized: email },
+        select: { id: true },
+      }),
+      this.prisma.userIdentity.findFirst({
+        where: { userId },
+        select: { id: true },
+        orderBy: { isPrimary: "desc" },
+      }),
+    ]);
+
+    if (duplicate) {
+      throw new ConflictException("This email is already in use by another account");
+    }
+    if (currentEmail?.emailNormalized === email) {
+      throw new BadRequestException("That email is already on your account");
+    }
+
+    const identityId = currentEmail?.id ?? fallbackIdentity?.id;
+    if (!identityId) {
+      throw new UnauthorizedException("Unable to start email verification");
+    }
+
+    const expiresInSeconds = await this.issueEmailOtp(
+      identityId,
+      PROFILE_CONTACT_CHANGE_PURPOSE,
+      email,
+      { pendingEmailNormalized: email },
+    );
+
+    return {
+      otpSent: true,
+      changeType: "email",
+      deliveryTarget: email,
+      expiresInSeconds,
+    };
+  }
+
+  private async requestPhoneIdentityChange(
+    userId: string,
+    phoneRaw: string,
+  ): Promise<ProfileContactChangeRequestResult> {
+    const phone = parseNanpPhoneInput(phoneRaw);
+    const [currentPhone, duplicate, verifiedEmail] = await Promise.all([
+      this.prisma.userIdentity.findFirst({
+        where: { userId, provider: "PHONE_OTP", isPrimary: true },
+        select: { phoneE164: true },
+      }),
+      this.prisma.userIdentity.findFirst({
+        where: { userId: { not: userId }, provider: "PHONE_OTP", phoneE164: phone },
+        select: { id: true },
+      }),
+      this.prisma.userIdentity.findFirst({
+        where: {
+          userId,
+          provider: "EMAIL",
+          isVerified: true,
+          emailNormalized: { not: null },
+        },
+        select: { id: true, emailNormalized: true },
+      }),
+    ]);
+
+    if (duplicate) {
+      throw new ConflictException("This phone number is already in use by another account");
+    }
+    if (currentPhone?.phoneE164 === phone) {
+      throw new BadRequestException("That phone number is already on your account");
+    }
+    if (!verifiedEmail?.emailNormalized) {
+      throw new BadRequestException("Verify an email address before changing your phone number");
+    }
+
+    const expiresInSeconds = await this.issueEmailOtp(
+      verifiedEmail.id,
+      PROFILE_CONTACT_CHANGE_PURPOSE,
+      verifiedEmail.emailNormalized,
+      { pendingPhoneE164: phone },
+    );
+
+    return {
+      otpSent: true,
+      changeType: "phone",
+      deliveryTarget: verifiedEmail.emailNormalized,
+      expiresInSeconds,
+    };
+  }
+
+  private async assertProfileContactChangeAllowed(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { lastProfileIdentityChangeAt: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException("User not found");
+    }
+
+    const lastChanged = user.lastProfileIdentityChangeAt;
+    if (!lastChanged) return;
+
+    const nextAllowedAt = new Date(
+      lastChanged.getTime() + PROFILE_CONTACT_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+    );
+    if (nextAllowedAt.getTime() > Date.now()) {
+      throw new BadRequestException(
+        `You can change your email or phone again on ${nextAllowedAt.toLocaleDateString("en-CA")}`,
+      );
+    }
+  }
+
+  private async applyVerifiedEmailChange(
+    userId: string,
+    otpRecordId: string,
+    email: string | null,
+  ): Promise<void> {
+    if (!email) {
+      throw new UnauthorizedException("Invalid or expired verification code");
+    }
+
+    const duplicate = await this.prisma.userIdentity.findFirst({
+      where: { userId: { not: userId }, provider: "EMAIL", emailNormalized: email },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new ConflictException("This email is already in use by another account");
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.userIdentity.findFirst({
+        where: { userId, provider: "EMAIL" },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await tx.userIdentity.update({
+          where: { id: existing.id },
+          data: {
+            emailNormalized: email,
+            providerSubject: email,
+            isVerified: true,
+            verifiedAt: now,
+          },
+        });
+      } else {
+        await tx.userIdentity.create({
+          data: {
+            userId,
+            provider: "EMAIL",
+            providerSubject: email,
+            emailNormalized: email,
+            isPrimary: false,
+            isVerified: true,
+            verifiedAt: now,
+          },
+        });
+      }
+
+      await tx.authOtpCode.update({
+        where: { id: otpRecordId },
+        data: { consumedAt: now },
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: { lastProfileIdentityChangeAt: now },
+      });
+    });
+  }
+
+  private async applyVerifiedPhoneChange(
+    userId: string,
+    otpRecordId: string,
+    phone: string | null,
+  ): Promise<void> {
+    if (!phone) {
+      throw new UnauthorizedException("Invalid or expired verification code");
+    }
+
+    const duplicate = await this.prisma.userIdentity.findFirst({
+      where: { userId: { not: userId }, provider: "PHONE_OTP", phoneE164: phone },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new ConflictException("This phone number is already in use by another account");
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.userIdentity.findFirst({
+        where: { userId, provider: "PHONE_OTP" },
+        select: { id: true },
+      });
+
+      await tx.userIdentity.updateMany({
+        where: { userId, provider: "PHONE_OTP" },
+        data: { isPrimary: false },
+      });
+
+      if (existing) {
+        await tx.userIdentity.update({
+          where: { id: existing.id },
+          data: {
+            phoneE164: phone,
+            providerSubject: phone,
+            isPrimary: true,
+            isVerified: true,
+            verifiedAt: now,
+          },
+        });
+      } else {
+        await tx.userIdentity.create({
+          data: {
+            userId,
+            provider: "PHONE_OTP",
+            providerSubject: phone,
+            phoneE164: phone,
+            isPrimary: true,
+            isVerified: true,
+            verifiedAt: now,
+          },
+        });
+      }
+
+      await tx.authOtpCode.update({
+        where: { id: otpRecordId },
+        data: { consumedAt: now },
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: { lastProfileIdentityChangeAt: now },
+      });
+    });
+  }
+
+  private async getProfileContactResult(userId: string): Promise<ProfileContactChangeVerifyResult> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { identities: true },
+    });
+    const email = user.identities.find((identity) => identity.provider === "EMAIL")?.emailNormalized;
+    const phone = user.identities.find((identity) => identity.provider === "PHONE_OTP" && identity.isPrimary)?.phoneE164;
+    return {
+      user: {
+        id: user.id,
+        displayName: user.displayName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+      profile_complete: isProfileComplete(user),
+      email: email ?? undefined,
+      phone: phone ?? undefined,
     };
   }
 

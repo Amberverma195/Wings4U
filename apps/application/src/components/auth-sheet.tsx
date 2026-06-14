@@ -32,7 +32,6 @@ export function AuthSheet({
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   const displayError = localError || error;
@@ -47,7 +46,6 @@ export function AuthSheet({
     setIdentifier("");
     setPassword("");
     setFullName("");
-    setEmail("");
     setLocalError(null);
     clearError();
   }, [clearError]);
@@ -95,13 +93,13 @@ export function AuthSheet({
     }
 
     try {
-      await updateProfile(fullName.trim(), email.trim() || undefined);
+      await updateProfile(fullName.trim());
       onComplete?.();
       handleClose();
     } catch {
       // error is set by the hook
     }
-  }, [fullName, email, updateProfile, clearError, handleClose, onComplete]);
+  }, [fullName, updateProfile, clearError, handleClose, onComplete]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
@@ -197,24 +195,6 @@ export function AuthSheet({
                   returnKeyType="next"
                 />
               </View>
-              <View style={[s.inputRow, { marginTop: 12 }]}>
-                <Text style={s.atIcon}>@</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="Email (optional)"
-                  placeholderTextColor="#BBB"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={(t) => {
-                    setEmail(t);
-                    setLocalError(null);
-                    clearError();
-                  }}
-                  returnKeyType="done"
-                  onSubmitEditing={handleUpdateProfile}
-                />
-              </View>
               <TouchableOpacity
                 style={[s.primaryBtn, loading && s.primaryBtnDisabled]}
                 onPress={handleUpdateProfile}
@@ -282,7 +262,6 @@ const s = StyleSheet.create({
     height: 52,
   },
   input: { flex: 1, fontSize: 16, color: "#1A1A1A", marginLeft: 12, fontWeight: "500" },
-  atIcon: { fontSize: 18, color: "#FF4D4D", fontWeight: "700" },
   primaryBtn: {
     marginTop: 20,
     backgroundColor: "#FF4D4D",

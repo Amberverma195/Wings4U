@@ -224,7 +224,7 @@ export default function ProfileScreen() {
     }
 
     try {
-      await updateProfile(trimmedName, email.trim() || undefined);
+      await updateProfile(trimmedName);
       await account.refresh('refresh');
       setProfileSaved(true);
     } catch {
@@ -408,12 +408,6 @@ export default function ProfileScreen() {
               saved={profileSaved}
               onNameChange={(value) => {
                 setFullName(value);
-                setProfileSaved(false);
-                setProfileError(null);
-                clearError();
-              }}
-              onEmailChange={(value) => {
-                setEmail(value);
                 setProfileSaved(false);
                 setProfileError(null);
                 clearError();
@@ -606,7 +600,6 @@ function ProfileTab({
   error,
   saved,
   onNameChange,
-  onEmailChange,
   onSave,
 }: {
   fullName: string;
@@ -616,7 +609,6 @@ function ProfileTab({
   error: string | null;
   saved: boolean;
   onNameChange: (value: string) => void;
-  onEmailChange: (value: string) => void;
   onSave: () => void;
 }) {
   return (
@@ -636,17 +628,18 @@ function ProfileTab({
       </InputRow>
       <InputRow icon={<Mail size={20} color="#FF4D4D" />}>
         <TextInput
-          style={styles.input}
-          placeholder="Email (optional)"
+          style={[styles.input, styles.inputReadonly]}
+          placeholder="Email"
           placeholderTextColor="#AAA"
           value={email}
-          onChangeText={onEmailChange}
+          editable={false}
           autoCapitalize="none"
           keyboardType="email-address"
-          returnKeyType="done"
-          onSubmitEditing={onSave}
         />
       </InputRow>
+      <Text style={styles.helperText}>
+        Email and phone changes require verification from account settings on the website.
+      </Text>
       <View style={styles.readonlyRow}>
         <Phone size={19} color="#777" />
         <View>
@@ -1336,6 +1329,16 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     fontSize: 16,
     fontWeight: '600',
+  },
+  inputReadonly: {
+    color: '#777',
+  },
+  helperText: {
+    color: '#777',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+    marginBottom: 12,
   },
   readonlyRow: {
     backgroundColor: '#F8F8F8',

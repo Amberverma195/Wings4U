@@ -13,7 +13,7 @@ import {
   UnauthorizedException,
   GoneException,
 } from "@nestjs/common";
-import { IsEmail, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from "class-validator";
+import { IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from "class-validator";
 import type { Request, Response } from "express";
 import { Public } from "../../common/decorators/roles.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -133,6 +133,29 @@ class ProfileUpdateDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+}
+
+class ProfileContactChangeRequestDto {
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(20)
+  @Matches(PHONE_CHARS_REGEX, { message: PHONE_CHARS_MESSAGE })
+  phone?: string;
+}
+
+class ProfileContactChangeVerifyDto {
+  @IsString()
+  @IsIn(["email", "phone"])
+  change_type!: "email" | "phone";
+
+  @IsString()
+  @Matches(OTP_CODE_REGEX, { message: OTP_CODE_MESSAGE })
+  otp_code!: string;
 }
 
 class PosLoginDto {
@@ -543,6 +566,33 @@ export class AuthController {
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
     return this.authService.updateProfile(user.userId, body.full_name, body.email);
+  }
+
+  @Roles("CUSTOMER")
+  @Post("profile/contact-change/request")
+  @HttpCode(HttpStatus.OK)
+  async requestProfileContactChange(
+    @Body() body: ProfileContactChangeRequestDto,
+    @CurrentUser() user: NonNullable<Request["user"]>,
+  ) {
+    return this.authService.requestProfileContactChange(user.userId, {
+      email: body.email,
+      phone: body.phone,
+    });
+  }
+
+  @Roles("CUSTOMER")
+  @Post("profile/contact-change/verify")
+  @HttpCode(HttpStatus.OK)
+  async verifyProfileContactChange(
+    @Body() body: ProfileContactChangeVerifyDto,
+    @CurrentUser() user: NonNullable<Request["user"]>,
+  ) {
+    return this.authService.verifyProfileContactChange(
+      user.userId,
+      body.change_type,
+      body.otp_code,
+    );
   }
 
   @Public()
