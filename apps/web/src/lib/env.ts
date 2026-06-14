@@ -6,14 +6,34 @@
  * - Server (RSC): `INTERNAL_API_URL` (direct to Nest), or in development
  *   `http://127.0.0.1:${PORT}` through Next's `/api/*` rewrite when unset.
  */
+function normalizeOrigin(value: string | undefined, fallbackProtocol = "https"): string {
+  const trimmed = value?.trim().replace(/\/$/, "") ?? "";
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `${fallbackProtocol}:${trimmed}`;
+
+  const host = trimmed.split("/")[0] ?? trimmed;
+  const isLocalHost =
+    host.startsWith("localhost") ||
+    host.startsWith("127.") ||
+    host.startsWith("0.0.0.0") ||
+    host.startsWith("[::1]") ||
+    host.startsWith("::1");
+  const protocol = isLocalHost ? "http" : fallbackProtocol;
+  return `${protocol}://${trimmed}`;
+}
+
 export function getPublicApiBase(): string {
   if (typeof window !== "undefined") {
-    const direct = process.env.NEXT_PUBLIC_API_ORIGIN?.trim();
-    if (direct) return direct.replace(/\/$/, "");
+    const direct = normalizeOrigin(
+      process.env.NEXT_PUBLIC_API_ORIGIN,
+      window.location.protocol === "http:" ? "http" : "https",
+    );
+    if (direct) return direct;
     return "";
   }
-  const internal = process.env.INTERNAL_API_URL?.trim();
-  if (internal) return internal.replace(/\/$/, "");
+  const internal = normalizeOrigin(process.env.INTERNAL_API_URL);
+  if (internal) return internal;
   // In `next dev`, route SSR fetches through this app's `/api/*` rewrites (see
   // `next.config.ts`) instead of hard-coding the Nest port. That keeps behavior
   // aligned with the browser and avoids extra binding quirks between hosts.
@@ -52,11 +72,14 @@ export function getPublicApiBase(): string {
  *      a reverse proxy that handles WS upgrades, e.g. nginx / Vercel).
  */
 export function getRealtimeOrigin(): string {
-  const realtime = process.env.NEXT_PUBLIC_REALTIME_ORIGIN?.trim();
-  if (realtime) return realtime.replace(/\/$/, "");
+  const fallbackProtocol =
+    typeof window !== "undefined" && window.location.protocol === "http:" ? "http" : "https";
 
-  const api = process.env.NEXT_PUBLIC_API_ORIGIN?.trim();
-  if (api) return api.replace(/\/$/, "");
+  const realtime = normalizeOrigin(process.env.NEXT_PUBLIC_REALTIME_ORIGIN, fallbackProtocol);
+  if (realtime) return realtime;
+
+  const api = normalizeOrigin(process.env.NEXT_PUBLIC_API_ORIGIN, fallbackProtocol);
+  if (api) return api;
 
   if (typeof window !== "undefined") {
     // Dev safeguard: when the page is served by `next dev` on port 3000,
