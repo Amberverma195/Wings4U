@@ -7,12 +7,13 @@ process.env.NEXT_TRACE_SPAN_THRESHOLD_MS =
 // Prefer localhost so Windows can resolve IPv4/IPv6 consistently with `nest start` / Node listen.
 const apiProxyTarget = process.env.API_PROXY_TARGET ?? "http://localhost:3001";
 const isDev = process.env.NODE_ENV === "development";
+const isVercel = process.env.VERCEL === "1";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Keep dev on the default `.next` output while production build/start uses a separate folder.
-  // This avoids dev/prod artifact collisions and stale chunk lookups on Windows.
-  distDir: isDev ? ".next" : ".next-wings4u",
+  // Keep local production builds in a separate folder to avoid dev/prod artifact
+  // collisions on Windows, but let Vercel use Next's standard `.next` output.
+  distDir: isDev || isVercel ? ".next" : ".next-wings4u",
   // Required so the admin layout can call `forbidden()` from `next/navigation`,
   // which is what triggers Next to render `app/forbidden.tsx` with a real HTTP
   // 403 response for authenticated non-admin users.
