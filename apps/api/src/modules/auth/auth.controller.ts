@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   HttpCode,
   HttpStatus,
   Post,
@@ -13,12 +14,14 @@ import {
   UnauthorizedException,
   GoneException,
 } from "@nestjs/common";
+import { createHash, randomBytes } from "crypto";
 import { IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from "class-validator";
 import type { Request, Response } from "express";
 import { Public } from "../../common/decorators/roles.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { extractClientIp } from "../../common/utils/store-ip";
+import { RateLimiterService } from "../rate-limit/rate-limit.service";
 import { AuthService } from "./auth.service";
 
 /* ------------------------------------------------------------------ */
@@ -260,6 +263,19 @@ const CSRF_COOKIE_BASE = {
   path: "/",
 } as const;
 
+const SIGNUP_DEVICE_COOKIE = "w4u_signup_device";
+const SIGNUP_DEVICE_HEADER = "x-w4u-signup-device";
+const SIGNUP_DEVICE_COOKIE_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+const SIGNUP_ACCOUNT_LIMIT = 3;
+const SIGNUP_ACCOUNT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+const SIGNUP_DEVICE_COOKIE_BASE = {
+  httpOnly: true,
+  secure: COOKIE_SECURE,
+  sameSite: COOKIE_SAMESITE,
+  path: "/api/v1/auth/signup",
+} as const;
+
 function setAuthCookies(
   res: Response,
   accessToken: string,
@@ -323,13 +339,42 @@ function clearAuthCookies(res: Response): void {
   });
 }
 
+function readHeader(req: Request, name: string): string | undefined {
+  const value = req.headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0];
+  return typeof value === "string" ? value : undefined;
+}
+
+function normalizeSignupDeviceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length < 16 || trimmed.length > 128) return null;
+  if (!/^[A-Za-z0-9._:-]+$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function setSignupDeviceCookie(res: Response, deviceId: string): void {
+  res.cookie(SIGNUP_DEVICE_COOKIE, deviceId, {
+    ...SIGNUP_DEVICE_COOKIE_BASE,
+    maxAge: SIGNUP_DEVICE_COOKIE_MAX_AGE_MS,
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /*  Controller                                                        */
 /* ------------------------------------------------------------------ */
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly rateLimiter: RateLimiterService,
+  ) {}
 
   /* ---------------------------------------------------------------- */
   /*  Email + password auth                                           */
@@ -339,10 +384,16 @@ export class AuthController {
   @Public()
   @Post("signup")
   @HttpCode(HttpStatus.OK)
-  async signup(@Body() body: SignupDto) {
+  async signup(
+    @Body() body: SignupDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     if (body.password !== body.confirm_password) {
       throw new BadRequestException("Passwords do not match");
     }
+    await this.enforceSignupDeviceLimit(req, res);
+
     const result = await this.authService.signupWithPassword({
       fullName: body.full_name,
       phone: body.phone,
@@ -354,6 +405,50 @@ export class AuthController {
       email: result.email,
       expires_in_seconds: result.expiresInSeconds,
     };
+  }
+
+  private async enforceSignupDeviceLimit(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const deviceKey = this.resolveSignupDeviceKey(req, res);
+    const result = await this.rateLimiter.check(
+      `auth:signup:create:${deviceKey}`,
+      SIGNUP_ACCOUNT_LIMIT,
+      SIGNUP_ACCOUNT_WINDOW_MS,
+    );
+
+    if (!result.allowed) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((result.resetAtMs - Date.now()) / 1000),
+      );
+      res.setHeader("Retry-After", retryAfterSeconds.toString());
+      throw new HttpException(
+        "Too many accounts created from this device. Please wait before creating another account.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private resolveSignupDeviceKey(req: Request, res: Response): string {
+    const headerDeviceId = normalizeSignupDeviceId(readHeader(req, SIGNUP_DEVICE_HEADER));
+    const cookieDeviceId = normalizeSignupDeviceId(req.cookies?.[SIGNUP_DEVICE_COOKIE]);
+    const deviceId = headerDeviceId ?? cookieDeviceId;
+
+    if (deviceId) {
+      if (cookieDeviceId !== deviceId) {
+        setSignupDeviceCookie(res, deviceId);
+      }
+      return `device:${sha256Hex(deviceId)}`;
+    }
+
+    const mintedDeviceId = randomBytes(32).toString("hex");
+    setSignupDeviceCookie(res, mintedDeviceId);
+
+    const userAgent = readHeader(req, "user-agent") ?? "unknown";
+    const fallback = `${extractClientIp(req)}:${userAgent}`;
+    return `fallback:${sha256Hex(fallback)}`;
   }
 
   /** Signup step 2: verify the email OTP and start a session. */

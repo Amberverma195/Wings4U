@@ -11,7 +11,7 @@
  */
 import type { ApiEnvelope, ApiErrorBody } from "@wings4u/contracts";
 import { getApiBase } from "./env";
-import { getAccessToken } from "./token-store";
+import { getAccessToken, getSignupDeviceId } from "./token-store";
 
 /* ------------------------------------------------------------------ */
 /*  Connectivity                                                       */
@@ -58,6 +58,11 @@ export async function apiFetch(
 
   if (locationId) {
     headers.set("X-Location-Id", locationId);
+  }
+
+  const method = (rest.method ?? "GET").toString().toUpperCase();
+  if (path === "/api/v1/auth/signup" && method === "POST") {
+    headers.set("X-W4U-Signup-Device", await getSignupDeviceId());
   }
 
   const base = getApiBase();

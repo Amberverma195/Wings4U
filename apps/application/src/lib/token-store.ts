@@ -12,6 +12,7 @@
 
 let _inMemoryAccessToken: string | null = null;
 let _inMemoryRefreshToken: string | null = null;
+let _inMemorySignupDeviceId: string | null = null;
 
 let SecureStore: typeof import("expo-secure-store") | null = null;
 try {
@@ -24,6 +25,16 @@ try {
 
 const ACCESS_TOKEN_KEY = "wings4u_access_token";
 const REFRESH_TOKEN_KEY = "wings4u_refresh_token";
+const SIGNUP_DEVICE_ID_KEY = "wings4u_signup_device_id";
+
+function createSignupDeviceId(): string {
+  const cryptoApi = globalThis.crypto as { randomUUID?: () => string } | undefined;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+  const random = Array.from({ length: 4 }, () => Math.random().toString(36).slice(2)).join("");
+  return `rn-${Date.now().toString(36)}-${random}`;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Access Token                                                       */
@@ -107,6 +118,37 @@ export async function clearRefreshToken(): Promise<void> {
       // ignore
     }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Signup Device ID                                                   */
+/* ------------------------------------------------------------------ */
+
+export async function getSignupDeviceId(): Promise<string> {
+  if (_inMemorySignupDeviceId) return _inMemorySignupDeviceId;
+
+  if (SecureStore) {
+    try {
+      const stored = await SecureStore.getItemAsync(SIGNUP_DEVICE_ID_KEY);
+      if (stored) {
+        _inMemorySignupDeviceId = stored;
+        return stored;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const created = createSignupDeviceId();
+  _inMemorySignupDeviceId = created;
+  if (SecureStore) {
+    try {
+      await SecureStore.setItemAsync(SIGNUP_DEVICE_ID_KEY, created);
+    } catch {
+      // ignore
+    }
+  }
+  return created;
 }
 
 /* ------------------------------------------------------------------ */
