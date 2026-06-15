@@ -65,7 +65,10 @@ export function AuthShell({
     session.authenticated &&
     session.profileComplete &&
     !session.needsProfileCompletion;
-  const isHandoffActive = handoffStarted || shouldRedirectAway;
+  // Redirect once the server session is confirmed. Never redirect on
+  // `handoffStarted` alone; login can return 200 before cookies stick.
+  const isHandoffActive =
+    shouldRedirectAway && (handoffStarted || session.authenticated);
 
   useEffect(() => {
     if (!isHandoffActive) return;

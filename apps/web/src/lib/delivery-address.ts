@@ -139,7 +139,7 @@ function toSavedAddress(row: CustomerAddressApiRow): SavedDeliveryAddress {
 
 /** Pull the authoritative list from the server and mirror into sessionStorage. */
 export async function syncSavedAddressesFromServer(
-  refresh?: () => Promise<void>,
+  refresh?: () => Promise<void | boolean>,
   clear?: () => void,
 ): Promise<void> {
   if (!isAuthenticatedForAddresses || typeof window === "undefined") return;
@@ -169,7 +169,7 @@ export async function syncSavedAddressesFromServer(
 
 async function createAddressOnServer(
   draft: DeliveryAddressDraft,
-  refresh?: () => Promise<void>,
+  refresh?: () => Promise<void | boolean>,
   clear?: () => void,
 ): Promise<void> {
   try {
@@ -200,7 +200,7 @@ async function createAddressOnServer(
 async function updateAddressOnServer(
   id: string,
   draft: DeliveryAddressDraft,
-  refresh?: () => Promise<void>,
+  refresh?: () => Promise<void | boolean>,
   clear?: () => void,
 ): Promise<void> {
   try {
@@ -230,7 +230,7 @@ async function updateAddressOnServer(
 
 async function deleteAddressOnServer(
   id: string,
-  refresh?: () => Promise<void>,
+  refresh?: () => Promise<void | boolean>,
   clear?: () => void,
 ): Promise<void> {
   try {
@@ -308,7 +308,7 @@ export function upsertSavedAddressFromDraft(draft: DeliveryAddressDraft): void {
 /** Add or replace by street + postal code; keeps one row per logical address. (Sync version) */
 export function upsertSavedAddressFromDraftSync(
   draft: DeliveryAddressDraft,
-  refresh: () => Promise<void>,
+  refresh: () => Promise<void | boolean>,
   clear: () => void,
 ): void {
   if (typeof window === "undefined") return;
@@ -347,7 +347,7 @@ export function replaceSavedAddressById(id: string, draft: DeliveryAddressDraft)
 export function replaceSavedAddressByIdSync(
   id: string,
   draft: DeliveryAddressDraft,
-  refresh: () => Promise<void>,
+  refresh: () => Promise<void | boolean>,
   clear: () => void,
 ): void {
   if (typeof window === "undefined") return;
@@ -403,7 +403,7 @@ export function removeSavedAddressById(id: string): void {
 /** Remove one saved address. (Sync version) */
 export function removeSavedAddressByIdSync(
   id: string,
-  refresh: () => Promise<void>,
+  refresh: () => Promise<void | boolean>,
   clear: () => void,
 ): void {
   if (typeof window === "undefined") return;

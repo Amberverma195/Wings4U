@@ -44,8 +44,8 @@ export interface SessionState {
   stationLocationId?: string;
   profileComplete: boolean;
   needsProfileCompletion: boolean;
-  /** Re-fetch session from server */
-  refresh: () => Promise<void>;
+  /** Re-fetch session from server. Resolves true when authenticated. */
+  refresh: () => Promise<boolean>;
   /** Clear local session (on logout) */
   clear: () => void;
 }
@@ -67,6 +67,9 @@ const SIGNED_OUT_SESSION: SessionApiResponse = {
   needs_profile_completion: false,
 };
 
+const SESSION_FETCH_TIMEOUT_MS =
+  process.env.NODE_ENV === "production" ? 12_000 : 4_000;
+
 /* ------------------------------------------------------------------ */
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
@@ -79,7 +82,7 @@ const SessionContext = createContext<SessionState>({
   stationLocationId: undefined,
   profileComplete: false,
   needsProfileCompletion: false,
-  refresh: async () => {},
+  refresh: async () => false,
   clear: () => {},
 });
 
@@ -107,28 +110,62 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setLoaded(true);
   }, []);
 
-  const fetchSession = useCallback(async () => {
+  const fetchSession = useCallback(async (): Promise<boolean> => {
     let timeoutId: number | undefined;
     try {
       const controller = new AbortController();
-      timeoutId = window.setTimeout(() => controller.abort(), 4000);
+      timeoutId = window.setTimeout(
+        () => controller.abort(),
+        SESSION_FETCH_TIMEOUT_MS,
+      );
       const res = await apiFetch("/api/v1/auth/session", {
         signal: controller.signal,
       });
       if (res.ok) {
         const envelope = (await res.json()) as ApiEnvelope<SessionApiResponse>;
-        setData(envelope.data ?? SIGNED_OUT_SESSION);
-      } else if (res.status === 401 || res.status === 403) {
+        const next = envelope.data ?? SIGNED_OUT_SESSION;
+        setData(next);
+        return next.authenticated === true;
+      }
+
+      // Access token may have expired while the refresh cookie is still valid.
+      // Try one silent refresh before treating the user as signed out.
+      if (res.status === 401 || res.status === 403) {
+        const { refreshed } = await performRefresh();
+        if (refreshed) {
+          const retry = await apiFetch("/api/v1/auth/session");
+          if (retry.ok) {
+            const envelope = (await retry.json()) as ApiEnvelope<SessionApiResponse>;
+            const next = envelope.data ?? SIGNED_OUT_SESSION;
+            setData(next);
+            return next.authenticated === true;
+          }
+        }
         applySignedOut();
         notifyAuthSessionCleared();
+        return false;
       }
-    } catch {
-      applySignedOut();
+
+      // Other HTTP failures (5xx, etc.) keep the last known session instead
+      // of forcing a signed-out state that bounces the user back to /login.
+      return data.authenticated === true;
+    } catch (cause) {
+      const isAbort =
+        cause instanceof DOMException
+          ? cause.name === "AbortError"
+          : cause instanceof Error && cause.name === "AbortError";
+      if (isAbort) {
+        // Slow API / cold start: do not treat a timeout as logout.
+        return data.authenticated === true;
+      }
+      // Transient network error: same policy. Fail closed only when we have
+      // no prior authenticated session to preserve.
+      return data.authenticated === true;
     } finally {
       if (timeoutId) window.clearTimeout(timeoutId);
       setLoaded(true);
     }
-  }, [applySignedOut]);
+  }, [applySignedOut, data.authenticated]);
 
   useEffect(() => {
     void fetchSession();
@@ -251,7 +288,7 @@ async function performRefresh(): Promise<{ refreshed: boolean }> {
  */
 export async function withSilentRefresh(
   apiCall: () => Promise<Response>,
-  sessionRefresh: () => Promise<void>,
+  sessionRefresh: () => Promise<void | boolean>,
   sessionClear: () => void,
 ): Promise<Response> {
   const res = await apiCall();

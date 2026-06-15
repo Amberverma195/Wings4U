@@ -318,6 +318,43 @@
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
 }
 
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cardHeader h2 {
+  margin: 0.75rem 0 0;
+}
+
+.editIconButton {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #f97316;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.editIconButton:hover {
+  transform: translateY(-1px);
+  border-color: #fb923c;
+  background: #ffedd5;
+}
+
+.editIconButton:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.25);
+  outline-offset: 2px;
+}
+
 /* Reuse existing form/timeline styles but with new structure */
 .form {
   display: flex;

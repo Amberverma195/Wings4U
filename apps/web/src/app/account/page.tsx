@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 import { useSession, withSilentRefresh } from "@/lib/session";
@@ -36,6 +37,7 @@ export default function AccountPage() {
   const [busy, setBusy] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const fullNameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (session.loaded && !session.authenticated) {
@@ -169,8 +171,18 @@ export default function AccountPage() {
           <div className={styles.contentStack}>
             <section className={styles.settingsCard}>
               <header className={styles.cardHeader}>
-                <span className={styles.eyebrow}>Account</span>
-                <h2>Settings</h2>
+                <div>
+                  <span className={styles.eyebrow}>Account</span>
+                  <h2>Settings</h2>
+                </div>
+                <button
+                  type="button"
+                  className={styles.editIconButton}
+                  aria-label="Edit account settings"
+                  onClick={() => fullNameInputRef.current?.focus()}
+                >
+                  <Pencil size={18} strokeWidth={2.25} aria-hidden="true" />
+                </button>
               </header>
 
               <form
@@ -183,6 +195,7 @@ export default function AccountPage() {
                 <label className={styles.field}>
                   <span>Full name</span>
                   <input
+                    ref={fullNameInputRef}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Jane Doe"
@@ -202,7 +215,7 @@ export default function AccountPage() {
 
                 {session.user?.phone ? (
                   <label className={`${styles.field} ${styles.fieldReadonly}`}>
-                    <span>Verified phone</span>
+                    <span>Phone Number</span>
                     <input value={formatPhoneNumber(session.user.phone)} readOnly />
                   </label>
                 ) : null}

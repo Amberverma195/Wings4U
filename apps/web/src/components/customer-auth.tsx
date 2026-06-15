@@ -577,7 +577,13 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
   const finishAuth = useCallback(
     async (needsProfile: boolean) => {
-      await session.refresh();
+      const authenticated = await session.refresh();
+      if (!authenticated) {
+        fail(
+          "Sign in succeeded but your session could not be established. If this keeps happening, try again or contact support.",
+        );
+        return;
+      }
       if (needsProfile) {
         setStep({ name: "profile" });
       } else {
@@ -585,7 +591,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         onComplete?.();
       }
     },
-    [session, onComplete],
+    [session, onComplete, fail],
   );
 
   /* ---------------------------------------------------------------- */

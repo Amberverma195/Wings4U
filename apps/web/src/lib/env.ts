@@ -25,6 +25,23 @@ function normalizeOrigin(value: string | undefined, fallbackProtocol = "https"):
 
 export function getPublicApiBase(): string {
   if (typeof window !== "undefined") {
+    // Production web should route REST through same-origin `/api/*`
+    // rewrites (see `next.config.ts` + `API_PROXY_TARGET`) so auth cookies are
+    // first-party on the site domain. Direct cross-origin calls to Railway set
+    // cookies on the API host; browsers then block or drop them on the next
+    // `/auth/session` check and login appears to succeed then immediately
+    // bounce back to /login.
+    //
+    // Socket.IO still uses `getRealtimeOrigin()` which may point at the API
+    // host directly; that path does not rely on session cookies.
+    const preferSameOriginProxy =
+      process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "1" ||
+      (process.env.NODE_ENV === "production" &&
+        process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API !== "0");
+    if (preferSameOriginProxy) {
+      return "";
+    }
+
     const direct = normalizeOrigin(
       process.env.NEXT_PUBLIC_API_ORIGIN,
       window.location.protocol === "http:" ? "http" : "https",

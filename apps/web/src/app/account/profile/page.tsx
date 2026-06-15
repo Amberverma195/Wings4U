@@ -65,18 +65,6 @@ type WingsStampLedgerResponse = {
   next_cursor: string | null;
 };
 
-type ContactChangeRequestResponse = {
-  otpSent: true;
-  changeType: "email" | "phone";
-  deliveryTarget: string;
-  expiresInSeconds: number;
-};
-
-type PendingContactChange = {
-  changeType: "email" | "phone";
-  deliveryTarget: string;
-};
-
 function formatPoints(points: number) {
   return new Intl.NumberFormat("en-US").format(points);
 }
@@ -147,11 +135,6 @@ export default function ProfilePage() {
   const [stampsModalOpen, setStampsModalOpen] = useState(false);
   const [hubTab, setHubTab] = useState<"rewards" | "coupons">("rewards");
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
-  const [contactOtp, setContactOtp] = useState("");
-  const [pendingContactChange, setPendingContactChange] = useState<PendingContactChange | null>(null);
-  const [contactBusy, setContactBusy] = useState<"email" | "phone" | "verify" | null>(null);
 
 
   useEffect(() => {
@@ -159,12 +142,6 @@ export default function ProfilePage() {
       router.push("/login");
     }
   }, [session.loaded, session.authenticated, router]);
-
-  useEffect(() => {
-    if (!session.user) return;
-    setContactEmail(session.user.email ?? "");
-    setContactPhone(formatPhoneNumber(session.user.phone) || "");
-  }, [session.user?.email, session.user?.phone]);
 
   useEffect(() => {
     if (!session.loaded || !session.authenticated) {
@@ -249,76 +226,6 @@ export default function ProfilePage() {
     session.clear();
     router.replace("/");
   }, [session, router]);
-
-  const requestContactChange = useCallback(async (changeType: "email" | "phone") => {
-    const nextValue = changeType === "email" ? contactEmail.trim() : contactPhone.trim();
-    if (!nextValue) {
-      toast.error(changeType === "email" ? "Enter an email address" : "Enter a phone number");
-      return;
-    }
-
-    setContactBusy(changeType);
-    try {
-      const envelope = await apiJson<ContactChangeRequestResponse>(
-        "/api/v1/auth/profile/contact-change/request",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            changeType === "email" ? { email: nextValue } : { phone: nextValue },
-          ),
-        },
-      );
-      if (!envelope.data) {
-        throw new Error("Unable to send verification code");
-      }
-      setPendingContactChange({
-        changeType: envelope.data.changeType,
-        deliveryTarget: envelope.data.deliveryTarget,
-      });
-      setContactOtp("");
-      toast.success(`Verification code sent to ${envelope.data.deliveryTarget}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to send verification code");
-    } finally {
-      setContactBusy(null);
-    }
-  }, [contactEmail, contactPhone]);
-
-  const verifyContactChange = useCallback(async () => {
-    if (!pendingContactChange) return;
-    const code = contactOtp.trim();
-    if (!/^\d{4,8}$/.test(code)) {
-      toast.error("Enter the verification code");
-      return;
-    }
-
-    setContactBusy("verify");
-    try {
-      await apiJson("/api/v1/auth/profile/contact-change/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          change_type: pendingContactChange.changeType,
-          otp_code: code,
-        }),
-      });
-      toast.success(
-        pendingContactChange.changeType === "email"
-          ? "Email updated"
-          : "Phone number updated",
-      );
-      setPendingContactChange(null);
-      setContactOtp("");
-      await session.refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to verify code");
-    } finally {
-      setContactBusy(null);
-    }
-  }, [contactOtp, pendingContactChange, session]);
-
-
 
   const initials = useMemo(() => getInitials(session.user?.displayName), [session.user?.displayName]);
 
@@ -424,90 +331,6 @@ export default function ProfilePage() {
 
           {/* Main Content */}
           <div className={styles.contentStack}>
-            <section className={styles.section}>
-              <header className={styles.sectionHeader}>
-                <span className={styles.eyebrow}>Account settings</span>
-                <h2 className={styles.sectionTitle}>Contact info</h2>
-                <p className={styles.sectionDesc}>
-                  Email changes verify the new email. Phone changes verify through your current email.
-                  Contact changes are limited to once every 7 days.
-                </p>
-              </header>
-
-              <div className={styles.contactGrid}>
-                <div className={styles.contactForm}>
-                  <label className={styles.field}>
-                    <span>Email address</span>
-                    <input
-                      value={contactEmail}
-                      onChange={(event) => setContactEmail(event.target.value)}
-                      placeholder="you@example.com"
-                      type="email"
-                      autoComplete="email"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className={styles.saveBtn}
-                    onClick={() => requestContactChange("email")}
-                    disabled={contactBusy !== null}
-                  >
-                    {contactBusy === "email" ? "Sending..." : "Verify email change"}
-                  </button>
-                </div>
-
-                <div className={styles.contactForm}>
-                  <label className={styles.field}>
-                    <span>Phone number</span>
-                    <input
-                      value={contactPhone}
-                      onChange={(event) => setContactPhone(event.target.value)}
-                      placeholder="(555)-555-5555"
-                      type="tel"
-                      autoComplete="tel"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className={styles.saveBtn}
-                    onClick={() => requestContactChange("phone")}
-                    disabled={contactBusy !== null}
-                  >
-                    {contactBusy === "phone" ? "Sending..." : "Verify phone change"}
-                  </button>
-                </div>
-              </div>
-
-              {pendingContactChange ? (
-                <div className={styles.contactVerifyBox}>
-                  <div>
-                    <strong>
-                      Enter the code sent to {pendingContactChange.deliveryTarget}
-                    </strong>
-                    <span>
-                      This will update your {pendingContactChange.changeType === "email" ? "email address" : "phone number"} after verification.
-                    </span>
-                  </div>
-                  <div className={styles.contactVerifyControls}>
-                    <input
-                      value={contactOtp}
-                      onChange={(event) => setContactOtp(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                      placeholder="Verification code"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                    />
-                    <button
-                      type="button"
-                      className={styles.saveBtn}
-                      onClick={verifyContactChange}
-                      disabled={contactBusy !== null}
-                    >
-                      {contactBusy === "verify" ? "Verifying..." : "Confirm"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </section>
             {/* Wings-rewards stamp card — entire section is clickable to
                  reveal the full stamp history modal. */}
             <section

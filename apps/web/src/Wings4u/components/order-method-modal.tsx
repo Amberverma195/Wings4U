@@ -103,7 +103,7 @@ export function OrderMethodModal({
   initialScheduledFor?: string | null;
   onClose: () => void;
   onContinue: (selection: OrderMethodSelection) => void;
-  refresh?: () => Promise<void>;
+  refresh?: () => Promise<void | boolean>;
   clear?: () => void;
 }) {
   const resolvedInitialStep: ModalStep =
