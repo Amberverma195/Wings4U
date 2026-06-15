@@ -382,6 +382,17 @@
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1);
 }
 
+.fieldReadonly input {
+  background: #f9fafb;
+  color: #4b5563;
+  cursor: not-allowed;
+}
+
+.fieldReadonly input:focus {
+  border-color: #d1d5db;
+  box-shadow: none;
+}
+
 .contactGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

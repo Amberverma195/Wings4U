@@ -32,12 +32,12 @@ export default function AccountPage() {
   const session = useSession();
   const router = useRouter();
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [shaking, setShaking] = useState(false);
   const fullNameInputRef = useRef<HTMLInputElement | null>(null);
+  const email = session.user?.email ?? "";
 
   useEffect(() => {
     if (session.loaded && !session.authenticated) {
@@ -45,7 +45,6 @@ export default function AccountPage() {
     }
     if (session.user) {
       setFullName(session.user.displayName);
-      setEmail(session.user.email ?? "");
     }
   }, [session.loaded, session.authenticated, session.user, router]);
 
@@ -62,16 +61,9 @@ export default function AccountPage() {
       triggerShake();
       return;
     }
-    if (!email.trim()) {
-      setError("Email address is required");
-      triggerShake();
-      return;
-    }
-
     setBusy(true);
     try {
       const payload: Record<string, string> = { full_name: fullName.trim() };
-      if (email.trim()) payload.email = email.trim();
 
       const res = await withSilentRefresh(
         () =>
@@ -95,7 +87,7 @@ export default function AccountPage() {
     } finally {
       setBusy(false);
     }
-  }, [fullName, email, session, triggerShake]);
+  }, [fullName, session, triggerShake]);
 
   const handleLogout = useCallback(async () => {
     setIsLoggingOut(true);
@@ -202,14 +194,13 @@ export default function AccountPage() {
                   />
                 </label>
 
-                <label className={styles.field}>
+                <label className={`${styles.field} ${styles.fieldReadonly}`}>
                   <span>Email</span>
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="jane@example.com"
-                    required
+                    readOnly
                   />
                 </label>
 

@@ -5,9 +5,21 @@ process.env.NEXT_TRACE_SPAN_THRESHOLD_MS =
   process.env.NEXT_TRACE_SPAN_THRESHOLD_MS ?? "2147483647";
 
 // Prefer localhost so Windows can resolve IPv4/IPv6 consistently with `nest start` / Node listen.
-const apiProxyTarget = process.env.API_PROXY_TARGET ?? "http://localhost:3001";
-const isDev = process.env.NODE_ENV === "development";
 const isVercel = process.env.VERCEL === "1";
+const apiProxyTarget = (process.env.API_PROXY_TARGET ?? "http://localhost:3001").replace(
+  /\/$/,
+  "",
+);
+
+if (isVercel && !process.env.API_PROXY_TARGET?.trim()) {
+  throw new Error(
+    "API_PROXY_TARGET is required on Vercel. Set it to your public Railway Nest API URL " +
+      "(e.g. https://your-service.up.railway.app) in Project > Settings > Environment Variables, " +
+      "then redeploy. Without it, /api/* rewrites hit localhost and return HTML 404 pages.",
+  );
+}
+
+const isDev = process.env.NODE_ENV === "development";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
