@@ -632,10 +632,35 @@ const AUTH_PAGE_STYLES = `
     border-radius: 10px !important;
   }
 
+  .wk-auth-card-body .wk-password-input {
+    padding-right: 3.25rem !important;
+  }
+
+  .wk-auth-card-body .wk-password-toggle {
+    width: 2.25rem !important;
+    height: 2.25rem !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    color: rgba(247, 233, 200, 0.72) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+  }
+
+  .wk-auth-card-body .wk-password-toggle:hover,
+  .wk-auth-card-body .wk-password-toggle:focus-visible {
+    color: #f7e9c8 !important;
+    background: rgba(245, 166, 35, 0.13) !important;
+    outline: none;
+  }
+
   @media (min-width: 768px) {
     .wk-auth-card-body input:not(.wk-otp-input) {
       padding: 1.05rem 1.25rem !important;
       font-size: 1.125rem !important;
+    }
+
+    .wk-auth-card-body .wk-password-input {
+      padding-right: 3.5rem !important;
     }
   }
 

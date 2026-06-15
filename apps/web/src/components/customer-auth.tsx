@@ -48,6 +48,7 @@ const PASSWORD_POLICY = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_HINT =
   "Password must be at least 8 characters and include a letter, a number, and a special character.";
+const LOGIN_PASSWORD_STEP_STORAGE_KEY = "w4u_login_identifier_pending";
 
 function getPasswordChecks(value: string) {
   return [
@@ -91,6 +92,34 @@ function formatPhoneOrEmailInput(value: string): string {
 
 function isPhoneIdentifier(value: string): boolean {
   return !value.includes("@") && !/[a-zA-Z]/.test(value);
+}
+
+function readPendingLoginIdentifier(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.sessionStorage.getItem(LOGIN_PASSWORD_STEP_STORAGE_KEY);
+    return value && value.length <= 254 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberPendingLoginIdentifier(identifier: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(LOGIN_PASSWORD_STEP_STORAGE_KEY, identifier);
+  } catch {
+    /* storage can be disabled; login still works without this nicety */
+  }
+}
+
+function clearPendingLoginIdentifier(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(LOGIN_PASSWORD_STEP_STORAGE_KEY);
+  } catch {
+    /* storage can be disabled */
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -362,6 +391,7 @@ function PasswordInput({
   return (
     <div style={s.passwordWrap}>
       <input
+        className="wk-password-input"
         style={s.passwordInput}
         type={visible ? "text" : "password"}
         value={value}
@@ -371,6 +401,7 @@ function PasswordInput({
         autoFocus={autoFocus}
       />
       <button
+        className="wk-password-toggle"
         type="button"
         style={s.passwordToggle}
         onClick={() => setVisible((v) => !v)}
@@ -490,14 +521,18 @@ function ResendButton({
 export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const session = useSession();
 
-  const initialStep: Step =
-    session.authenticated && session.needsProfileCompletion
-      ? { name: "profile" }
-      : mode === "signup"
-        ? { name: "signup-form" }
-        : { name: "login-id" };
-
-  const [step, setStep] = useState<Step>(initialStep);
+  const [step, setStep] = useState<Step>(() => {
+    if (session.authenticated && session.needsProfileCompletion) {
+      return { name: "profile" };
+    }
+    if (mode === "signup") {
+      return { name: "signup-form" };
+    }
+    const pendingIdentifier = readPendingLoginIdentifier();
+    return pendingIdentifier
+      ? { name: "login-password", identifier: pendingIdentifier }
+      : { name: "login-id" };
+  });
 
   // -- Signup state --
   const [fullName, setFullName] = useState("");
@@ -659,6 +694,8 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     // No account-existence pre-check here: probing whether an identifier is
     // registered is an enumeration vector. Advance straight to the password
     // step; a wrong identifier just fails login with a generic error.
+    rememberPendingLoginIdentifier(normalizedIdentifier);
+    setLoginPassword("");
     setStep({ name: "login-password", identifier: normalizedIdentifier });
   }, [identifier, fail]);
 
@@ -680,19 +717,25 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         email?: string;
       }>;
       if (!res.ok) {
-        setError(body.errors?.[0]?.message ?? "Sign in failed");
+        const message =
+          res.status === 401
+            ? "Invalid phone/email or password"
+            : body.errors?.[0]?.message ?? "Sign in failed";
+        fail(message);
         return;
       }
       // Correct password but the email was never verified: the server emailed a
       // fresh code and withheld the session. Route to email verification.
       if (body.data?.needs_email_verification) {
         setOtpCode("");
+        clearPendingLoginIdentifier();
         setStep({ name: "verify-email", email: body.data.email ?? "" });
         return;
       }
+      clearPendingLoginIdentifier();
       await finishAuth(Boolean(body.data?.needs_profile_completion));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error");
+      fail(e instanceof Error ? e.message : "Network error");
     } finally {
       setBusyAction(null);
     }
@@ -1064,6 +1107,20 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           Forgot password?
+        </button>
+
+        <button
+          type="button"
+          style={s.linkButton}
+          disabled={busy}
+          onClick={() => {
+            setError("");
+            setLoginPassword("");
+            clearPendingLoginIdentifier();
+            setStep({ name: "login-id" });
+          }}
+        >
+          Use a different phone/email
         </button>
 
         <p style={s.subtitle}>
