@@ -203,11 +203,13 @@ class KdsNetworkStatusDto {
 /*  Cookie helpers                                                    */
 /* ------------------------------------------------------------------ */
 
-const IS_PROD = process.env.NODE_ENV === "production";
-// Dev: web runs on localhost:3000, API may run on 127.0.0.1:3001 (cross-site).
-// SameSite=Lax would block cookies on cross-site fetch; use None+Secure instead.
-// Browsers treat localhost/127.0.0.1 as secure contexts, so Secure works over HTTP there.
-const COOKIE_SAMESITE: "lax" | "none" = IS_PROD ? "lax" : "none";
+// Web and API can run on different origins in both dev and production
+// (localhost:3000 -> localhost:3001, wings4ulondon.ca ->
+// wings4uapi-production.up.railway.app). Auth/session fetches are therefore
+// cross-site subresource requests, so cookies must be SameSite=None; Secure or
+// the browser accepts the login response but immediately appears signed out on
+// the next /auth/session check.
+const COOKIE_SAMESITE: "none" = "none";
 const COOKIE_SECURE = true;
 
 // Browsers (especially Chrome and Safari) only consider a "clear" Set-Cookie
