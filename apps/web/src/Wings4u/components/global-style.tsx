@@ -3604,47 +3604,6 @@ export function WingKingsGlobalStyle() {
         background-clip: text;
       }
 
-      #newsletter .newsletter-desc {
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 15px;
-        color: #ffd966;
-        margin: 0 0 28px;
-        line-height: 1.6;
-      }
-
-      #newsletter .newsletter-form {
-        display: flex;
-        gap: 0;
-        max-width: 440px;
-        margin: 0 auto;
-      }
-
-      #newsletter .newsletter-input {
-        flex: 1;
-        min-width: 0;
-        background: #0a0300;
-        border: 2px solid #1e0900;
-        border-right: none;
-        color: #ffd500;
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 15px;
-        font-weight: 600;
-        padding: 14px 18px;
-        border-radius: 8px 0 0 8px;
-        outline: none;
-        transition: border-color 0.3s ease;
-        box-sizing: border-box;
-      }
-
-      #newsletter .newsletter-input::placeholder {
-        color: #FFD630;
-      }
-
-      #newsletter .newsletter-input:focus {
-        border-color: #ff6b00;
-        border-right: none;
-      }
-
       #newsletter .newsletter-btn {
         background: linear-gradient(135deg, #ff4d00, #ffaa00);
         border: none;
@@ -3660,7 +3619,17 @@ export function WingKingsGlobalStyle() {
         transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
 
+      #newsletter .newsletter-btn--order {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: min(360px, 100%);
+        margin-top: 18px;
+        border-radius: 8px;
+      }
+
       #newsletter .newsletter-btn:hover {
+        transform: translateY(-2px);
         box-shadow: 0 4px 18px rgba(255, 80, 0, 0.3);
       }
 
@@ -3682,35 +3651,10 @@ export function WingKingsGlobalStyle() {
         font-weight: 600;
       }
 
-      #newsletter .visually-hidden {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-      }
-
       @media (max-width: 900px) {
-        #newsletter .newsletter-form {
-          flex-direction: column;
-          gap: 0;
-        }
-
-        #newsletter .newsletter-input {
-          border-right: 2px solid #1e0900;
-          border-radius: 8px 8px 0 0;
-        }
-
-        #newsletter .newsletter-input:focus {
-          border-right: 2px solid #ff6b00;
-        }
-
-        #newsletter .newsletter-btn {
-          border-radius: 0 0 8px 8px;
+        #newsletter .newsletter-btn--order {
+          width: 100%;
+          max-width: 420px;
         }
       }
 

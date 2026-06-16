@@ -17,13 +17,27 @@ export default function HomePage() {
     router.prefetch("/sauces");
   }, [router]);
 
+  useEffect(() => {
+    function handleOpenOrderMethod() {
+      setDefaultMethod("DELIVERY");
+      setMethodOpen(true);
+    }
+
+    window.addEventListener("wings4u:open-order-method", handleOpenOrderMethod);
+    return () => {
+      window.removeEventListener("wings4u:open-order-method", handleOpenOrderMethod);
+    };
+  }, []);
+
+  function openOrderMethod() {
+    setDefaultMethod("DELIVERY");
+    setMethodOpen(true);
+  }
+
   return (
     <>
       <Landing
-        onOrderNow={() => {
-          setDefaultMethod("DELIVERY");
-          setMethodOpen(true);
-        }}
+        onOrderNow={openOrderMethod}
         onSauces={() => {
           router.push("/sauces");
         }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const PERKS = [
   { emoji: "\u{1F525}", text: "Weekly deals" },
@@ -39,8 +39,8 @@ export function NewsletterSection() {
 
   const show = visible ? " in" : "";
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleOrderNow() {
+    window.dispatchEvent(new Event("wings4u:open-order-method"));
   }
 
   return (
@@ -53,28 +53,9 @@ export function NewsletterSection() {
           <span className="gradient-text">10% OFF</span>
           <span> YOUR FIRST ORDER</span>
         </h3>
-        <p className="newsletter-desc">
-          Drop your email and we&apos;ll hit you with exclusive deals, new sauce drops, and first access
-          to limited flavors.
-        </p>
-
-        <form className="newsletter-form" onSubmit={handleSubmit}>
-          <label htmlFor="newsletter-email" className="visually-hidden">
-            Email address
-          </label>
-          <input
-            id="newsletter-email"
-            name="email"
-            type="email"
-            className="newsletter-input"
-            placeholder="your@email.com"
-            autoComplete="email"
-            inputMode="email"
-          />
-          <button type="submit" className="newsletter-btn">
-            GET MY 10%
-          </button>
-        </form>
+        <button type="button" className="newsletter-btn newsletter-btn--order" onClick={handleOrderNow}>
+          ORDER NOW
+        </button>
 
         <ul className="newsletter-perks" aria-label="Newsletter perks">
           {PERKS.map((perk) => (
