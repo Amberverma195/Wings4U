@@ -449,6 +449,28 @@ export function WingKingsGlobalStyle() {
           box-sizing: border-box;
         }
 
+        .wk-hero-title {
+          display: block !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          padding-right: 0 !important;
+          box-sizing: border-box;
+          overflow: visible;
+          font-size: 54px !important;
+          letter-spacing: 0 !important;
+        }
+
+        .wk-hero-title-line {
+          max-width: 100% !important;
+          padding-right: 0 !important;
+          box-sizing: border-box;
+          overflow: visible;
+        }
+
+        .wk-hero-title-line--different {
+          font-size: 0.96em;
+        }
+
         .hero-proof {
           flex-direction: column;
           flex-wrap: nowrap;
@@ -1090,11 +1112,17 @@ export function WingKingsGlobalStyle() {
         display: flex;
         gap: var(--sauce-gap);
         width: max-content;
-        animation: sauceCarousel 60s linear infinite;
+        animation: sauceCarousel 72s linear infinite;
       }
 
       .sauce-carousel-wrapper:not(.sauce-carousel-wrapper--in) .sauce-carousel-track {
         animation-play-state: paused;
+      }
+
+      @media (hover: hover) and (pointer: fine) {
+        .sauce-carousel-wrapper:hover .sauce-carousel-track {
+          animation-play-state: paused;
+        }
       }
 
       .sauce-card {

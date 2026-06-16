@@ -44,8 +44,8 @@ export function Landing({
             <p style={styles.heroEyebrow}>
               {"\u{1F525} LONDON'S BEST WING SPOT \u00B7 Est. 2026"}
             </p>
-            <h1 style={styles.heroTitle} aria-label="WINGS THAT HIT DIFFERENT">
-              <span style={styles.heroTitleWings}>
+            <h1 className="wk-hero-title" style={styles.heroTitle} aria-label="WINGS THAT HIT DIFFERENT">
+              <span className="wk-hero-title-line" style={styles.heroTitleWings}>
                 W
                 <span className="hero-title-wing-i">
                   <span className="hero-title-wing-i__stem">
@@ -55,8 +55,8 @@ export function Landing({
                 </span>
                 NGS
               </span>
-              <span style={styles.heroTitleAccent}>THAT HIT</span>
-              <span style={styles.heroTitleGradient}>DIFFERENT</span>
+              <span className="wk-hero-title-line" style={styles.heroTitleAccent}>THAT HIT</span>
+              <span className="wk-hero-title-line wk-hero-title-line--different" style={styles.heroTitleGradient}>DIFFERENT</span>
             </h1>
             <p style={styles.heroSub}>
               <span style={{ display: "block" }}>Hand-breaded. Sauced to perfection.</span>
