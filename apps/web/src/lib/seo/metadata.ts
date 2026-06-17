@@ -10,8 +10,8 @@ import {
 } from "./site";
 
 type PageMetadataInput = {
-  /** Short page title; root layout template appends the site name. */
-  title: string;
+  /** Short page title; root layout template appends the site name. Omit on the home page to use the layout default. */
+  title?: string;
   description: string;
   path?: string;
   noIndex?: boolean;
@@ -68,9 +68,10 @@ export function createPageMetadata({
 }: PageMetadataInput): Metadata {
   const canonicalUrl = resolveAbsoluteUrl(path);
   const imageUrl = resolveAbsoluteUrl(ogImage);
+  const documentTitle = title ? `${title} | ${SITE_NAME}` : undefined;
 
   return {
-    title,
+    ...(title ? { title } : {}),
     description,
     alternates: {
       canonical: canonicalUrl,
@@ -79,7 +80,7 @@ export function createPageMetadata({
       ? { index: false, follow: false }
       : { index: true, follow: true },
     openGraph: {
-      title,
+      ...(documentTitle ? { title: documentTitle } : {}),
       description,
       url: canonicalUrl,
       siteName: OG_SITE_NAME,
@@ -96,7 +97,7 @@ export function createPageMetadata({
     },
     twitter: {
       card: "summary",
-      title,
+      ...(documentTitle ? { title: documentTitle } : {}),
       description,
       images: [imageUrl],
     },

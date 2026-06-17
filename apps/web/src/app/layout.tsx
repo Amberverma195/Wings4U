@@ -12,7 +12,7 @@ const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   title: {
-    default: "Wings 4 U | Fresh Chicken Wings in London, Ontario",
+    default: "Wings 4 U | Premium Wings, 70+ Sauces & Dry Rubs",
     template: `%s | ${SITE_NAME}`,
   },
   description:
