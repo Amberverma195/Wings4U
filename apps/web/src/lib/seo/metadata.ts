@@ -26,6 +26,11 @@ export function createSiteDefaults(): Metadata {
       template: `%s | ${SITE_NAME}`,
     },
     description: DEFAULT_DESCRIPTION,
+    icons: {
+      icon: "/logo.png",
+      shortcut: "/logo.png",
+      apple: "/logo.png",
+    },
     openGraph: {
       siteName: SITE_NAME,
       type: "website",
