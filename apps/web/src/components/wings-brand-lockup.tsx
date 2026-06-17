@@ -11,6 +11,10 @@ type Props = {
   wordmarkClassName?: string;
   wordmarkStyle?: CSSProperties;
   imageSize?: number;
+  /** When set, replaces the text wordmark with this image (e.g. navbar title). */
+  wordmarkImageSrc?: string;
+  wordmarkImageHeight?: number;
+  wordmarkImageWidth?: number;
   priority?: boolean;
 };
 
@@ -22,6 +26,9 @@ export function WingsBrandLockup({
   wordmarkClassName,
   wordmarkStyle,
   imageSize = 52,
+  wordmarkImageSrc,
+  wordmarkImageHeight = 32,
+  wordmarkImageWidth = 160,
   priority = false,
 }: Props) {
   return (
@@ -33,22 +40,43 @@ export function WingsBrandLockup({
     >
       <Image
         src="/logo.png"
-        alt="Wings 4 U"
+        alt=""
+        aria-hidden
         height={imageSize}
         width={imageSize}
         priority={priority}
         style={{ objectFit: "contain", cursor: "pointer" }}
       />
-      <span style={wordmarkStyle ?? wingStyles.navBrand} className={wordmarkClassName}>
-        W
-        <span className="nav-brand-wing-i">
-          <span className="nav-brand-wing-i__stem">
-            <span className="nav-brand-wing-i__dot" aria-hidden="true" />
-            <span className="nav-brand-wing-i__glyph">{"\u0131"}</span>
+      {wordmarkImageSrc ? (
+        <Image
+          src={wordmarkImageSrc}
+          alt=""
+          aria-hidden
+          height={wordmarkImageHeight}
+          width={wordmarkImageWidth}
+          priority={priority}
+          className={wordmarkClassName}
+          style={{
+            objectFit: "contain",
+            height: wordmarkImageHeight,
+            width: "auto",
+            maxWidth: wordmarkImageWidth,
+            cursor: "pointer",
+            ...wordmarkStyle,
+          }}
+        />
+      ) : (
+        <span style={wordmarkStyle ?? wingStyles.navBrand} className={wordmarkClassName}>
+          W
+          <span className="nav-brand-wing-i">
+            <span className="nav-brand-wing-i__stem">
+              <span className="nav-brand-wing-i__dot" aria-hidden="true" />
+              <span className="nav-brand-wing-i__glyph">{"\u0131"}</span>
+            </span>
           </span>
+          NGS <span style={wingStyles.navBrandAccent}>4</span> U
         </span>
-        NGS <span style={wingStyles.navBrandAccent}>4</span> U
-      </span>
+      )}
     </Link>
   );
 }
