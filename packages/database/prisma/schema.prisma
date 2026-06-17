@@ -369,6 +369,7 @@ model MenuCategory {
 
   @@unique([locationId, slug])
   @@index([locationId, sortOrder], map: "idx_menu_categories_loc_order")
+  @@index([locationId, isActive, archivedAt, sortOrder], map: "idx_menu_categories_public")
   @@map("menu_categories")
 }
 
@@ -425,6 +426,7 @@ model MenuItem {
 
   @@unique([locationId, slug])
   @@index([locationId, categoryId, isAvailable], map: "idx_menu_items_loc_category")
+  @@index([categoryId, isHidden, archivedAt, allowedFulfillmentType], map: "idx_menu_items_public_category")
   @@map("menu_items")
 }
 

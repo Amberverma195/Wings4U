@@ -32,7 +32,7 @@ export function MenuClient() {
       });
       try {
         const env = await apiJson<MenuResponse>(
-          `/api/v1/menu?${query.toString()}`,
+          `/api/catalog/menu?${query.toString()}`,
           { locationId: cart.locationId },
         );
         if (!env.data) {

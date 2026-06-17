@@ -246,7 +246,7 @@ export function useWingFlavours() {
       setError(null);
       try {
         const env = await apiJson<WingFlavour[]>(
-          `/api/v1/menu/wing-flavours?location_id=${effectiveLocationId}`,
+          `/api/catalog/wing-flavours?location_id=${effectiveLocationId}`,
           { locationId: effectiveLocationId },
         );
         if (!cancelled) {

@@ -54,6 +54,7 @@ async function fetchCatalogJson<T>(
 ): Promise<T | null> {
   try {
     const response = await fetch(`${getServerApiBase()}${path}`, {
+      cache: "force-cache",
       headers: {
         "X-Location-Id": locationId,
         Accept: "application/json",

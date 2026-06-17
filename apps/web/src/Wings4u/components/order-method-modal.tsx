@@ -191,7 +191,7 @@ export function OrderMethodModal({
           fulfillment_type: defaultMethod,
         });
         const response = await apiJson<MenuResponse>(
-          `/api/v1/menu?${query.toString()}`,
+          `/api/catalog/menu?${query.toString()}`,
           { locationId: DEFAULT_LOCATION_ID },
         );
 

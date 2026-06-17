@@ -75,7 +75,7 @@ export function FooterStoreHours() {
       fulfillment_type: "PICKUP",
     });
 
-    apiJson<MenuResponse>(`/api/v1/menu?${query.toString()}`, {
+    apiJson<MenuResponse>(`/api/catalog/menu?${query.toString()}`, {
       locationId: DEFAULT_LOCATION_ID,
     })
       .then((response) => {

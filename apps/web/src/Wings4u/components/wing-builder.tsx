@@ -168,7 +168,7 @@ export function WingBuilder({ item, onClose }: Props) {
     async function load() {
       try {
         const env = await apiJson<WingFlavour[]>(
-          `/api/v1/menu/wing-flavours?location_id=${DEFAULT_LOCATION_ID}`,
+          `/api/catalog/wing-flavours?location_id=${DEFAULT_LOCATION_ID}`,
         );
         if (!cancelled && env.data) setFlavours(env.data);
       } catch {

@@ -20,7 +20,7 @@ export function FooterMenuLinks() {
 
     void (async () => {
       try {
-        const env = await apiJson<MenuResponse>(`/api/v1/menu?${query.toString()}`, {
+        const env = await apiJson<MenuResponse>(`/api/catalog/menu?${query.toString()}`, {
           locationId: DEFAULT_LOCATION_ID,
         });
         if (cancelled || !env.data?.categories?.length) return;

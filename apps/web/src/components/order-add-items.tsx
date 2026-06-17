@@ -99,7 +99,7 @@ export function OrderAddItems({
     setError(null);
     try {
       const env = await apiJson<MenuResponse>(
-        `/api/v1/menu?location_id=${locationId}&fulfillment_type=${fulfillmentType}`,
+        `/api/catalog/menu?location_id=${locationId}&fulfillment_type=${fulfillmentType}`,
         { locationId },
       );
       if (!env.data) {
