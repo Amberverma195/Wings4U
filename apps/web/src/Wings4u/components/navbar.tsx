@@ -42,7 +42,12 @@ export function Navbar() {
   return (
     <nav style={styles.nav} className="wk-nav-bar">
       <div style={styles.navStart}>
-        <WingsBrandLockup priority wordmarkImageSrc="/nav_title.png" />
+        <WingsBrandLockup
+          priority
+          wordmarkImageSrc="/nav_title.png"
+          wordmarkImageHeight={40}
+          wordmarkImageWidth={200}
+        />
       </div>
       <div style={styles.navActions}>
         {isCustomerSession ? (
