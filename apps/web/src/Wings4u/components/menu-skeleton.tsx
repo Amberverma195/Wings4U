@@ -13,6 +13,12 @@ const screenReaderOnly: CSSProperties = {
   border: 0,
 };
 
+function getMenuPageHeading(pageKind: "menu" | "order"): string {
+  return pageKind === "order"
+    ? "Order Chicken Wings Online in London, Ontario"
+    : "Wings 4 U Menu in London, Ontario";
+}
+
 function SkeletonBlock({
   width,
   height,
@@ -83,14 +89,17 @@ function SkeletonSection({
 
 export function MenuSkeleton({
   statusLabel = "Loading menu",
+  pageKind = "menu",
 }: {
   statusLabel?: string;
+  pageKind?: "menu" | "order";
 }) {
   const categoryPillWidths = [124, 78, 96, 82, 86, 132, 110, 92, 74];
 
   return (
-    <div style={styles.menuPage}>
+    <main style={styles.menuPage}>
       <div style={styles.menuSurface} role="status" aria-live="polite" aria-busy="true">
+        <h1 className="wk-visually-hidden">{getMenuPageHeading(pageKind)}</h1>
         <span style={screenReaderOnly}>{statusLabel}</span>
 
         <div className="wk-order-sticky-stack" aria-hidden="true">
@@ -135,6 +144,6 @@ export function MenuSkeleton({
         <SkeletonSection headingWidth="clamp(220px, 26vw, 320px)" cardCount={6} />
         <SkeletonSection headingWidth="clamp(160px, 18vw, 220px)" cardCount={4} />
       </div>
-    </div>
+    </main>
   );
 }

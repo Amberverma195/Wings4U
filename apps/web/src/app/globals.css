@@ -4811,3 +4811,15 @@ main {
   min-height: auto;
   padding: 1rem clamp(1rem, 5vw, 4rem) 2.5rem !important;
 }
+
+.wk-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

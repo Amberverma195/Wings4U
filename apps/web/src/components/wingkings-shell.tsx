@@ -14,6 +14,20 @@ import { SiteFooter } from "@/components/site-footer";
 import { Navbar } from "@/Wings4u/components/navbar";
 import { styles } from "@/Wings4u/styles";
 
+/** Routes whose page component already renders its own `<main>`. */
+function routeProvidesMain(pathname: string | null): boolean {
+  if (!pathname) return false;
+
+  return (
+    pathname === "/sauces" ||
+    pathname === "/menu" ||
+    pathname === "/order" ||
+    pathname === "/catering" ||
+    pathname === "/privacy" ||
+    pathname === "/terms"
+  );
+}
+
 export function WingKingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const showMarketingSections = pathname === "/";
@@ -22,6 +36,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
   const isPosRoute = pathname === "/pos" || pathname?.startsWith("/pos/");
   const isAdminRoute = pathname === "/admin" || pathname?.startsWith("/admin/");
   const isAuthRoute = /^\/(login|signup)\/?$/.test(pathname ?? "");
+  const pageHasOwnMain = routeProvidesMain(pathname);
   /** Login/signup use a neutral background; global embers sit above main (z-index 996) and add an orange wash. */
   const hideFireEmbers = isAuthRoute;
   /** Only scroll to top on real route changes — not on mount/remount while staying on the same path (fixes scroll jumping while reading the page). */
@@ -45,6 +60,13 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
       history.scrollRestoration = previousScrollRestoration;
     };
   }, [pathname]);
+
+  const contentShellProps = {
+    style: styles.appMain,
+    className: "wk-shell-main",
+  };
+
+  const ContentShell = pageHasOwnMain ? "div" : "main";
 
   if (isSaucesRoute) {
     return (
@@ -87,9 +109,9 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
     return (
       <div style={styles.app}>
         <WingKingsGlobalStyle />
-        <div style={styles.appMain} className="wk-shell-main">
+        <main id="main-content" {...contentShellProps}>
           {children}
-        </div>
+        </main>
         <AuthHandoffErrorToast />
       </div>
     );
@@ -100,13 +122,13 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
       <WingKingsGlobalStyle />
       <Navbar />
       {hideFireEmbers ? null : <FireEmbers />}
-      <div style={styles.appMain} className="wk-shell-main">
+      <ContentShell id={pageHasOwnMain ? undefined : "main-content"} {...contentShellProps}>
         {children}
         {showMarketingSections ? <SpotlightSection /> : null}
         {showMarketingSections ? <TestimonialsSection /> : null}
         {showMarketingSections ? <NewsletterSection /> : null}
         {showMarketingSections ? <OrderCtaSection /> : null}
-      </div>
+      </ContentShell>
       <SiteFooter />
       <GuestCartExpiryBanner />
       <AuthHandoffErrorToast />

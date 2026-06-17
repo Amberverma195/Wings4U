@@ -104,13 +104,13 @@ export function SaucesSection() {
       <div className={`sauce-header reveal${inView ? " reveal--visible" : ""}`}>
         <p className="section-label sauces-section-label">The Lineup</p>
 
-        <div className="sauce-count-wrapper">
+        <h2 className="sauce-count-wrapper">
           <span className={`sauce-count-hero${inView ? " sauce-count-hero--play" : ""}`}>{SAUCE_TOTAL}+</span>
-          <div className="sauce-count-sub">
+          <span className="sauce-count-sub">
             <span className="sauce-count-sub-main">Sauces &amp; Dry Rubs</span>
             <span className="sauce-zero-excuses">Zero Excuses.</span>
-          </div>
-        </div>
+          </span>
+        </h2>
       </div>
 
       <div

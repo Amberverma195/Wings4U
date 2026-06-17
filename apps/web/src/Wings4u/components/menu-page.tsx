@@ -56,6 +56,12 @@ import {
 } from "./cart-page";
 import { MenuSkeleton } from "./menu-skeleton";
 
+function getMenuPageHeading(pathname: string): string {
+  return pathname === "/order"
+    ? "Order Chicken Wings Online in London, Ontario"
+    : "Wings 4 U Menu in London, Ontario";
+}
+
 /**
  * Cart lines store the concrete SKU id (e.g. wings-1lb). The wings / wing-combo
  * rows are synthetic cards whose `id` is not that SKU; real ids live on
@@ -213,6 +219,8 @@ export function MenuPage({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const pageKind = pathname === "/order" ? "order" : "menu";
+  const pageHeading = getMenuPageHeading(pathname);
   const locationId = DEFAULT_LOCATION_ID;
   const {
     commitOrderContext,
@@ -262,7 +270,7 @@ export function MenuPage({
   const deliveryUnavailableMessage = getDeliveryUnavailableMessage(menu);
   const deliveryUnavailable = Boolean(deliveryUnavailableMessage);
 
-  const sectionRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const catRowRef = useRef<HTMLDivElement | null>(null);
   const menuSurfaceRef = useRef<HTMLDivElement | null>(null);
   const orderStackPinSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -948,13 +956,18 @@ export function MenuPage({
       };
 
       return (
-        <div key={item.key} style={{ ...styles.menuCard, ...(item.stockStatus === "UNAVAILABLE" ? { opacity: 0.5, pointerEvents: "none" } : {}) }}>
+        <article
+          key={item.key}
+          style={{ ...styles.menuCard, ...(item.stockStatus === "UNAVAILABLE" ? { opacity: 0.5, pointerEvents: "none" } : {}) }}
+        >
           {imageUrl ? (
             <div style={styles.menuCardImageWrap}>
               <img
                 src={imageUrl}
-                alt={item.displayName}
+                alt={`${item.displayName} on the Wings 4 U menu`}
                 style={styles.menuCardImage}
+                loading="lazy"
+                decoding="async"
               />
             </div>
           ) : (
@@ -1029,7 +1042,7 @@ export function MenuPage({
               )}
             </div>
           </div>
-        </div>
+        </article>
       );
     },
     [
@@ -1051,7 +1064,7 @@ export function MenuPage({
   if (needOrderMethodModal) {
     return (
       <>
-        <MenuSkeleton statusLabel="Select order settings" />
+        <MenuSkeleton statusLabel="Select order settings" pageKind={pageKind} />
         <OrderMethodModal
           open
           defaultMethod={requestedFulfillmentType ?? "DELIVERY"}
@@ -1076,7 +1089,8 @@ export function MenuPage({
 
   if (error) {
     return (
-      <div style={styles.menuPage}>
+      <main style={styles.menuPage}>
+        <h1 className="wk-visually-hidden">{pageHeading}</h1>
         <div style={{ ...styles.menuSurface, paddingTop: "clamp(1.25rem, 2vw, 2rem)" }}>
           <p style={{ ...styles.menuSub, marginBottom: 8 }}>{error}</p>
           <p style={{ color: "#5c432f", margin: 0, fontSize: 14 }}>
@@ -1085,7 +1099,7 @@ export function MenuPage({
             LON01 location UUID.
           </p>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -1093,6 +1107,7 @@ export function MenuPage({
     return (
       <MenuSkeleton
         statusLabel={isCommittingFulfillment ? "Updating fulfillment" : "Loading menu"}
+        pageKind={pageKind}
       />
     );
   }
@@ -1105,7 +1120,8 @@ export function MenuPage({
       : "Change";
 
   return (
-    <div style={styles.menuPage}>
+    <main style={styles.menuPage}>
+      <h1 className="wk-visually-hidden">{pageHeading}</h1>
       <div ref={menuSurfaceRef} style={styles.menuSurface}>
         <div
           ref={orderStackPinSentinelRef}
@@ -1313,12 +1329,14 @@ export function MenuPage({
 
         {displayCategories.map((category) => {
           const note = categoryNoteForSlug(category.slug);
+          const headingId = `cat-heading-${category.id}`;
 
           return (
-            <div
+            <section
               key={category.id}
               id={`cat-${category.id}`}
               className="wk-menu-section"
+              aria-labelledby={headingId}
               ref={(element) => {
                 if (element) {
                   sectionRefs.current.set(`cat-${category.id}`, element);
@@ -1327,7 +1345,7 @@ export function MenuPage({
                 }
               }}
             >
-              <h2 className="wk-section-heading">{category.name.toUpperCase()}</h2>
+              <h2 id={headingId} className="wk-section-heading">{category.name.toUpperCase()}</h2>
               {note && (
                 <div
                   className={`wk-section-note${category.slug === "wing-combos" || category.slug === "burgers" ? " wk-section-note--highlight" : ""}`}
@@ -1347,7 +1365,7 @@ export function MenuPage({
                   {category.items.map((item) => renderCard(category, item))}
                 </div>
               )}
-            </div>
+            </section>
           );
         })}
       </div>
@@ -1413,6 +1431,6 @@ export function MenuPage({
           onClose={() => setLegacyPickerGroup(null)}
         />
       )}
-    </div>
+    </main>
   );
 }

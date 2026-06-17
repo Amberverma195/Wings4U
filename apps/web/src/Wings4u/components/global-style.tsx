@@ -118,6 +118,9 @@ export function WingKingsGlobalStyle() {
         gap: 0;
         margin-top: 52px;
         margin-bottom: clamp(20px, 3vw, 36px);
+        margin-inline: 0;
+        padding: 0;
+        list-style: none;
         border-left: 2px solid rgba(255, 77, 0, 0.3);
         animation: fadeUp 0.9s cubic-bezier(0.23, 1, 0.32, 1) 0.75s both;
         overflow-x: auto;
@@ -980,6 +983,9 @@ export function WingKingsGlobalStyle() {
         gap: 20px;
         flex-wrap: wrap;
         perspective: 1000px;
+        margin: 0;
+        font: inherit;
+        font-weight: inherit;
       }
 
       .sauce-count-hero {
@@ -3268,6 +3274,7 @@ export function WingKingsGlobalStyle() {
         align-items: center;
         justify-content: center;
         min-height: 360px;
+        margin: 0;
       }
 
       #spotlight .spotlight-visual.reveal-left {
@@ -4041,7 +4048,7 @@ export function WingKingsGlobalStyle() {
         margin: 0;
       }
 
-      #footer .footer-col h4 {
+      #footer .footer-col h3 {
         font-family: 'Oswald', sans-serif;
         font-size: clamp(15px, 1.25vw, 18px);
         letter-spacing: 2.4px;
@@ -4052,7 +4059,7 @@ export function WingKingsGlobalStyle() {
         text-transform: uppercase;
       }
 
-      #footer .footer-col h4::after {
+      #footer .footer-col h3::after {
         content: '.';
       }
 
@@ -4109,7 +4116,7 @@ export function WingKingsGlobalStyle() {
         width: 100%;
       }
 
-      #footer .footer-menu-head-row h4 {
+      #footer .footer-menu-head-row h3 {
         margin: 0 0 18px;
       }
 

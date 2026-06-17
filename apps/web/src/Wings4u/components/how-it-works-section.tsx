@@ -78,7 +78,7 @@ export function HowItWorksSection() {
 
       <div className="steps">
         {STEPS.map((step) => (
-          <div key={step.num} className={`step reveal${show}`}>
+          <article key={step.num} className={`step reveal${show}`}>
             <div className="step-num">{step.num}</div>
             <div className="step-icon" aria-hidden="true">
               {step.icon}
@@ -90,7 +90,7 @@ export function HowItWorksSection() {
                 {"\u2192"}
               </span>
             ) : null}
-          </div>
+          </article>
         ))}
       </div>
     </section>

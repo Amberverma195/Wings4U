@@ -8,6 +8,13 @@ import { HeroCategoryMarquee } from "./hero-category-marquee";
 import { HowItWorksSection } from "./how-it-works-section";
 import { SaucesSection } from "./sauces-section";
 
+const HERO_PROOF_ITEMS = [
+  { label: "Bone-In or Boneless", value: "Pick your style" },
+  { label: "Heat Levels", value: "Mild to wild" },
+  { label: "Dry Rubs & Sauces", value: "Your call" },
+  { label: "Meals for 1 or Crew", value: "Solo to group" },
+] as const;
+
 export function Landing({
   onOrderNow,
   onSauces,
@@ -39,12 +46,12 @@ export function Landing({
           <HeroCategoryMarquee />
         </div>
 
-        <div className="wk-landing-hero" style={styles.hero}>
+        <section className="wk-landing-hero" style={styles.hero} aria-label="Welcome to Wings 4 U">
           <div className="wk-hero-content" style={styles.heroContent}>
             <p style={styles.heroEyebrow}>
               {"\u{1F525} LONDON'S BEST WING SPOT \u00B7 Est. 2026"}
             </p>
-            <h1 className="wk-hero-title" style={styles.heroTitle} aria-label="WINGS THAT HIT DIFFERENT">
+            <h1 className="wk-hero-title" style={styles.heroTitle}>
               <span className="wk-hero-title-line" style={styles.heroTitleWings}>
                 W
                 <span className="hero-title-wing-i">
@@ -73,24 +80,14 @@ export function Landing({
               </button>
             </div>
 
-            <div className="hero-proof" aria-label="What we offer">
-              <div className="hero-proof-item">
-                <div className="hero-proof-label">Bone-In or Boneless</div>
-                <div className="hero-proof-val">Pick your style</div>
-              </div>
-              <div className="hero-proof-item">
-                <div className="hero-proof-label">Heat Levels</div>
-                <div className="hero-proof-val">Mild to wild</div>
-              </div>
-              <div className="hero-proof-item">
-                <div className="hero-proof-label">{"Dry Rubs & Sauces"}</div>
-                <div className="hero-proof-val">Your call</div>
-              </div>
-              <div className="hero-proof-item">
-                <div className="hero-proof-label">Meals for 1 or Crew</div>
-                <div className="hero-proof-val">Solo to group</div>
-              </div>
-            </div>
+            <ul className="hero-proof" aria-label="What we offer">
+              {HERO_PROOF_ITEMS.map((item) => (
+                <li key={item.label} className="hero-proof-item">
+                  <div className="hero-proof-label">{item.label}</div>
+                  <div className="hero-proof-val">{item.value}</div>
+                </li>
+              ))}
+            </ul>
 
             <HeroNewsletterPromo />
           </div>
@@ -113,7 +110,7 @@ export function Landing({
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
         <BrandSection />
 

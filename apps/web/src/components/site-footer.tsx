@@ -26,7 +26,7 @@ export function SiteFooter() {
         </div>
 
         <div className="footer-col footer-col--visit">
-          <h4>Visit</h4>
+          <h3>Visit</h3>
           <p>London, ON</p>
           <p className="footer-address">
             Address: Wings 4 U, 1544 Dundas St, London, ON N5W 3C1
@@ -34,13 +34,13 @@ export function SiteFooter() {
           <FooterStoreHours />
         </div>
 
-        <div className="footer-col footer-col--info">
-          <h4>Info</h4>
+        <nav className="footer-col footer-col--info" aria-label="Footer information">
+          <h3>Info</h3>
           <a href="#">Nutrition</a>
           <a href="#">Allergens</a>
           <a href="#">Careers</a>
           <a href="#">Press</a>
-        </div>
+        </nav>
       </div>
 
       <div className="footer-bottom">

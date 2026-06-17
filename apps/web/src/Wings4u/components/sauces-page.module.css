@@ -483,6 +483,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0;
   font-family: 'Oswald', sans-serif;
   font-size: 13px;
   font-weight: 700;

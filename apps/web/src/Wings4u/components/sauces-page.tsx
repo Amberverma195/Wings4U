@@ -458,7 +458,7 @@ export function SaucesPage() {
                           {sauce.icon}
                         </div>
 
-                        <div className={styles.sauceCardName}>{sauce.name}</div>
+                        <h3 className={styles.sauceCardName}>{sauce.name}</h3>
 
                         <div className={styles.sauceSpiceFooter}>
                           <div className={styles.sauceCardHeat} aria-hidden="true">

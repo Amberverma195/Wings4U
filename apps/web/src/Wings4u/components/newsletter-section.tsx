@@ -48,11 +48,11 @@ export function NewsletterSection() {
       <div className="bg-pattern" aria-hidden="true" />
       <div className={`newsletter-inner reveal${show}`}>
         <p className="section-label">STAY SAUCY</p>
-        <h3 id="newsletter-heading">
+        <h2 id="newsletter-heading">
           <span>GET </span>
           <span className="gradient-text">10% OFF</span>
           <span> YOUR FIRST ORDER</span>
-        </h3>
+        </h2>
         <button type="button" className="newsletter-btn newsletter-btn--order" onClick={handleOrderNow}>
           ORDER NOW
         </button>

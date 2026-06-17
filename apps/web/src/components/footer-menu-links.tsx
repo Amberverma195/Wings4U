@@ -40,7 +40,7 @@ export function FooterMenuLinks() {
     return (
       <>
         <div className="footer-menu-head-row">
-          <h4>Menu</h4>
+          <h3>Menu</h3>
           <details className="footer-menu-disclosure footer-menu-disclosure--mobile">
             <summary className="footer-hours-toggle footer-menu-mobile-summary">Categories</summary>
             <div className="footer-menu-mobile-panel">
@@ -59,7 +59,7 @@ export function FooterMenuLinks() {
     return (
       <>
         <div className="footer-menu-head-row">
-          <h4>Menu</h4>
+          <h3>Menu</h3>
           <details className="footer-menu-disclosure footer-menu-disclosure--mobile">
             <summary className="footer-hours-toggle footer-menu-mobile-summary">Categories</summary>
             <nav className="footer-menu-mobile-panel" aria-label="Menu categories">
@@ -77,7 +77,7 @@ export function FooterMenuLinks() {
   return (
     <>
       <div className="footer-menu-head-row">
-        <h4>Menu</h4>
+        <h3>Menu</h3>
         <details className="footer-menu-disclosure footer-menu-disclosure--mobile">
           <summary className="footer-hours-toggle footer-menu-mobile-summary">Categories</summary>
           <nav className="footer-menu-mobile-panel" aria-label="Menu categories">

@@ -39,15 +39,15 @@ export function SpotlightSection() {
   return (
     <section id="spotlight" ref={sectionRef} className="spotlight-section">
       <div className="spotlight-inner">
-        <div className={`spotlight-visual reveal-left${show}`}>
+        <figure className={`spotlight-visual reveal-left${show}`}>
           <div className="spotlight-glow-wrap" aria-hidden="true">
             <div className="spotlight-glow" />
           </div>
           <span className="spotlight-emoji" aria-hidden="true">
             {"\u{1F525}"}
           </span>
-          <span className="spotlight-badge">FAN FAVOURITE</span>
-        </div>
+          <figcaption className="spotlight-badge">FAN FAVOURITE</figcaption>
+        </figure>
 
         <div className={`spotlight-copy reveal-right${show}`}>
           <p className="section-label spotlight-section-label">Signature Item</p>
