@@ -11,6 +11,7 @@ import {
 } from "../../common/utils/store-ip";
 import * as bcrypt from "bcryptjs";
 import { CatalogCacheService } from "../catalog/catalog-cache.service";
+import { WebCatalogRevalidationService } from "../catalog/web-catalog-revalidation.service";
 
 const STORE_HOURS_SERVICE_TYPE = "STORE";
 const STORE_HOURS_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -131,7 +132,13 @@ export class LocationSettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly catalogCache: CatalogCacheService,
+    private readonly webCatalogRevalidation: WebCatalogRevalidationService,
   ) {}
+
+  private async invalidateCatalogCaches(locationId: string): Promise<void> {
+    await this.catalogCache.invalidateLocation(locationId);
+    void this.webCatalogRevalidation.revalidateLocation(locationId);
+  }
 
   async getSettings(locationId: string) {
     const [settings, storeHours] = await Promise.all([
@@ -254,7 +261,7 @@ export class LocationSettingsService {
       }
 
       // If kdsPasswordHash was updated, revoke all active KDS *and* POS
-      // station sessions — both surfaces are unlocked by the same shared
+      // station sessions - both surfaces are unlocked by the same shared
       // password, so a password rotation must invalidate both.
       if ("kdsPasswordHash" in nextData) {
         await tx.kdsStationSession.updateMany({
@@ -289,7 +296,7 @@ export class LocationSettingsService {
     });
 
     const { kdsPasswordHash, ...rest } = updated;
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
     return {
       ...rest,
       kdsPasswordConfigured: !!kdsPasswordHash,

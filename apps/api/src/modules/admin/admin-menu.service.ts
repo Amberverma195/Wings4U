@@ -13,6 +13,7 @@ import {
   type MenuImageStorage,
 } from "./menu-image-storage";
 import { CatalogCacheService } from "../catalog/catalog-cache.service";
+import { WebCatalogRevalidationService } from "../catalog/web-catalog-revalidation.service";
 
 // ── DTO types (used by the controller validation classes) ──
 
@@ -146,8 +147,14 @@ export class AdminMenuService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly catalogCache: CatalogCacheService,
+    private readonly webCatalogRevalidation: WebCatalogRevalidationService,
   ) {
     this.imageStorage = new LocalMenuImageStorage();
+  }
+
+  private async invalidateCatalogCaches(locationId: string): Promise<void> {
+    await this.catalogCache.invalidateLocation(locationId);
+    void this.webCatalogRevalidation.revalidateLocation(locationId);
   }
 
   private async invalidateCatalogAfter<T>(
@@ -155,7 +162,7 @@ export class AdminMenuService {
     resultPromise: Promise<T>,
   ): Promise<T> {
     const result = await resultPromise;
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
     return result;
   }
 
@@ -622,7 +629,7 @@ export class AdminMenuService {
         imageUrl,
       },
     });
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
 
     return { image_url: imageUrl };
   }
@@ -667,7 +674,7 @@ export class AdminMenuService {
         }),
       ),
     );
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
 
     await Promise.all(previousImageUrls.map((url) => this.imageStorage.remove(url)));
 
@@ -706,7 +713,7 @@ export class AdminMenuService {
       where: { id: { in: items.map((item) => item.id) } },
       data: { imageUrl: null },
     });
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
 
     await Promise.all(previousImageUrls.map((url) => this.imageStorage.remove(url)));
 
@@ -730,7 +737,7 @@ export class AdminMenuService {
       where: { id },
       data: { imageUrl: null },
     });
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
 
     return { image_url: null };
   }

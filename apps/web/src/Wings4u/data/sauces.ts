@@ -137,6 +137,16 @@ const HEAT_LEVEL_TO_CATEGORY: Record<Exclude<MenuHeatLevel, "PLAIN">, SauceCateg
   DRY_RUB: "dryrub",
 };
 
+function isMenuHeatLevel(value: string): value is MenuHeatLevel {
+  return (
+    value === "MILD" ||
+    value === "MEDIUM" ||
+    value === "HOT" ||
+    value === "DRY_RUB" ||
+    value === "PLAIN"
+  );
+}
+
 const ICON_RULES: Array<[RegExp, string]> = [
   [/(honey|maple)/i, String.fromCodePoint(0x1f36f)],
   [/(garlic|gar-par)/i, String.fromCodePoint(0x1f9c4)],
@@ -271,33 +281,62 @@ const SOURCE_FLAVOURS = WING_FLAVOURS.filter(
   (flavour) => !flavour.is_plain && flavour.heat_level !== "PLAIN",
 );
 
-export const SAUCE_FLAVOURS: SauceFlavour[] = SOURCE_FLAVOURS.map((flavour, index) => {
-  const cat = HEAT_LEVEL_TO_CATEGORY[flavour.heat_level as Exclude<MenuHeatLevel, "PLAIN">];
+function mapSourceFlavoursToSauceFlavours(
+  source: Array<Pick<MenuWingFlavour, "name" | "slug" | "heat_level">>,
+): SauceFlavour[] {
+  return source.map((flavour, index) => {
+    const cat =
+      HEAT_LEVEL_TO_CATEGORY[flavour.heat_level as Exclude<MenuHeatLevel, "PLAIN">];
 
-  return {
-    id: flavour.slug,
-    slug: flavour.slug,
-    name: flavour.name,
-    cat,
-    icon: pickSauceIcon(flavour.name, cat),
-    visualAccent: pickSauceVisualAccent(flavour.name, cat),
-    heat: deriveGridHeat(flavour.name, cat),
-    carouselHeat: deriveCarouselHeat(cat),
-    number: index + 1,
-  };
-});
+    return {
+      id: flavour.slug,
+      slug: flavour.slug,
+      name: flavour.name,
+      cat,
+      icon: pickSauceIcon(flavour.name, cat),
+      visualAccent: pickSauceVisualAccent(flavour.name, cat),
+      heat: deriveGridHeat(flavour.name, cat),
+      carouselHeat: deriveCarouselHeat(cat),
+      number: index + 1,
+    };
+  });
+}
 
-export const SAUCE_TOTAL = 70;
+/** Build display sauces from live API wing-flavour rows (cached on the server). */
+export function buildSauceFlavoursFromApi(
+  flavours: Array<{ name: string; slug: string; heat_level: string; is_plain?: boolean }>,
+): SauceFlavour[] {
+  const source = flavours.flatMap((flavour) => {
+    if (
+      flavour.is_plain ||
+      !isMenuHeatLevel(flavour.heat_level) ||
+      flavour.heat_level === "PLAIN"
+    ) {
+      return [];
+    }
 
-export const SAUCE_COUNTS = SAUCE_FLAVOURS.reduce<Record<SauceCategory, number>>(
-  (counts, sauce) => {
-    counts[sauce.cat] += 1;
-    return counts;
-  },
-  {
-    mild: 0,
-    medium: 0,
-    hot: 0,
-    dryrub: 0,
-  },
-);
+    return [{ name: flavour.name, slug: flavour.slug, heat_level: flavour.heat_level }];
+  });
+  return mapSourceFlavoursToSauceFlavours(source);
+}
+
+export function deriveSauceCounts(flavours: SauceFlavour[]): Record<SauceCategory, number> {
+  return flavours.reduce<Record<SauceCategory, number>>(
+    (counts, sauce) => {
+      counts[sauce.cat] += 1;
+      return counts;
+    },
+    {
+      mild: 0,
+      medium: 0,
+      hot: 0,
+      dryrub: 0,
+    },
+  );
+}
+
+export const SAUCE_FLAVOURS: SauceFlavour[] = mapSourceFlavoursToSauceFlavours(SOURCE_FLAVOURS);
+
+export const SAUCE_TOTAL = SAUCE_FLAVOURS.length;
+
+export const SAUCE_COUNTS = deriveSauceCounts(SAUCE_FLAVOURS);

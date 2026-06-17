@@ -2,6 +2,8 @@
 
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { requestCatalogRevalidation } from "@/lib/catalog/revalidate-catalog";
+import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { adminApiFetch, adminFetch } from "../admin-api";
 import type { Category, FullMenuItem, WingFlavour } from "./admin-menu.types";
 import { CategoryModal } from "./category-modal";
@@ -95,6 +97,7 @@ export function AdminMenuClient() {
   }, [activeCategoryId, searchQuery, loadItems, activeTab]);
 
   const refresh = useCallback(() => {
+    void requestCatalogRevalidation(DEFAULT_LOCATION_ID);
     loadCategories();
     loadSauces();
     if (activeTab === "ITEMS") {

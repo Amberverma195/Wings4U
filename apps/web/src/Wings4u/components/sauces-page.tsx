@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
-import { SAUCE_COUNTS, SAUCE_FLAVOURS, SAUCE_TOTAL, type SauceCategory } from "../data/sauces";
+import { SAUCE_COUNTS, SAUCE_FLAVOURS, SAUCE_TOTAL, type SauceCategory, type SauceFlavour } from "../data/sauces";
 import styles from "./sauces-page.module.css";
 
 type FilterKey = "all" | SauceCategory;
@@ -157,12 +157,16 @@ function getFilterLabel(filter: FilterKey) {
   return `${config.filterEmoji} ${config.label.toUpperCase()}`;
 }
 
-function getFilterCount(filter: FilterKey) {
+function getFilterCount(
+  filter: FilterKey,
+  sauceTotal: number,
+  sauceCounts: Record<SauceCategory, number>,
+) {
   if (filter === "all") {
-    return SAUCE_TOTAL;
+    return sauceTotal;
   }
 
-  return SAUCE_COUNTS[filter];
+  return sauceCounts[filter];
 }
 
 function cardVars(categoryColor: string, visualAccent: string, animationDelay: string): CSSProperties {
@@ -179,7 +183,15 @@ function buttonVars(color: string): CSSProperties {
   } as CSSProperties;
 }
 
-export function SaucesPage() {
+export function SaucesPage({
+  flavours = SAUCE_FLAVOURS,
+  sauceTotal = SAUCE_TOTAL,
+  sauceCounts = SAUCE_COUNTS,
+}: {
+  flavours?: SauceFlavour[];
+  sauceTotal?: number;
+  sauceCounts?: Record<SauceCategory, number>;
+}) {
   const heroRef = useRef<HTMLElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
   const sectionRefs = useRef<Record<SauceCategory, HTMLElement | null>>({
@@ -222,7 +234,7 @@ export function SaucesPage() {
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (reduceMotion.matches) {
-      setCounts({ ...SAUCE_COUNTS });
+      setCounts({ ...sauceCounts });
       return () => {
         clearIntervals();
       };
@@ -232,7 +244,7 @@ export function SaucesPage() {
       clearIntervals();
 
       CATEGORY_ORDER.forEach((category) => {
-        const target = SAUCE_COUNTS[category];
+        const target = sauceCounts[category];
         const step = Math.ceil(target / 30);
         const intervalId = window.setInterval(() => {
           setCounts((previous) => {
@@ -276,7 +288,7 @@ export function SaucesPage() {
       observerRef.current?.disconnect();
       clearIntervals();
     };
-  }, []);
+  }, [sauceCounts]);
 
   const scrollToNode = (node: HTMLElement | null) => {
     if (!node || typeof window === "undefined") {
@@ -303,7 +315,7 @@ export function SaucesPage() {
   };
 
   const normalizedSearch = currentSearch.trim().toLowerCase();
-  const filteredSauces = SAUCE_FLAVOURS.filter((sauce) => {
+  const filteredSauces = flavours.filter((sauce) => {
     const matchesSearch = !normalizedSearch || sauce.name.toLowerCase().includes(normalizedSearch);
     return matchesSearch;
   });
@@ -324,7 +336,7 @@ export function SaucesPage() {
   }).filter((section) => section.items.length > 0);
 
   const countLabel = !normalizedSearch
-    ? `${SAUCE_TOTAL}+ flavours`
+    ? `${sauceTotal}+ flavours`
     : `${filteredSauces.length} flavour${filteredSauces.length === 1 ? "" : "s"}`;
   const renderKey = normalizedSearch || "all";
 
@@ -352,7 +364,7 @@ export function SaucesPage() {
             <div className={styles.sauceHeroGlow} aria-hidden="true" />
             <p className={styles.sauceHeroLabel}>UR TASTE BUDS WILL THANK U</p>
             <h1 className={styles.sauceHeroTitle}>
-              <span className={`${styles.gradientText} ${styles.gradientTextShimmer}`}>{`${SAUCE_TOTAL}+`}</span>
+              <span className={`${styles.gradientText} ${styles.gradientTextShimmer}`}>{`${sauceTotal}+`}</span>
               <span>FLAVOURS</span>
             </h1>
             <p className={styles.sauceHeroSub}>
@@ -367,7 +379,7 @@ export function SaucesPage() {
                   <div className={styles.sauceStat} key={category}>
                     <div
                       className={`${styles.sauceStatNum} ${styles[`${category}Count`]}`}
-                      data-count={SAUCE_COUNTS[category]}
+                      data-count={sauceCounts[category]}
                     >
                       {counts[category]}
                     </div>
@@ -415,7 +427,7 @@ export function SaucesPage() {
                     onClick={() => handleFilterClick(filter)}
                   >
                     <span>{getFilterLabel(filter)}</span>
-                    <span className={styles.filterCount}>{getFilterCount(filter)}</span>
+                    <span className={styles.filterCount}>{getFilterCount(filter, sauceTotal, sauceCounts)}</span>
                   </button>
                 );
               })}

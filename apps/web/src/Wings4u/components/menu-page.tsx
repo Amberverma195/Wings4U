@@ -438,7 +438,7 @@ export function MenuPage({
 
       try {
         const response = await apiJson<MenuResponse>(
-          `/api/v1/menu?${query.toString()}`,
+          `/api/catalog/menu?${query.toString()}`,
           { locationId },
         );
 

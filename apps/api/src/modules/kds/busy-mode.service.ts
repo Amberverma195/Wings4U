@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
 import { CatalogCacheService } from "../catalog/catalog-cache.service";
+import { WebCatalogRevalidationService } from "../catalog/web-catalog-revalidation.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 const HISTORY_MAX_LIMIT = 100;
@@ -16,7 +17,13 @@ export class BusyModeService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly catalogCache: CatalogCacheService,
+    private readonly webCatalogRevalidation: WebCatalogRevalidationService,
   ) {}
+
+  private async invalidateCatalogCaches(locationId: string): Promise<void> {
+    await this.catalogCache.invalidateLocation(locationId);
+    void this.webCatalogRevalidation.revalidateLocation(locationId);
+  }
 
   async getCurrent(locationId: string) {
     const settings = await this.prisma.locationSettings.findUnique({
@@ -71,7 +78,7 @@ export class BusyModeService {
     });
     if (!settings) throw new NotFoundException("Location settings not found");
 
-    // Idempotent — turning it on when it's already on just updates the prep
+    // Idempotent - turning it on when it's already on just updates the prep
     // snapshot and note on the open event (if any). Avoids orphan open events.
     if (enabled === settings.busyModeEnabled) {
       if (!enabled) {
@@ -94,7 +101,7 @@ export class BusyModeService {
             where: { locationId },
             data: { busyModePrepTimeMinutes: prepMinutes },
           });
-          await this.catalogCache.invalidateLocation(locationId);
+          await this.invalidateCatalogCaches(locationId);
         }
       }
       return this.getCurrent(locationId);
@@ -157,7 +164,7 @@ export class BusyModeService {
     }
 
     const current = await this.getCurrent(locationId);
-    await this.catalogCache.invalidateLocation(locationId);
+    await this.invalidateCatalogCaches(locationId);
     this.realtime.emitAdminEvent(locationId, "admin.busy_mode_changed", {
       location_id: locationId,
       enabled: current.enabled,

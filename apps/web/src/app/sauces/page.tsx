@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import { SaucesPage } from "@/Wings4u/components/sauces-page";
+import {
+  buildSauceFlavoursFromApi,
+  deriveSauceCounts,
+  SAUCE_FLAVOURS,
+} from "@/Wings4u/data/sauces";
+import { getCachedWingFlavours } from "@/lib/catalog/server-catalog";
 import { createPageMetadata } from "@/lib/seo/metadata";
+import { DEFAULT_LOCATION_ID } from "@/lib/env";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Sauces & Dry Rubs",
@@ -8,6 +15,22 @@ export const metadata: Metadata = createPageMetadata({
   path: "/sauces",
 });
 
-export default function SaucesRoutePage() {
-  return <SaucesPage />;
+/** On-demand revalidation only - see `/api/revalidate/catalog`. */
+export const revalidate = false;
+
+export default async function SaucesRoutePage() {
+  const apiFlavours = await getCachedWingFlavours(DEFAULT_LOCATION_ID);
+  const flavours =
+    apiFlavours && apiFlavours.length > 0
+      ? buildSauceFlavoursFromApi(apiFlavours)
+      : SAUCE_FLAVOURS;
+  const counts = deriveSauceCounts(flavours);
+
+  return (
+    <SaucesPage
+      flavours={flavours}
+      sauceTotal={flavours.length}
+      sauceCounts={counts}
+    />
+  );
 }
