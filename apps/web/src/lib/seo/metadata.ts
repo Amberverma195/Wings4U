@@ -1,5 +1,13 @@
 import type { Metadata } from "next";
-import { DEFAULT_DESCRIPTION, DEFAULT_OG_IMAGE_PATH, getSiteUrl, SITE_NAME } from "./site";
+import {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_OG_IMAGE_ALT,
+  DEFAULT_OG_IMAGE_PATH,
+  getSiteUrl,
+  OG_IMAGE_SIZE,
+  OG_SITE_NAME,
+  SITE_NAME,
+} from "./site";
 
 type PageMetadataInput = {
   /** Short page title; root layout template appends the site name. */
@@ -32,20 +40,20 @@ export function createSiteDefaults(): Metadata {
       apple: "/logo.png",
     },
     openGraph: {
-      siteName: SITE_NAME,
+      siteName: OG_SITE_NAME,
       type: "website",
-      locale: "en_US",
+      locale: "en_CA",
       images: [
         {
           url: defaultImageUrl,
-          width: 1200,
-          height: 630,
-          alt: SITE_NAME,
+          width: OG_IMAGE_SIZE,
+          height: OG_IMAGE_SIZE,
+          alt: DEFAULT_OG_IMAGE_ALT,
         },
       ],
     },
     twitter: {
-      card: "summary_large_image",
+      card: "summary",
       images: [defaultImageUrl],
     },
   };
@@ -74,20 +82,20 @@ export function createPageMetadata({
       title,
       description,
       url: canonicalUrl,
-      siteName: SITE_NAME,
+      siteName: OG_SITE_NAME,
       type: "website",
-      locale: "en_US",
+      locale: "en_CA",
       images: [
         {
           url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: `${title} — ${SITE_NAME}`,
+          width: OG_IMAGE_SIZE,
+          height: OG_IMAGE_SIZE,
+          alt: DEFAULT_OG_IMAGE_ALT,
         },
       ],
     },
     twitter: {
-      card: "summary_large_image",
+      card: "summary",
       title,
       description,
       images: [imageUrl],

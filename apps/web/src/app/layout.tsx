@@ -4,12 +4,49 @@ import { ConnectivityProvider } from "@/components/connectivity-provider";
 import { DeliveryAddressProvider } from "@/components/delivery-address-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/lib/session";
-import { createSiteDefaults } from "@/lib/seo/metadata";
+import { getSiteUrl, SITE_NAME } from "@/lib/seo/site";
 import { WingKingsShell } from "@/components/wingkings-shell";
 import "./globals.css";
 
+const siteUrl = getSiteUrl();
+
 export const metadata: Metadata = {
-  ...createSiteDefaults(),
+  title: {
+    default: "Wings 4 U | Fresh Chicken Wings in London, Ontario",
+    template: `%s | ${SITE_NAME}`,
+  },
+  description:
+    "Enjoy 100% fresh, never frozen chicken wings with over 70+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!",
+  metadataBase: new URL(siteUrl),
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
+  openGraph: {
+    title: "Wings 4 U | Best Chicken Wings in London, Ontario",
+    description:
+      "Enjoy 100% fresh, never frozen chicken wings with over 70+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!",
+    url: siteUrl,
+    siteName: "Wings 4 U London",
+    images: [
+      {
+        url: "/logo.png",
+        width: 512,
+        height: 512,
+        alt: "Wings 4 U London Official Logo",
+      },
+    ],
+    locale: "en_CA",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Wings 4 U | Fresh Chicken Wings in London, Ontario",
+    description:
+      "Enjoy 100% fresh chicken wings with over 70+ legendary flavors.",
+    images: ["/logo.png"],
+  },
   verification: {
     google: "vaJH6PgywqSTELyWHu4cx0ucqaRiHwWXA33G2T5tRiY",
   },

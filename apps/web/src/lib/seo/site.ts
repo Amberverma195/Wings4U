@@ -1,10 +1,16 @@
 export const SITE_NAME = "Wings 4 U";
 
+export const OG_SITE_NAME = "Wings 4 U London";
+
 export const DEFAULT_DESCRIPTION =
-  "Premium wings. 70+ sauces and dry rubs. Crispy every time. No excuses.";
+  "Enjoy 100% fresh, never frozen chicken wings with over 70+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!";
 
 /** Default social share image (served from /public). */
-export const DEFAULT_OG_IMAGE_PATH = "/uploads/menu/combo-2lb-a3405132.jpeg";
+export const DEFAULT_OG_IMAGE_PATH = "/logo.png";
+
+export const DEFAULT_OG_IMAGE_ALT = "Wings 4 U London Official Logo";
+
+export const OG_IMAGE_SIZE = 512;
 
 /**
  * Canonical site origin for sitemap, robots, and Open Graph URLs.
