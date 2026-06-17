@@ -4550,10 +4550,10 @@ main {
   font-size: 0.82rem;
 }
 
-/* ── Secondary cards (chat, support, add-items) ───────────── */
+/* Secondary cards (chat, support, reviews) */
 .order-detail-shell .od-card,
 .order-detail-shell .surface-card[style*="marginTop"] {
-  /* legacy add-items / reviews still pass marginTop inline; harmless */
+  /* legacy reviews still pass marginTop inline; harmless */
 }
 
 .order-detail-shell .od-card {
@@ -4568,8 +4568,8 @@ main {
     inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
-/* Apply the same warm cream treatment to the OrderAddItems & OrderReviews
-   surface-cards even though we don't add od-card to them (they're
+/* Apply the same warm cream treatment to the OrderReviews
+   surface-card even though we don't add od-card to it (it's a
    shared components). They live as direct grandchildren of the shell.
    Exclude .od-hero-card so the hero retains its dark glass treatment. */
 .order-detail-shell section.surface-card:not(.od-hero-card):not(.od-state-card) {

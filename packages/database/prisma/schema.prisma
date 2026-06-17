@@ -104,8 +104,6 @@ model User {
   inventoryAdjustments      InventoryAdjustment[]
   itemReviewReplies         ItemReview[]              @relation("review_admin_reply")
   itemReviews               ItemReview[]              @relation("review_customer")
-  orderChangeRequestsBy     OrderChangeRequest[]      @relation("change_requested_by")
-  orderChangeResolvedBy     OrderChangeRequest[]      @relation("change_resolved_by")
   orderDriverEventsActor    OrderDriverEvent[]        @relation("driver_event_actor")
   order_eta_events          OrderEtaEvent[]
   orderFinalizationEvents   OrderFinalizationEvent[]  @relation("finalization_confirmed_by")
@@ -323,7 +321,6 @@ model LocationSettings {
   defaultDeliveryMinMinutes    Int      @default(40) @map("default_delivery_min_minutes")
   defaultDeliveryMaxMinutes    Int      @default(60) @map("default_delivery_max_minutes")
   overdueDeliveryGraceMinutes  Int      @default(10) @map("overdue_delivery_grace_minutes")
-  addItemsAutoApproveEnabled   Boolean  @default(false) @map("add_items_auto_approve_enabled")
   kdsPasswordHash              String?  @map("kds_password_hash") @db.VarChar(255)
   createdAt                    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -649,7 +646,6 @@ model Order {
   driverDeliveryReviews       DriverDeliveryReview?
   driverPayoutLinks           DriverPayoutOrderLink[]
   itemReviews                 ItemReview[]
-  changeRequests              OrderChangeRequest[]
   conversation                OrderConversation?
   orderDiscounts              OrderDiscount[]
   driverEvents                OrderDriverEvent[]
@@ -826,26 +822,6 @@ model CancellationRequest {
   @@index([orderId, status], map: "idx_cancellation_requests_order_status")
   @@index([locationId, status, createdAt(sort: Desc)], map: "idx_cancellation_requests_loc_status")
   @@map("cancellation_requests")
-}
-
-model OrderChangeRequest {
-  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orderId            String              @map("order_id") @db.Uuid
-  requestedByUserId  String              @map("requested_by_user_id") @db.Uuid
-  type               ChangeRequestType
-  status             ChangeRequestStatus @default(PENDING)
-  requestedItemsJson Json                @default("[]") @map("requested_items_json")
-  resolvedAt         DateTime?           @map("resolved_at") @db.Timestamptz(6)
-  resolvedByUserId   String?             @map("resolved_by_user_id") @db.Uuid
-  rejectionReason    String?             @map("rejection_reason")
-  note               String?
-  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  requestedBy        User                @relation("change_requested_by", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  resolvedBy         User?               @relation("change_resolved_by", fields: [resolvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([orderId, status], map: "idx_order_change_requests_order_status")
-  @@map("order_change_requests")
 }
 
 model OrderDriverEvent {
@@ -1854,20 +1830,6 @@ enum PinVerificationResult {
   LOCKED
 
   @@map("pin_verification_result")
-}
-
-enum ChangeRequestType {
-  ADD_ITEMS
-
-  @@map("change_request_type")
-}
-
-enum ChangeRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-
-  @@map("change_request_status")
 }
 
 enum ReviewTagSentiment {

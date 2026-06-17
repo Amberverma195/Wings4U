@@ -16,7 +16,6 @@ const SECTIONS: AdminSection[] = [
   { href: "/admin/promos", label: "Promos", description: "Manage promo codes" },
   { href: "/admin/approvals", label: "Approvals", description: "Cancellation & refund queues" },
   { href: "/admin/staff", label: "Staff", description: "Add staff & drivers" },
-  { href: "/admin/order-changes", label: "Order changes", description: "Add-items requests" },
   { href: "/admin/orders", label: "Orders", description: "Search & order tools" },
   { href: "/admin/support", label: "Support", description: "Ticket queue" },
   { href: "/admin/reviews", label: "Reviews", description: "Reply & publish" },

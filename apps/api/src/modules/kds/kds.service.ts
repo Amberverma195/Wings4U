@@ -116,9 +116,6 @@ function serializeKdsOrder(
     (cr: Record<string, unknown>) => cr.status === "PENDING",
   );
 
-  // Finding 5: count PENDING add-item change requests for KDS badge.
-  const pendingChangeRequestCount = ((o as Record<string, unknown>).changeRequests as unknown[] ?? []).length;
-
   return {
     id: o.id,
     location_id: o.locationId,
@@ -157,7 +154,6 @@ function serializeKdsOrder(
     estimated_window_max_minutes: o.estimatedWindowMaxMinutes,
     kds_auto_accept_seconds: kdsAutoAcceptSeconds,
     requires_manual_review: o.requiresManualReview ?? false,
-    pending_change_request_count: pendingChangeRequestCount,
     created_at: o.createdAt,
     updated_at: o.updatedAt,
     items,
@@ -286,11 +282,6 @@ export class KdsService {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
-        // Finding 5: pending add-item change requests for KDS badge
-        changeRequests: {
-          where: { status: "PENDING" },
-          select: { id: true },
-        },
       },
       orderBy: { placedAt: "asc" },
     });
@@ -335,10 +326,6 @@ export class KdsService {
           where: { status: "PENDING" },
           orderBy: { createdAt: "desc" },
           take: 1,
-        },
-        changeRequests: {
-          where: { status: "PENDING" },
-          select: { id: true },
         },
       },
     });

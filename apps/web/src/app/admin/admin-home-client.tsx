@@ -60,11 +60,6 @@ const SHORTCUT_LINKS = [
     summary: "Add team members and keep the dispatch roster ready for KDS.",
   },
   {
-    href: "/admin/order-changes",
-    label: "Order change requests",
-    summary: "Approve add-item requests on active orders.",
-  },
-  {
     href: "/admin/support",
     label: "Support tickets",
     summary: "Triage open issues, reply, resolve, or escalate.",

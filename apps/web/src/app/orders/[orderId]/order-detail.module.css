@@ -1113,8 +1113,8 @@
 }
 
 /* ── Surface-card overrides for order detail columns ─────────── */
-/* OrderAddItems and OrderReviews render their own
-   <section className="surface-card">. Style them to match
+/* OrderReviews renders its own
+   <section className="surface-card">. Style it to match
    the white-card aesthetic on our yellow background. */
 .leftColumn :global(.surface-card),
 .rightColumn :global(.surface-card) {

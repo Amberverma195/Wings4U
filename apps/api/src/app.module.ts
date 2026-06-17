@@ -13,7 +13,6 @@ import { CartModule } from "./modules/cart/cart.module";
 import { SavedCartModule } from "./modules/saved-cart/saved-cart.module";
 import { CheckoutModule } from "./modules/checkout/checkout.module";
 import { OrdersModule } from "./modules/orders/orders.module";
-import { OrderChangesModule } from "./modules/order-changes/order-changes.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { WalletsModule } from "./modules/wallets/wallets.module";
 import { RewardsModule } from "./modules/rewards/rewards.module";
@@ -55,7 +54,6 @@ import { SessionModule } from "./common/session/session.module";
     SavedCartModule,
     CheckoutModule,
     OrdersModule,
-    OrderChangesModule,
     PaymentsModule,
     WalletsModule,
     RewardsModule,
@@ -88,4 +86,3 @@ import { SessionModule } from "./common/session/session.module";
   ],
 })
 export class AppModule {}
-

@@ -78,7 +78,6 @@ type KdsOrder = {
   requires_manual_review: boolean;
   items: KdsItem[];
   pending_cancel_request: KdsPendingCancelRequest | null;
-  pending_change_request_count: number;
   unread_customer_chat_count: number;
 };
 
@@ -959,8 +958,6 @@ function KdsOrderCard({
   /* ----- Pending cancellation request badge ----- */
   const hasPendingCancel = !!order.pending_cancel_request;
 
-  /* ----- Pending add-items change request badge (Finding 5) ----- */
-  const hasPendingChange = (order.pending_change_request_count ?? 0) > 0;
   const showChat = canShowKdsOrderChat(order);
 
   return (
@@ -998,21 +995,6 @@ function KdsOrderCard({
                   }}
                 >
                   Cancel Requested
-                </span>
-              )}
-              {hasPendingChange && (
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "0.12rem 0.45rem",
-                    borderRadius: "8px",
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    color: "#fff",
-                    background: "#8e44ad",
-                  }}
-                >
-                  📋 Add-Items Pending
                 </span>
               )}
               {showChat && order.unread_customer_chat_count > 0 && (
@@ -2224,11 +2206,6 @@ export function KdsClient() {
     socket.on("order.manual_review_required", refresh);
     socket.on("cancellation.requested", refresh);
     socket.on("cancellation.decided", refresh);
-    // Finding 5: refresh KDS on add-items change request events
-    socket.on("order.change_requested", refresh);
-    socket.on("order.change_approved", refresh);
-    socket.on("order.change_rejected", refresh);
-
     const disposeSubscription = subscribeToChannels(socket, [
       `orders:${DEFAULT_LOCATION_ID}`,
     ]);
@@ -2246,9 +2223,6 @@ export function KdsClient() {
       socket.off("order.manual_review_required", refresh);
       socket.off("cancellation.requested", refresh);
       socket.off("cancellation.decided", refresh);
-      socket.off("order.change_requested", refresh);
-      socket.off("order.change_approved", refresh);
-      socket.off("order.change_rejected", refresh);
       socket.disconnect();
       socketRef.current = null;
     };

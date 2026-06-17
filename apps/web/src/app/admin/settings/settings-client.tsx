@@ -31,7 +31,6 @@ type Settings = {
   defaultDeliveryMinMinutes: number;
   defaultDeliveryMaxMinutes: number;
   overdueDeliveryGraceMinutes: number;
-  addItemsAutoApproveEnabled: boolean;
   trustedIpRanges: string[];
   kdsPasswordConfigured?: boolean;
   storeHours: StoreHour[];
@@ -163,12 +162,6 @@ const FIELDS: FieldDef[] = [
     label: "KDS auto-accept (sec)",
     group: "Kitchen",
     kind: "number",
-  },
-  {
-    key: "addItemsAutoApproveEnabled",
-    label: "Auto-approve add-items",
-    group: "Kitchen",
-    kind: "boolean",
   },
   {
     key: "firstOrderDiscountEnabled",

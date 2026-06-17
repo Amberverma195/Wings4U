@@ -9,7 +9,6 @@ import { cents, orderStatusCustomerLabel, shortTime, statusLabel } from "@/lib/f
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderDetail, OrderStatus } from "@/lib/types";
-import { OrderAddItems } from "@/components/order-add-items";
 import { OrderChat } from "@/components/order-chat";
 import { OrderReviews } from "@/components/order-reviews";
 import { OrderStatusTimelineChakra } from "@/components/order-status-timeline-chakra";
@@ -317,8 +316,6 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     socket.on("order.driver_assigned", refresh);
     socket.on("order.delivery_started", refresh);
     socket.on("order.eta_updated", refresh);
-    socket.on("order.change_approved", refresh);
-    socket.on("order.change_rejected", refresh);
     socket.on("cancellation.decided", refresh);
 
     const expectChannel = `order:${orderId}`;
@@ -826,17 +823,6 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
               )}
 
             </div>
-
-            {/* Add more items — hidden once the order is completed (terminal) */}
-            {!terminal && (
-              <OrderAddItems
-                orderId={orderId}
-                locationId={order.location_id}
-                placedAt={order.placed_at}
-                fulfillmentType={order.fulfillment_type}
-                orderStatus={order.status}
-              />
-            )}
 
           </div>
 
