@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import DenialView from "@/components/denial-view";
+import { createPageMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPageMetadata({
   title: "Page not available",
-  robots: { index: false, follow: false },
-};
+  description: "This page is not available.",
+  noIndex: true,
+});
 
 /**
  * Renders whenever a server component calls `forbidden()` from

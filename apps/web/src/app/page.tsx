@@ -1,61 +1,13 @@
-"use client";
+import { HomePageClient } from "./home-page-client";
+import { createPageMetadata } from "@/lib/seo/metadata";
+import { DEFAULT_DESCRIPTION } from "@/lib/seo/site";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Landing } from "@/Wings4u/components/landing";
-import { OrderMethodModal } from "@/Wings4u/components/order-method-modal";
-import { useCart } from "@/lib/cart";
-import type { FulfillmentType } from "@/lib/types";
+export const metadata = createPageMetadata({
+  title: "Premium Wings, 70+ Sauces & Dry Rubs",
+  description: DEFAULT_DESCRIPTION,
+  path: "/",
+});
 
 export default function HomePage() {
-  const router = useRouter();
-  const cart = useCart();
-  const [methodOpen, setMethodOpen] = useState(false);
-  const [defaultMethod, setDefaultMethod] = useState<FulfillmentType>("DELIVERY");
-
-  useEffect(() => {
-    router.prefetch("/sauces");
-  }, [router]);
-
-  useEffect(() => {
-    function handleOpenOrderMethod() {
-      setDefaultMethod("DELIVERY");
-      setMethodOpen(true);
-    }
-
-    window.addEventListener("wings4u:open-order-method", handleOpenOrderMethod);
-    return () => {
-      window.removeEventListener("wings4u:open-order-method", handleOpenOrderMethod);
-    };
-  }, []);
-
-  function openOrderMethod() {
-    setDefaultMethod("DELIVERY");
-    setMethodOpen(true);
-  }
-
-  return (
-    <>
-      <Landing
-        onOrderNow={openOrderMethod}
-        onSauces={() => {
-          router.push("/sauces");
-        }}
-      />
-      <OrderMethodModal
-        open={methodOpen}
-        defaultMethod={defaultMethod}
-        initialScheduledFor={cart.scheduledFor}
-        onClose={() => setMethodOpen(false)}
-        onContinue={({ fulfillment_type, scheduled_for }) => {
-          cart.commitOrderContext({
-            fulfillmentType: fulfillment_type,
-            scheduledFor: scheduled_for,
-          });
-          setMethodOpen(false);
-          router.push(`/order?fulfillment_type=${fulfillment_type}`);
-        }}
-      />
-    </>
-  );
+  return <HomePageClient />;
 }

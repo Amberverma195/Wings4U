@@ -4,12 +4,12 @@ import { ConnectivityProvider } from "@/components/connectivity-provider";
 import { DeliveryAddressProvider } from "@/components/delivery-address-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/lib/session";
+import { createSiteDefaults } from "@/lib/seo/metadata";
 import { WingKingsShell } from "@/components/wingkings-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Wings 4 U",
-  description: "Premium wings. 70+ sauces and dry rubs. Crispy every time. No excuses.",
+  ...createSiteDefaults(),
   verification: {
     google: "vaJH6PgywqSTELyWHu4cx0ucqaRiHwWXA33G2T5tRiY",
   },
