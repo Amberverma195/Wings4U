@@ -10,6 +10,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Wings 4 U",
   description: "Premium wings. 70+ sauces and dry rubs. Crispy every time. No excuses.",
+  verification: {
+    google: "vaJH6PgywqSTELyWHu4cx0ucqaRiHwWXA33G2T5tRiY",
+  },
 };
 
 export const viewport: Viewport = {
