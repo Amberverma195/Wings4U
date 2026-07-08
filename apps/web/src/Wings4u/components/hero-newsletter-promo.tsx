@@ -13,9 +13,9 @@ export function HeroNewsletterPromo() {
         type="button"
         className="hero-newsletter-promo__box"
         onClick={scrollToNewsletter}
-        aria-label="Get 10% off your first order - go to newsletter signup"
+        aria-label="Get 15% off your first order - go to newsletter signup"
       >
-        <span className="hero-newsletter-promo__text">GET 10% OFF</span>
+        <span className="hero-newsletter-promo__text">GET 15% OFF</span>
         <span className="hero-newsletter-promo__chick" aria-hidden="true">
           {"\u{1F425}"}
         </span>

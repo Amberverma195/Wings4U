@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
-import { toE164 } from "@/lib/phone";
+import { formatPhoneForDisplay, toE164 } from "@/lib/phone";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 
@@ -18,7 +18,7 @@ type Step =
   | { name: "login-id" }
   | { name: "login-password"; identifier: string }
   | { name: "reset-request"; identifier: string }
-  | { name: "reset-verify"; identifier: string }
+  | { name: "reset-verify"; identifier: string; deliveryEmail: string }
   | { name: "profile" }
   | { name: "done" };
 
@@ -49,6 +49,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_HINT =
   "Password must be at least 8 characters and include a letter, a number, and a special character.";
 const LOGIN_PASSWORD_STEP_STORAGE_KEY = "w4u_login_identifier_pending";
+const PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 30;
 
 function getPasswordChecks(value: string) {
   return [
@@ -92,6 +93,13 @@ function formatPhoneOrEmailInput(value: string): string {
 
 function isPhoneIdentifier(value: string): boolean {
   return !value.includes("@") && !/[a-zA-Z]/.test(value);
+}
+
+function parseCooldownSeconds(message: string): number | null {
+  const match = message.match(/wait\s+(\d+)\s+seconds/i);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
 function readPendingLoginIdentifier(): string | null {
@@ -476,18 +484,31 @@ function PasswordChecklist({ value }: { value: string }) {
 function ResendButton({
   busy,
   sending,
+  cooldownSeconds = 0,
+  locked = false,
   onClick,
 }: {
   busy: boolean;
   sending: boolean;
+  cooldownSeconds?: number;
+  locked?: boolean;
   onClick: () => void;
 }) {
+  const disabled = busy || cooldownSeconds > 0 || locked;
+  const label = locked
+    ? "Resend limit reached"
+    : cooldownSeconds > 0
+      ? `Resend in ${cooldownSeconds}s`
+      : sending
+        ? "Sending..."
+        : "Resend code";
+
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <button
         type="button"
         className="wk-otp-resend"
-        disabled={busy}
+        disabled={disabled}
         onClick={onClick}
         aria-label="Resend verification code"
       >
@@ -507,7 +528,7 @@ function ResendButton({
           </svg>
         </span>
         <span className="wk-otp-resend-label">
-          {sending ? "Sending..." : "Resend code"}
+          {label}
         </span>
       </button>
     </div>
@@ -558,12 +579,34 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const busy = busyAction !== null;
   const [shaking, setShaking] = useState(false);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [resetResendAvailableAt, setResetResendAvailableAt] = useState(0);
+  const [resetResendLocked, setResetResendLocked] = useState(false);
+  const resetResendCooldownSeconds =
+    step.name === "reset-verify"
+      ? Math.max(0, Math.ceil((resetResendAvailableAt - nowMs) / 1000))
+      : 0;
 
   const triggerShake = useCallback(() => {
     setShaking(true);
     clearTimeout(shakeTimer.current);
     shakeTimer.current = setTimeout(() => setShaking(false), 450);
   }, []);
+
+  const startResetResendCooldown = useCallback(
+    (seconds = PASSWORD_RESET_RESEND_COOLDOWN_SECONDS) => {
+      const now = Date.now();
+      setNowMs(now);
+      setResetResendAvailableAt(now + seconds * 1000);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (resetResendCooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [resetResendCooldownSeconds]);
 
   const shakeStyle = shaking ? { animation: "wkBtnShake 0.4s ease" } : {};
 
@@ -758,7 +801,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     if (!value) return fail("Please enter your phone or email");
     if (isPhoneIdentifier(value)) {
       const digits = value.replace(/\D/g, "");
-      if (digits.length !== 10) {
+      if (!(digits.length === 10 || (digits.length === 11 && digits.startsWith("1")))) {
         return fail("Please enter a valid 10 digit phone number");
       }
     }
@@ -770,19 +813,24 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier: value }),
       });
-      const body = (await res.json()) as ApiEnvelope<unknown>;
+      const body = (await res.json()) as ApiEnvelope<{ delivery_email?: string }>;
       if (!res.ok) {
         setError(body.errors?.[0]?.message ?? "Could not send reset code");
         return;
       }
+      const deliveryEmail =
+        body.data?.delivery_email?.trim() ||
+        (isPhoneIdentifier(value) ? "the email on file" : value.toLowerCase());
       setOtpCode("");
-      setStep({ name: "reset-verify", identifier: value });
+      setResetResendLocked(false);
+      startResetResendCooldown();
+      setStep({ name: "reset-verify", identifier: value, deliveryEmail });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setBusyAction(null);
     }
-  }, [step, identifier, fail]);
+  }, [step, identifier, fail, startResetResendCooldown]);
 
   const handleResetConfirm = useCallback(async () => {
     if (step.name !== "reset-verify") return;
@@ -823,6 +871,10 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
   const handleResend = useCallback(async () => {
     setError("");
+    if (step.name === "reset-verify") {
+      if (resetResendLocked || resetResendCooldownSeconds > 0) return;
+      startResetResendCooldown();
+    }
     setBusyAction("resend");
     try {
       if (step.name === "verify-email") {
@@ -839,15 +891,35 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ identifier: step.identifier }),
         });
-        const body = (await res.json()) as ApiEnvelope<unknown>;
-        if (!res.ok) setError(body.errors?.[0]?.message ?? "Resend failed");
+        const body = (await res.json()) as ApiEnvelope<{ delivery_email?: string }>;
+        if (!res.ok) {
+          const message = body.errors?.[0]?.message ?? "Resend failed";
+          const waitSeconds = parseCooldownSeconds(message);
+          if (waitSeconds) startResetResendCooldown(waitSeconds);
+          if (/too many verification codes requested/i.test(message)) {
+            setResetResendLocked(true);
+          }
+          setError(message);
+          return;
+        }
+        const deliveryEmail = body.data?.delivery_email?.trim();
+        if (deliveryEmail) {
+          setStep((current) =>
+            current.name === "reset-verify" ? { ...current, deliveryEmail } : current,
+          );
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setBusyAction(null);
     }
-  }, [step]);
+  }, [
+    step,
+    resetResendCooldownSeconds,
+    resetResendLocked,
+    startResetResendCooldown,
+  ]);
 
   /* ---------------------------------------------------------------- */
   /*  Profile completion (legacy / incomplete accounts)               */
@@ -1065,13 +1137,17 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
 
   /* ---- Login: password ---- */
   if (step.name === "login-password") {
+    const displayIdentifier = isPhoneIdentifier(step.identifier)
+      ? formatPhoneForDisplay(step.identifier)
+      : step.identifier;
+
     return (
       <div style={s.container}>
         <style>{SHAKE_KEYFRAMES}</style>
         <AuthHeading>Enter your password</AuthHeading>
         <p style={s.loginAsLine}>
           Signing in as
-          <span style={s.loginIdentifier}>{step.identifier}</span>
+          <span style={s.loginIdentifier}>{displayIdentifier}</span>
         </p>
 
         <form
@@ -1258,8 +1334,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         <style>{SHAKE_KEYFRAMES}</style>
         <AuthHeading>Set a new password</AuthHeading>
         <p style={s.subtitle}>
-          If an account exists for that phone or email, we&apos;ve sent a 6-digit
-          code to the email on file. Enter it below to set a new password.
+          We sent a 6-digit code to{" "}
+          <span style={s.subtitleStrong}>{step.deliveryEmail}</span>. Enter it
+          below to set a new password.
         </p>
 
         <form
@@ -1321,6 +1398,8 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           <ResendButton
             busy={busy}
             sending={busyAction === "resend"}
+            cooldownSeconds={resetResendCooldownSeconds}
+            locked={resetResendLocked}
             onClick={handleResend}
           />
         )}

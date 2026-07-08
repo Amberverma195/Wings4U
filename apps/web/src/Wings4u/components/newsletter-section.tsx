@@ -50,7 +50,7 @@ export function NewsletterSection() {
         <p className="section-label">STAY SAUCY</p>
         <h2 id="newsletter-heading">
           <span>GET </span>
-          <span className="gradient-text">10% OFF</span>
+          <span className="gradient-text">15% OFF</span>
           <span> YOUR FIRST ORDER</span>
         </h2>
         <button type="button" className="newsletter-btn newsletter-btn--order" onClick={handleOrderNow}>

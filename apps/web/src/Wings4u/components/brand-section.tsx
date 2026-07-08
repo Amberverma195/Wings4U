@@ -8,12 +8,13 @@ type StatDef = {
   label: string;
   delay: number;
   suffix?: string;
+  displayValue?: string;
 };
 
 const STATS: StatDef[] = [
-  { id: "sauces", target: 70, suffix: "+", label: "Signature Sauces & Dry Rubs", delay: 0 },
-  { id: "cat", target: 9, label: "Menu Categories to Explore", delay: 90 },
-  { id: "min", target: 15, label: "Minutes From Fryer to Your Hands", delay: 180 },
+  { id: "sauces", target: 82, suffix: "+", label: "Signature Sauces & Dry Rubs", delay: 0 },
+  { id: "cat", target: 16, label: "Menu Categories to Explore", delay: 90 },
+  { id: "min", target: 25, displayValue: "15-25", label: "Minutes From Fryer to Your Hands", delay: 180 },
   { id: "frozen", target: 0, label: "Frozen Wings. Ever.", delay: 270 },
 ];
 
@@ -64,6 +65,7 @@ function useCountUp(target: number, run: boolean, delayMs: number, reduceMotion:
 function BrandStatRow({
   target,
   suffix,
+  displayValue,
   label,
   delay,
   visible,
@@ -71,6 +73,7 @@ function BrandStatRow({
 }: {
   target: number;
   suffix?: string;
+  displayValue?: string;
   label: string;
   delay: number;
   visible: boolean;
@@ -79,7 +82,7 @@ function BrandStatRow({
   const value = useCountUp(target, visible, delay, reduceMotion);
   const showPlus = suffix === "+" && value === target;
 
-  const display = `${value}${showPlus ? (suffix ?? "") : ""}`;
+  const display = value === target && displayValue ? displayValue : `${value}${showPlus ? (suffix ?? "") : ""}`;
 
   return (
     <div className="brand-stat">
@@ -130,6 +133,7 @@ export function BrandSection() {
             key={s.id}
             target={s.target}
             suffix={s.suffix}
+            displayValue={s.displayValue}
             label={s.label}
             delay={s.delay}
             visible={visible}
@@ -150,11 +154,11 @@ export function BrandSection() {
         <p className="brand-body">
           Wings4U was born from one obsession: making the{" "}
           <strong>crispiest, sauciest wings</strong> London has ever tasted. Every order is hand-breaded
-          fresh. Every sauce is made in-house. No freezers. No shortcuts.
+          fresh. Enjoy 6 House Made Sauces. No shortcuts.
         </p>
         <p className="brand-body">
-          With <strong>70+ sauces and dry rubs</strong>, 9 menu categories, and wings that go straight
-          from fryer to your hands in under <strong>15 minutes</strong> {"\u2014"} we&apos;re here to change the
+          With <strong>82+ sauces and dry rubs</strong>, 16 menu categories, and wings that go straight
+          from fryer to your hands in <strong>15-25 minutes</strong> {"\u2014"} we&apos;re here to change the
           game.
         </p>
         <a

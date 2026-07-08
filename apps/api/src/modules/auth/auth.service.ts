@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { createHash, randomBytes } from "crypto";
@@ -27,7 +28,7 @@ const ACCESS_TOKEN_TTL = 900; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const OTP_TTL_SECONDS = 300; // 5 minutes
 const MAX_OTP_ATTEMPTS = 5;
-const OTP_RESEND_COOLDOWN_SECONDS = 60; // minimum gap between code sends
+const OTP_RESEND_COOLDOWN_SECONDS = 30; // minimum gap between code sends
 const MAX_OTP_SENDS_PER_WINDOW = 5; // max code sends per identity + purpose
 const OTP_SEND_WINDOW_SECONDS = 15 * 60;
 const MAX_ACTIVE_OTP_CODES = 5; // max unconsumed/unexpired codes per identity + purpose
@@ -504,30 +505,28 @@ export class AuthService {
   }
 
   /**
-   * Step 1 of password reset. Deliberately uniform: it always returns the same
-   * shape regardless of whether the phone/email maps to an account, or whether
-   * that account has an email on file, so it cannot be used to enumerate
-   * registered users. A reset code is only actually emailed when a matching
-   * account with an email exists, and throttle errors are swallowed for the
-   * same reason.
+   * Step 1 of password reset. Unknown identifiers return an error so the UI
+   * stays on the request screen instead of advancing to the code step.
    */
   async requestPasswordReset(
     identifierRaw: string,
-  ): Promise<{ otpSent: true; expiresInSeconds: number }> {
+  ): Promise<{ otpSent: true; expiresInSeconds: number; email: string }> {
     const resolved = await this.resolveUserByIdentifier(identifierRaw);
     const emailIdentity = resolved?.emailIdentity;
-    if (emailIdentity?.emailNormalized) {
-      try {
-        await this.issueEmailOtp(
-          emailIdentity.id,
-          PASSWORD_RESET_PURPOSE,
-          emailIdentity.emailNormalized,
-        );
-      } catch {
-        /* throttle limits — swallow to keep the response uniform */
-      }
+    if (!resolved) {
+      throw new NotFoundException("No account found for that phone or email");
     }
-    return { otpSent: true, expiresInSeconds: OTP_TTL_SECONDS };
+    if (!emailIdentity?.emailNormalized) {
+      throw new BadRequestException(
+        "This account does not have an email on file. Please contact support.",
+      );
+    }
+    const expiresInSeconds = await this.issueEmailOtp(
+      emailIdentity.id,
+      PASSWORD_RESET_PURPOSE,
+      emailIdentity.emailNormalized,
+    );
+    return { otpSent: true, expiresInSeconds, email: emailIdentity.emailNormalized };
   }
 
   /** Step 2 of password reset: verify OTP, set the new password, auto-login. */

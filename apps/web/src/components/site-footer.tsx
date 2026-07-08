@@ -16,7 +16,7 @@ export function SiteFooter() {
             imageSize={44}
           />
           <p>
-            London&apos;s newest wing house. Hand-breaded. 70+ sauces. Pickup &amp; delivery. No
+            London&apos;s newest wing house. Hand-breaded. 82+ sauces. Pickup &amp; delivery. No
             compromises.
           </p>
         </div>

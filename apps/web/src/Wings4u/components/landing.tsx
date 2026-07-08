@@ -49,7 +49,7 @@ export function Landing({
         <section className="wk-landing-hero" style={styles.hero} aria-label="Welcome to Wings 4 U">
           <div className="wk-hero-content" style={styles.heroContent}>
             <p style={styles.heroEyebrow}>
-              {"\u{1F525} LONDON'S BEST WING SPOT \u00B7 Est. 2026"}
+              {"\u{1F525} LONDON'S BEST WING DESTINATION \u00B7 Est. 2026"}
             </p>
             <h1 className="wk-hero-title" style={styles.heroTitle}>
               <span className="wk-hero-title-line" style={styles.heroTitleWings}>

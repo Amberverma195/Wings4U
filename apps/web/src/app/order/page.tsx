@@ -7,7 +7,7 @@ import { MenuRouteContent } from "../menu/menu-route-content";
 export const metadata: Metadata = createPageMetadata({
   title: "Order Online",
   description:
-    "Order Wings 4 U online for pickup or delivery. Build your wing order with 70+ sauces and dry rubs.",
+    "Order Wings 4 U online for pickup or delivery. Build your wing order with 82+ sauces and dry rubs.",
   path: "/order",
 });
 

@@ -99,6 +99,7 @@ export type SauceFlavour = {
   id: string;
   slug: string;
   name: string;
+  displayName: string;
   cat: SauceCategory;
   icon: string;
   visualAccent: string;
@@ -284,14 +285,26 @@ const SOURCE_FLAVOURS = WING_FLAVOURS.filter(
 function mapSourceFlavoursToSauceFlavours(
   source: Array<Pick<MenuWingFlavour, "name" | "slug" | "heat_level">>,
 ): SauceFlavour[] {
+  const nameCounts = source.reduce<Record<string, number>>((counts, flavour) => {
+    const key = flavour.name.toLowerCase();
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
+
   return source.map((flavour, index) => {
     const cat =
       HEAT_LEVEL_TO_CATEGORY[flavour.heat_level as Exclude<MenuHeatLevel, "PLAIN">];
+    const hasDuplicateName = (nameCounts[flavour.name.toLowerCase()] ?? 0) > 1;
+    const displayName =
+      cat === "dryrub" && hasDuplicateName && !/dry rub/i.test(flavour.name)
+        ? `${flavour.name} Dry Rub`
+        : flavour.name;
 
     return {
       id: flavour.slug,
       slug: flavour.slug,
       name: flavour.name,
+      displayName,
       cat,
       icon: pickSauceIcon(flavour.name, cat),
       visualAccent: pickSauceVisualAccent(flavour.name, cat),

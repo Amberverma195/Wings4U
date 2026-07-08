@@ -79,6 +79,11 @@ export function WingKingsGlobalStyle() {
         white-space: nowrap;
       }
 
+      .hero-title-wing-i {
+        --wing-i-dot-height: 0.18em;
+        --wing-i-dot-top: 0.02em;
+      }
+
       .hero-title-wing-i__stem,
       .nav-brand-wing-i__stem {
         position: relative;

@@ -25,7 +25,7 @@ function SauceCard({ sauce }: { sauce: SauceFlavour }) {
       <div className="sauce-emoji" aria-hidden="true">
         {sauce.icon}
       </div>
-      <div className="sauce-name">{sauce.name}</div>
+      <div className="sauce-name">{sauce.displayName}</div>
       <div
         className="sauce-spice-footer"
         aria-label={`Spice level: ${label}`}

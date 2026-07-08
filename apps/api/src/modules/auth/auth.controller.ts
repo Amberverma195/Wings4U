@@ -507,6 +507,7 @@ export class AuthController {
     return {
       otp_sent: result.otpSent,
       expires_in_seconds: result.expiresInSeconds,
+      delivery_email: result.email,
     };
   }
 

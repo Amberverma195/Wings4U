@@ -316,7 +316,10 @@ export function SaucesPage({
 
   const normalizedSearch = currentSearch.trim().toLowerCase();
   const filteredSauces = flavours.filter((sauce) => {
-    const matchesSearch = !normalizedSearch || sauce.name.toLowerCase().includes(normalizedSearch);
+    const matchesSearch =
+      !normalizedSearch ||
+      sauce.name.toLowerCase().includes(normalizedSearch) ||
+      sauce.displayName.toLowerCase().includes(normalizedSearch);
     return matchesSearch;
   });
 
@@ -470,7 +473,7 @@ export function SaucesPage({
                           {sauce.icon}
                         </div>
 
-                        <h3 className={styles.sauceCardName}>{sauce.name}</h3>
+                        <h3 className={styles.sauceCardName}>{sauce.displayName}</h3>
 
                         <div className={styles.sauceSpiceFooter}>
                           <div className={styles.sauceCardHeat} aria-hidden="true">

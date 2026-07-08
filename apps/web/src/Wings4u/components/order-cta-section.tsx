@@ -16,7 +16,7 @@ export function OrderCtaSection() {
             <span className="order-cta-badge-ico" aria-hidden="true">
               {"\u{1F6CD}\uFE0F"}
             </span>
-            PICKUP IN 15 MIN
+            PICKUP IN 15-25 MIN
           </li>
           <li className="order-cta-badge">
             <span className="order-cta-badge-ico" aria-hidden="true">
@@ -28,7 +28,7 @@ export function OrderCtaSection() {
             <span className="order-cta-badge-ico" aria-hidden="true">
               {"\u{1F336}\uFE0F"}
             </span>
-            70+ SAUCES &amp; RUBS
+            82+ SAUCES &amp; RUBS
           </li>
         </ul>
 

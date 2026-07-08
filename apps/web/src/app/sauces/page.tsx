@@ -11,7 +11,7 @@ import { DEFAULT_LOCATION_ID } from "@/lib/env";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Sauces & Dry Rubs",
-  description: "70+ house sauces and dry rubs, from mellow crowd-pleasers to full-send heat.",
+  description: "82+ house sauces and dry rubs, from mellow crowd-pleasers to full-send heat.",
   path: "/sauces",
 });
 
