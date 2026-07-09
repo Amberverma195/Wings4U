@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
-import { SAUCE_CATEGORY_META, SAUCE_FLAVOURS, SAUCE_TOTAL, type SauceFlavour } from "../data/sauces";
+import { SAUCE_CATEGORY_META, SAUCE_FLAVOURS, SAUCE_MARKETING_TOTAL, type SauceFlavour } from "../data/sauces";
 
 const COPIES = 2;
 
@@ -105,7 +105,7 @@ export function SaucesSection() {
         <p className="section-label sauces-section-label">The Lineup</p>
 
         <h2 className="sauce-count-wrapper">
-          <span className={`sauce-count-hero${inView ? " sauce-count-hero--play" : ""}`}>{SAUCE_TOTAL}+</span>
+          <span className={`sauce-count-hero${inView ? " sauce-count-hero--play" : ""}`}>{SAUCE_MARKETING_TOTAL}+</span>
           <span className="sauce-count-sub">
             <span className="sauce-count-sub-main">Sauces &amp; Dry Rubs</span>
             <span className="sauce-zero-excuses">Zero Excuses.</span>

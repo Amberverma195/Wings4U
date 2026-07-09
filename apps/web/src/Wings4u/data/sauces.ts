@@ -351,5 +351,6 @@ export function deriveSauceCounts(flavours: SauceFlavour[]): Record<SauceCategor
 export const SAUCE_FLAVOURS: SauceFlavour[] = mapSourceFlavoursToSauceFlavours(SOURCE_FLAVOURS);
 
 export const SAUCE_TOTAL = SAUCE_FLAVOURS.length;
+export const SAUCE_MARKETING_TOTAL = 74;
 
 export const SAUCE_COUNTS = deriveSauceCounts(SAUCE_FLAVOURS);

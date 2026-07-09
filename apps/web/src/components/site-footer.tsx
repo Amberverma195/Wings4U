@@ -16,7 +16,7 @@ export function SiteFooter() {
             imageSize={44}
           />
           <p>
-            London&apos;s newest wing house. Hand-breaded. 82+ sauces. Pickup &amp; delivery. No
+            London&apos;s newest wing house. Hand-breaded. 74+ sauces. Pickup &amp; delivery. No
             compromises.
           </p>
         </div>
@@ -33,14 +33,6 @@ export function SiteFooter() {
           </p>
           <FooterStoreHours />
         </div>
-
-        <nav className="footer-col footer-col--info" aria-label="Footer information">
-          <h3>Info</h3>
-          <a href="#">Nutrition</a>
-          <a href="#">Allergens</a>
-          <a href="#">Careers</a>
-          <a href="#">Press</a>
-        </nav>
       </div>
 
       <div className="footer-bottom">

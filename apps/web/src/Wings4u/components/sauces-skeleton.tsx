@@ -1,5 +1,5 @@
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
-import { SAUCE_COUNTS, SAUCE_TOTAL } from "../data/sauces";
+import { SAUCE_COUNTS, SAUCE_MARKETING_TOTAL, SAUCE_TOTAL } from "../data/sauces";
 import styles from "./sauces-skeleton.module.css";
 
 const SEARCH_ICON = String.fromCodePoint(0x1f50d);
@@ -27,7 +27,7 @@ export function SaucesSkeleton() {
         <section className={styles.hero}>
           <p className={styles.heroLabel}>UR TASTE BUDS WILL THANK U</p>
           <h1 className={styles.heroTitle}>
-            <span className={styles.heroNumber}>{SAUCE_TOTAL}</span>
+            <span className={styles.heroNumber}>{SAUCE_MARKETING_TOTAL}</span>
             <span className={styles.heroWord}>FLAVOURS</span>
           </h1>
           <p className={styles.heroSub}>
@@ -62,7 +62,7 @@ export function SaucesSkeleton() {
               {SEARCH_ICON}
             </span>
             <span>Search sauces &amp; dry rubs...</span>
-            <span className={styles.searchCount}>{SAUCE_TOTAL} flavours</span>
+            <span className={styles.searchCount}>{SAUCE_MARKETING_TOTAL} flavours</span>
           </div>
 
           <div className={styles.filters} aria-hidden="true">

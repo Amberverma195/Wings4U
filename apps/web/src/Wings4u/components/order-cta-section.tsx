@@ -28,7 +28,7 @@ export function OrderCtaSection() {
             <span className="order-cta-badge-ico" aria-hidden="true">
               {"\u{1F336}\uFE0F"}
             </span>
-            82+ SAUCES &amp; RUBS
+            74+ SAUCES &amp; RUBS
           </li>
         </ul>
 

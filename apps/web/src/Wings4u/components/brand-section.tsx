@@ -12,7 +12,7 @@ type StatDef = {
 };
 
 const STATS: StatDef[] = [
-  { id: "sauces", target: 82, suffix: "+", label: "Signature Sauces & Dry Rubs", delay: 0 },
+  { id: "sauces", target: 74, suffix: "+", label: "Signature Sauces & Dry Rubs", delay: 0 },
   { id: "cat", target: 16, label: "Menu Categories to Explore", delay: 90 },
   { id: "min", target: 25, displayValue: "15-25", label: "Minutes From Fryer to Your Hands", delay: 180 },
   { id: "frozen", target: 0, label: "Frozen Wings. Ever.", delay: 270 },
@@ -157,7 +157,7 @@ export function BrandSection() {
           fresh. Enjoy 6 House Made Sauces. No shortcuts.
         </p>
         <p className="brand-body">
-          With <strong>82+ sauces and dry rubs</strong>, 16 menu categories, and wings that go straight
+          With <strong>74+ sauces and dry rubs</strong>, 16 menu categories, and wings that go straight
           from fryer to your hands in <strong>15-25 minutes</strong> {"\u2014"} we&apos;re here to change the
           game.
         </p>

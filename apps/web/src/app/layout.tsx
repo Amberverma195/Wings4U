@@ -12,11 +12,11 @@ const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   title: {
-    default: "Wings 4 U | Premium Wings, 82+ Sauces & Dry Rubs",
+    default: "Wings 4 U | Premium Wings, 74+ Sauces & Dry Rubs",
     template: `%s | ${SITE_NAME}`,
   },
   description:
-    "Enjoy 100% fresh, never frozen chicken wings with over 82+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!",
+    "Enjoy 100% fresh, never frozen chicken wings with over 74+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!",
   metadataBase: new URL(siteUrl),
   icons: {
     icon: "/logo.png",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Wings 4 U | Best Chicken Wings in London, Ontario",
     description:
-      "Enjoy 100% fresh, never frozen chicken wings with over 82+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!",
+      "Enjoy 100% fresh, never frozen chicken wings with over 74+ legendary flavors and dry rubs. Located at 1544 Dundas Street. Order online today!",
     url: siteUrl,
     siteName: "Wings 4 U London",
     images: [
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: "Wings 4 U | Fresh Chicken Wings in London, Ontario",
     description:
-      "Enjoy 100% fresh chicken wings with over 82+ legendary flavors.",
+      "Enjoy 100% fresh chicken wings with over 74+ legendary flavors.",
     images: ["/logo.png"],
   },
   verification: {

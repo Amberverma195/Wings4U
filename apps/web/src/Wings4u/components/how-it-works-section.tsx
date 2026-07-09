@@ -15,7 +15,7 @@ const STEPS: Step[] = [
     num: "01",
     icon: "\u{1F4F1}",
     title: "PICK YOUR SAUCE",
-    desc: "Browse 82+ hand-crafted flavors. Choose your heat. Breaded or plain. Customize like you mean it.",
+    desc: "Browse 74+ hand-crafted flavors. Choose your sauce. Sauced or plain. Customize like you mean it.",
     arrow: true,
   },
   {

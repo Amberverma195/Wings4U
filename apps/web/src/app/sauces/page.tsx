@@ -3,6 +3,7 @@ import { SaucesPage } from "@/Wings4u/components/sauces-page";
 import {
   buildSauceFlavoursFromApi,
   deriveSauceCounts,
+  SAUCE_MARKETING_TOTAL,
   SAUCE_FLAVOURS,
 } from "@/Wings4u/data/sauces";
 import { getCachedWingFlavours } from "@/lib/catalog/server-catalog";
@@ -11,7 +12,7 @@ import { DEFAULT_LOCATION_ID } from "@/lib/env";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Sauces & Dry Rubs",
-  description: "82+ house sauces and dry rubs, from mellow crowd-pleasers to full-send heat.",
+  description: "74+ house sauces and dry rubs, from mellow crowd-pleasers to full-send heat.",
   path: "/sauces",
 });
 
@@ -29,6 +30,7 @@ export default async function SaucesRoutePage() {
   return (
     <SaucesPage
       flavours={flavours}
+      displayTotal={SAUCE_MARKETING_TOTAL}
       sauceTotal={flavours.length}
       sauceCounts={counts}
     />

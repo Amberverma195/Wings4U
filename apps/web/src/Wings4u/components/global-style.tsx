@@ -84,6 +84,12 @@ export function WingKingsGlobalStyle() {
         --wing-i-dot-top: 0.02em;
       }
 
+      @media (max-width: 640px) {
+        .hero-title-wing-i {
+          --wing-i-dot-left: 52%;
+        }
+      }
+
       .hero-title-wing-i__stem,
       .nav-brand-wing-i__stem {
         position: relative;
