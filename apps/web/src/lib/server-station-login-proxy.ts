@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPublicApiBase } from "./env";
 import { buildStationGateHeaders } from "./server-station-gate-headers";
 
+type StationSurface = "kds" | "pos";
+
 function getSetCookieHeaders(headers: Headers): string[] {
   const withGetSetCookie = headers as Headers & {
     getSetCookie?: () => string[];
@@ -14,13 +16,14 @@ function getSetCookieHeaders(headers: Headers): string[] {
   return single ? [single] : [];
 }
 
-export async function proxyStationLogin(
+async function proxyStationUpstream(
   request: NextRequest,
-  upstreamPath: "/api/v1/kds/auth/login" | "/api/v1/pos/auth/login",
+  upstreamPath: string,
 ): Promise<NextResponse> {
-  const body = await request.text();
+  const method = request.method.toUpperCase();
+  const body = method === "GET" || method === "HEAD" ? undefined : await request.text();
   const upstream = await fetch(`${getPublicApiBase()}${upstreamPath}`, {
-    method: "POST",
+    method,
     headers: {
       ...buildStationGateHeaders(
         request.headers,
@@ -48,4 +51,23 @@ export async function proxyStationLogin(
   }
 
   return response;
+}
+
+export async function proxyStationLogin(
+  request: NextRequest,
+  upstreamPath: "/api/v1/kds/auth/login" | "/api/v1/pos/auth/login",
+): Promise<NextResponse> {
+  return proxyStationUpstream(request, upstreamPath);
+}
+
+export async function proxyStationApi(
+  request: NextRequest,
+  surface: StationSurface,
+  pathSegments: string[] = [],
+): Promise<NextResponse> {
+  const upstreamPathname = `/api/v1/${surface}/${pathSegments
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+  const upstreamPath = `${upstreamPathname}${request.nextUrl.search}`;
+  return proxyStationUpstream(request, upstreamPath);
 }

@@ -35,6 +35,10 @@ function getSignupDeviceId(): string | undefined {
   }
 }
 
+function routeStationApiThroughWeb(path: string): string {
+  return path.replace(/^\/api\/v1\/(kds|pos)(?=\/|\?|$)/, "/api/station/$1");
+}
+
 export async function apiFetch(
   path: string,
   init: RequestInit & { locationId?: string } = {}
@@ -50,7 +54,7 @@ export async function apiFetch(
     if (signupDeviceId) headers.set(SIGNUP_DEVICE_HEADER, signupDeviceId);
   }
   const base = getPublicApiBase();
-  return fetch(`${base}${path}`, {
+  return fetch(`${base}${routeStationApiThroughWeb(path)}`, {
     ...rest,
     credentials: "include",
     headers
