@@ -258,7 +258,7 @@ function PosLoginScreen({ onUnlocked }: { onUnlocked: () => void }) {
       setError(null);
 
       try {
-        const res = await apiFetch("/api/v1/pos/auth/login", {
+        const res = await apiFetch("/api/station/pos-login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

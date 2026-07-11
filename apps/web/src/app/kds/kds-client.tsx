@@ -1768,7 +1768,7 @@ function KdsLoginScreen({ onLogin }: { onLogin: () => void }) {
       setError(null);
 
       try {
-        const res = await apiFetch("/api/v1/kds/auth/login", {
+        const res = await apiFetch("/api/station/kds-login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
