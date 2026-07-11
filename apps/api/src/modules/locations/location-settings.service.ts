@@ -184,7 +184,7 @@ export class LocationSettingsService {
       }
       if (normalized.some((entry) => !isValidTrustedIpEntry(entry))) {
         throw new BadRequestException(
-          "Allowed IP address must be a valid non-localhost IPv4 address or CIDR range",
+          "Allowed IP address must be a valid non-localhost IP address or IPv4 CIDR range",
         );
       }
       nextData.trustedIpRanges = normalized;

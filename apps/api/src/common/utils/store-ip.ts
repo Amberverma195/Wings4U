@@ -1,6 +1,11 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import type { Request } from "express";
+import { getJwtSecret } from "./jwt-secret";
 
 const LOOPBACK_IPS = new Set(["127.0.0.1", "::1", "localhost"]);
+const SIGNED_CLIENT_IP_HEADER = "x-w4u-client-ip";
+const SIGNED_CLIENT_IP_SIGNATURE_HEADER = "x-w4u-client-ip-signature";
 
 function normalizeIpCandidate(ip: string | null | undefined): string | null {
   if (typeof ip !== "string") return null;
@@ -42,6 +47,16 @@ function ipv4ToNumber(ip: string): number | null {
   return num;
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return typeof value === "string" ? value : null;
+}
+
+function isValidIpLiteral(value: string | null | undefined): boolean {
+  const normalized = normalizeIpCandidate(value);
+  return !!normalized && isIP(normalized) !== 0;
+}
+
 function isValidCidr(entry: string): boolean {
   const [base, prefixText] = entry.split("/");
   const prefix = parseInt(prefixText, 10);
@@ -65,7 +80,31 @@ function matchesEntry(ip: string, entry: string): boolean {
     return (ipNum & mask) === (baseNum & mask);
   }
 
-  return normalizeIpCandidate(entry) === ip;
+  return normalizeIpCandidate(entry)?.toLowerCase() === ip.toLowerCase();
+}
+
+function verifySignedClientIp(ip: string, signature: string): boolean {
+  if (!isValidIpLiteral(ip) || !/^[a-f0-9]{64}$/i.test(signature)) {
+    return false;
+  }
+
+  const expected = createHmac("sha256", getJwtSecret()).update(ip).digest("hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const actualBuffer = Buffer.from(signature, "hex");
+  if (expectedBuffer.length !== actualBuffer.length) return false;
+  return timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function extractSignedClientIp(req: Pick<Request, "headers">): string | null {
+  const clientIp = normalizeIpCandidate(
+    firstHeaderValue(req.headers[SIGNED_CLIENT_IP_HEADER]),
+  );
+  const signature = firstHeaderValue(
+    req.headers[SIGNED_CLIENT_IP_SIGNATURE_HEADER],
+  )?.trim();
+
+  if (!clientIp || !signature) return null;
+  return verifySignedClientIp(clientIp, signature) ? clientIp : null;
 }
 
 export const MAX_TRUSTED_IP_RANGES = 3;
@@ -104,7 +143,7 @@ export function isValidTrustedIpEntry(value: string): boolean {
   if (!normalized) return false;
   if (isLocalhostIp(normalized)) return false;
   if (normalized.includes("/")) return isValidCidr(normalized);
-  return ipv4ToNumber(normalizeIpCandidate(normalized) ?? "") !== null;
+  return isValidIpLiteral(normalized);
 }
 
 export function isAllowedStoreIp(
@@ -124,6 +163,9 @@ export function isAllowedStoreIp(
 export function extractClientIp(
   req: Pick<Request, "headers" | "ip">,
 ): string {
+  const signedClientIp = extractSignedClientIp(req);
+  if (signedClientIp) return signedClientIp;
+
   const forwarded = req.headers["x-forwarded-for"];
   if (typeof forwarded === "string") {
     const firstIp = forwarded.split(",")[0]?.trim();

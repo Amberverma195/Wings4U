@@ -371,6 +371,18 @@ function isValidAllowedIp(value: string): boolean {
     return false;
   }
 
+  const isCidr = normalized.includes("/");
+  const isIpv6 =
+    !isCidr &&
+    normalized.includes(":") &&
+    /^[0-9a-fA-F:.]+$/.test(normalized) &&
+    normalized.split("::").length <= 2 &&
+    normalized
+      .split(":")
+      .filter(Boolean)
+      .every((part) => /^[0-9a-fA-F]{1,4}$/.test(part));
+  if (isIpv6) return true;
+
   const [baseIp, prefixText] = normalized.split("/");
   const parts = baseIp.split(".");
   if (parts.length !== 4) return false;
@@ -381,7 +393,7 @@ function isValidAllowedIp(value: string): boolean {
   });
 
   if (!isValidIpv4) return false;
-  if (!normalized.includes("/")) return true;
+  if (!isCidr) return true;
 
   const prefix = Number.parseInt(prefixText ?? "", 10);
   return Number.isFinite(prefix) && prefix >= 0 && prefix <= 32;
@@ -471,7 +483,7 @@ export function SettingsClient() {
       const normalizedAllowedIps = cleanAllowedIps(allowedIpDrafts);
       if (normalizedAllowedIps.some((ip) => !isValidAllowedIp(ip))) {
         throw new Error(
-          "Allowed IP address must be a valid IPv4 address and cannot be localhost.",
+          "Allowed IP address must be a valid IP address and cannot be localhost.",
         );
       }
       const deliveryFrom = draft.deliveryAvailableFromMinutes?.trim() ?? "";
@@ -1012,7 +1024,7 @@ export function SettingsClient() {
                     style={{ display: "block", fontSize: "0.85rem" }}
                   >
                     <span style={{ fontWeight: 600 }}>
-                      IPv4 address {index + 1}
+                      IP address {index + 1}
                     </span>
                     <div
                       style={{

@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getPublicApiBase } from "./env";
+import { buildStationGateHeaders } from "./server-station-gate-headers";
 
 interface ApiEnvelope<T> {
   data?: T;
@@ -54,18 +55,12 @@ export async function requireKdsNetworkAccess(
 ): Promise<void> {
   const requestHeaders = await headers();
   const cookieHeader = requestHeaders.get("cookie") ?? "";
-  const forwardedFor = requestHeaders.get("x-forwarded-for");
-  const realIp = requestHeaders.get("x-real-ip");
 
   const res = await fetchWithRetry(
     `${getPublicApiBase()}/api/v1/auth/kds/network-status?location_id=${encodeURIComponent(locationId)}`,
     {
       method: "GET",
-      headers: {
-        cookie: cookieHeader,
-        ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
-        ...(realIp ? { "x-real-ip": realIp } : {}),
-      },
+      headers: buildStationGateHeaders(requestHeaders, cookieHeader),
       cache: "no-store",
       credentials: "include",
     },
