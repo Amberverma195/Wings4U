@@ -35,8 +35,23 @@ function getSignupDeviceId(): string | undefined {
   }
 }
 
-function routeStationApiThroughWeb(path: string): string {
-  return path.replace(/^\/api\/v1\/(kds|pos)(?=\/|\?|$)/, "/api/station/$1");
+function isStoreNetworkApiPath(path: string): boolean {
+  const pathname = path.split("?")[0] ?? path;
+  return (
+    pathname === "/api/v1/drivers/available" ||
+    pathname === "/api/v1/kds" ||
+    pathname.startsWith("/api/v1/kds/") ||
+    pathname === "/api/v1/pos" ||
+    pathname.startsWith("/api/v1/pos/") ||
+    pathname === "/api/v1/timeclock" ||
+    pathname.startsWith("/api/v1/timeclock/")
+  );
+}
+
+function routeStoreNetworkApiThroughWeb(path: string): string {
+  return isStoreNetworkApiPath(path)
+    ? `/api/station/proxy?path=${encodeURIComponent(path)}`
+    : path;
 }
 
 export async function apiFetch(
@@ -54,7 +69,8 @@ export async function apiFetch(
     if (signupDeviceId) headers.set(SIGNUP_DEVICE_HEADER, signupDeviceId);
   }
   const base = getPublicApiBase();
-  return fetch(`${base}${routeStationApiThroughWeb(path)}`, {
+  const effectivePath = base ? path : routeStoreNetworkApiThroughWeb(path);
+  return fetch(`${base}${effectivePath}`, {
     ...rest,
     credentials: "include",
     headers

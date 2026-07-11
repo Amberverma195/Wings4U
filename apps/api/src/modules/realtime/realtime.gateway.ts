@@ -514,6 +514,12 @@ export class RealtimeGateway
       return "Invalid location id";
     }
 
+    if (user.role === "KDS_STATION") {
+      return user.stationLocationId === locationId
+        ? null
+        : "Insufficient permissions - wrong KDS station location";
+    }
+
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
       select: { trustedIpRanges: true },
@@ -525,12 +531,6 @@ export class RealtimeGateway
 
     if (user.role === "ADMIN") {
       return null;
-    }
-
-    if (user.role === "KDS_STATION") {
-      return user.stationLocationId === locationId
-        ? null
-        : "Insufficient permissions - wrong KDS station location";
     }
 
     if (user.role !== "STAFF") {
@@ -557,6 +557,12 @@ export class RealtimeGateway
       return "Invalid location id";
     }
 
+    if (user.role === "KDS_STATION" || user.role === "POS_STATION") {
+      return user.stationLocationId === locationId
+        ? null
+        : "Insufficient permissions - wrong station location";
+    }
+
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
       select: { trustedIpRanges: true },
@@ -568,12 +574,6 @@ export class RealtimeGateway
 
     if (user.role === "ADMIN") {
       return null;
-    }
-
-    if (user.role === "KDS_STATION" || user.role === "POS_STATION") {
-      return user.stationLocationId === locationId
-        ? null
-        : "Insufficient permissions - wrong station location";
     }
 
     if (user.role !== "STAFF") {
