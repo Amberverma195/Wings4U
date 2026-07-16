@@ -45,8 +45,8 @@ export function Navbar() {
         <WingsBrandLockup
           priority
           wordmarkImageSrc="/Logo_title.png"
-          wordmarkImageHeight={40}
-          wordmarkImageWidth={192}
+          wordmarkImageHeight={34}
+          wordmarkImageWidth={163}
         />
       </div>
       <div style={styles.navActions}>
