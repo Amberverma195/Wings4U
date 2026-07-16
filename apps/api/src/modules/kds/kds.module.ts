@@ -5,6 +5,7 @@ import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { RefundModule } from "../refunds/refund.module";
 import { RewardsModule } from "../rewards/rewards.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { SupportModule } from "../support/support.module";
 import { BusyModeService } from "./busy-mode.service";
 import { DeliveryPinService } from "./delivery-pin.service";
@@ -17,7 +18,14 @@ import { KdsAuthService } from "./kds-auth.service";
 import { KdsAuthController } from "./kds-auth.controller";
 
 @Module({
-  imports: [ChatModule, SupportModule, RefundModule, RewardsModule, CatalogModule],
+  imports: [
+    ChatModule,
+    SupportModule,
+    RefundModule,
+    RewardsModule,
+    CatalogModule,
+    NotificationsModule,
+  ],
   controllers: [KdsController, KdsAuthController],
   providers: [
     KdsService,

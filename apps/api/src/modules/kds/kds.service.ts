@@ -12,6 +12,7 @@ import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { documentFuturePrepaymentPolicy } from "../customers/no-show-policy";
 import { RefundService } from "../refunds/refund.service";
 import { RewardsService } from "../rewards/rewards.service";
+import { OrderStatusEmailService } from "../notifications/order-status-email.service";
 import { DeliveryPinService } from "./delivery-pin.service";
 
 const DEFAULT_KDS_STATUSES: OrderStatus[] = [
@@ -255,6 +256,7 @@ export class KdsService {
     private readonly deliveryPin: DeliveryPinService,
     private readonly refundService: RefundService,
     private readonly rewardsService: RewardsService,
+    private readonly orderStatusEmails: OrderStatusEmailService,
   ) {}
 
   async getKdsOrders(locationId: string, statuses?: string[]) {
@@ -598,6 +600,8 @@ export class KdsService {
       changed_by_user_id: actorUserId,
     });
 
+    await this.orderStatusEmails.send(updated, "ACCEPTED");
+
     return serializeKdsOrder(updated as unknown as Record<string, unknown>);
   }
 
@@ -829,6 +833,10 @@ export class KdsService {
         availability_status: releasedDriver.availabilityStatus,
         is_on_delivery: releasedDriver.isOnDelivery,
       });
+    }
+
+    if (newStatus === "PICKED_UP" || newStatus === "DELIVERED") {
+      await this.orderStatusEmails.send(updated, newStatus);
     }
 
     return serializeKdsOrder(updated as unknown as Record<string, unknown>);
@@ -1455,6 +1463,8 @@ export class KdsService {
         : "AVAILABLE",
     });
 
+    await this.orderStatusEmails.send(updated, "DELIVERED");
+
     return serializeKdsOrder(updated as unknown as Record<string, unknown>);
   }
 
@@ -1740,6 +1750,8 @@ export class KdsService {
       changed_by_user_id: null,
       source: "SYSTEM_AUTO_ACCEPT",
     });
+
+    await this.orderStatusEmails.send(order, "ACCEPTED");
 
     return true;
   }
