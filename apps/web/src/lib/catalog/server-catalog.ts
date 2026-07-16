@@ -100,9 +100,7 @@ export async function getCachedMenu(
   return fetchCatalogJson<MenuResponse>(`/api/v1/menu?${query.toString()}`, locationId, tags);
 }
 
-export async function getCachedWingFlavours(
-  locationId: string = DEFAULT_LOCATION_ID,
-): Promise<WingFlavourApiRow[] | null> {
+export async function getCachedWingFlavours(locationId: string = DEFAULT_LOCATION_ID,): Promise<WingFlavourApiRow[] | null> {
   const tags = [CATALOG_WING_FLAVOURS_TAG, catalogWingFlavoursLocationTag(locationId)];
 
   return fetchCatalogJson<WingFlavourApiRow[]>(

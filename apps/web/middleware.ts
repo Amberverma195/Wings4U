@@ -3,12 +3,16 @@ import type { NextRequest } from "next/server";
 import { resolveSession } from "./src/lib/auth-session";
 import { isAuthorizedForSurface, policyForPath } from "./src/lib/surface-policy";
 
+const AUTH_REFRESH_RESTORE_PATH = "/api/v1/auth/refresh/restore";
+
 /**
  * Edge-runtime prefilter for protected Next surfaces.
  *
  * Scope is intentionally narrow:
- *   - Signed-out / invalid / expired JWT -> allow the request through to
- *     the server layout, which hides `/admin` as a 404.
+ *   - Expired JWT with a long-lived session hint -> redirect through the
+ *     refresh-cookie-scoped restore route, then return to the requested URL.
+ *   - Fully signed-out / invalid JWT -> allow the request through to the
+ *     server layout, which hides `/admin` as a 404.
  *   - Valid JWT whose role/employeeRole claim fails the surface policy ->
  *     allow the request through to the authoritative server layout, which
  *     can fail closed as a 404 using the current DB-backed session.
@@ -35,6 +39,19 @@ export async function middleware(req: NextRequest) {
   const session = await resolveSession(accessToken);
 
   if (!session) {
+    // The access cookie lasts 15 minutes, while csrf_token and the httpOnly
+    // refresh cookie last 30 days. csrf_token is visible at /admin and acts
+    // only as a hint; the restore route still requires and validates the real
+    // refresh token before issuing a new access token.
+    if (req.cookies.has("csrf_token")) {
+      const restoreUrl = req.nextUrl.clone();
+      const returnTo = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+      restoreUrl.pathname = AUTH_REFRESH_RESTORE_PATH;
+      restoreUrl.search = "";
+      restoreUrl.searchParams.set("returnTo", returnTo);
+      return NextResponse.redirect(restoreUrl);
+    }
+
     return NextResponse.next();
   }
 

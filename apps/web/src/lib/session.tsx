@@ -70,6 +70,11 @@ const SIGNED_OUT_SESSION: SessionApiResponse = {
 const SESSION_FETCH_TIMEOUT_MS =
   process.env.NODE_ENV === "production" ? 12_000 : 4_000;
 
+function hasRefreshSessionHint(): boolean {
+  if (typeof document === "undefined") return false;
+  return /(?:^|;\s*)csrf_token=/.test(document.cookie);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
@@ -124,14 +129,49 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const envelope = (await res.json()) as ApiEnvelope<SessionApiResponse>;
         const next = envelope.data ?? SIGNED_OUT_SESSION;
+        if (next.authenticated === true) {
+          setData(next);
+          return true;
+        }
+
+        // The public session endpoint intentionally returns 200 with
+        // `authenticated: false` when the 15-minute access cookie is gone.
+        // The readable CSRF cookie has the same 30-day lifetime as the
+        // httpOnly refresh cookie, so it is a safe hint that recovery should
+        // be attempted before the UI is changed to signed out.
+        if (hasRefreshSessionHint()) {
+          const refresh = await performRefresh();
+          if (refresh.refreshed) {
+            const retry = await apiFetch("/api/v1/auth/session");
+            if (retry.ok) {
+              const retryEnvelope = (await retry.json()) as ApiEnvelope<SessionApiResponse>;
+              const recovered = retryEnvelope.data ?? SIGNED_OUT_SESSION;
+              setData(recovered);
+              return recovered.authenticated === true;
+            }
+
+            // A temporary API failure after successful token rotation must
+            // not erase the last known client session.
+            return data.authenticated === true;
+          }
+
+          if (!refresh.definitive) {
+            return data.authenticated === true;
+          }
+
+          applySignedOut();
+          notifyAuthSessionCleared();
+          return false;
+        }
+
         setData(next);
-        return next.authenticated === true;
+        return false;
       }
 
       // Access token may have expired while the refresh cookie is still valid.
       // Try one silent refresh before treating the user as signed out.
       if (res.status === 401 || res.status === 403) {
-        const { refreshed } = await performRefresh();
+        const { refreshed, definitive } = await performRefresh();
         if (refreshed) {
           const retry = await apiFetch("/api/v1/auth/session");
           if (retry.ok) {
@@ -140,6 +180,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             setData(next);
             return next.authenticated === true;
           }
+        }
+        if (!definitive) {
+          return data.authenticated === true;
         }
         applySignedOut();
         notifyAuthSessionCleared();
@@ -252,9 +295,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
  * session entirely. By funneling every concurrent refresh attempt through
  * the same Promise we only ever rotate the token once.
  */
-let inFlightRefresh: Promise<{ refreshed: boolean }> | null = null;
+interface RefreshResult {
+  refreshed: boolean;
+  /** True when the server definitively rejected the refresh session. */
+  definitive: boolean;
+}
 
-async function performRefresh(): Promise<{ refreshed: boolean }> {
+let inFlightRefresh: Promise<RefreshResult> | null = null;
+
+async function performRefresh(): Promise<RefreshResult> {
   if (inFlightRefresh) {
     return inFlightRefresh;
   }
@@ -265,12 +314,13 @@ async function performRefresh(): Promise<{ refreshed: boolean }> {
         method: "POST",
       });
       if (!refreshRes.ok) {
-        return { refreshed: false };
+        return { refreshed: false, definitive: refreshRes.status < 500 };
       }
       const envelope = (await refreshRes.json()) as ApiEnvelope<{ refreshed: boolean }>;
-      return { refreshed: envelope.data?.refreshed === true };
+      const refreshed = envelope.data?.refreshed === true;
+      return { refreshed, definitive: !refreshed };
     } catch {
-      return { refreshed: false };
+      return { refreshed: false, definitive: false };
     }
   })();
 
@@ -297,13 +347,15 @@ export async function withSilentRefresh(
     return res;
   }
 
-  const { refreshed } = await performRefresh();
+  const { refreshed, definitive } = await performRefresh();
 
   if (refreshed) {
     await sessionRefresh();
     return apiCall();
   }
 
-  sessionClear();
+  if (definitive) {
+    sessionClear();
+  }
   return res;
 }
