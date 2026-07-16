@@ -3651,24 +3651,6 @@ export function WingKingsGlobalStyle() {
         box-shadow: 0 4px 18px rgba(255, 80, 0, 0.3);
       }
 
-      #newsletter .newsletter-perks {
-        display: flex;
-        justify-content: center;
-        gap: 24px;
-        margin: 18px 0 0;
-        padding: 0;
-        list-style: none;
-        flex-wrap: wrap;
-      }
-
-      #newsletter .newsletter-perk {
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 12px;
-        color: #b8863a;
-        letter-spacing: 1px;
-        font-weight: 600;
-      }
-
       @media (max-width: 900px) {
         #newsletter .newsletter-btn--order {
           width: 100%;

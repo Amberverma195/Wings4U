@@ -29,6 +29,7 @@ export function SauceModal({
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -109,10 +110,10 @@ export function SauceModal({
     }
   }
 
-  async function handleArchive() {
+  async function handleDelete() {
     if (!sauceId) return;
-    if (!confirm("Archive this sauce? Active carts will show it as unavailable.")) return;
-    setSaving(true);
+    if (!confirm("Delete this sauce? It will be removed from the sauce library and ordering.")) return;
+    setDeleting(true);
     setError(null);
     try {
       await adminFetch(`${ADMIN_MENU_API_BASE}/wing-flavours/${sauceId}`, {
@@ -120,9 +121,9 @@ export function SauceModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to archive sauce");
+      setError(err instanceof Error ? err.message : "Failed to delete sauce");
     } finally {
-      setSaving(false);
+      setDeleting(false);
     }
   }
 
@@ -212,10 +213,10 @@ export function SauceModal({
             <button
               type="button"
               className={styles.btnDanger}
-              onClick={handleArchive}
-              disabled={saving || loading}
+              onClick={handleDelete}
+              disabled={saving || deleting || loading}
             >
-              Archive
+              {deleting ? "Deleting..." : "Delete"}
             </button>
           ) : (
             <span />
@@ -226,7 +227,7 @@ export function SauceModal({
               type="button"
               className={styles.btnCancel}
               onClick={onClose}
-              disabled={saving}
+              disabled={saving || deleting}
             >
               Cancel
             </button>
@@ -234,7 +235,7 @@ export function SauceModal({
               type="button"
               className={styles.btnSave}
               onClick={handleSave}
-              disabled={saving || loading || !name.trim()}
+              disabled={saving || deleting || loading || !name.trim()}
             >
               {saving ? "Saving..." : "Save Sauce"}
             </button>

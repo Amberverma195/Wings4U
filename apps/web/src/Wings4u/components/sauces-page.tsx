@@ -357,7 +357,14 @@ export function SaucesPage({
       <style jsx global>{GLOBAL_STYLES}</style>
       <div className={styles.page}>
         <nav id="navbar" className={styles.navbar}>
-          <WingsBrandLockup href="/" ariaLabel="Back to home" />
+          <WingsBrandLockup
+            href="/"
+            ariaLabel="Back to home"
+            priority
+            wordmarkImageSrc="/Logo_title.png"
+            wordmarkImageHeight={34}
+            wordmarkImageWidth={163}
+          />
 
           <div className={styles.navRight}>
             <Link href="/" className={styles.navBack}>
@@ -560,12 +567,9 @@ export function SaucesPage({
                 className={styles.footerBrandLink}
                 style={{ gap: 8 }}
                 imageSize={42}
-                wordmarkStyle={{
-                  fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: 28,
-                  letterSpacing: 1,
-                  color: "#fff",
-                }}
+                wordmarkImageSrc="/Logo_title.png"
+                wordmarkImageHeight={34}
+                wordmarkImageWidth={163}
               />
             </div>
             <div className={styles.footerLinks}>

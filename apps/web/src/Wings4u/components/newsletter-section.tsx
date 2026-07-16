@@ -2,12 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const PERKS = [
-  { emoji: "\u{1F525}", text: "Weekly deals" },
-  { emoji: "\u{1F9EA}", text: "New sauce alerts" },
-  { emoji: "\u{1F6AB}", text: "No spam ever" },
-] as const;
-
 export function NewsletterSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(false);
@@ -56,14 +50,6 @@ export function NewsletterSection() {
         <button type="button" className="newsletter-btn newsletter-btn--order" onClick={handleOrderNow}>
           ORDER NOW
         </button>
-
-        <ul className="newsletter-perks" aria-label="Newsletter perks">
-          {PERKS.map((perk) => (
-            <li key={perk.text} className="newsletter-perk">
-              <span aria-hidden="true">{perk.emoji}</span> {perk.text}
-            </li>
-          ))}
-        </ul>
       </div>
     </section>
   );

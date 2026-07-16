@@ -30,6 +30,7 @@ export function AdminMenuClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sauceSearchQuery, setSauceSearchQuery] = useState("");
   const [builderImageCategory, setBuilderImageCategory] = useState<Category | null>(null);
 
   const [editItemId, setEditItemId] = useState<string | null>(null);
@@ -110,6 +111,11 @@ export function AdminMenuClient() {
     if (category.slug === "wings") return "Wings by the Pound";
     return null;
   };
+
+  const normalizedSauceSearch = sauceSearchQuery.trim().toLocaleLowerCase();
+  const filteredSauceCount = normalizedSauceSearch
+    ? sauces.filter((sauce) => sauce.name.toLocaleLowerCase().includes(normalizedSauceSearch)).length
+    : sauces.length;
 
   return (
     <>
@@ -333,32 +339,76 @@ export function AdminMenuClient() {
                 <span className={styles.categoryHeaderEyebrow}>Sauces</span>
                 <h2 className={styles.sauceTitle}>Wing sauce library</h2>
               </div>
+              <div className={styles.sauceHeaderTools}>
+                <div className={`${styles.searchWrapper} ${styles.sauceSearchWrapper}`}>
+                  <svg
+                    className={styles.searchIcon}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="search"
+                    placeholder="Search sauces..."
+                    className={styles.searchInput}
+                    value={sauceSearchQuery}
+                    onChange={(event) => setSauceSearchQuery(event.target.value)}
+                    aria-label="Search sauces"
+                  />
+                </div>
+                <span className={styles.sauceSearchCount}>
+                  {filteredSauceCount} of {sauces.length}
+                </span>
+              </div>
             </div>
 
             <div className={styles.sauceGrid}>
               {SAUCE_HEAT_LEVELS.map((heat) => {
-                const groupSauces = sauces.filter((sauce) => sauce.heatLevel === heat);
+                const groupTotal = sauces.filter((sauce) => sauce.heatLevel === heat).length;
+                const groupSauces = sauces.filter((sauce) => {
+                  if (sauce.heatLevel !== heat) return false;
+                  return normalizedSauceSearch
+                    ? sauce.name.toLocaleLowerCase().includes(normalizedSauceSearch)
+                    : true;
+                });
                 return (
                   <section key={heat} className={styles.sauceGroup}>
                     <div className={styles.sauceGroupHeader}>
                       <span>{SAUCE_LABELS[heat]}</span>
-                      <span>{groupSauces.length}</span>
+                      <span>
+                        {groupSauces.length}
+                        {normalizedSauceSearch ? ` / ${groupTotal}` : ""}
+                      </span>
                     </div>
                     {groupSauces.length === 0 ? (
-                      <div className={styles.sauceEmpty}>No sauces</div>
+                      <div className={styles.sauceEmpty}>
+                        {normalizedSauceSearch ? "No matches" : "No sauces"}
+                      </div>
                     ) : (
                       <div className={styles.sauceList}>
-                        {groupSauces.map((sauce) => (
+                        {groupSauces.map((sauce, index) => (
                           <div
                             key={sauce.id}
                             className={styles.sauceRow}
                             data-inactive={!sauce.isActive}
                           >
-                            <div className={styles.sauceNameBlock}>
-                              <span className={styles.sauceName}>{sauce.name}</span>
-                              {!sauce.isActive ? (
-                                <span className={styles.sauceStatus}>Unavailable</span>
-                              ) : null}
+                            <div className={styles.sauceRowMain}>
+                              <span className={styles.sauceSortBadge}>{index + 1}</span>
+                              <div className={styles.sauceNameBlock}>
+                                <span className={styles.sauceName}>{sauce.name}</span>
+                                {!sauce.isActive ? (
+                                  <span className={styles.sauceStatus}>Unavailable</span>
+                                ) : null}
+                              </div>
                             </div>
                             <button
                               type="button"

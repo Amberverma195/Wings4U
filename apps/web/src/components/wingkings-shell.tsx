@@ -6,7 +6,7 @@ import { FireEmbers } from "@/Wings4u/components/fire-embers";
 import { WingKingsGlobalStyle } from "@/Wings4u/components/global-style";
 import { NewsletterSection } from "@/Wings4u/components/newsletter-section";
 import { OrderCtaSection } from "@/Wings4u/components/order-cta-section";
-import { SpotlightSection } from "@/Wings4u/components/spotlight-section";
+// import { SpotlightSection } from "@/Wings4u/components/spotlight-section";
 import { TestimonialsSection } from "@/Wings4u/components/testimonials-section";
 import { GuestCartExpiryBanner } from "@/components/guest-cart-expiry-banner";
 import { AuthHandoffErrorToast } from "@/components/auth-handoff-error-toast";
@@ -124,7 +124,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
       {hideFireEmbers ? null : <FireEmbers />}
       <ContentShell id={pageHasOwnMain ? undefined : "main-content"} {...contentShellProps}>
         {children}
-        {showMarketingSections ? <SpotlightSection /> : null}
+        {/* {showMarketingSections ? <SpotlightSection /> : null} */}
         {showMarketingSections ? <TestimonialsSection /> : null}
         {showMarketingSections ? <NewsletterSection /> : null}
         {showMarketingSections ? <OrderCtaSection /> : null}
