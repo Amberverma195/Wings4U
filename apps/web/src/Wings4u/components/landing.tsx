@@ -7,6 +7,7 @@ import { HeroNewsletterPromo } from "./hero-newsletter-promo";
 import { HeroCategoryMarquee } from "./hero-category-marquee";
 import { HowItWorksSection } from "./how-it-works-section";
 import { SaucesSection } from "./sauces-section";
+import type { SauceFlavour } from "../data/sauces";
 
 const HERO_PROOF_ITEMS = [
   { label: "Bone-In or Boneless", value: "Pick your style" },
@@ -16,9 +17,11 @@ const HERO_PROOF_ITEMS = [
 ] as const;
 
 export function Landing({
+  carouselSauces,
   onOrderNow,
   onSauces,
 }: {
+  carouselSauces: SauceFlavour[];
   onOrderNow: () => void;
   onSauces: () => void;
 }) {
@@ -114,7 +117,7 @@ export function Landing({
 
         <BrandSection />
 
-        <SaucesSection />
+        <SaucesSection sauces={carouselSauces} />
 
         <HowItWorksSection />
       </div>

@@ -24,6 +24,7 @@ export type CreateUpdateItemPayload = {
   category_id: string;
   stock_status: "NORMAL" | "LOW_STOCK" | "UNAVAILABLE";
   is_hidden: boolean;
+  is_wing_combo_side?: boolean;
   allowed_fulfillment_type: "BOTH" | "PICKUP" | "DELIVERY";
   modifier_groups?: Array<{ id: string }>;
   removable_ingredients?: Array<{ name: string; sortOrder: number }>;
@@ -138,6 +139,10 @@ function generateSlug(name: string): string {
     .replace(/(^-|-$)+/g, "");
 }
 
+function normalizeOptionName(name: string): string {
+  return name.trim().toLocaleLowerCase("en-CA");
+}
+
 // ── Service ──
 
 @Injectable()
@@ -164,6 +169,83 @@ export class AdminMenuService {
     const result = await resultPromise;
     await this.invalidateCatalogCaches(locationId);
     return result;
+  }
+
+  private async syncWingComboSideOptions(
+    tx: Prisma.TransactionClient,
+    locationId: string,
+    item: {
+      id: string;
+      name: string;
+      isWingComboSide: boolean;
+      isAvailable: boolean;
+      archivedAt: Date | null;
+    },
+  ): Promise<void> {
+    const sideGroups = await tx.modifierGroup.findMany({
+      where: {
+        locationId,
+        archivedAt: null,
+        OR: [
+          { contextKey: "side" },
+          { menuItems: { some: { contextKey: "side" } } },
+        ],
+      },
+      select: {
+        id: true,
+        options: {
+          orderBy: { sortOrder: "desc" },
+          select: {
+            id: true,
+            name: true,
+            linkedMenuItemId: true,
+            sortOrder: true,
+          },
+        },
+      },
+    });
+
+    const shouldBeActive =
+      item.isWingComboSide && item.isAvailable && item.archivedAt === null;
+    const normalizedName = normalizeOptionName(item.name);
+
+    for (const group of sideGroups) {
+      const linkedOption = group.options.find(
+        (option) => option.linkedMenuItemId === item.id,
+      );
+      const legacyOption = shouldBeActive
+        ? group.options.find(
+            (option) =>
+              option.linkedMenuItemId === null &&
+              normalizeOptionName(option.name) === normalizedName,
+          )
+        : undefined;
+      const option = linkedOption ?? legacyOption;
+
+      if (option) {
+        await tx.modifierOption.update({
+          where: { id: option.id },
+          data: {
+            name: item.name,
+            isActive: shouldBeActive,
+            linkedMenuItemId: item.id,
+          },
+        });
+        continue;
+      }
+
+      if (!shouldBeActive) continue;
+
+      await tx.modifierOption.create({
+        data: {
+          modifierGroupId: group.id,
+          linkedMenuItemId: item.id,
+          name: item.name,
+          priceDeltaCents: 0,
+          sortOrder: (group.options[0]?.sortOrder ?? 0) + 1,
+        },
+      });
+    }
   }
 
   // ────────── Categories ──────────
@@ -457,6 +539,7 @@ export class AdminMenuService {
             basePriceCents: data.base_price_cents,
             stockStatus: data.stock_status,
             isHidden: data.is_hidden,
+            isWingComboSide: data.is_wing_combo_side ?? false,
             isAvailable: data.stock_status !== "UNAVAILABLE",
             allowedFulfillmentType: data.allowed_fulfillment_type,
             removableIngredients: data.removable_ingredients?.length
@@ -488,6 +571,8 @@ export class AdminMenuService {
             })),
           });
         }
+
+        await this.syncWingComboSideOptions(tx, locationId, item);
 
         return item;
       }),
@@ -570,7 +655,7 @@ export class AdminMenuService {
           }
         }
 
-        return tx.menuItem.update({
+        const updatedItem = await tx.menuItem.update({
           where: { id },
           data: {
             name: data.name,
@@ -579,20 +664,37 @@ export class AdminMenuService {
             categoryId: data.category_id,
             stockStatus: data.stock_status,
             isHidden: data.is_hidden,
+            isWingComboSide:
+              data.is_wing_combo_side ?? item.isWingComboSide,
             isAvailable: data.stock_status !== "UNAVAILABLE",
             allowedFulfillmentType: data.allowed_fulfillment_type,
           },
         });
+
+        await this.syncWingComboSideOptions(tx, locationId, updatedItem);
+
+        return updatedItem;
       }),
     );
   }
 
   async deleteItem(locationId: string, id: string) {
+    const item = await this.prisma.menuItem.findFirst({
+      where: { id, locationId, archivedAt: null },
+    });
+    if (!item) throw new NotFoundException("Menu item not found");
+
     return this.invalidateCatalogAfter(
       locationId,
-      this.prisma.menuItem.updateMany({
-        where: { id, locationId },
-        data: { archivedAt: new Date() },
+      this.prisma.$transaction(async (tx) => {
+        const archivedItem = await tx.menuItem.update({
+          where: { id },
+          data: { archivedAt: new Date() },
+        });
+
+        await this.syncWingComboSideOptions(tx, locationId, archivedItem);
+
+        return archivedItem;
       }),
     );
   }

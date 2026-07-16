@@ -21,7 +21,6 @@ const prisma = new PrismaClient({
   }),
 });
 
-const SIDE_OPTIONS = ["Fries", "Onion Rings", "Wedges", "Coleslaw"] as const;
 const POP_OPTIONS = [
   "Pepsi",
   "Diet Pepsi",
@@ -429,22 +428,33 @@ async function ensureGroupOptions(
     priceDeltaCents: number;
     sortOrder: number;
     linkedFlavourId?: string | null;
+    linkedMenuItemId?: string | null;
     addonMatchNormalized?: string | null;
   }>,
 ) {
   for (const option of options) {
     const existing = await prisma.modifierOption.findFirst({
-      where: { modifierGroupId, name: option.name },
+      where: {
+        modifierGroupId,
+        OR: [
+          ...(option.linkedMenuItemId
+            ? [{ linkedMenuItemId: option.linkedMenuItemId }]
+            : []),
+          { linkedMenuItemId: null, name: option.name },
+        ],
+      },
     });
 
     if (existing) {
       await prisma.modifierOption.update({
         where: { id: existing.id },
         data: {
+          name: option.name,
           priceDeltaCents: option.priceDeltaCents,
           sortOrder: option.sortOrder,
           isActive: true,
           linkedFlavourId: option.linkedFlavourId ?? existing.linkedFlavourId,
+          linkedMenuItemId: option.linkedMenuItemId ?? existing.linkedMenuItemId,
           addonMatchNormalized:
             option.addonMatchNormalized ?? existing.addonMatchNormalized,
         },
@@ -459,6 +469,7 @@ async function ensureGroupOptions(
         priceDeltaCents: option.priceDeltaCents,
         sortOrder: option.sortOrder,
         linkedFlavourId: option.linkedFlavourId ?? null,
+        linkedMenuItemId: option.linkedMenuItemId ?? null,
         addonMatchNormalized: option.addonMatchNormalized ?? null,
       },
     });
@@ -678,13 +689,32 @@ async function main() {
     }),
   } as const;
 
+  const comboSideItems = await prisma.menuItem.findMany({
+    where: {
+      locationId: location.id,
+      isWingComboSide: true,
+      isAvailable: true,
+      archivedAt: null,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, name: true },
+  });
+
   for (const group of Object.values(sideGroups)) {
+    await prisma.modifierOption.updateMany({
+      where: {
+        modifierGroupId: group.id,
+        linkedMenuItemId: { not: null },
+      },
+      data: { isActive: false },
+    });
     await ensureGroupOptions(
       group.id,
-      SIDE_OPTIONS.map((option, index) => ({
-        name: option,
+      comboSideItems.map((item, index) => ({
+        name: item.name,
         priceDeltaCents: 0,
         sortOrder: index + 1,
+        linkedMenuItemId: item.id,
       })),
     );
   }
@@ -899,4 +929,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

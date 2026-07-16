@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
-import { SAUCE_CATEGORY_META, SAUCE_FLAVOURS, SAUCE_MARKETING_TOTAL, type SauceFlavour } from "../data/sauces";
+import { SAUCE_CATEGORY_META, SAUCE_MARKETING_TOTAL, type SauceFlavour } from "../data/sauces";
 
 const COPIES = 2;
 
@@ -61,7 +61,7 @@ function SauceCard({ sauce }: { sauce: SauceFlavour }) {
   );
 }
 
-export function SaucesSection() {
+export function SaucesSection({ sauces }: { sauces: SauceFlavour[] }) {
   const sectionRef = useRef<HTMLElement>(null);
   const [inView, setInView] = useState(false);
   const [carouselIn, setCarouselIn] = useState(false);
@@ -118,7 +118,7 @@ export function SaucesSection() {
       >
         <div className="sauce-carousel-track">
           {Array.from({ length: COPIES }, (_, copyIdx) =>
-            SAUCE_FLAVOURS.map((sauce) => <SauceCard key={`${copyIdx}-${sauce.id}`} sauce={sauce} />),
+            sauces.map((sauce) => <SauceCard key={`${copyIdx}-${sauce.id}`} sauce={sauce} />),
           ).flat()}
         </div>
       </div>

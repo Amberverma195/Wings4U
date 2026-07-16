@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { Landing } from "@/Wings4u/components/landing";
 import { OrderMethodModal } from "@/Wings4u/components/order-method-modal";
 import { useCart } from "@/lib/cart";
+import type { SauceFlavour } from "@/Wings4u/data/sauces";
 import type { FulfillmentType } from "@/lib/types";
 
-export function HomePageClient() {
+export function HomePageClient({ carouselSauces }: { carouselSauces: SauceFlavour[] }) {
   const router = useRouter();
   const cart = useCart();
   const [methodOpen, setMethodOpen] = useState(false);
@@ -37,6 +38,7 @@ export function HomePageClient() {
   return (
     <>
       <Landing
+        carouselSauces={carouselSauces}
         onOrderNow={openOrderMethod}
         onSauces={() => {
           router.push("/sauces");

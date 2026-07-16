@@ -18,6 +18,7 @@ export type FullMenuItem = {
   categoryId: string;
   stockStatus: "NORMAL" | "LOW_STOCK" | "UNAVAILABLE";
   isHidden: boolean;
+  isWingComboSide: boolean;
   allowedFulfillmentType: "BOTH" | "PICKUP" | "DELIVERY";
   category: { id: string; name: string };
 };

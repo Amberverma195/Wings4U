@@ -33,6 +33,7 @@ type FormState = {
   category_id: string;
   stock_status: "NORMAL" | "LOW_STOCK" | "UNAVAILABLE";
   is_hidden: boolean;
+  is_wing_combo_side: boolean;
   allowed_fulfillment_type: "BOTH" | "PICKUP" | "DELIVERY";
   modifier_groups: ModGroupRef[];
   removable_ingredients: IngredientRow[];
@@ -47,6 +48,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
     category_id: categories[0]?.id || "",
     stock_status: "NORMAL",
     is_hidden: false,
+    is_wing_combo_side: false,
     allowed_fulfillment_type: "BOTH",
     modifier_groups: [],
     removable_ingredients: [],
@@ -94,6 +96,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
           category_id: data.categoryId,
           stock_status: data.stockStatus,
           is_hidden: data.isHidden,
+          is_wing_combo_side: data.isWingComboSide ?? false,
           allowed_fulfillment_type: data.allowedFulfillmentType,
           modifier_groups: (data.modifierGroups || []).map(
             (mg: any) => ({ id: mg.modifierGroupId } as ModGroupRef),
@@ -312,6 +315,9 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                     Hidden
                   </span>
                 )}
+                {form.is_wing_combo_side && (
+                  <span className={styles.modalStatusPill}>Combo side</span>
+                )}
                 <span className={styles.modalStatusPill}>
                   {form.allowed_fulfillment_type === "BOTH"
                     ? "Pickup + Delivery"
@@ -476,6 +482,16 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                   onChange={(e) => set("is_hidden", e.target.checked)}
                 />
                 Hide entirely from customer menu
+              </label>
+              <label className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={form.is_wing_combo_side}
+                  onChange={(e) =>
+                    set("is_wing_combo_side", e.target.checked)
+                  }
+                />
+                Show in wing combo sides
               </label>
             </div>
 

@@ -98,6 +98,10 @@ class CreateUpdateItemDto {
   @IsBoolean()
   is_hidden!: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  is_wing_combo_side?: boolean;
+
   @IsIn(["BOTH", "PICKUP", "DELIVERY"])
   allowed_fulfillment_type!: "BOTH" | "PICKUP" | "DELIVERY";
 

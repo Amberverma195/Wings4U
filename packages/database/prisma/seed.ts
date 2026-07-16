@@ -831,6 +831,7 @@ async function main() {
         builder?: string;
         popular?: boolean;
         fulfillment?: string;
+        wingComboSide?: boolean;
         modifiers?: { groupId: string; sortOrder: number; contextKey?: string }[];
         removableIngredients?: string[];
         addonOptions?: Array<{
@@ -852,6 +853,7 @@ async function main() {
           allowedFulfillmentType: opts?.fulfillment ?? "BOTH",
           isAvailable: true,
           isPopular: opts?.popular ?? false,
+          isWingComboSide: opts?.wingComboSide ?? false,
           builderType: opts?.builder,
         },
       });
@@ -1332,16 +1334,40 @@ async function main() {
     });
 
     const friesSize = await createSizeGroup("Fries Size", sideSizeSmLg);
-    await createItem("sides", "Fries", "fries", 449, { modifiers: [{ groupId: friesSize.id, sortOrder: 1 }] });
+    const fries = await createItem("sides", "Fries", "fries", 449, {
+      wingComboSide: true,
+      modifiers: [{ groupId: friesSize.id, sortOrder: 1 }],
+    });
 
     const onionRingsSize = await createSizeGroup("Onion Rings Size", sideSizeSmLg);
-    await createItem("sides", "Onion Rings", "onion-rings", 449, { modifiers: [{ groupId: onionRingsSize.id, sortOrder: 1 }] });
+    const onionRings = await createItem("sides", "Onion Rings", "onion-rings", 449, {
+      wingComboSide: true,
+      modifiers: [{ groupId: onionRingsSize.id, sortOrder: 1 }],
+    });
 
     const wedgesSize = await createSizeGroup("Wedges Size", sideSizeSmLg);
-    await createItem("sides", "Wedges", "wedges", 449, { modifiers: [{ groupId: wedgesSize.id, sortOrder: 1 }] });
+    const wedges = await createItem("sides", "Wedges", "wedges", 449, {
+      wingComboSide: true,
+      modifiers: [{ groupId: wedgesSize.id, sortOrder: 1 }],
+    });
 
     const coleslawSize = await createSizeGroup("Coleslaw Size", sideSizeSmLg);
-    await createItem("sides", "Coleslaw", "coleslaw", 449, { modifiers: [{ groupId: coleslawSize.id, sortOrder: 1 }] });
+    const coleslaw = await createItem("sides", "Coleslaw", "coleslaw", 449, {
+      wingComboSide: true,
+      modifiers: [{ groupId: coleslawSize.id, sortOrder: 1 }],
+    });
+
+    for (const side of [fries, onionRings, wedges, coleslaw]) {
+      await tx.modifierOption.updateMany({
+        where: {
+          modifierGroupId: {
+            in: [smallSideGroup.id, largeSideGroup1.id, largeSideGroup2.id],
+          },
+          name: side.name,
+        },
+        data: { linkedMenuItemId: side.id },
+      });
+    }
 
     const gravySizeGroup = await createSizeGroup("Gravy Size", gravySize);
     await createItem("sides", "Gravy", "gravy", 199, { modifiers: [{ groupId: gravySizeGroup.id, sortOrder: 1 }] });

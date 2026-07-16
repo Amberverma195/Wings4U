@@ -95,6 +95,8 @@ const WING_FLAVOURS: MenuWingFlavour[] = [
 
 export type SauceCategory = "mild" | "medium" | "hot" | "dryrub";
 
+export const SAUCE_CATEGORY_ORDER = ["mild", "medium", "hot", "dryrub"] as const;
+
 export type SauceFlavour = {
   id: string;
   slug: string;
@@ -346,6 +348,31 @@ export function deriveSauceCounts(flavours: SauceFlavour[]): Record<SauceCategor
       dryrub: 0,
     },
   );
+}
+
+export function selectCarouselSauceFlavours(
+  flavours: SauceFlavour[],
+  perCategory = 5,
+): SauceFlavour[] {
+  const seen = new Set<string>();
+
+  return SAUCE_CATEGORY_ORDER.flatMap((category) => {
+    const selected: SauceFlavour[] = [];
+
+    for (const sauce of flavours) {
+      if (sauce.cat !== category) continue;
+
+      const uniqueKey = sauce.slug || sauce.id;
+      if (seen.has(uniqueKey)) continue;
+
+      seen.add(uniqueKey);
+      selected.push(sauce);
+
+      if (selected.length >= perCategory) break;
+    }
+
+    return selected;
+  });
 }
 
 export const SAUCE_FLAVOURS: SauceFlavour[] = mapSourceFlavoursToSauceFlavours(SOURCE_FLAVOURS);
