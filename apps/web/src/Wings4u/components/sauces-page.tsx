@@ -5,10 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
 import {
-  SAUCE_COUNTS,
-  SAUCE_FLAVOURS,
-  SAUCE_MARKETING_TOTAL,
-  SAUCE_TOTAL,
+  deriveSauceCounts,
   type SauceCategory,
   type SauceFlavour,
 } from "../data/sauces";
@@ -190,17 +187,9 @@ function buttonVars(color: string): CSSProperties {
   } as CSSProperties;
 }
 
-export function SaucesPage({
-  flavours = SAUCE_FLAVOURS,
-  displayTotal = SAUCE_MARKETING_TOTAL,
-  sauceTotal = SAUCE_TOTAL,
-  sauceCounts = SAUCE_COUNTS,
-}: {
-  flavours?: SauceFlavour[];
-  displayTotal?: number;
-  sauceTotal?: number;
-  sauceCounts?: Record<SauceCategory, number>;
-}) {
+export function SaucesPage({ flavours }: { flavours: SauceFlavour[] }) {
+  const sauceTotal = flavours.length;
+  const sauceCounts = deriveSauceCounts(flavours);
   const heroRef = useRef<HTMLElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
   const sectionRefs = useRef<Record<SauceCategory, HTMLElement | null>>({
@@ -348,7 +337,7 @@ export function SaucesPage({
   }).filter((section) => section.items.length > 0);
 
   const countLabel = !normalizedSearch
-    ? `${displayTotal}+ flavours`
+    ? `${sauceTotal} flavour${sauceTotal === 1 ? "" : "s"}`
     : `${filteredSauces.length} flavour${filteredSauces.length === 1 ? "" : "s"}`;
   const renderKey = normalizedSearch || "all";
 
@@ -383,7 +372,7 @@ export function SaucesPage({
             <div className={styles.sauceHeroGlow} aria-hidden="true" />
             <p className={styles.sauceHeroLabel}>UR TASTE BUDS WILL THANK U</p>
             <h1 className={styles.sauceHeroTitle}>
-              <span className={`${styles.gradientText} ${styles.gradientTextShimmer}`}>{`${displayTotal}+`}</span>
+              <span className={`${styles.gradientText} ${styles.gradientTextShimmer}`}>{sauceTotal}</span>
               <span>FLAVOURS</span>
             </h1>
             <p className={styles.sauceHeroSub}>

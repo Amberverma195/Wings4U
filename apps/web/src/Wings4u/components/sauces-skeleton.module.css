@@ -83,11 +83,10 @@
 }
 
 .heroNumber {
-  background: linear-gradient(90deg, #ff4d00, #ffd500, #ff4d00);
-  background-size: 200% center;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  display: inline-block;
+  width: 1.6em;
+  height: 0.78em;
+  border-radius: 8px;
 }
 
 .heroWord {
@@ -117,6 +116,10 @@
 }
 
 .statValue {
+  display: block;
+  width: 48px;
+  height: 44px;
+  border-radius: 6px;
   font-family: "Black Han Sans", sans-serif;
   font-size: clamp(36px, 5vw, 52px);
   line-height: 1;
@@ -191,6 +194,9 @@
   right: 18px;
   top: 50%;
   transform: translateY(-50%);
+  width: 72px;
+  height: 12px;
+  border-radius: 6px;
   color: #b8863a;
   font-family: "Oswald", sans-serif;
   font-size: 12px;

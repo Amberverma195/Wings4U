@@ -1,5 +1,4 @@
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
-import { SAUCE_COUNTS, SAUCE_MARKETING_TOTAL, SAUCE_TOTAL } from "../data/sauces";
 import styles from "./sauces-skeleton.module.css";
 
 const SEARCH_ICON = String.fromCodePoint(0x1f50d);
@@ -27,7 +26,7 @@ export function SaucesSkeleton() {
         <section className={styles.hero}>
           <p className={styles.heroLabel}>UR TASTE BUDS WILL THANK U</p>
           <h1 className={styles.heroTitle}>
-            <span className={styles.heroNumber}>{SAUCE_MARKETING_TOTAL}</span>
+            <SkeletonBlock className={styles.heroNumber} />
             <span className={styles.heroWord}>FLAVOURS</span>
           </h1>
           <p className={styles.heroSub}>
@@ -37,19 +36,19 @@ export function SaucesSkeleton() {
 
           <div className={styles.stats}>
             <div className={styles.stat}>
-              <div className={`${styles.statValue} ${styles.statValueMild}`}>{SAUCE_COUNTS.mild}</div>
+              <SkeletonBlock className={`${styles.statValue} ${styles.statValueMild}`} />
               <div className={styles.statLabel}>Mild</div>
             </div>
             <div className={styles.stat}>
-              <div className={`${styles.statValue} ${styles.statValueMedium}`}>{SAUCE_COUNTS.medium}</div>
+              <SkeletonBlock className={`${styles.statValue} ${styles.statValueMedium}`} />
               <div className={styles.statLabel}>Medium</div>
             </div>
             <div className={styles.stat}>
-              <div className={`${styles.statValue} ${styles.statValueHot}`}>{SAUCE_COUNTS.hot}</div>
+              <SkeletonBlock className={`${styles.statValue} ${styles.statValueHot}`} />
               <div className={styles.statLabel}>Hot</div>
             </div>
             <div className={styles.stat}>
-              <div className={`${styles.statValue} ${styles.statValueDry}`}>{SAUCE_COUNTS.dryrub}</div>
+              <SkeletonBlock className={`${styles.statValue} ${styles.statValueDry}`} />
               <div className={styles.statLabel}>Dry Rubs</div>
             </div>
           </div>
@@ -62,15 +61,15 @@ export function SaucesSkeleton() {
               {SEARCH_ICON}
             </span>
             <span>Search sauces &amp; dry rubs...</span>
-            <span className={styles.searchCount}>{SAUCE_MARKETING_TOTAL} flavours</span>
+            <SkeletonBlock className={styles.searchCount} />
           </div>
 
           <div className={styles.filters} aria-hidden="true">
-            <span className={`${styles.filterPill} ${styles.filterPillAll}`}>ALL {SAUCE_TOTAL}</span>
-            <span className={styles.filterPill}>{"\u{1F7E2}"} MILD {SAUCE_COUNTS.mild}</span>
-            <span className={styles.filterPill}>{"\u{1F7E1}"} MEDIUM {SAUCE_COUNTS.medium}</span>
-            <span className={styles.filterPill}>{"\u{1F534}"} HOT {SAUCE_COUNTS.hot}</span>
-            <span className={styles.filterPill}>{"\u2728"} DRY RUBS {SAUCE_COUNTS.dryrub}</span>
+            <span className={`${styles.filterPill} ${styles.filterPillAll}`}>ALL</span>
+            <span className={styles.filterPill}>{"\u{1F7E2}"} MILD</span>
+            <span className={styles.filterPill}>{"\u{1F7E1}"} MEDIUM</span>
+            <span className={styles.filterPill}>{"\u{1F534}"} HOT</span>
+            <span className={styles.filterPill}>{"\u2728"} DRY RUBS</span>
           </div>
         </section>
 

@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
 import { SaucesPage } from "@/Wings4u/components/sauces-page";
-import {
-  buildSauceFlavoursFromApi,
-  deriveSauceCounts,
-  SAUCE_MARKETING_TOTAL,
-  SAUCE_FLAVOURS,
-} from "@/Wings4u/data/sauces";
+import { buildSauceFlavoursFromApi } from "@/Wings4u/data/sauces";
 import { getCachedWingFlavours } from "@/lib/catalog/server-catalog";
 import { createPageMetadata } from "@/lib/seo/metadata";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Sauces & Dry Rubs",
-  description: "74+ house sauces and dry rubs, from mellow crowd-pleasers to full-send heat.",
+  description: "House sauces and dry rubs, from mellow crowd-pleasers to full-send heat.",
   path: "/sauces",
 });
 
@@ -21,18 +16,10 @@ export const revalidate = false;
 
 export default async function SaucesRoutePage() {
   const apiFlavours = await getCachedWingFlavours(DEFAULT_LOCATION_ID);
-  const flavours =
-    apiFlavours && apiFlavours.length > 0
-      ? buildSauceFlavoursFromApi(apiFlavours)
-      : SAUCE_FLAVOURS;
-  const counts = deriveSauceCounts(flavours);
 
-  return (
-    <SaucesPage
-      flavours={flavours}
-      displayTotal={SAUCE_MARKETING_TOTAL}
-      sauceTotal={flavours.length}
-      sauceCounts={counts}
-    />
-  );
+  if (apiFlavours === null) {
+    throw new Error("Unable to load sauces from the catalog API.");
+  }
+
+  return <SaucesPage flavours={buildSauceFlavoursFromApi(apiFlavours)} />;
 }
