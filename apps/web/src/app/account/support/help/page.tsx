@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import styles from "../support.module.css";
+import { SupportBackLink } from "../support-back-link";
 
 export default function HelpPage() {
   const session = useSession();
@@ -80,10 +81,7 @@ export default function HelpPage() {
                   <span>Help</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </div>
-                <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
-                  <span className={styles.navLinkArrowLeft}>←</span>
-                  <span>Back to Account</span>
-                </Link>
+                <SupportBackLink />
               </nav>
             </div>
           </aside>

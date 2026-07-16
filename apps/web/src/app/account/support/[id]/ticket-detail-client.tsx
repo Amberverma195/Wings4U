@@ -9,6 +9,7 @@ import { relativeTime } from "@/lib/format";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AccountSkeleton } from "@/components/account-skeleton";
+import { SupportBackLink } from "../support-back-link";
 
 import styles from "../support.module.css";
 
@@ -227,10 +228,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                     <span>Tickets</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
-                  <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
-                    <span className={styles.navLinkArrowLeft}>←</span>
-                    <span>Back to Account</span>
-                  </Link>
+                  <SupportBackLink />
                 </nav>
               </div>
             </aside>
@@ -288,10 +286,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                   <span>Help</span>
                   <span className={styles.navLinkArrow}>→</span>
                 </Link>
-                <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
-                  <span className={styles.navLinkArrowLeft}>←</span>
-                  <span>Back to Account</span>
-                </Link>
+                <SupportBackLink />
               </nav>
             </div>
           </aside>

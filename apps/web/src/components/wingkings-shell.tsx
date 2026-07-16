@@ -4,7 +4,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { FireEmbers } from "@/Wings4u/components/fire-embers";
 import { WingKingsGlobalStyle } from "@/Wings4u/components/global-style";
-import { NewsletterSection } from "@/Wings4u/components/newsletter-section";
 import { OrderCtaSection } from "@/Wings4u/components/order-cta-section";
 // import { SpotlightSection } from "@/Wings4u/components/spotlight-section";
 import { TestimonialsSection } from "@/Wings4u/components/testimonials-section";
@@ -13,6 +12,7 @@ import { AuthHandoffErrorToast } from "@/components/auth-handoff-error-toast";
 import { SiteFooter } from "@/components/site-footer";
 import { Navbar } from "@/Wings4u/components/navbar";
 import { styles } from "@/Wings4u/styles";
+import { rememberAppRoute } from "@/lib/client-route-history";
 
 /** Routes whose page component already renders its own `<main>`. */
 function routeProvidesMain(pathname: string | null): boolean {
@@ -47,6 +47,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
 
     const previous = prevPathnameRef.current;
     prevPathnameRef.current = pathname;
+    rememberAppRoute(pathname);
 
     const { history } = window;
     const previousScrollRestoration = history.scrollRestoration;
@@ -126,7 +127,6 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
         {children}
         {/* {showMarketingSections ? <SpotlightSection /> : null} */}
         {showMarketingSections ? <TestimonialsSection /> : null}
-        {showMarketingSections ? <NewsletterSection /> : null}
         {showMarketingSections ? <OrderCtaSection /> : null}
       </ContentShell>
       <SiteFooter />

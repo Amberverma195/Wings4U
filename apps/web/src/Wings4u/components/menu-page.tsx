@@ -122,6 +122,7 @@ function emojiForCategorySlug(slug: string): string {
     case "salads":
       return "\uD83E\uDD57";
     case "poutines-and-sides":
+    case "sides":
     case "specialty-fries":
       return "\uD83C\uDF5F";
     case "appetizers":

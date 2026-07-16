@@ -14,6 +14,7 @@ const MENU_CATEGORY_SLUG_ORDER: string[] = [
   "wraps",
   "salads",
   "poutines-and-sides",
+  "sides",
   "specialty-fries",
   "appetizers",
   "breads",
@@ -79,7 +80,7 @@ export const SYNTHETIC_SALADS_CATEGORY_ID = "00000000-0000-4000-8000-0000000000a
 
 /**
  * Ensures **Salads** appears in the sticky category strip after Wraps and before
- * Poutines & Sides even when the backend does not return a `salads` category yet.
+ * Poutines even when the backend does not return a `salads` category yet.
  */
 export function ensureSaladsCategoryInDisplay(
   categories: DisplayMenuCategory[],

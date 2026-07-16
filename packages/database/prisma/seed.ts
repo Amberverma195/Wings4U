@@ -460,7 +460,7 @@ async function main() {
       data: { customerUserId: customerUser.id, balanceCents: 0, lifetimeCreditCents: 0 },
     });
 
-    // ── 10. MenuCategories (14 categories, real menu order) ──────────────
+    // ── 10. MenuCategories (17 categories, real menu order) ──────────────
     console.log("Creating menu categories…");
     const categoryDefs = [
       { name: "Lunch Specials", slug: "lunch-specials" },
@@ -470,7 +470,8 @@ async function main() {
       { name: "Tenders", slug: "tenders" },
       { name: "Wraps", slug: "wraps" },
       { name: "Salads", slug: "salads" },
-      { name: "Poutines & Sides", slug: "poutines-and-sides" },
+      { name: "Poutines", slug: "poutines-and-sides" },
+      { name: "Sides", slug: "sides" },
       { name: "Specialty Fries", slug: "specialty-fries" },
       { name: "Appetizers", slug: "appetizers" },
       { name: "Breads", slug: "breads" },
@@ -1331,22 +1332,22 @@ async function main() {
     });
 
     const friesSize = await createSizeGroup("Fries Size", sideSizeSmLg);
-    await createItem("poutines-and-sides", "Fries", "fries", 449, { modifiers: [{ groupId: friesSize.id, sortOrder: 1 }] });
+    await createItem("sides", "Fries", "fries", 449, { modifiers: [{ groupId: friesSize.id, sortOrder: 1 }] });
 
     const onionRingsSize = await createSizeGroup("Onion Rings Size", sideSizeSmLg);
-    await createItem("poutines-and-sides", "Onion Rings", "onion-rings", 449, { modifiers: [{ groupId: onionRingsSize.id, sortOrder: 1 }] });
+    await createItem("sides", "Onion Rings", "onion-rings", 449, { modifiers: [{ groupId: onionRingsSize.id, sortOrder: 1 }] });
 
     const wedgesSize = await createSizeGroup("Wedges Size", sideSizeSmLg);
-    await createItem("poutines-and-sides", "Wedges", "wedges", 449, { modifiers: [{ groupId: wedgesSize.id, sortOrder: 1 }] });
+    await createItem("sides", "Wedges", "wedges", 449, { modifiers: [{ groupId: wedgesSize.id, sortOrder: 1 }] });
 
     const coleslawSize = await createSizeGroup("Coleslaw Size", sideSizeSmLg);
-    await createItem("poutines-and-sides", "Coleslaw", "coleslaw", 449, { modifiers: [{ groupId: coleslawSize.id, sortOrder: 1 }] });
+    await createItem("sides", "Coleslaw", "coleslaw", 449, { modifiers: [{ groupId: coleslawSize.id, sortOrder: 1 }] });
 
     const gravySizeGroup = await createSizeGroup("Gravy Size", gravySize);
-    await createItem("poutines-and-sides", "Gravy", "gravy", 199, { modifiers: [{ groupId: gravySizeGroup.id, sortOrder: 1 }] });
+    await createItem("sides", "Gravy", "gravy", 199, { modifiers: [{ groupId: gravySizeGroup.id, sortOrder: 1 }] });
 
     const nuggetSizeGroup = await createSizeGroup("Chicken Nuggets Size", nuggetSize);
-    await createItem("poutines-and-sides", "Chicken Nuggets", "chicken-nuggets", 699, { modifiers: [{ groupId: nuggetSizeGroup.id, sortOrder: 1 }] });
+    await createItem("sides", "Chicken Nuggets", "chicken-nuggets", 699, { modifiers: [{ groupId: nuggetSizeGroup.id, sortOrder: 1 }] });
 
     // ── 20. Specialty Fries ──────────────────────────────────────────────
     console.log("Creating specialty fries…");

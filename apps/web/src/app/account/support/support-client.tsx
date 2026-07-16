@@ -10,6 +10,7 @@ import { relativeTime } from "@/lib/format";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AccountSkeleton } from "@/components/account-skeleton";
+import { SupportBackLink } from "./support-back-link";
 
 import styles from "./support.module.css";
 
@@ -174,10 +175,7 @@ export function SupportClient() {
                     <span>Help</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
-                  <Link href="/account" className={`${styles.navLink} ${styles.navLinkBack}`}>
-                    <span className={styles.navLinkArrowLeft}>←</span>
-                    <span>Back to Account</span>
-                  </Link>
+                  <SupportBackLink />
                   <button onClick={handleLogout} className={`${styles.navLink} ${styles.navLinkLogout}`}>
                     <span>Logout</span>
                     <span className={styles.navLinkArrow}>→</span>

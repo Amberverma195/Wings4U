@@ -1518,7 +1518,7 @@ export function WingKingsGlobalStyle() {
       /* ── Testimonials (#testimonials) ─────────────────────────────── */
 
       #testimonials {
-        padding: 100px 0;
+        padding: 100px 0 0;
         position: relative;
       }
 
@@ -1735,6 +1735,10 @@ export function WingKingsGlobalStyle() {
         clip: rect(0, 0, 0, 0);
         white-space: nowrap;
         border: 0;
+      }
+
+      #testimonials .testimonials-newsletter {
+        margin-top: 72px;
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -4206,31 +4210,6 @@ export function WingKingsGlobalStyle() {
         color: #ffd500;
         letter-spacing: 1px;
         margin: 0;
-      }
-
-      #footer .footer-social {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      #footer .social-btn {
-        width: 36px;
-        height: 36px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        background: #0e0500;
-        border: 1px solid #1e0a00;
-        font-size: 16px;
-        line-height: 1;
-        text-decoration: none;
-        transition: border-color 0.2s ease;
-      }
-
-      #footer .social-btn:hover {
-        border-color: rgba(255, 77, 0, 0.4);
       }
 
       @media (max-width: 1080px) {

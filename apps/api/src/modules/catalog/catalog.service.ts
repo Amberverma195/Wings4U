@@ -532,7 +532,7 @@ export class CatalogService {
       })
       .filter((category) => {
         if (category.items.length > 0) return true;
-        // Keep Salads in the category strip (after Wraps, before Poutines & Sides) even when
+        // Keep Salads in the category strip (after Wraps, before Poutines) even when
         // every salad SKU is temporarily unavailable (schedule window / fulfillment filter).
         if (category.slug === "salads" && category._rawMenuItemCount > 0) return true;
         return false;

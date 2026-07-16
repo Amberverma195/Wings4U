@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { NewsletterSection } from "@/Wings4u/components/newsletter-section";
 
 type Review = {
   quote: string;
@@ -138,6 +139,10 @@ export function TestimonialsSection() {
           ))}
         </ul>
       ) : null}
+
+      <div className="testimonials-newsletter">
+        <NewsletterSection />
+      </div>
     </section>
   );
 }

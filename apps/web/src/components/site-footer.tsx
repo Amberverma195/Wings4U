@@ -12,8 +12,10 @@ export function SiteFooter() {
             ariaLabel="Back to home"
             className="footer-brand-link"
             style={{ gap: 8, marginBottom: 8, width: "fit-content" }}
-            wordmarkClassName="nav-brand"
             imageSize={44}
+            wordmarkImageSrc="/Logo_title.png"
+            wordmarkImageHeight={34}
+            wordmarkImageWidth={163}
           />
           <p>
             London&apos;s newest wing house. Hand-breaded. 74+ sauces. Pickup &amp; delivery. No
@@ -39,17 +41,6 @@ export function SiteFooter() {
         <p>
           {"\u00A9"} {new Date().getFullYear()} Wings4U. All rights reserved. All wings hand-breaded daily.
         </p>
-        <div className="footer-social" aria-label="Social links">
-          <a className="social-btn" href="#" aria-label="Instagram">
-            {"\u{1F4F7}"}
-          </a>
-          <a className="social-btn" href="#" aria-label="TikTok">
-            {"\u{1F3B5}"}
-          </a>
-          <a className="social-btn" href="#" aria-label="X (Twitter)">
-            {"\u{1F426}"}
-          </a>
-        </div>
       </div>
     </footer>
   );
