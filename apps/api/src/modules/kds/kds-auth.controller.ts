@@ -12,6 +12,10 @@ import {
 import { IsString, Matches, MaxLength, IsOptional } from "class-validator";
 import type { Request, Response } from "express";
 import { Public } from "../../common/decorators/roles.decorator";
+import {
+  clearSharedCookieVariants,
+  withSharedCookieDomain,
+} from "../../common/utils/cookie-domain";
 import { extractClientIp } from "../../common/utils/store-ip";
 import {
   KDS_STATION_COOKIE_NAME,
@@ -59,12 +63,11 @@ export class KdsAuthController {
       body.device_id,
     );
 
-    res.clearCookie(KDS_STATION_COOKIE_NAME, {
-      ...KDS_COOKIE_OPTIONS,
-      path: "/api/v1/kds",
-    });
+    clearSharedCookieVariants(res, KDS_STATION_COOKIE_NAME, KDS_COOKIE_OPTIONS, [
+      "/api/v1/kds",
+    ]);
     res.cookie(KDS_STATION_COOKIE_NAME, `${result.sessionKey}:${result.token}`, {
-      ...KDS_COOKIE_OPTIONS,
+      ...withSharedCookieDomain(KDS_COOKIE_OPTIONS),
       expires: result.expiresAt,
     });
 
@@ -102,11 +105,9 @@ export class KdsAuthController {
       }
     }
 
-    res.clearCookie(KDS_STATION_COOKIE_NAME, KDS_COOKIE_OPTIONS);
-    res.clearCookie(KDS_STATION_COOKIE_NAME, {
-      ...KDS_COOKIE_OPTIONS,
-      path: "/api/v1/kds",
-    });
+    clearSharedCookieVariants(res, KDS_STATION_COOKIE_NAME, KDS_COOKIE_OPTIONS, [
+      "/api/v1/kds",
+    ]);
 
     return { logged_out: true };
   }

@@ -17,6 +17,10 @@ import {
 import { createHash, randomBytes } from "crypto";
 import { IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from "class-validator";
 import type { Request, Response } from "express";
+import {
+  clearSharedCookieVariants,
+  withSharedCookieDomain,
+} from "../../common/utils/cookie-domain";
 import { Public } from "../../common/decorators/roles.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
@@ -282,14 +286,14 @@ function setAuthCookies(
   // the fresh cookies evicts the legacy pair on the very next login, so the
   // user doesn't have to hand-clear cookies. Safe as a no-op when the legacy
   // cookie was never present.
-  res.clearCookie("access_token", { ...ACCESS_COOKIE_BASE, path: "/api" });
+  clearSharedCookieVariants(res, "access_token", ACCESS_COOKIE_BASE, ["/api"]);
   res.clearCookie("csrf_token", { ...CSRF_COOKIE_BASE, path: "/api" });
 
   // access_token uses path "/" so Next middleware and server components on any
   // route (e.g. /admin/*) can read and verify it for page-level gating. The
   // cookie stays httpOnly; only signed/verified access still reaches handlers.
   res.cookie("access_token", accessToken, {
-    ...ACCESS_COOKIE_BASE,
+    ...withSharedCookieDomain(ACCESS_COOKIE_BASE),
     maxAge: 15 * 60 * 1000,
   });
 
@@ -309,7 +313,7 @@ function setAuthCookies(
 function clearAuthCookies(res: Response): void {
   // Pass the full attribute set so the browser actually overwrites / evicts
   // the cookie instead of silently dropping a mismatched Set-Cookie.
-  res.clearCookie("access_token", ACCESS_COOKIE_BASE);
+  clearSharedCookieVariants(res, "access_token", ACCESS_COOKIE_BASE, ["/api"]);
   res.clearCookie("refresh_token", REFRESH_COOKIE_BASE);
   res.clearCookie("csrf_token", CSRF_COOKIE_BASE);
 
@@ -319,10 +323,6 @@ function clearAuthCookies(res: Response): void {
   // does not match a cookie set at Path=/api — browsers treat them as two
   // distinct cookies). Clear the legacy path too. Safe to keep — clearing a
   // non-existent cookie is a no-op.
-  res.clearCookie("access_token", {
-    ...ACCESS_COOKIE_BASE,
-    path: "/api",
-  });
   res.clearCookie("csrf_token", {
     ...CSRF_COOKIE_BASE,
     path: "/api",

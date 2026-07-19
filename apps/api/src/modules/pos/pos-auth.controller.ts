@@ -12,6 +12,10 @@ import {
 import { IsString, Matches, MaxLength, IsOptional } from "class-validator";
 import type { Request, Response } from "express";
 import { Public } from "../../common/decorators/roles.decorator";
+import {
+  clearSharedCookieVariants,
+  withSharedCookieDomain,
+} from "../../common/utils/cookie-domain";
 import { extractClientIp } from "../../common/utils/store-ip";
 import {
   POS_STATION_COOKIE_NAME,
@@ -62,12 +66,11 @@ export class PosAuthController {
     // Defensive: clear any historical cookie variant scoped to /api/v1/pos
     // before issuing the canonical Path=/ cookie so we never end up with two
     // cookies of the same name (different Path = different cookie identity).
-    res.clearCookie(POS_STATION_COOKIE_NAME, {
-      ...POS_COOKIE_OPTIONS,
-      path: "/api/v1/pos",
-    });
+    clearSharedCookieVariants(res, POS_STATION_COOKIE_NAME, POS_COOKIE_OPTIONS, [
+      "/api/v1/pos",
+    ]);
     res.cookie(POS_STATION_COOKIE_NAME, `${result.sessionKey}:${result.token}`, {
-      ...POS_COOKIE_OPTIONS,
+      ...withSharedCookieDomain(POS_COOKIE_OPTIONS),
       expires: result.expiresAt,
     });
 
@@ -105,11 +108,9 @@ export class PosAuthController {
       }
     }
 
-    res.clearCookie(POS_STATION_COOKIE_NAME, POS_COOKIE_OPTIONS);
-    res.clearCookie(POS_STATION_COOKIE_NAME, {
-      ...POS_COOKIE_OPTIONS,
-      path: "/api/v1/pos",
-    });
+    clearSharedCookieVariants(res, POS_STATION_COOKIE_NAME, POS_COOKIE_OPTIONS, [
+      "/api/v1/pos",
+    ]);
 
     return { logged_out: true };
   }
