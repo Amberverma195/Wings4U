@@ -11,6 +11,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { Request } from "express";
 import { Server, Socket } from "socket.io";
 import { SessionValidator } from "../../common/session/session-validator.service";
+import { resolveLocationRef } from "../../common/utils/location-ref";
 import { extractClientIp, isAllowedStoreIp } from "../../common/utils/store-ip";
 import { PrismaService } from "../../database/prisma.service";
 import {
@@ -184,8 +185,21 @@ export class RealtimeGateway
       return { subscribed: false, channel, error: "Invalid channel format" };
     }
 
-    const [, prefix, subject] = match;
-    const authError = await this.authorizeChannel(prefix, subject, user, socket);
+    const [, prefix, requestedSubject] = match;
+    const normalized = await this.normalizeSubscriptionChannel(
+      prefix,
+      requestedSubject,
+    );
+    if (!normalized) {
+      return { subscribed: false, channel, error: "Invalid location id" };
+    }
+
+    const authError = await this.authorizeChannel(
+      prefix,
+      normalized.subject,
+      user,
+      socket,
+    );
     if (authError) {
       this.logger.warn(
         `Subscription denied: ${socket.id} -> ${channel} (${authError})`,
@@ -193,35 +207,41 @@ export class RealtimeGateway
       return { subscribed: false, channel, error: authError };
     }
 
-    socket.join(channel);
+    socket.join(normalized.channel);
     if (
       prefix === "orders" &&
       user.role === "KDS_STATION" &&
-      user.stationLocationId === subject
+      user.stationLocationId === normalized.subject
     ) {
-      this.kdsPresence.markSubscribed(subject, socket.id);
+      this.kdsPresence.markSubscribed(normalized.subject, socket.id);
     }
-    this.logger.debug(`${socket.id} subscribed to ${channel}`);
-    return { subscribed: true, channel };
+    this.logger.debug(`${socket.id} subscribed to ${normalized.channel}`);
+    return { subscribed: true, channel: normalized.channel };
   }
 
   @SubscribeMessage("unsubscribe")
-  handleUnsubscribe(
+  async handleUnsubscribe(
     @MessageBody() data: { channel: string },
     @ConnectedSocket() socket: Socket,
-  ): { unsubscribed: boolean; channel: string } {
-    socket.leave(data.channel);
-    const match = CHANNEL_PATTERN.exec(data.channel);
+  ): Promise<{ unsubscribed: boolean; channel: string }> {
+    const channel = typeof data?.channel === "string" ? data.channel : "";
+    const match = CHANNEL_PATTERN.exec(channel);
+    const normalized = match
+      ? await this.normalizeSubscriptionChannel(match[1], match[2])
+      : null;
+    const joinedChannel = normalized?.channel ?? channel;
+    socket.leave(joinedChannel);
     const user = socket.data.user as SocketUser | undefined;
     if (
       match?.[1] === "orders" &&
+      normalized &&
       user?.role === "KDS_STATION" &&
-      user.stationLocationId === match[2]
+      user.stationLocationId === normalized.subject
     ) {
-      this.kdsPresence.markUnsubscribed(match[2], socket.id);
+      this.kdsPresence.markUnsubscribed(normalized.subject, socket.id);
     }
-    this.logger.debug(`${socket.id} unsubscribed from ${data.channel}`);
-    return { unsubscribed: true, channel: data.channel };
+    this.logger.debug(`${socket.id} unsubscribed from ${joinedChannel}`);
+    return { unsubscribed: true, channel: joinedChannel };
   }
 
   /* ------------------------------------------------------------------ */
@@ -489,6 +509,25 @@ export class RealtimeGateway
       default:
         return "Unknown channel prefix";
     }
+  }
+
+  private async normalizeSubscriptionChannel(
+    prefix: string,
+    subject: string,
+  ): Promise<{ channel: string; subject: string } | null> {
+    if (prefix !== "orders") {
+      return { channel: `${prefix}:${subject}`, subject };
+    }
+
+    const locationId = await resolveLocationRef(this.prisma, subject);
+    if (!locationId) {
+      return null;
+    }
+
+    return {
+      channel: `${prefix}:${locationId}`,
+      subject: locationId,
+    };
   }
 
   private async authorizeOrderChannel(
