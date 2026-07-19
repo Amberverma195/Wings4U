@@ -17,6 +17,7 @@ import {
   KDS_STATION_COOKIE_NAME,
   KdsAuthService,
 } from "../kds/kds-auth.service";
+import { KdsPresenceService } from "../kds/kds-presence.service";
 import {
   POS_STATION_COOKIE_NAME,
   PosAuthService,
@@ -40,7 +41,8 @@ type RealtimeEventName =
   | "support.auto_ticket"
   | "driver.availability_changed"
   | "driver.delivery_completed"
-  | "admin.busy_mode_changed";
+  | "admin.busy_mode_changed"
+  | "catalog.updated";
 
 const CHANNEL_PATTERN = /^(orders|order|chat|admin|drivers):(.+)$/;
 const UUID_RE =
@@ -86,6 +88,7 @@ export class RealtimeGateway
     private readonly sessionValidator: SessionValidator,
     private readonly prisma: PrismaService,
     private readonly kdsAuthService: KdsAuthService,
+    private readonly kdsPresence: KdsPresenceService,
     private readonly posAuthService: PosAuthService,
   ) {}
 
@@ -133,6 +136,7 @@ export class RealtimeGateway
 
   handleDisconnect(socket: Socket): void {
     const user = socket.data.user as SocketUser | undefined;
+    this.kdsPresence.markDisconnected(socket.id);
     if (user) {
       this.untrackSessionSocket(user.sessionId, socket.id);
     }
@@ -190,6 +194,13 @@ export class RealtimeGateway
     }
 
     socket.join(channel);
+    if (
+      prefix === "orders" &&
+      user.role === "KDS_STATION" &&
+      user.stationLocationId === subject
+    ) {
+      this.kdsPresence.markSubscribed(subject, socket.id);
+    }
     this.logger.debug(`${socket.id} subscribed to ${channel}`);
     return { subscribed: true, channel };
   }
@@ -200,6 +211,15 @@ export class RealtimeGateway
     @ConnectedSocket() socket: Socket,
   ): { unsubscribed: boolean; channel: string } {
     socket.leave(data.channel);
+    const match = CHANNEL_PATTERN.exec(data.channel);
+    const user = socket.data.user as SocketUser | undefined;
+    if (
+      match?.[1] === "orders" &&
+      user?.role === "KDS_STATION" &&
+      user.stationLocationId === match[2]
+    ) {
+      this.kdsPresence.markUnsubscribed(match[2], socket.id);
+    }
     this.logger.debug(`${socket.id} unsubscribed from ${data.channel}`);
     return { unsubscribed: true, channel: data.channel };
   }
@@ -252,6 +272,12 @@ export class RealtimeGateway
     payload: Record<string, unknown>,
   ): void {
     this.emitToChannel(`drivers:${locationId}`, event, payload);
+  }
+
+  emitCatalogUpdated(locationId: string): void {
+    this.emitToChannel(`orders:${locationId}`, "catalog.updated", {
+      location_id: locationId,
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -423,6 +449,9 @@ export class RealtimeGateway
     socket.data.user = user;
     if (!existing || existing.sessionId !== user.sessionId) {
       if (existing) {
+        if (existing.role === "KDS_STATION") {
+          this.kdsPresence.markDisconnected(socket.id);
+        }
         this.untrackSessionSocket(existing.sessionId, socket.id);
       }
       this.trackSessionSocket(user.sessionId, socket.id);

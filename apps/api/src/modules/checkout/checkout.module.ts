@@ -3,11 +3,12 @@ import { AuthModule } from "../auth/auth.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { PromotionsModule } from "../promotions/promotions.module";
 import { RewardsModule } from "../rewards/rewards.module";
+import { KdsModule } from "../kds/kds.module";
 import { CheckoutController } from "./checkout.controller";
 import { CheckoutService } from "./checkout.service";
 
 @Module({
-  imports: [AuthModule, RewardsModule, PromotionsModule, PaymentsModule],
+  imports: [AuthModule, RewardsModule, PromotionsModule, PaymentsModule, KdsModule],
   controllers: [CheckoutController],
   providers: [CheckoutService],
   exports: [CheckoutService],

@@ -11,6 +11,7 @@ import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { KdsAutoAcceptScheduler } from "../kds/kds-auto-accept.scheduler";
 import {
   assertCustomerMayUseDelivery,
   documentFuturePrepaymentPolicy,
@@ -212,6 +213,7 @@ export class CheckoutService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly autoAcceptScheduler: KdsAutoAcceptScheduler,
     private readonly rewardsService: RewardsService,
     private readonly promotionsService: PromotionsService,
     private readonly stripePaymentsService: StripePaymentsService,
@@ -1296,6 +1298,8 @@ export class CheckoutService {
         estimated_ready_at: serialized.estimated_ready_at,
       },
     );
+
+    await this.autoAcceptScheduler.scheduleOrder(orderId);
 
     return serialized;
   }

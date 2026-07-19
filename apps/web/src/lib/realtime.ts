@@ -69,6 +69,8 @@ export function subscribeToChannels(
   socket: Socket,
   channels: readonly string[],
   options?: {
+    /** Fires when the server confirms a channel subscription. */
+    onSubscribed?: (channel: string) => void;
     /** Fires when the server rejects a channel subscribe (wrong user, stale session, etc.). */
     onDenied?: (channel: string, error?: string) => void;
   },
@@ -90,6 +92,8 @@ export function subscribeToChannels(
               ack.error ?? "(no reason)",
             );
             options?.onDenied?.(channel, ack.error);
+          } else if (ack?.subscribed === true) {
+            options?.onSubscribed?.(channel);
           }
         },
       );

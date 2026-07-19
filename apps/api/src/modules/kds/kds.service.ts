@@ -520,38 +520,44 @@ export class KdsService {
     actorUserId: string | null,
     locationId: string,
   ) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-    });
-    if (!order) throw new NotFoundException("Order not found");
-    if (order.locationId !== locationId) {
-      throw new UnprocessableEntityException({
-        message: "Order does not belong to this location",
-        field: "location_id",
-      });
-    }
-    if (order.status !== "PLACED") {
-      throw new UnprocessableEntityException({
-        message: `Order cannot be accepted in status "${order.status}". Must be PLACED.`,
-        field: "status",
-      });
-    }
-
     const now = new Date();
     // PRD §7.2: accept lands on PREPARING automatically.
     // Two status events are recorded (PLACED→ACCEPTED, ACCEPTED→PREPARING)
     // so the audit trail shows both hops, but the order's persisted status
     // is PREPARING — the ticket is "in kitchen" immediately.
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: orderId },
-        // PRD §11.1B: a human accept clears the manual-review flag regardless
-        // of how it was raised (heartbeat lapse).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new NotFoundException("Order not found");
+      if (order.locationId !== locationId) {
+        throw new UnprocessableEntityException({
+          message: "Order does not belong to this location",
+          field: "location_id",
+        });
+      }
+      if (order.status !== "PLACED") {
+        throw new UnprocessableEntityException({
+          message: `Order cannot be accepted in status "${order.status}". Must be PLACED.`,
+          field: "status",
+        });
+      }
+
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, locationId, status: "PLACED" },
         data: {
           status: "PREPARING",
           acceptedAt: now,
           requiresManualReview: false,
         },
+      });
+      if (claimed.count !== 1) {
+        throw new UnprocessableEntityException({
+          message: "Order was accepted by another process",
+          field: "status",
+        });
+      }
+
+      const accepted = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
         include: {
           orderItems: {
             include: { modifiers: true, flavours: true },
@@ -562,8 +568,8 @@ export class KdsService {
             take: 1,
           },
         },
-      }),
-      this.prisma.orderStatusEvent.create({
+      });
+      await tx.orderStatusEvent.create({
         data: {
           orderId,
           locationId,
@@ -572,8 +578,8 @@ export class KdsService {
           eventType: "KDS_ACCEPT",
           actorUserId,
         },
-      }),
-      this.prisma.orderStatusEvent.create({
+      });
+      await tx.orderStatusEvent.create({
         data: {
           orderId,
           locationId,
@@ -582,8 +588,9 @@ export class KdsService {
           eventType: "KDS_AUTO_PREPARING",
           actorUserId,
         },
-      }),
-    ]);
+      });
+      return accepted;
+    });
 
     // Emit accepted first (customer detail page listens), then status_changed
     // for the ACCEPTED→PREPARING hop.
@@ -1689,52 +1696,55 @@ export class KdsService {
     };
   }
 
-  // PRD §11.1B: invoked by KdsAutoAcceptWorker after the configured
-  // kds_auto_accept_seconds have elapsed and the KDS heartbeat is healthy.
+  // Invoked after the configured deadline when an authenticated KDS orders
+  // socket is present.
   // Mirrors acceptOrder() but records SYSTEM actor-less audit events.
   async systemAutoAccept(orderId: string): Promise<boolean> {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) return false;
-    if (order.status !== "PLACED") return false;
-
     const now = new Date();
     const systemPayload = {
       source: "SYSTEM",
       action_source: "SYSTEM_AUTO_ACCEPT",
     } as const;
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: orderId },
+    const order = await this.prisma.$transaction(async (tx) => {
+      const candidate = await tx.order.findUnique({ where: { id: orderId } });
+      if (!candidate || candidate.status !== "PLACED") return null;
+
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: "PLACED" },
         data: {
           status: "PREPARING",
           acceptedAt: now,
           requiresManualReview: false,
         },
-      }),
-      this.prisma.orderStatusEvent.create({
+      });
+      if (claimed.count !== 1) return null;
+
+      await tx.orderStatusEvent.create({
         data: {
           orderId,
-          locationId: order.locationId,
+          locationId: candidate.locationId,
           fromStatus: "PLACED",
           toStatus: "ACCEPTED",
           eventType: "SYSTEM_AUTO_ACCEPT",
           actorUserId: null,
           payloadJson: systemPayload,
         },
-      }),
-      this.prisma.orderStatusEvent.create({
+      });
+      await tx.orderStatusEvent.create({
         data: {
           orderId,
-          locationId: order.locationId,
+          locationId: candidate.locationId,
           fromStatus: "ACCEPTED",
           toStatus: "PREPARING",
           eventType: "SYSTEM_AUTO_PREPARING",
           actorUserId: null,
           payloadJson: systemPayload,
         },
-      }),
-    ]);
+      });
+      return candidate;
+    });
+    if (!order) return false;
 
     this.realtime.emitOrderEvent(order.locationId, orderId, "order.accepted", {
       order_id: orderId,
@@ -1756,7 +1766,7 @@ export class KdsService {
     return true;
   }
 
-  // PRD §11.1B: at timeout, if KDS heartbeat is not healthy, flag the order
+  // At timeout, if no authenticated KDS orders socket is present, flag the order
   // for manual review rather than auto-accepting. Idempotent — no-ops if the
   // order is no longer PLACED or already flagged.
   async flagForManualReview(orderId: string): Promise<boolean> {
@@ -1773,10 +1783,15 @@ export class KdsService {
       return false;
     }
 
-    await this.prisma.order.update({
-      where: { id: orderId },
+    const flagged = await this.prisma.order.updateMany({
+      where: {
+        id: orderId,
+        status: "PLACED",
+        requiresManualReview: false,
+      },
       data: { requiresManualReview: true },
     });
+    if (flagged.count !== 1) return false;
 
     this.realtime.emitOrderEvent(
       order.locationId,

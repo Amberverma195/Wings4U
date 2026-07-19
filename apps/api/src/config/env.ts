@@ -8,6 +8,10 @@ export const apiEnvironment = {
   port: Number(process.env.PORT ?? 3001),
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "",
+  redisIdleDisconnectMs: positiveIntFromEnv(
+    "REDIS_IDLE_DISCONNECT_MS",
+    60_000,
+  ),
   catalogMenuCacheTtlSeconds: positiveIntFromEnv(
     "CATALOG_MENU_CACHE_TTL_SECONDS",
     60,

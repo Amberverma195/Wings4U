@@ -21,6 +21,12 @@ function createWebRevalidationMock() {
   };
 }
 
+function createRealtimeMock() {
+  return {
+    emitCatalogUpdated: jest.fn(),
+  };
+}
+
 const itemPayload = {
   name: "Butter Tarts",
   description: "House-made butter tarts",
@@ -54,7 +60,13 @@ describe("AdminMenuService catalog invalidation", () => {
     prisma.menuCategory.create.mockResolvedValue({ id: "cat-1" });
     const cache = createCacheMock();
     const webRevalidation = createWebRevalidationMock();
-    const service = new AdminMenuService(prisma as any, cache as any, webRevalidation as any);
+    const realtime = createRealtimeMock();
+    const service = new AdminMenuService(
+      prisma as any,
+      cache as any,
+      webRevalidation as any,
+      realtime as any,
+    );
 
     const result = await service.createCategory("loc-1", {
       name: "Salads",
@@ -65,6 +77,7 @@ describe("AdminMenuService catalog invalidation", () => {
     expect(result).toEqual({ id: "cat-1" });
     expect(cache.invalidateLocation).toHaveBeenCalledWith("loc-1");
     expect(webRevalidation.revalidateLocation).toHaveBeenCalledWith("loc-1");
+    expect(realtime.emitCatalogUpdated).toHaveBeenCalledWith("loc-1");
   });
 
   it("does not invalidate when the write fails", async () => {
@@ -73,7 +86,13 @@ describe("AdminMenuService catalog invalidation", () => {
     prisma.menuCategory.create.mockRejectedValue(new Error("db failed"));
     const cache = createCacheMock();
     const webRevalidation = createWebRevalidationMock();
-    const service = new AdminMenuService(prisma as any, cache as any, webRevalidation as any);
+    const realtime = createRealtimeMock();
+    const service = new AdminMenuService(
+      prisma as any,
+      cache as any,
+      webRevalidation as any,
+      realtime as any,
+    );
 
     await expect(
       service.createCategory("loc-1", {
@@ -84,6 +103,7 @@ describe("AdminMenuService catalog invalidation", () => {
     ).rejects.toThrow("db failed");
     expect(cache.invalidateLocation).not.toHaveBeenCalled();
     expect(webRevalidation.revalidateLocation).not.toHaveBeenCalled();
+    expect(realtime.emitCatalogUpdated).not.toHaveBeenCalled();
   });
 });
 
@@ -129,6 +149,7 @@ describe("AdminMenuService wing combo side synchronization", () => {
       prisma as any,
       cache as any,
       webRevalidation as any,
+      createRealtimeMock() as any,
     );
 
     await service.createItem("loc-1", itemPayload);
@@ -199,6 +220,7 @@ describe("AdminMenuService wing combo side synchronization", () => {
       prisma as any,
       createCacheMock() as any,
       createWebRevalidationMock() as any,
+      createRealtimeMock() as any,
     );
 
     await service.updateItem("loc-1", existingItem.id, {
@@ -257,6 +279,7 @@ describe("AdminMenuService wing combo side synchronization", () => {
       prisma as any,
       createCacheMock() as any,
       createWebRevalidationMock() as any,
+      createRealtimeMock() as any,
     );
 
     await service.deleteItem("loc-1", existingItem.id);

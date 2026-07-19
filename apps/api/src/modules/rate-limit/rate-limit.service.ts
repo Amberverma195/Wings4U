@@ -30,16 +30,15 @@ export class RateLimiterService {
   async check(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
     const now = Date.now();
     const windowStart = now - windowMs;
-    const redis = this.redisService.getClient();
-
-    if (redis) {
-      try {
-        return await this.checkRedis(redis, key, limit, windowMs, now, windowStart);
-      } catch (err) {
-        this.logger.warn(
-          `Redis rate-limit check failed, using in-process fallback: ${(err as Error).message}`,
-        );
-      }
+    try {
+      const result = await this.redisService.withClient((redis) =>
+        this.checkRedis(redis, key, limit, windowMs, now, windowStart),
+      );
+      if (result) return result;
+    } catch (err) {
+      this.logger.warn(
+        `Redis rate-limit check failed, using in-process fallback: ${(err as Error).message}`,
+      );
     }
 
     return this.checkMemory(key, limit, windowMs, now, windowStart);

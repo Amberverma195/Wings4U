@@ -2014,11 +2014,15 @@ export function KdsClient() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState<KdsOrder | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [pageVisible, setPageVisible] = useState(true);
+  const [realtimeSubscribed, setRealtimeSubscribed] = useState(false);
+  const [backgroundRefreshing, setBackgroundRefreshing] = useState(false);
   const socketRef = useRef<ReturnType<typeof createOrdersSocket> | null>(null);
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const stopAlertListenerRef = useRef<(() => void) | null>(null);
   const knownVisibleOrderIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedVisibleOrdersRef = useRef(false);
+  const loadingOrdersRef = useRef(false);
   const sessionControls = KDS_SESSION_CONTROLS;
 
   const stopKdsAlert = useCallback(() => {
@@ -2093,11 +2097,32 @@ export function KdsClient() {
       .catch(() => setStationAuth("NEEDS_PIN"));
   }, []);
 
+  useEffect(() => {
+    const updateVisibility = () => {
+      setPageVisible(document.visibilityState === "visible");
+    };
+    updateVisibility();
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
+
   const canUseBoard = stationAuth === "AUTHENTICATED";
   const needsPin = stationAuth === "NEEDS_PIN";
 
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
+  const loadOrders = useCallback(async (options: {
+    showLoading?: boolean;
+    backgroundRefresh?: boolean;
+  } = {}) => {
+    if (loadingOrdersRef.current) return;
+    loadingOrdersRef.current = true;
+    const showLoading =
+      options.showLoading === true || !hasLoadedVisibleOrdersRef.current;
+    if (showLoading) {
+      setLoading(true);
+    }
+    if (options.backgroundRefresh === true) {
+      setBackgroundRefreshing(true);
+    }
     setError(null);
     try {
       const response = await kdsJson<KdsOrder[]>(
@@ -2121,7 +2146,13 @@ export function KdsClient() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load KDS orders");
     } finally {
-      setLoading(false);
+      loadingOrdersRef.current = false;
+      if (showLoading) {
+        setLoading(false);
+      }
+      if (options.backgroundRefresh === true) {
+        setBackgroundRefreshing(false);
+      }
     }
   }, [sessionControls, startKdsAlert]);
 
@@ -2150,8 +2181,8 @@ export function KdsClient() {
       hasLoadedVisibleOrdersRef.current = false;
       return;
     }
-    void loadOrders();
-  }, [canUseBoard, loadOrders, stopKdsAlert]);
+    if (pageVisible) void loadOrders({ showLoading: true });
+  }, [canUseBoard, loadOrders, pageVisible, stopKdsAlert]);
 
   useEffect(() => {
     return () => stopKdsAlert();
@@ -2164,22 +2195,23 @@ export function KdsClient() {
     loadOrdersRef.current = loadOrders;
   }, [loadOrders]);
 
-  // Realtime should be the fast path, but a KDS board is operationally too
-  // important to rely on a single long-lived socket. This quiet fallback keeps
-  // tickets moving if the socket drops, reconnects slowly, or a room
-  // subscription is denied by a stale station session.
+  // Realtime should be the fast path, but a disconnected KDS board still
+  // needs an explicit, visible safety refresh.
   useEffect(() => {
-    if (!canUseBoard) return;
+    if (!canUseBoard || !pageVisible || realtimeSubscribed) return;
     const intervalId = window.setInterval(() => {
-      void loadOrdersRef.current();
-    }, 10_000);
+      void loadOrdersRef.current({ backgroundRefresh: true });
+    }, 60_000);
     return () => window.clearInterval(intervalId);
-  }, [canUseBoard]);
+  }, [canUseBoard, pageVisible, realtimeSubscribed]);
   // Socket.IO realtime — subscribe to location-level orders channel.
   // `subscribeToChannels` keeps the subscription alive across reconnects
   // so KDS updates come from realtime events after the initial load.
   useEffect(() => {
-    if (!canUseBoard) return;
+    if (!canUseBoard || !pageVisible) {
+      setRealtimeSubscribed(false);
+      return;
+    }
 
     const socket = createOrdersSocket({ preferKdsStation: true });
     socketRef.current = socket;
@@ -2195,7 +2227,16 @@ export function KdsClient() {
       }
       refresh();
     };
+    const onConnect = () => {
+      refresh();
+    };
+    const onDisconnect = () => {
+      setRealtimeSubscribed(false);
+    };
 
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onDisconnect);
     socket.on("order.placed", refreshWithAlert);
     socket.on("order.accepted", refresh);
     socket.on("order.status_changed", refresh);
@@ -2208,11 +2249,17 @@ export function KdsClient() {
     socket.on("cancellation.decided", refresh);
     const disposeSubscription = subscribeToChannels(socket, [
       `orders:${DEFAULT_LOCATION_ID}`,
-    ]);
+    ], {
+      onSubscribed: () => setRealtimeSubscribed(true),
+      onDenied: () => setRealtimeSubscribed(false),
+    });
     socket.connect();
 
     return () => {
       disposeSubscription();
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onDisconnect);
       socket.off("order.placed", refreshWithAlert);
       socket.off("order.accepted", refresh);
       socket.off("order.status_changed", refresh);
@@ -2225,8 +2272,9 @@ export function KdsClient() {
       socket.off("cancellation.decided", refresh);
       socket.disconnect();
       socketRef.current = null;
+      setRealtimeSubscribed(false);
     };
-  }, [canUseBoard, startKdsAlert]);
+  }, [canUseBoard, pageVisible, startKdsAlert]);
 
   /* ---- Gate: show loading / station password ---- */
 
@@ -2270,7 +2318,7 @@ export function KdsClient() {
           <button
             type="button"
             className="kds-refresh-btn"
-            onClick={() => void loadOrders()}
+            onClick={() => void loadOrders({ showLoading: true })}
             style={{
               background: "linear-gradient(180deg, #ff4b2b 0%, #ff416c 100%)",
               color: "white",
@@ -2297,7 +2345,16 @@ export function KdsClient() {
         </div>
       </div>
 
-      {loading && orders.length === 0 ? <p className="surface-muted">Loading kitchen tickets...</p> : null}
+      {canUseBoard && pageVisible && !realtimeSubscribed ? (
+        <p className="surface-error" style={{ marginTop: 0 }}>
+          KDS realtime is not connected. Using a background refresh every 60 seconds.
+        </p>
+      ) : null}
+      {backgroundRefreshing ? (
+        <p className="surface-muted">Loading kitchen tickets (background refresh)...</p>
+      ) : loading && orders.length === 0 ? (
+        <p className="surface-muted">Loading kitchen tickets...</p>
+      ) : null}
       {error ? <p className="surface-error" style={{ marginTop: 0 }}>{error}</p> : null}
 
       {/* Column layout */}
@@ -2350,7 +2407,7 @@ export function KdsClient() {
                     key={order.id}
                     order={order}
                     session={sessionControls}
-                    onRefresh={loadOrders}
+                    onRefresh={() => loadOrders({ showLoading: true })}
                     onClick={() => setDetailOrder(order)}
                   />
                 ))

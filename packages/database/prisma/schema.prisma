@@ -31,7 +31,6 @@ model Location {
   checkoutIdempotencyKeys  CheckoutIdempotencyKey[]
   dailyTaxSummaries        DailyTaxSummary[]
   devices                  Device[]
-  kdsHeartbeats            KdsHeartbeat[]
   kdsStationSessions       KdsStationSession[]
   driverPayouts            DriverPayout[]
   driverProfiles           DriverProfile[]
@@ -1850,21 +1849,6 @@ enum PayoutStatus {
   CANCELLED
 
   @@map("payout_status")
-}
-
-model KdsHeartbeat {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  locationId String   @map("location_id") @db.Uuid
-  sessionKey String   @map("session_key")
-  deviceId   String?  @map("device_id") @db.Uuid
-  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([locationId, sessionKey], map: "uq_kds_heartbeats_loc_session")
-  @@index([locationId, lastSeenAt], map: "idx_kds_heartbeats_loc_last_seen")
-  @@map("kds_heartbeats")
 }
 
 model BusyModeEvent {

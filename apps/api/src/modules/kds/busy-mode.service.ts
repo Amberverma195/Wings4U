@@ -22,6 +22,7 @@ export class BusyModeService {
 
   private async invalidateCatalogCaches(locationId: string): Promise<void> {
     await this.catalogCache.invalidateLocation(locationId);
+    this.realtime.emitCatalogUpdated(locationId);
     void this.webCatalogRevalidation.revalidateLocation(locationId);
   }
 

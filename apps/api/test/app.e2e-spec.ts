@@ -6,8 +6,12 @@ import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.setup";
 import { signJwt } from "../src/common/utils/jwt";
 import { PrismaService } from "../src/database/prisma.service";
-import { KdsAutoAcceptWorker } from "../src/modules/kds/kds-auto-accept.worker";
-import { OverdueDeliveryWorker } from "../src/modules/kds/overdue-delivery.worker";
+import { KdsAutoAcceptScheduler } from "../src/modules/kds/kds-auto-accept.scheduler";
+import {
+  KDS_RECONNECT_GRACE_MS,
+  KdsPresenceService,
+} from "../src/modules/kds/kds-presence.service";
+import { OverdueDeliveryJob } from "../src/modules/kds/overdue-delivery.job";
 import { RealtimeGateway } from "../src/modules/realtime/realtime.gateway";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
@@ -1638,8 +1642,8 @@ describe("API (e2e)", () => {
       expect(nextAssignRes.body.data.assigned_driver_user_id).toBe(driverUserId);
     });
 
-    // PRD §11.1B: auto-accept fires when the KDS heartbeat is fresh.
-    it("auto-accept worker promotes PLACED orders to PREPARING when heartbeat is healthy", async () => {
+    // Auto-accept fires when an authenticated KDS orders socket is present.
+    it("auto-accept scheduler promotes PLACED orders when KDS is connected", async () => {
       const orderId = await createCheckoutOrder(
         server,
         customerToken,
@@ -1653,12 +1657,15 @@ describe("API (e2e)", () => {
         data: { placedAt: new Date(Date.now() - 60_000) },
       });
 
-      await authedPost(server, "/kds/heartbeat", managerToken, locationId)
-        .send({ session_key: "e2e-auto-accept" })
-        .expect(201);
-
-      const worker = app.get(KdsAutoAcceptWorker);
-      await worker.tick();
+      const socketId = "e2e-auto-accept";
+      const presence = app.get(KdsPresenceService);
+      presence.markSubscribed(locationId, socketId);
+      const scheduler = app.get(KdsAutoAcceptScheduler);
+      await scheduler.processOrder(orderId);
+      presence.markDisconnected(
+        socketId,
+        Date.now() - KDS_RECONNECT_GRACE_MS - 1,
+      );
 
       const order = await prisma.order.findUniqueOrThrow({
         where: { id: orderId },
@@ -1677,9 +1684,9 @@ describe("API (e2e)", () => {
       );
     });
 
-    // PRD §11.1B: without a fresh heartbeat the worker must flag rather than
+    // Without KDS socket presence the scheduler must flag rather than
     // silently auto-accept.
-    it("auto-accept worker flags manual review when no recent heartbeat", async () => {
+    it("auto-accept scheduler flags manual review when KDS is disconnected", async () => {
       const orderId = await createCheckoutOrder(
         server,
         customerToken,
@@ -1691,10 +1698,8 @@ describe("API (e2e)", () => {
         where: { id: orderId },
         data: { placedAt: new Date(Date.now() - 60_000) },
       });
-      await prisma.kdsHeartbeat.deleteMany({ where: { locationId } });
-
-      const worker = app.get(KdsAutoAcceptWorker);
-      await worker.tick();
+      const scheduler = app.get(KdsAutoAcceptScheduler);
+      await scheduler.processOrder(orderId);
 
       const order = await prisma.order.findUniqueOrThrow({
         where: { id: orderId },
@@ -1949,7 +1954,7 @@ describe("API (e2e)", () => {
       });
     });
 
-    it("overdue delivery worker opens one overdue support ticket per order", async () => {
+    it("overdue delivery job opens one overdue support ticket per order", async () => {
       const { itemId, quantity } = await getDeliveryOrderInput(prisma, locationId);
       const orderId = await createCheckoutOrder(
         server,
@@ -1994,9 +1999,9 @@ describe("API (e2e)", () => {
         },
       });
 
-      const worker = app.get(OverdueDeliveryWorker);
-      await worker.tick();
-      await worker.tick();
+      const job = app.get(OverdueDeliveryJob);
+      await job.runOnce();
+      await job.runOnce();
 
       const tickets = await prisma.supportTicket.findMany({
         where: { orderId, ticketType: "DELIVERY_OVERDUE" },

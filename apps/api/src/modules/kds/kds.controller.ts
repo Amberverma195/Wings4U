@@ -27,7 +27,6 @@ import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { Public } from "../../common/decorators/roles.decorator";
 import { BusyModeService } from "./busy-mode.service";
 import { DeliveryPinService } from "./delivery-pin.service";
-import { KdsHeartbeatService } from "./kds-heartbeat.service";
 import { KdsService } from "./kds.service";
 
 class KdsOrdersQueryDto {
@@ -140,15 +139,6 @@ class RefundRequestDto {
   reason!: string;
 }
 
-class HeartbeatDto {
-  @IsString()
-  session_key!: string;
-
-  @IsOptional()
-  @IsUUID()
-  device_id?: string;
-}
-
 class CompleteDeliveryDto {
   @IsOptional()
   @IsString()
@@ -195,7 +185,6 @@ class BusyModeHistoryQueryDto {
 export class KdsController {
   constructor(
     private readonly kdsService: KdsService,
-    private readonly heartbeatService: KdsHeartbeatService,
     private readonly busyMode: BusyModeService,
     private readonly deliveryPin: DeliveryPinService,
   ) {}
@@ -228,17 +217,6 @@ export class KdsController {
       Number.isFinite(limit) ? limit : undefined,
       query.cursor,
     );
-  }
-
-  // PRD §11.1B: KDS posts a heartbeat periodically so the auto-accept worker
-  // can decide whether to auto-accept or flag manual-review at timeout.
-  @Post("heartbeat")
-  async heartbeat(@Body() body: HeartbeatDto, @Req() req: Request) {
-    return this.heartbeatService.recordHeartbeat({
-      locationId: req.locationId!,
-      sessionKey: body.session_key,
-      deviceId: body.device_id,
-    });
   }
 
   @Get("orders/history")

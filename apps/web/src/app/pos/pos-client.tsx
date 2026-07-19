@@ -434,6 +434,7 @@ function PosLoginScreen({ onUnlocked }: { onUnlocked: () => void }) {
 function PosShell({ onLocked }: { onLocked: () => void }) {
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [pageVisible, setPageVisible] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
 
@@ -520,19 +521,15 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   }, [diningOption, phoneDeliveryDisabled]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      void loadMenu();
-    }, 30_000);
-
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void loadMenu();
-      }
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible) void loadMenu();
     };
 
+    setPageVisible(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [loadMenu]);
@@ -582,6 +579,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   /* ---------- Realtime updates ---------- */
 
   useEffect(() => {
+    if (!pageVisible) return;
     const socket = createOrdersSocket({ preferPosStation: true });
 
     const refreshOrders = (event?: { payload?: Record<string, unknown> }) => {
@@ -605,13 +603,22 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
       void loadOrdersRef.current();
     };
+    const refreshCatalog = () => void loadMenu();
+    let hasConnected = false;
+    const refreshAfterConnect = () => {
+      void loadOrdersRef.current();
+      if (hasConnected) void loadMenu();
+      hasConnected = true;
+    };
 
+    socket.on("connect", refreshAfterConnect);
     socket.on("order.placed", refreshOrders);
     socket.on("order.accepted", refreshOrders);
     socket.on("order.status_changed", refreshOrders);
     socket.on("order.cancelled", refreshOrders);
     socket.on("cancellation.requested", refreshOrders);
     socket.on("cancellation.decided", refreshOrders);
+    socket.on("catalog.updated", refreshCatalog);
 
     const disposeSubscription = subscribeToChannels(socket, [
       `orders:${DEFAULT_LOCATION_ID}`,
@@ -620,9 +627,11 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
 
     return () => {
       disposeSubscription();
+      socket.off("connect", refreshAfterConnect);
+      socket.off("catalog.updated", refreshCatalog);
       socket.disconnect();
     };
-  }, []);
+  }, [loadMenu, pageVisible]);
 
   /* ---------- Cart management ---------- */
 

@@ -12,6 +12,7 @@ import {
 import * as bcrypt from "bcryptjs";
 import { CatalogCacheService } from "../catalog/catalog-cache.service";
 import { WebCatalogRevalidationService } from "../catalog/web-catalog-revalidation.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 const STORE_HOURS_SERVICE_TYPE = "STORE";
 const STORE_HOURS_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -133,10 +134,12 @@ export class LocationSettingsService {
     private readonly prisma: PrismaService,
     private readonly catalogCache: CatalogCacheService,
     private readonly webCatalogRevalidation: WebCatalogRevalidationService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   private async invalidateCatalogCaches(locationId: string): Promise<void> {
     await this.catalogCache.invalidateLocation(locationId);
+    this.realtime.emitCatalogUpdated(locationId);
     void this.webCatalogRevalidation.revalidateLocation(locationId);
   }
 

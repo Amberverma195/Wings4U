@@ -14,6 +14,7 @@ import {
 } from "./menu-image-storage";
 import { CatalogCacheService } from "../catalog/catalog-cache.service";
 import { WebCatalogRevalidationService } from "../catalog/web-catalog-revalidation.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 // ── DTO types (used by the controller validation classes) ──
 
@@ -153,12 +154,14 @@ export class AdminMenuService {
     private readonly prisma: PrismaService,
     private readonly catalogCache: CatalogCacheService,
     private readonly webCatalogRevalidation: WebCatalogRevalidationService,
+    private readonly realtime: RealtimeGateway,
   ) {
     this.imageStorage = new LocalMenuImageStorage();
   }
 
   private async invalidateCatalogCaches(locationId: string): Promise<void> {
     await this.catalogCache.invalidateLocation(locationId);
+    this.realtime.emitCatalogUpdated(locationId);
     void this.webCatalogRevalidation.revalidateLocation(locationId);
   }
 

@@ -9,13 +9,12 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { SupportModule } from "../support/support.module";
 import { BusyModeService } from "./busy-mode.service";
 import { DeliveryPinService } from "./delivery-pin.service";
-import { KdsAutoAcceptWorker } from "./kds-auto-accept.worker";
+import { KdsAutoAcceptScheduler } from "./kds-auto-accept.scheduler";
 import { KdsController } from "./kds.controller";
-import { KdsHeartbeatService } from "./kds-heartbeat.service";
 import { KdsService } from "./kds.service";
-import { OverdueDeliveryWorker } from "./overdue-delivery.worker";
 import { KdsAuthService } from "./kds-auth.service";
 import { KdsAuthController } from "./kds-auth.controller";
+import { OverdueDeliveryJob } from "./overdue-delivery.job";
 
 @Module({
   imports: [
@@ -29,15 +28,21 @@ import { KdsAuthController } from "./kds-auth.controller";
   controllers: [KdsController, KdsAuthController],
   providers: [
     KdsService,
-    KdsHeartbeatService,
-    KdsAutoAcceptWorker,
+    KdsAutoAcceptScheduler,
     BusyModeService,
     DeliveryPinService,
     KdsStationGuard,
     StoreNetworkGuard,
-    OverdueDeliveryWorker,
     KdsAuthService,
+    OverdueDeliveryJob,
   ],
-  exports: [KdsService, KdsHeartbeatService, BusyModeService, DeliveryPinService, KdsAuthService],
+  exports: [
+    KdsService,
+    KdsAutoAcceptScheduler,
+    BusyModeService,
+    DeliveryPinService,
+    KdsAuthService,
+    OverdueDeliveryJob,
+  ],
 })
 export class KdsModule {}

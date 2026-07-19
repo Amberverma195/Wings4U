@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadEnvFile } from "node:process";
-import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
@@ -12,7 +12,7 @@ if (existsSync(rootEnvPath)) {
 }
 
 function getConnectionString(): string {
-  const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  const connectionString = process.env.DATABASE_URL ?? process.env.DIRECT_URL;
 
   if (!connectionString) {
     throw new Error("PrismaService requires DIRECT_URL or DATABASE_URL to be set");
@@ -25,6 +25,10 @@ function createPrismaClientOptions(): ConstructorParameters<typeof PrismaClient>
   return {
     adapter: new PrismaPg({
       connectionString: getConnectionString(),
+      max: 5,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+      allowExitOnIdle: true,
     }),
     transactionOptions: {
       maxWait: 10_000,
@@ -34,13 +38,9 @@ function createPrismaClientOptions(): ConstructorParameters<typeof PrismaClient>
 }
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor() {
     super(createPrismaClientOptions());
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.$connect();
   }
 
   async onModuleDestroy(): Promise<void> {
