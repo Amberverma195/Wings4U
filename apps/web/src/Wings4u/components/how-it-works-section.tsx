@@ -22,7 +22,7 @@ const STEPS: Step[] = [
     num: "02",
     icon: "\u{1F525}",
     title: "WE FIRE IT FRESH",
-    desc: "Every single wing is hand-breaded when you order. No shortcuts. Just the fryer.",
+    desc: "Every single wing is hand-breaded Everyday! No shortcuts. Just the fryer.",
     arrow: true,
   },
   {

@@ -111,6 +111,38 @@ type KdsApiEnvelope<T> = {
   errors?: { message: string }[] | null;
 };
 
+type KdsSchedule = {
+  timezone: string;
+  is_open: boolean;
+  current_window: {
+    opens_at: string;
+    closes_at: string;
+  } | null;
+  next_open_at: string | null;
+  has_active_tickets: boolean;
+  hours: Array<{
+    day_of_week: number;
+    time_from: string;
+    time_to: string;
+    is_closed: boolean;
+  }>;
+};
+
+type KdsAuthPayload = {
+  authenticated?: boolean;
+  ok?: boolean;
+  schedule?: KdsSchedule | null;
+};
+
+type KdsLifecycleState =
+  | "LOCKED"
+  | "WAITING_FOR_OPEN"
+  | "CONNECTING"
+  | "ONLINE"
+  | "REALTIME_FALLBACK"
+  | "DRAINING"
+  | "SCHEDULED_CLOSED";
+
 /* ------------------------------------------------------------------ */
 /*  Status columns                                                     */
 /* ------------------------------------------------------------------ */
@@ -146,6 +178,26 @@ function formatKitchenTime(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "No ETA";
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function unwrapApiData<T>(value: KdsApiEnvelope<T> | T | null): T | null {
+  if (!value) return null;
+  if (typeof value === "object" && "data" in value && value.data !== undefined) {
+    return value.data ?? null;
+  }
+  return value as T;
+}
+
+function formatScheduleTime(value: string | null, timezone: string | undefined) {
+  if (!value) return "No opening is scheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Opening time unavailable";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 /** Pretty-print a stored phone (E.164 or digits) for the ticket; NANP +1 (XXX) XXX-XXXX using slice. */
@@ -1730,9 +1782,11 @@ function KdsFrame({ children }: { children: React.ReactNode }) {
 function KdsStatusScreen({
   title,
   message,
+  action,
 }: {
   title: string;
   message: string;
+  action?: React.ReactNode;
 }) {
   return (
     <KdsFrame>
@@ -1749,13 +1803,14 @@ function KdsStatusScreen({
             {title}
           </h1>
           <p className="kds-modal-copy" style={{ margin: 0 }}>{message}</p>
+          {action ? <div style={{ marginTop: "1rem" }}>{action}</div> : null}
         </div>
       </section>
     </KdsFrame>
   );
 }
 
-function KdsLoginScreen({ onLogin }: { onLogin: () => void }) {
+function KdsLoginScreen({ onLogin }: { onLogin: (schedule: KdsSchedule) => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1776,12 +1831,19 @@ function KdsLoginScreen({ onLogin }: { onLogin: () => void }) {
             location_id: DEFAULT_LOCATION_ID,
           }),
         });
-        const body = (await res.json().catch(() => null)) as KdsApiEnvelope<unknown> | null;
+        const body = (await res.json().catch(() => null)) as
+          | KdsApiEnvelope<KdsAuthPayload>
+          | KdsAuthPayload
+          | null;
         if (!res.ok) {
           throw new Error(getApiErrorMessage(body, `Request failed (${res.status})`));
         }
+        const payload = unwrapApiData(body);
+        if (!payload?.schedule) {
+          throw new Error("KDS schedule was not returned");
+        }
         setCode("");
-        onLogin();
+        onLogin(payload.schedule);
       } catch (err) {
         setCode("");
         setError(err instanceof Error ? err.message : "Could not sign in");
@@ -2013,16 +2075,24 @@ export function KdsClient() {
   const [error, setError] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState<KdsOrder | null>(null);
-  const [logoutBusy, setLogoutBusy] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const [realtimeSubscribed, setRealtimeSubscribed] = useState(false);
+  const [realtimeConnecting, setRealtimeConnecting] = useState(false);
   const [backgroundRefreshing, setBackgroundRefreshing] = useState(false);
+  const [schedule, setSchedule] = useState<KdsSchedule | null>(null);
+  const [draining, setDraining] = useState(false);
+  const [scheduleRefreshing, setScheduleRefreshing] = useState(false);
+  const [showScheduledClosed, setShowScheduledClosed] = useState(false);
+  const closingStationRef = useRef(false);
+  const drainRefreshPendingRef = useRef(false);
+  const scheduleRefreshPendingRef = useRef(false);
+  const loadOrdersPromiseRef = useRef<Promise<KdsOrder[] | null> | null>(null);
   const socketRef = useRef<ReturnType<typeof createOrdersSocket> | null>(null);
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const stopAlertListenerRef = useRef<(() => void) | null>(null);
   const knownVisibleOrderIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedVisibleOrdersRef = useRef(false);
-  const loadingOrdersRef = useRef(false);
+  const lifecycleStateRef = useRef<KdsLifecycleState | null>(null);
   const sessionControls = KDS_SESSION_CONTROLS;
 
   const stopKdsAlert = useCallback(() => {
@@ -2084,18 +2154,24 @@ export function KdsClient() {
     }
   }, []);
 
+  const applySchedule = useCallback((nextSchedule: KdsSchedule) => {
+    setSchedule(nextSchedule);
+    setDraining(!nextSchedule.is_open && nextSchedule.has_active_tickets);
+  }, []);
+
   useEffect(() => {
     apiFetch(`/api/v1/kds/auth/status?location_id=${encodeURIComponent(DEFAULT_LOCATION_ID)}`)
       .then(r => r.json())
-      .then((body) =>
-        setStationAuth(
-          body?.data?.authenticated === true || body?.authenticated === true
-            ? "AUTHENTICATED"
-            : "NEEDS_PIN",
-        ),
-      )
+      .then((body: KdsApiEnvelope<KdsAuthPayload> | KdsAuthPayload) => {
+        const payload = unwrapApiData(body);
+        const authenticated = payload?.authenticated === true;
+        setStationAuth(authenticated ? "AUTHENTICATED" : "NEEDS_PIN");
+        if (authenticated && payload?.schedule) {
+          applySchedule(payload.schedule);
+        }
+      })
       .catch(() => setStationAuth("NEEDS_PIN"));
-  }, []);
+  }, [applySchedule]);
 
   useEffect(() => {
     const updateVisibility = () => {
@@ -2106,72 +2182,159 @@ export function KdsClient() {
     return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
 
-  const canUseBoard = stationAuth === "AUTHENTICATED";
+  const canUseBoard =
+    stationAuth === "AUTHENTICATED" &&
+    (schedule?.is_open === true || draining);
   const needsPin = stationAuth === "NEEDS_PIN";
+  const lifecycleState: KdsLifecycleState =
+    stationAuth === "LOADING" ||
+    (stationAuth === "AUTHENTICATED" && !schedule)
+      ? "CONNECTING"
+      : needsPin
+        ? showScheduledClosed
+          ? "SCHEDULED_CLOSED"
+          : "LOCKED"
+        : draining
+          ? "DRAINING"
+          : stationAuth === "AUTHENTICATED" && schedule && !schedule.is_open
+            ? "WAITING_FOR_OPEN"
+            : realtimeSubscribed
+              ? "ONLINE"
+              : realtimeConnecting
+                ? "CONNECTING"
+                : "REALTIME_FALLBACK";
+
+  useEffect(() => {
+    if (lifecycleStateRef.current === lifecycleState) return;
+    lifecycleStateRef.current = lifecycleState;
+    console.info("[KDS lifecycle]", {
+      state: lifecycleState,
+      location_id: DEFAULT_LOCATION_ID,
+      page_visible: pageVisible,
+    });
+  }, [lifecycleState, pageVisible]);
 
   const loadOrders = useCallback(async (options: {
     showLoading?: boolean;
     backgroundRefresh?: boolean;
   } = {}) => {
-    if (loadingOrdersRef.current) return;
-    loadingOrdersRef.current = true;
-    const showLoading =
-      options.showLoading === true || !hasLoadedVisibleOrdersRef.current;
-    if (showLoading) {
-      setLoading(true);
-    }
-    if (options.backgroundRefresh === true) {
-      setBackgroundRefreshing(true);
-    }
-    setError(null);
-    try {
-      const response = await kdsJson<KdsOrder[]>(
-        sessionControls,
-        `/api/v1/kds/orders?statuses=${ALL_KDS_STATUSES.join(",")}`,
-        { locationId: DEFAULT_LOCATION_ID },
-      );
-      const previousIds = knownVisibleOrderIdsRef.current;
-      const hasNewVisibleOrder =
-        hasLoadedVisibleOrdersRef.current &&
-        response.some((order) => !previousIds.has(order.id));
+    if (loadOrdersPromiseRef.current) return loadOrdersPromiseRef.current;
 
-      knownVisibleOrderIdsRef.current = new Set(response.map((order) => order.id));
-      hasLoadedVisibleOrdersRef.current = true;
-
-      if (hasNewVisibleOrder) {
-        startKdsAlert();
-      }
-
-      setOrders(response);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to load KDS orders");
-    } finally {
-      loadingOrdersRef.current = false;
+    const request = (async (): Promise<KdsOrder[] | null> => {
+      const showLoading =
+        options.showLoading === true || !hasLoadedVisibleOrdersRef.current;
       if (showLoading) {
-        setLoading(false);
+        setLoading(true);
       }
       if (options.backgroundRefresh === true) {
-        setBackgroundRefreshing(false);
+        setBackgroundRefreshing(true);
       }
-    }
+      setError(null);
+      try {
+        const response = await kdsJson<KdsOrder[]>(
+          sessionControls,
+          `/api/v1/kds/orders?statuses=${ALL_KDS_STATUSES.join(",")}`,
+          { locationId: DEFAULT_LOCATION_ID },
+        );
+        const previousIds = knownVisibleOrderIdsRef.current;
+        const hasNewVisibleOrder =
+          hasLoadedVisibleOrdersRef.current &&
+          response.some((order) => !previousIds.has(order.id));
+
+        knownVisibleOrderIdsRef.current = new Set(
+          response.map((order) => order.id),
+        );
+        hasLoadedVisibleOrdersRef.current = true;
+
+        if (hasNewVisibleOrder) {
+          startKdsAlert();
+        }
+
+        setOrders(response);
+        return response;
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Failed to load KDS orders",
+        );
+        return null;
+      } finally {
+        loadOrdersPromiseRef.current = null;
+        if (showLoading) {
+          setLoading(false);
+        }
+        if (options.backgroundRefresh === true) {
+          setBackgroundRefreshing(false);
+        }
+      }
+    })();
+
+    loadOrdersPromiseRef.current = request;
+    return request;
   }, [sessionControls, startKdsAlert]);
 
-  const logout = useCallback(async () => {
-    setLogoutBusy(true);
+  const closeStationSession = useCallback(async () => {
+    if (closingStationRef.current) return;
+    closingStationRef.current = true;
     stopKdsAlert();
     try {
       await apiFetch("/api/v1/kds/auth/logout", { method: "POST" });
     } catch {
-      // best-effort; local clear still returns the station to the password screen
+      // The local station still closes if the best-effort revoke request fails.
     }
+    socketRef.current?.disconnect();
+    socketRef.current = null;
     knownVisibleOrderIdsRef.current = new Set();
     hasLoadedVisibleOrdersRef.current = false;
     setOrders([]);
     setDetailOrder(null);
     setOptionsOpen(false);
+    setRealtimeSubscribed(false);
+    setRealtimeConnecting(false);
+    setDraining(false);
+    setShowScheduledClosed(true);
     setStationAuth("NEEDS_PIN");
-    setLogoutBusy(false);
+    closingStationRef.current = false;
   }, [stopKdsAlert]);
+
+  const refreshSchedule = useCallback(async () => {
+    if (scheduleRefreshPendingRef.current || stationAuth !== "AUTHENTICATED") {
+      return null;
+    }
+    scheduleRefreshPendingRef.current = true;
+    setScheduleRefreshing(true);
+    try {
+      const response = await apiFetch("/api/v1/kds/schedule", {
+        locationId: DEFAULT_LOCATION_ID,
+      });
+      const body = (await response.json().catch(() => null)) as
+        | KdsApiEnvelope<KdsSchedule>
+        | KdsSchedule
+        | null;
+      if (response.status === 401) {
+        setStationAuth("NEEDS_PIN");
+        setShowScheduledClosed(
+          schedule?.is_open === false ||
+            (schedule?.current_window
+              ? Date.now() >= new Date(schedule.current_window.closes_at).getTime()
+              : false),
+        );
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(getApiErrorMessage(body as KdsApiEnvelope<unknown>, `Request failed (${response.status})`));
+      }
+      const nextSchedule = unwrapApiData(body);
+      if (!nextSchedule) throw new Error("KDS schedule was not returned");
+      applySchedule(nextSchedule);
+      return nextSchedule;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to refresh KDS schedule");
+      return null;
+    } finally {
+      scheduleRefreshPendingRef.current = false;
+      setScheduleRefreshing(false);
+    }
+  }, [applySchedule, schedule, stationAuth]);
 
   // Initial load — only if session is good
   useEffect(() => {
@@ -2195,6 +2358,94 @@ export function KdsClient() {
     loadOrdersRef.current = loadOrders;
   }, [loadOrders]);
 
+  useEffect(() => {
+    if (stationAuth !== "AUTHENTICATED" || !schedule) return;
+
+    let checkingBoundary = false;
+    const checkScheduleBoundary = async () => {
+      if (checkingBoundary) return;
+      const now = Date.now();
+      const closesAt = schedule.current_window
+        ? new Date(schedule.current_window.closes_at).getTime()
+        : Number.NaN;
+      const nextOpenAt = schedule.next_open_at
+        ? new Date(schedule.next_open_at).getTime()
+        : Number.NaN;
+
+      if (schedule.is_open && Number.isFinite(closesAt) && now >= closesAt) {
+        checkingBoundary = true;
+        const authoritativeSchedule = await refreshSchedule();
+        if (!authoritativeSchedule || authoritativeSchedule.is_open) {
+          checkingBoundary = false;
+          return;
+        }
+        if (authoritativeSchedule.has_active_tickets) {
+          setDraining(true);
+          drainRefreshPendingRef.current = true;
+          const activeOrders = await loadOrdersRef.current({
+            backgroundRefresh: true,
+          });
+          drainRefreshPendingRef.current = false;
+          if (activeOrders && activeOrders.length === 0) {
+            await closeStationSession();
+          }
+        } else {
+          await closeStationSession();
+        }
+        checkingBoundary = false;
+        return;
+      }
+
+      if (
+        !schedule.is_open &&
+        !draining &&
+        Number.isFinite(nextOpenAt) &&
+        now >= nextOpenAt
+      ) {
+        checkingBoundary = true;
+        await refreshSchedule();
+        checkingBoundary = false;
+      }
+    };
+
+    void checkScheduleBoundary();
+    const intervalId = window.setInterval(() => void checkScheduleBoundary(), 30_000);
+    const onWake = () => void checkScheduleBoundary();
+    window.addEventListener("focus", onWake);
+    window.addEventListener("online", onWake);
+    window.addEventListener("pageshow", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("online", onWake);
+      window.removeEventListener("pageshow", onWake);
+      document.removeEventListener("visibilitychange", onWake);
+    };
+  }, [closeStationSession, draining, refreshSchedule, schedule, stationAuth]);
+
+  useEffect(() => {
+    if (!showScheduledClosed || !schedule?.next_open_at) return;
+    const nextOpenAt = new Date(schedule.next_open_at).getTime();
+    if (!Number.isFinite(nextOpenAt)) return;
+    const check = () => {
+      if (Date.now() >= nextOpenAt) setShowScheduledClosed(false);
+    };
+    check();
+    const intervalId = window.setInterval(check, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [schedule?.next_open_at, showScheduledClosed]);
+
+  useEffect(() => {
+    if (
+      !draining ||
+      drainRefreshPendingRef.current ||
+      !hasLoadedVisibleOrdersRef.current ||
+      orders.length > 0
+    ) return;
+    void closeStationSession();
+  }, [closeStationSession, draining, orders.length]);
+
   // Realtime should be the fast path, but a disconnected KDS board still
   // needs an explicit, visible safety refresh.
   useEffect(() => {
@@ -2210,11 +2461,14 @@ export function KdsClient() {
   useEffect(() => {
     if (!canUseBoard || !pageVisible) {
       setRealtimeSubscribed(false);
+      setRealtimeConnecting(false);
       return;
     }
 
+    setRealtimeConnecting(true);
     const socket = createOrdersSocket({ preferKdsStation: true });
     socketRef.current = socket;
+    let connectedOnce = false;
 
     const refresh = () => void loadOrdersRef.current();
     const refreshWithAlert = () => {
@@ -2228,11 +2482,30 @@ export function KdsClient() {
       refresh();
     };
     const onConnect = () => {
-      refresh();
+      if (connectedOnce) refresh();
+      connectedOnce = true;
     };
     const onDisconnect = () => {
       setRealtimeSubscribed(false);
+      setRealtimeConnecting(false);
     };
+    const onScheduleUpdated = () => void refreshSchedule();
+    const onScheduleDraining = () => {
+      setSchedule((current) =>
+        current
+          ? { ...current, is_open: false, current_window: null, has_active_tickets: true }
+          : current,
+      );
+      setDraining(true);
+      drainRefreshPendingRef.current = true;
+      void loadOrdersRef.current().then((activeOrders) => {
+        drainRefreshPendingRef.current = false;
+        if (activeOrders && activeOrders.length === 0) {
+          void closeStationSession();
+        }
+      });
+    };
+    const onScheduleClosed = () => void closeStationSession();
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -2247,11 +2520,23 @@ export function KdsClient() {
     socket.on("order.manual_review_required", refresh);
     socket.on("cancellation.requested", refresh);
     socket.on("cancellation.decided", refresh);
+    socket.on("kds.schedule_updated", onScheduleUpdated);
+    socket.on("kds.schedule_draining", onScheduleDraining);
+    socket.on("kds.schedule_closed", onScheduleClosed);
     const disposeSubscription = subscribeToChannels(socket, [
       `orders:${DEFAULT_LOCATION_ID}`,
     ], {
-      onSubscribed: () => setRealtimeSubscribed(true),
-      onDenied: () => setRealtimeSubscribed(false),
+      onSubscribed: () => {
+        setRealtimeConnecting(false);
+        setRealtimeSubscribed(true);
+      },
+      onDenied: (_channel, subscriptionError) => {
+        setRealtimeSubscribed(false);
+        setRealtimeConnecting(false);
+        if (subscriptionError?.includes("scheduled operating hours")) {
+          void refreshSchedule();
+        }
+      },
     });
     socket.connect();
 
@@ -2270,11 +2555,15 @@ export function KdsClient() {
       socket.off("order.manual_review_required", refresh);
       socket.off("cancellation.requested", refresh);
       socket.off("cancellation.decided", refresh);
+      socket.off("kds.schedule_updated", onScheduleUpdated);
+      socket.off("kds.schedule_draining", onScheduleDraining);
+      socket.off("kds.schedule_closed", onScheduleClosed);
       socket.disconnect();
       socketRef.current = null;
       setRealtimeSubscribed(false);
+      setRealtimeConnecting(false);
     };
-  }, [canUseBoard, pageVisible, startKdsAlert]);
+  }, [canUseBoard, closeStationSession, pageVisible, refreshSchedule, startKdsAlert]);
 
   /* ---- Gate: show loading / station password ---- */
 
@@ -2287,9 +2576,69 @@ export function KdsClient() {
     );
   }
 
+  if (needsPin && showScheduledClosed && schedule) {
+    return (
+      <KdsStatusScreen
+        title="Kitchen display is closed"
+        message={`Next scheduled opening: ${formatScheduleTime(
+          schedule.next_open_at,
+          schedule.timezone,
+        )} (${schedule.timezone}).`}
+        action={
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowScheduledClosed(false)}
+          >
+            Unlock next shift
+          </button>
+        }
+      />
+    );
+  }
+
   if (needsPin) {
     // No session or wrong session - show station password unlock
-    return <KdsLoginScreen onLogin={() => setStationAuth("AUTHENTICATED")} />;
+    return (
+      <KdsLoginScreen
+        onLogin={(nextSchedule) => {
+          applySchedule(nextSchedule);
+          setShowScheduledClosed(false);
+          setStationAuth("AUTHENTICATED");
+        }}
+      />
+    );
+  }
+
+  if (!canUseBoard && schedule) {
+    return (
+      <KdsStatusScreen
+        title="Waiting for kitchen opening"
+        message={`KDS will connect at ${formatScheduleTime(
+          schedule.next_open_at,
+          schedule.timezone,
+        )} (${schedule.timezone}).`}
+        action={
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void refreshSchedule()}
+            disabled={scheduleRefreshing}
+          >
+            {scheduleRefreshing ? "Refreshing..." : "Refresh schedule"}
+          </button>
+        }
+      />
+    );
+  }
+
+  if (!canUseBoard) {
+    return (
+      <KdsStatusScreen
+        title="KDS schedule unavailable"
+        message="Refresh the station to load its operating schedule."
+      />
+    );
   }
 
   /* ---- Authenticated KDS station - render KDS board ---- */
@@ -2299,6 +2648,11 @@ export function KdsClient() {
       <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0 }}>Active Tickets</h1>
+          {draining ? (
+            <p className="surface-muted" style={{ margin: "0.3rem 0 0" }}>
+              Scheduled hours ended. KDS will close after active tickets are completed.
+            </p>
+          ) : null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <button
@@ -2328,20 +2682,24 @@ export function KdsClient() {
           >
             Refresh
           </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => void logout()}
-            disabled={logoutBusy}
-            style={{
-              fontWeight: "bold",
-              background: "linear-gradient(180deg, #ff4b2b 0%, #ff416c 100%)",
-              color: "white",
-              border: "none",
-            }}
-          >
-            {logoutBusy ? "Logging out..." : "Logout"}
-          </button>
+          {draining ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                if (
+                  confirm(
+                    "Close KDS now? Active tickets will remain for the next station session.",
+                  )
+                ) {
+                  void closeStationSession();
+                }
+              }}
+              style={{ fontWeight: 700 }}
+            >
+              Close now
+            </button>
+          ) : null}
         </div>
       </div>
 

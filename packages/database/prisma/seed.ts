@@ -215,7 +215,12 @@ async function main() {
         locationId: existing.id,
         serviceType: "STORE",
       },
-      select: { dayOfWeek: true },
+      select: {
+        dayOfWeek: true,
+        timeFrom: true,
+        timeTo: true,
+        isClosed: true,
+      },
     });
     const existingStoreDaySet = new Set(
       existingStoreHourDays.map((hour) => hour.dayOfWeek),
@@ -235,6 +240,31 @@ async function main() {
         })),
       });
       console.log(`Added ${missingStoreHours.length} default store-hours row(s).`);
+    }
+    const existingKdsHourDays = await prisma.locationHours.findMany({
+      where: { locationId: existing.id, serviceType: "KDS" },
+      select: { dayOfWeek: true },
+    });
+    const existingKdsDaySet = new Set(
+      existingKdsHourDays.map((hour) => hour.dayOfWeek),
+    );
+    const effectiveStoreHours = await prisma.locationHours.findMany({
+      where: { locationId: existing.id, serviceType: "STORE" },
+    });
+    const missingKdsHours = effectiveStoreHours.filter(
+      (hour) => !existingKdsDaySet.has(hour.dayOfWeek),
+    );
+    if (missingKdsHours.length > 0) {
+      await prisma.locationHours.createMany({
+        data: missingKdsHours.map((hour) => ({
+          locationId: existing.id,
+          serviceType: "KDS",
+          dayOfWeek: hour.dayOfWeek,
+          timeFrom: hour.timeFrom,
+          timeTo: hour.timeTo,
+          isClosed: hour.isClosed,
+        })),
+      });
     }
     const [
       saladAddonLabelFix,
@@ -364,6 +394,16 @@ async function main() {
       data: DEFAULT_STORE_HOURS.map((hour) => ({
         locationId: location.id,
         serviceType: "STORE",
+        dayOfWeek: hour.dayOfWeek,
+        timeFrom: timeToUtcDate(hour.timeFrom),
+        timeTo: timeToUtcDate(hour.timeTo),
+        isClosed: false,
+      })),
+    });
+    await tx.locationHours.createMany({
+      data: DEFAULT_STORE_HOURS.map((hour) => ({
+        locationId: location.id,
+        serviceType: "KDS",
         dayOfWeek: hour.dayOfWeek,
         timeFrom: timeToUtcDate(hour.timeFrom),
         timeTo: timeToUtcDate(hour.timeTo),

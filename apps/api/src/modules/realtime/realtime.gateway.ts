@@ -7,7 +7,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from "@nestjs/websockets";
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnApplicationShutdown } from "@nestjs/common";
 import type { Request } from "express";
 import { Server, Socket } from "socket.io";
 import { SessionValidator } from "../../common/session/session-validator.service";
@@ -19,6 +19,7 @@ import {
   KdsAuthService,
 } from "../kds/kds-auth.service";
 import { KdsPresenceService } from "../kds/kds-presence.service";
+import { KdsOperatingHoursService } from "../kds/kds-operating-hours.service";
 import {
   POS_STATION_COOKIE_NAME,
   PosAuthService,
@@ -43,11 +44,22 @@ type RealtimeEventName =
   | "driver.availability_changed"
   | "driver.delivery_completed"
   | "admin.busy_mode_changed"
-  | "catalog.updated";
+  | "catalog.updated"
+  | "kds.schedule_updated"
+  | "kds.schedule_draining"
+  | "kds.schedule_closed";
 
 const CHANNEL_PATTERN = /^(orders|order|chat|admin|drivers):(.+)$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TERMINAL_ORDER_STATUSES = new Set([
+  "PICKED_UP",
+  "DELIVERED",
+  "NO_SHOW_PICKUP",
+  "NO_SHOW_DELIVERY",
+  "NO_PIN_DELIVERY",
+  "CANCELLED",
+]);
 
 interface SocketUser {
   userId: string;
@@ -74,16 +86,34 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   return cookies;
 }
 
+function isTerminalOrderEvent(
+  event: RealtimeEventName,
+  payload: Record<string, unknown>,
+): boolean {
+  if (event === "order.cancelled") return true;
+  return (
+    event === "order.status_changed" &&
+    typeof payload.to_status === "string" &&
+    TERMINAL_ORDER_STATUSES.has(payload.to_status)
+  );
+}
+
 @Injectable()
 @WebSocketGateway({
   path: "/ws",
   cors: { origin: true, credentials: true },
 })
 export class RealtimeGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
 {
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly sessionSockets = new Map<string, Set<string>>();
+  private readonly kdsSocketsByLocation = new Map<string, Set<string>>();
+  private readonly kdsClosingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly drainingLocations = new Set<string>();
+  private readonly drainChecksInFlight = new Set<string>();
+  private readonly drainRecheckRequested = new Set<string>();
+  private readonly closingLocations = new Map<string, Promise<void>>();
 
   constructor(
     private readonly sessionValidator: SessionValidator,
@@ -91,6 +121,7 @@ export class RealtimeGateway
     private readonly kdsAuthService: KdsAuthService,
     private readonly kdsPresence: KdsPresenceService,
     private readonly posAuthService: PosAuthService,
+    private readonly operatingHours: KdsOperatingHoursService,
   ) {}
 
   @WebSocketServer()
@@ -138,6 +169,7 @@ export class RealtimeGateway
   handleDisconnect(socket: Socket): void {
     const user = socket.data.user as SocketUser | undefined;
     this.kdsPresence.markDisconnected(socket.id);
+    this.untrackKdsSocket(socket.id);
     if (user) {
       this.untrackSessionSocket(user.sessionId, socket.id);
     }
@@ -145,6 +177,18 @@ export class RealtimeGateway
       `Client disconnected: ${socket.id}` +
         (user ? ` (user=${user.userId})` : ""),
     );
+  }
+
+  onApplicationShutdown(): void {
+    for (const timer of this.kdsClosingTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.kdsClosingTimers.clear();
+    this.kdsSocketsByLocation.clear();
+    this.drainingLocations.clear();
+    this.drainChecksInFlight.clear();
+    this.drainRecheckRequested.clear();
+    this.closingLocations.clear();
   }
 
   disconnectSession(sessionId: string, message = "Session ended"): void {
@@ -207,6 +251,22 @@ export class RealtimeGateway
       return { subscribed: false, channel, error: authError };
     }
 
+    let kdsOperatingState: Awaited<
+      ReturnType<KdsOperatingHoursService["mayOperate"]>
+    > | null = null;
+    if (prefix === "orders" && user.role === "KDS_STATION") {
+      kdsOperatingState = await this.operatingHours.mayOperate(
+        normalized.subject,
+      );
+      if (!kdsOperatingState.allowed) {
+        return {
+          subscribed: false,
+          channel,
+          error: "KDS is outside scheduled operating hours",
+        };
+      }
+    }
+
     socket.join(normalized.channel);
     if (
       prefix === "orders" &&
@@ -214,6 +274,12 @@ export class RealtimeGateway
       user.stationLocationId === normalized.subject
     ) {
       this.kdsPresence.markSubscribed(normalized.subject, socket.id);
+      this.trackKdsSocket(normalized.subject, socket.id);
+      if (kdsOperatingState?.draining) {
+        this.drainingLocations.add(normalized.subject);
+      } else if (kdsOperatingState?.closesAt) {
+        this.scheduleKdsClosing(normalized.subject, kdsOperatingState.closesAt);
+      }
     }
     this.logger.debug(`${socket.id} subscribed to ${normalized.channel}`);
     return { subscribed: true, channel: normalized.channel };
@@ -239,6 +305,7 @@ export class RealtimeGateway
       user.stationLocationId === normalized.subject
     ) {
       this.kdsPresence.markUnsubscribed(normalized.subject, socket.id);
+      this.untrackKdsSocket(socket.id, normalized.subject);
     }
     this.logger.debug(`${socket.id} unsubscribed from ${joinedChannel}`);
     return { unsubscribed: true, channel: joinedChannel };
@@ -268,6 +335,12 @@ export class RealtimeGateway
   ): void {
     this.emitToChannel(`orders:${locationId}`, event, payload);
     this.emitToChannel(`order:${orderId}`, event, payload);
+    if (
+      this.drainingLocations.has(locationId) &&
+      isTerminalOrderEvent(event, payload)
+    ) {
+      void this.finishDrainIfEmpty(locationId);
+    }
   }
 
   emitChatEvent(
@@ -300,6 +373,19 @@ export class RealtimeGateway
     });
   }
 
+  emitKdsScheduleUpdated(locationId: string): void {
+    this.emitToChannel(`orders:${locationId}`, "kds.schedule_updated", {
+      location_id: locationId,
+    });
+    if (
+      this.kdsSocketsByLocation.has(locationId) ||
+      this.kdsClosingTimers.has(locationId) ||
+      this.drainingLocations.has(locationId)
+    ) {
+      void this.rescheduleKdsLocation(locationId);
+    }
+  }
+
   /* ------------------------------------------------------------------ */
   /*  Authorization helpers                                              */
   /* ------------------------------------------------------------------ */
@@ -311,6 +397,159 @@ export class RealtimeGateway
       return;
     }
     this.sessionSockets.set(sessionId, new Set([socketId]));
+  }
+
+  private trackKdsSocket(locationId: string, socketId: string): void {
+    const sockets = this.kdsSocketsByLocation.get(locationId);
+    if (sockets) {
+      sockets.add(socketId);
+      return;
+    }
+    this.kdsSocketsByLocation.set(locationId, new Set([socketId]));
+  }
+
+  private untrackKdsSocket(socketId: string, knownLocationId?: string): void {
+    for (const [locationId, sockets] of this.kdsSocketsByLocation) {
+      if (knownLocationId && knownLocationId !== locationId) continue;
+      sockets.delete(socketId);
+      if (sockets.size > 0) continue;
+      this.kdsSocketsByLocation.delete(locationId);
+    }
+  }
+
+  private scheduleKdsClosing(locationId: string, closesAt: Date): void {
+    const existing = this.kdsClosingTimers.get(locationId);
+    if (existing) clearTimeout(existing);
+    const delay = Math.max(0, closesAt.getTime() - Date.now());
+    const timer = setTimeout(() => {
+      this.kdsClosingTimers.delete(locationId);
+      void this.handleKdsClosing(locationId);
+    }, delay);
+    this.kdsClosingTimers.set(locationId, timer);
+  }
+
+  private async handleKdsClosing(locationId: string): Promise<void> {
+    if (await this.operatingHours.hasActiveTickets(locationId)) {
+      this.drainingLocations.add(locationId);
+      this.logKdsTransition("DRAINING", locationId);
+      this.emitToKdsSockets(locationId, "kds.schedule_draining", {
+        location_id: locationId,
+      });
+      return;
+    }
+    await this.closeKdsLocation(locationId);
+  }
+
+  private async finishDrainIfEmpty(locationId: string): Promise<void> {
+    if (this.drainChecksInFlight.has(locationId)) {
+      this.drainRecheckRequested.add(locationId);
+      return;
+    }
+    this.drainChecksInFlight.add(locationId);
+    try {
+      do {
+        this.drainRecheckRequested.delete(locationId);
+        if (!(await this.operatingHours.hasActiveTickets(locationId))) {
+          await this.closeKdsLocation(locationId);
+          return;
+        }
+      } while (this.drainRecheckRequested.has(locationId));
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          event: "kds.drain_check_failed",
+          location_id: locationId,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+      );
+    } finally {
+      this.drainChecksInFlight.delete(locationId);
+      const shouldRecheck =
+        this.drainRecheckRequested.delete(locationId) &&
+        this.drainingLocations.has(locationId);
+      if (shouldRecheck) {
+        void this.finishDrainIfEmpty(locationId);
+      }
+    }
+  }
+
+  private emitToKdsSockets(
+    locationId: string,
+    event: "kds.schedule_draining" | "kds.schedule_closed",
+    payload: Record<string, unknown>,
+  ): void {
+    const socketIds = this.kdsSocketsByLocation.get(locationId);
+    if (!socketIds || !this.server) return;
+    for (const socketId of socketIds) {
+      this.server.sockets.sockets.get(socketId)?.emit(event, payload);
+    }
+  }
+
+  private closeKdsLocation(locationId: string): Promise<void> {
+    const existing = this.closingLocations.get(locationId);
+    if (existing) return existing;
+
+    const closing = this.performKdsClose(locationId).finally(() => {
+      this.closingLocations.delete(locationId);
+    });
+    this.closingLocations.set(locationId, closing);
+    return closing;
+  }
+
+  private async performKdsClose(locationId: string): Promise<void> {
+    this.drainingLocations.delete(locationId);
+    this.drainRecheckRequested.delete(locationId);
+    const timer = this.kdsClosingTimers.get(locationId);
+    if (timer) clearTimeout(timer);
+    this.kdsClosingTimers.delete(locationId);
+    const revokedSessions =
+      await this.kdsAuthService.revokeLocationSessions(locationId);
+    const socketIds = [
+      ...(this.kdsSocketsByLocation.get(locationId) ?? new Set<string>()),
+    ];
+    this.emitToKdsSockets(locationId, "kds.schedule_closed", {
+      location_id: locationId,
+    });
+    if (this.server) {
+      for (const socketId of socketIds) {
+        this.server.sockets.sockets.get(socketId)?.disconnect(true);
+      }
+    }
+    this.kdsSocketsByLocation.delete(locationId);
+    this.logKdsTransition("SCHEDULED_CLOSED", locationId, {
+      revoked_sessions: revokedSessions,
+    });
+  }
+
+  private async rescheduleKdsLocation(locationId: string): Promise<void> {
+    const operating = await this.operatingHours.mayOperate(locationId);
+    if (!operating.allowed) {
+      await this.closeKdsLocation(locationId);
+      return;
+    }
+    if (operating.draining) {
+      this.drainingLocations.add(locationId);
+      return;
+    }
+    this.drainingLocations.delete(locationId);
+    if (operating.closesAt) {
+      this.scheduleKdsClosing(locationId, operating.closesAt);
+    }
+  }
+
+  private logKdsTransition(
+    state: "DRAINING" | "SCHEDULED_CLOSED",
+    locationId: string,
+    details: Record<string, unknown> = {},
+  ): void {
+    this.logger.log(
+      JSON.stringify({
+        event: "kds.schedule_transition",
+        location_id: locationId,
+        state,
+        ...details,
+      }),
+    );
   }
 
   private untrackSessionSocket(sessionId: string, socketId: string): void {

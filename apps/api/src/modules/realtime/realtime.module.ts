@@ -1,12 +1,17 @@
 import { Global, Module } from "@nestjs/common";
-import { KdsAuthService } from "../kds/kds-auth.service";
 import { KdsPresenceService } from "../kds/kds-presence.service";
 import { PosAuthService } from "../pos/pos-auth.service";
 import { RealtimeGateway } from "./realtime.gateway";
+import { KdsStationAccessModule } from "../kds/kds-station-access.module";
 
 @Global()
 @Module({
-  providers: [RealtimeGateway, KdsAuthService, KdsPresenceService, PosAuthService],
+  imports: [KdsStationAccessModule],
+  providers: [
+    RealtimeGateway,
+    KdsPresenceService,
+    PosAuthService,
+  ],
   exports: [RealtimeGateway, KdsPresenceService],
 })
 export class RealtimeModule {}

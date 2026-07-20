@@ -1,6 +1,7 @@
 import {
   Injectable,
   ForbiddenException,
+  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
 import { PrismaService } from "../../database/prisma.service";
@@ -8,6 +9,7 @@ import * as bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { resolveLocationRef } from "../../common/utils/location-ref";
 import { isAllowedStoreIp } from "../../common/utils/store-ip";
+import { KdsOperatingHoursService } from "./kds-operating-hours.service";
 
 export const KDS_STATION_COOKIE_NAME = "w4u_kds_session";
 export const KDS_STATION_COOKIE_PATH = "/";
@@ -16,8 +18,12 @@ export const KDS_STATION_COOKIE_PATH = "/";
 export class KdsAuthService {
   private static readonly STATION_MAX_ATTEMPTS = 5;
   private static readonly STATION_LOCKOUT_WINDOW_MS = 10 * 60 * 1000;
+  private readonly logger = new Logger(KdsAuthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly operatingHours: KdsOperatingHoursService,
+  ) {}
 
   async resolveLocationId(locationRef: string): Promise<string | null> {
     return resolveLocationRef(this.prisma, locationRef);
@@ -34,15 +40,14 @@ export class KdsAuthService {
       throw new ForbiddenException("KDS password is not configured for this location");
     }
 
-    console.log("[KdsAuthService] login attempt:", { locationId, clientIp, deviceId });
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
       select: { kdsPasswordHash: true, trustedIpRanges: true },
     });
-    console.log("[KdsAuthService] settings found:", !!settings);
-
     if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
-      console.log("[KdsAuthService] IP blocked:", clientIp, "Allowed:", settings?.trustedIpRanges);
+      this.logger.warn(
+        JSON.stringify({ event: "kds.unlock_denied", location_id: locationId }),
+      );
       throw new ForbiddenException(
         "KDS access is restricted to in-store network only",
       );
@@ -72,7 +77,6 @@ export class KdsAuthService {
     }
 
     const match = await bcrypt.compare(passwordPlain, settings.kdsPasswordHash);
-    console.log("[KdsAuthService] match:", match);
     if (!match) {
       await this.recordAttempt(locationId, clientIp, deviceId, false);
       throw new UnauthorizedException("Invalid KDS password");
@@ -84,11 +88,11 @@ export class KdsAuthService {
     const token = randomBytes(64).toString("base64");
     const tokenHash = await bcrypt.hash(token, 10);
 
-    // Expire in 12 hours
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 12);
+    const [expiresAt, schedule] = await Promise.all([
+      this.operatingHours.getDailySessionExpiry(locationId),
+      this.operatingHours.getClientState(locationId),
+    ]);
 
-    console.log("[KdsAuthService] creating session...");
     await this.prisma.kdsStationSession.create({
       data: {
         locationId,
@@ -99,9 +103,20 @@ export class KdsAuthService {
         expiresAt,
       },
     });
-    console.log("[KdsAuthService] session created");
+    this.logger.log(
+      JSON.stringify({
+        event: "kds.unlocked",
+        location_id: locationId,
+        schedule_state: schedule.is_open ? "OPEN" : "WAITING_FOR_OPEN",
+        expires_at: expiresAt.toISOString(),
+      }),
+    );
 
-    return { sessionKey, token, expiresAt };
+    return { sessionKey, token, expiresAt, schedule };
+  }
+
+  async getSchedule(locationId: string) {
+    return this.operatingHours.getClientState(locationId);
   }
 
   private async recordAttempt(
@@ -125,6 +140,14 @@ export class KdsAuthService {
       where: { sessionKey, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  async revokeLocationSessions(locationId: string): Promise<number> {
+    const result = await this.prisma.kdsStationSession.updateMany({
+      where: { locationId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return result.count;
   }
 
   async validateSession(cookieValue: string) {

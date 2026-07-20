@@ -71,7 +71,7 @@ export class KdsAuthController {
       expires: result.expiresAt,
     });
 
-    return { ok: true };
+    return { ok: true, schedule: result.schedule };
   }
 
   @Get("status")
@@ -85,9 +85,13 @@ export class KdsAuthController {
     const resolvedLocationId = locationId
       ? await this.kdsAuthService.resolveLocationId(locationId)
       : null;
+    const authenticated =
+      !!session && (!locationId || session.locationId === resolvedLocationId);
     return {
-      authenticated:
-        !!session && (!locationId || session.locationId === resolvedLocationId),
+      authenticated,
+      schedule: authenticated && session
+        ? await this.kdsAuthService.getSchedule(session.locationId)
+        : null,
     };
   }
 

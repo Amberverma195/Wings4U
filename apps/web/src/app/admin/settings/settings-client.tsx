@@ -5,8 +5,10 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
+import { Copy } from "lucide-react";
 
 type Settings = {
+  timezone: string;
   taxRateBps: number;
   taxDeliveryFee: boolean;
   taxTip: boolean;
@@ -34,6 +36,7 @@ type Settings = {
   trustedIpRanges: string[];
   kdsPasswordConfigured?: boolean;
   storeHours: StoreHour[];
+  kdsHours: StoreHour[];
 };
 
 type StoreHour = {
@@ -194,6 +197,7 @@ const GROUPS = [
   "Tax",
   "Delivery",
   "Store Hours",
+  "KDS Hours",
   "Pickup",
   "Kitchen",
   "Promotions",
@@ -266,6 +270,157 @@ function updateStoreHour(
 ): StoreHour[] {
   return rows.map((row) =>
     row.day_of_week === dayOfWeek ? { ...row, ...patch } : row,
+  );
+}
+
+function formatHourInput(value: string): string {
+  const [rawHour, rawMinute] = value.split(":").map(Number);
+  if (!Number.isInteger(rawHour) || !Number.isInteger(rawMinute)) return value;
+  const suffix = rawHour >= 12 ? "PM" : "AM";
+  const hour = rawHour % 12 || 12;
+  return `${hour}:${String(rawMinute).padStart(2, "0")} ${suffix}`;
+}
+
+function HoursEditor({
+  title,
+  description,
+  hours,
+  disabled,
+  onChange,
+  onCopy,
+}: {
+  title: string;
+  description: string;
+  hours: StoreHour[];
+  disabled: boolean;
+  onChange: (dayOfWeek: number, patch: Partial<StoreHour>) => void;
+  onCopy?: () => void;
+}) {
+  return (
+    <section className="surface-card" style={{ padding: "1rem", marginBottom: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: "1.05rem" }}>{title}</h2>
+        {onCopy ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onCopy}
+            disabled={disabled}
+            title="Copy Store Hours"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}
+          >
+            <Copy size={16} aria-hidden="true" />
+            Copy Store Hours
+          </button>
+        ) : null}
+      </div>
+      <p className="surface-muted" style={{ marginTop: "0.45rem", marginBottom: "0.9rem" }}>
+        {description}
+      </p>
+      <div style={{ display: "grid", gap: "0.7rem" }}>
+        {hours.map((row) => {
+          const dayLabel =
+            STORE_HOUR_DAYS.find((day) => day.day === row.day_of_week)?.label ?? "Day";
+          const nextDay = !row.is_closed && row.time_to < row.time_from;
+          const fullDay = !row.is_closed && row.time_to === row.time_from;
+          const nextDayLabel =
+            STORE_HOUR_DAYS.find(
+              (day) => day.day === (row.day_of_week + 1) % 7,
+            )?.label ?? "next day";
+          const scheduleSummary = row.is_closed
+            ? `${dayLabel}: Closed`
+            : fullDay
+              ? `${dayLabel}: Open 24 hours from ${formatHourInput(row.time_from)}`
+              : `${dayLabel}: ${formatHourInput(row.time_from)} to ${
+                  nextDay ? `${nextDayLabel} ` : ""
+                }${formatHourInput(row.time_to)}`;
+          return (
+            <div
+              key={row.day_of_week}
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "minmax(110px, 1fr) minmax(120px, 160px) minmax(120px, 160px) minmax(100px, auto)",
+                gap: "0.7rem",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: "0.9rem" }}>{dayLabel}</strong>
+                <span
+                  className="surface-muted"
+                  style={{ display: "block", fontSize: "0.72rem" }}
+                >
+                  {scheduleSummary}
+                </span>
+              </div>
+              <label style={{ fontSize: "0.8rem" }}>
+                <span className="surface-muted">Open</span>
+                <input
+                  type="time"
+                  step="60"
+                  value={row.time_from}
+                  disabled={disabled || row.is_closed}
+                  onChange={(event) =>
+                    onChange(row.day_of_week, { time_from: event.target.value })
+                  }
+                  style={{
+                    display: "block",
+                    marginTop: "0.25rem",
+                    padding: "0.4rem 0.5rem",
+                    borderRadius: "0.375rem",
+                    border: "1px solid #d4d4d4",
+                    width: "100%",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </label>
+              <label style={{ fontSize: "0.8rem" }}>
+                <span className="surface-muted">Close</span>
+                <input
+                  type="time"
+                  step="60"
+                  value={row.time_to}
+                  disabled={disabled || row.is_closed}
+                  onChange={(event) =>
+                    onChange(row.day_of_week, { time_to: event.target.value })
+                  }
+                  style={{
+                    display: "block",
+                    marginTop: "0.25rem",
+                    padding: "0.4rem 0.5rem",
+                    borderRadius: "0.375rem",
+                    border: "1px solid #d4d4d4",
+                    width: "100%",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </label>
+              <label
+                style={{ display: "flex", gap: "0.45rem", alignItems: "center", fontSize: "0.85rem" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={row.is_closed}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onChange(row.day_of_week, { is_closed: event.target.checked })
+                  }
+                />
+                Closed
+              </label>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -405,6 +560,8 @@ export function SettingsClient() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [storeHoursDraft, setStoreHoursDraft] =
     useState<StoreHour[]>(DEFAULT_STORE_HOURS);
+  const [kdsHoursDraft, setKdsHoursDraft] =
+    useState<StoreHour[]>(DEFAULT_STORE_HOURS);
   const [allowedIpDrafts, setAllowedIpDrafts] = useState<string[]>(
     toAllowedIpDrafts([]),
   );
@@ -444,6 +601,7 @@ export function SettingsClient() {
       }
       setDraft(seeded);
       setStoreHoursDraft(normalizeStoreHours(settings.storeHours));
+      setKdsHoursDraft(normalizeStoreHours(settings.kdsHours ?? settings.storeHours));
       setAllowedIpDrafts(toAllowedIpDrafts(getAllowedIps(settings)));
       setEditingAllowedIp(false);
       setKdsPasswordDraft("");
@@ -465,6 +623,7 @@ export function SettingsClient() {
   const dirty = data
     ? FIELDS.some((f) => valueToInput(data[f.key], f.kind) !== draft[f.key]) ||
       !storeHoursEqual(storeHoursDraft, data.storeHours) ||
+      !storeHoursEqual(kdsHoursDraft, data.kdsHours) ||
       !allowedIpsEqual(getAllowedIps(data), cleanedAllowedIps) ||
       (editingKdsPassword && kdsPasswordDraft !== "") ||
       removingKdsPassword
@@ -501,6 +660,14 @@ export function SettingsClient() {
           throw new Error(`${dayLabel} needs both an open and close time.`);
         }
       }
+      for (const row of kdsHoursDraft) {
+        if (!row.is_closed && (!row.time_from || !row.time_to)) {
+          const dayLabel =
+            STORE_HOUR_DAYS.find((day) => day.day === row.day_of_week)?.label ??
+            "KDS";
+          throw new Error(`${dayLabel} KDS hours need both an open and close time.`);
+        }
+      }
 
       const payload: Record<string, unknown> = {};
       for (const f of FIELDS) {
@@ -515,6 +682,9 @@ export function SettingsClient() {
       }
       if (!storeHoursEqual(storeHoursDraft, data.storeHours)) {
         payload.storeHours = storeHoursDraft;
+      }
+      if (!storeHoursEqual(kdsHoursDraft, data.kdsHours)) {
+        payload.kdsHours = kdsHoursDraft;
       }
       if (editingKdsPassword && kdsPasswordDraft.length > 0 && !/^\d{8}$/.test(kdsPasswordDraft)) {
         throw new Error("KDS and POS password must be exactly 8 digits.");
@@ -557,6 +727,7 @@ export function SettingsClient() {
       }
       setDraft(seeded);
       setStoreHoursDraft(normalizeStoreHours(settings.storeHours));
+      setKdsHoursDraft(normalizeStoreHours(settings.kdsHours ?? settings.storeHours));
       setAllowedIpDrafts(toAllowedIpDrafts(getAllowedIps(settings)));
       setEditingAllowedIp(false);
       setKdsPasswordDraft("");
@@ -598,116 +769,36 @@ export function SettingsClient() {
           }}
         >
           {GROUPS.map((group) => {
-            if (group === "Store Hours") {
+            if (group === "Store Hours" || group === "KDS Hours") {
+              const isKds = group === "KDS Hours";
               return (
-                <section
+                <HoursEditor
                   key={group}
-                  className="surface-card"
-                  style={{ padding: "1rem", marginBottom: "1rem" }}
-                >
-                  <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
-                    Store Hours
-                  </h2>
-                  <p
-                    className="surface-muted"
-                    style={{ marginTop: 0, marginBottom: "0.9rem" }}
-                  >
-                    These hours are shown in the customer footer and can cross
-                    midnight.
-                  </p>
-                  <div style={{ display: "grid", gap: "0.7rem" }}>
-                    {storeHoursDraft.map((row) => {
-                      const dayLabel =
-                        STORE_HOUR_DAYS.find((day) => day.day === row.day_of_week)
-                          ?.label ?? "Day";
-                      return (
-                        <div
-                          key={row.day_of_week}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "minmax(110px, 1fr) minmax(120px, 160px) minmax(120px, 160px) minmax(100px, auto)",
-                            gap: "0.7rem",
-                            alignItems: "center",
-                          }}
-                        >
-                          <strong style={{ fontSize: "0.9rem" }}>{dayLabel}</strong>
-                          <label style={{ fontSize: "0.8rem" }}>
-                            <span className="surface-muted">Open</span>
-                            <input
-                              type="time"
-                              step="60"
-                              value={row.time_from}
-                              disabled={!isAdmin || row.is_closed}
-                              onChange={(e) =>
-                                setStoreHoursDraft((prev) =>
-                                  updateStoreHour(prev, row.day_of_week, {
-                                    time_from: e.target.value,
-                                  }),
-                                )
-                              }
-                              style={{
-                                display: "block",
-                                marginTop: "0.25rem",
-                                padding: "0.4rem 0.5rem",
-                                borderRadius: "0.375rem",
-                                border: "1px solid #d4d4d4",
-                                width: "100%",
-                                fontFamily: "inherit",
-                              }}
-                            />
-                          </label>
-                          <label style={{ fontSize: "0.8rem" }}>
-                            <span className="surface-muted">Close</span>
-                            <input
-                              type="time"
-                              step="60"
-                              value={row.time_to}
-                              disabled={!isAdmin || row.is_closed}
-                              onChange={(e) =>
-                                setStoreHoursDraft((prev) =>
-                                  updateStoreHour(prev, row.day_of_week, {
-                                    time_to: e.target.value,
-                                  }),
-                                )
-                              }
-                              style={{
-                                display: "block",
-                                marginTop: "0.25rem",
-                                padding: "0.4rem 0.5rem",
-                                borderRadius: "0.375rem",
-                                border: "1px solid #d4d4d4",
-                                width: "100%",
-                                fontFamily: "inherit",
-                              }}
-                            />
-                          </label>
-                          <label
-                            style={{
-                              display: "flex",
-                              gap: "0.45rem",
-                              alignItems: "center",
-                              fontSize: "0.85rem",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={row.is_closed}
-                              disabled={!isAdmin}
-                              onChange={(e) =>
-                                setStoreHoursDraft((prev) =>
-                                  updateStoreHour(prev, row.day_of_week, {
-                                    is_closed: e.target.checked,
-                                  }),
-                                )
-                              }
-                            />
-                            Closed
-                          </label>
-                        </div>
+                  title={isKds ? "KDS Operating Hours" : "Store Hours"}
+                  description={
+                    isKds
+                      ? `The kitchen display connects only during these hours in ${data.timezone}. KDS Hours must cover Store Hours.`
+                      : `These customer-facing hours use ${data.timezone} and can cross midnight.`
+                  }
+                  hours={isKds ? kdsHoursDraft : storeHoursDraft}
+                  disabled={!isAdmin}
+                  onCopy={
+                    isKds
+                      ? () => setKdsHoursDraft(storeHoursDraft.map((row) => ({ ...row })))
+                      : undefined
+                  }
+                  onChange={(dayOfWeek, patch) => {
+                    if (isKds) {
+                      setKdsHoursDraft((previous) =>
+                        updateStoreHour(previous, dayOfWeek, patch),
                       );
-                    })}
-                  </div>
-                </section>
+                    } else {
+                      setStoreHoursDraft((previous) =>
+                        updateStoreHour(previous, dayOfWeek, patch),
+                      );
+                    }
+                  }}
+                />
               );
             }
 

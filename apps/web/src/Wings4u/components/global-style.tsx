@@ -1964,6 +1964,84 @@ export function WingKingsGlobalStyle() {
         z-index: 999;
       }
 
+      @media (max-width: 430px) {
+        .wk-nav-bar {
+          gap: 0.65rem;
+          padding-left: max(0.65rem, env(safe-area-inset-left)) !important;
+          padding-right: max(0.65rem, env(safe-area-inset-right)) !important;
+        }
+
+        .wk-nav-start {
+          flex: 1 1 auto;
+          min-width: 0;
+          overflow: hidden;
+        }
+
+        .wk-nav-brand-lockup {
+          gap: 3px !important;
+          min-width: 0;
+          max-width: 100%;
+          flex-shrink: 1;
+        }
+
+        .wk-nav-brand-lockup > img:first-child {
+          width: 42px;
+          height: 42px;
+          flex: 0 0 42px;
+        }
+
+        .wk-nav-brand-wordmark {
+          height: 27px !important;
+          width: auto !important;
+          max-width: 128px !important;
+        }
+
+        .wk-nav-actions {
+          flex: 0 0 auto;
+          gap: 7px !important;
+        }
+
+        .wk-nav-profile-btn {
+          width: 44px !important;
+          height: 44px !important;
+        }
+
+        .fire-btn.fire-btn--nav-cart {
+          min-width: 4rem;
+          min-height: 44px;
+          padding: 0.45rem 0.8rem 0.45rem 0.88rem;
+        }
+      }
+
+      @media (max-width: 360px) {
+        .wk-nav-bar {
+          gap: 0.45rem;
+          padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
+          padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+        }
+
+        .wk-nav-brand-lockup > img:first-child {
+          width: 38px;
+          height: 38px;
+          flex-basis: 38px;
+        }
+
+        .wk-nav-brand-wordmark {
+          height: 24px !important;
+          max-width: 112px !important;
+        }
+
+        .wk-nav-actions {
+          gap: 6px !important;
+        }
+
+        .fire-btn.fire-btn--nav-cart {
+          min-width: 3.7rem;
+          padding-left: 0.72rem;
+          padding-right: 0.68rem;
+        }
+      }
+
       .wk-order-sticky-stack {
         position: relative;
         /* Below nav (999), above menu body + embers so the bar stays visible when stuck */

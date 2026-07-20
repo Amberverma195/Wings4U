@@ -5,6 +5,10 @@ import {
   getLocationLocalDate,
   isLunchSpecialMenuItem,
 } from "./pricing";
+import {
+  isOperatingHourOpenAt,
+  minutesFromTime,
+} from "./weekly-operating-hours";
 
 type FulfillmentType = "PICKUP" | "DELIVERY";
 
@@ -54,37 +58,6 @@ export function getScheduleContext(
     dow: local.getDay(),
     hhmm: local.getHours() * 60 + local.getMinutes(),
   };
-}
-
-function minutesFromTime(value: Date): number {
-  return value.getUTCHours() * 60 + value.getUTCMinutes();
-}
-
-function isHourOpenAt(
-  hour: { dayOfWeek: number; timeFrom: Date; timeTo: Date; isClosed: boolean },
-  context: ScheduleContext,
-): boolean {
-  if (hour.isClosed) return false;
-
-  const fromMinutes = minutesFromTime(new Date(hour.timeFrom));
-  const toMinutes = minutesFromTime(new Date(hour.timeTo));
-  if (fromMinutes === toMinutes) {
-    return hour.dayOfWeek === context.dow;
-  }
-
-  if (fromMinutes < toMinutes) {
-    return (
-      hour.dayOfWeek === context.dow &&
-      context.hhmm >= fromMinutes &&
-      context.hhmm < toMinutes
-    );
-  }
-
-  const previousDow = (context.dow + 6) % 7;
-  return (
-    (hour.dayOfWeek === context.dow && context.hhmm >= fromMinutes) ||
-    (hour.dayOfWeek === previousDow && context.hhmm < toMinutes)
-  );
 }
 
 function isWithinMinuteWindow(params: {
@@ -220,7 +193,9 @@ export async function assertLocationOpenForFulfillment(params: {
   const isOpen =
     hoursForFulfillment.length === 0
       ? context.hhmm >= 660 && context.hhmm < 1380
-      : hoursForFulfillment.some((hour) => isHourOpenAt(hour, context));
+      : hoursForFulfillment.some((hour) =>
+          isOperatingHourOpenAt(hour, context),
+        );
 
   if (!isOpen) {
     throw new UnprocessableEntityException({

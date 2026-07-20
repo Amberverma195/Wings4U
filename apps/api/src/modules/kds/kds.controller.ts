@@ -22,12 +22,17 @@ import {
 } from "class-validator";
 import type { Request } from "express";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
+import {
+  AllowOutsideKdsHours,
+  KdsOperatingHoursGuard,
+} from "./kds-operating-hours.guard";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { Public } from "../../common/decorators/roles.decorator";
 import { BusyModeService } from "./busy-mode.service";
 import { DeliveryPinService } from "./delivery-pin.service";
 import { KdsService } from "./kds.service";
+import { KdsOperatingHoursService } from "./kds-operating-hours.service";
 
 class KdsOrdersQueryDto {
   @IsOptional()
@@ -181,13 +186,25 @@ class BusyModeHistoryQueryDto {
 
 @Controller("kds")
 @Public()
-@UseGuards(LocationScopeGuard, StoreNetworkGuard, KdsStationGuard)
+@UseGuards(
+  LocationScopeGuard,
+  StoreNetworkGuard,
+  KdsStationGuard,
+  KdsOperatingHoursGuard,
+)
 export class KdsController {
   constructor(
     private readonly kdsService: KdsService,
     private readonly busyMode: BusyModeService,
     private readonly deliveryPin: DeliveryPinService,
+    private readonly operatingHours: KdsOperatingHoursService,
   ) {}
+
+  @Get("schedule")
+  @AllowOutsideKdsHours()
+  async getSchedule(@Req() req: Request) {
+    return this.operatingHours.getClientState(req.locationId!);
+  }
 
   // PRD §11.2: busy mode status + toggle + history.
   @Get("busy-mode")

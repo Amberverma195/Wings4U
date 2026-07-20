@@ -12,9 +12,10 @@ import { DeliveryPinService } from "./delivery-pin.service";
 import { KdsAutoAcceptScheduler } from "./kds-auto-accept.scheduler";
 import { KdsController } from "./kds.controller";
 import { KdsService } from "./kds.service";
-import { KdsAuthService } from "./kds-auth.service";
 import { KdsAuthController } from "./kds-auth.controller";
 import { OverdueDeliveryJob } from "./overdue-delivery.job";
+import { KdsOperatingHoursGuard } from "./kds-operating-hours.guard";
+import { KdsStationAccessModule } from "./kds-station-access.module";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { OverdueDeliveryJob } from "./overdue-delivery.job";
     RewardsModule,
     CatalogModule,
     NotificationsModule,
+    KdsStationAccessModule,
   ],
   controllers: [KdsController, KdsAuthController],
   providers: [
@@ -33,15 +35,14 @@ import { OverdueDeliveryJob } from "./overdue-delivery.job";
     DeliveryPinService,
     KdsStationGuard,
     StoreNetworkGuard,
-    KdsAuthService,
     OverdueDeliveryJob,
+    KdsOperatingHoursGuard,
   ],
   exports: [
     KdsService,
     KdsAutoAcceptScheduler,
     BusyModeService,
     DeliveryPinService,
-    KdsAuthService,
     OverdueDeliveryJob,
   ],
 })

@@ -13,8 +13,12 @@ import * as bcrypt from "bcryptjs";
 import { CatalogCacheService } from "../catalog/catalog-cache.service";
 import { WebCatalogRevalidationService } from "../catalog/web-catalog-revalidation.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import {
+  isScheduleCovered,
+  KDS_HOURS_SERVICE_TYPE,
+  STORE_HOURS_SERVICE_TYPE,
+} from "../kds/kds-operating-hours";
 
-const STORE_HOURS_SERVICE_TYPE = "STORE";
 const STORE_HOURS_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 
 function normalizeMinuteOfDay(value: unknown, fieldName: string): number | null {
@@ -92,37 +96,37 @@ function serializeStoreHours(
   });
 }
 
-function normalizeStoreHoursInput(value: unknown) {
+function normalizeHoursInput(value: unknown, label: string) {
   if (!Array.isArray(value)) {
-    throw new BadRequestException("Store hours must be an array");
+    throw new BadRequestException(`${label} must be an array`);
   }
 
   const seen = new Set<number>();
   const rows = value.map((raw, index) => {
     if (!raw || typeof raw !== "object") {
-      throw new BadRequestException(`Store hours row ${index + 1} is invalid`);
+      throw new BadRequestException(`${label} row ${index + 1} is invalid`);
     }
     const row = raw as StoreHoursInput;
     const dayOfWeek = Number(row.day_of_week ?? row.dayOfWeek);
     if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
-      throw new BadRequestException("Store hours day must be between 0 and 6");
+      throw new BadRequestException(`${label} day must be between 0 and 6`);
     }
     if (seen.has(dayOfWeek)) {
-      throw new BadRequestException("Store hours can only include each day once");
+      throw new BadRequestException(`${label} can only include each day once`);
     }
     seen.add(dayOfWeek);
 
     const isClosed = Boolean(row.is_closed ?? row.isClosed);
     return {
       dayOfWeek,
-      timeFrom: timeStringToDate(row.time_from ?? row.timeFrom, "Store opens at"),
-      timeTo: timeStringToDate(row.time_to ?? row.timeTo, "Store closes at"),
+      timeFrom: timeStringToDate(row.time_from ?? row.timeFrom, `${label} opens at`),
+      timeTo: timeStringToDate(row.time_to ?? row.timeTo, `${label} closes at`),
       isClosed,
     };
   });
 
   if (seen.size !== 7) {
-    throw new BadRequestException("Store hours must include all 7 days");
+    throw new BadRequestException(`${label} must include all 7 days`);
   }
 
   return rows;
@@ -144,13 +148,21 @@ export class LocationSettingsService {
   }
 
   async getSettings(locationId: string) {
-    const [settings, storeHours] = await Promise.all([
+    const [settings, storeHours, kdsHours, location] = await Promise.all([
       this.prisma.locationSettings.findUnique({
         where: { locationId },
       }),
       this.prisma.locationHours.findMany({
         where: { locationId, serviceType: STORE_HOURS_SERVICE_TYPE },
         orderBy: [{ dayOfWeek: "asc" }, { timeFrom: "asc" }],
+      }),
+      this.prisma.locationHours.findMany({
+        where: { locationId, serviceType: KDS_HOURS_SERVICE_TYPE },
+        orderBy: [{ dayOfWeek: "asc" }, { timeFrom: "asc" }],
+      }),
+      this.prisma.location.findUnique({
+        where: { id: locationId },
+        select: { timezoneName: true },
       }),
     ]);
 
@@ -161,8 +173,10 @@ export class LocationSettingsService {
     const { kdsPasswordHash, ...rest } = settings;
     return {
       ...rest,
+      timezone: location?.timezoneName ?? "America/Toronto",
       kdsPasswordConfigured: !!kdsPasswordHash,
       storeHours: serializeStoreHours(storeHours),
+      kdsHours: serializeStoreHours(kdsHours.length > 0 ? kdsHours : storeHours),
     };
   }
 
@@ -176,8 +190,39 @@ export class LocationSettingsService {
 
     const nextData = { ...data };
     const storeHoursInput =
-      "storeHours" in nextData ? normalizeStoreHoursInput(nextData.storeHours) : null;
+      "storeHours" in nextData
+        ? normalizeHoursInput(nextData.storeHours, "Store hours")
+        : null;
+    const kdsHoursInput =
+      "kdsHours" in nextData
+        ? normalizeHoursInput(nextData.kdsHours, "KDS hours")
+        : null;
     delete nextData.storeHours;
+    delete nextData.kdsHours;
+
+    if (storeHoursInput || kdsHoursInput) {
+      const existingHours = await this.prisma.locationHours.findMany({
+        where: {
+          locationId,
+          serviceType: { in: [STORE_HOURS_SERVICE_TYPE, KDS_HOURS_SERVICE_TYPE] },
+        },
+      });
+      const currentStoreHours = existingHours.filter(
+        (hour) => hour.serviceType === STORE_HOURS_SERVICE_TYPE,
+      );
+      const currentKdsHours = existingHours.filter(
+        (hour) => hour.serviceType === KDS_HOURS_SERVICE_TYPE,
+      );
+      const nextStoreHours = storeHoursInput ?? currentStoreHours;
+      const nextKdsHours =
+        kdsHoursInput ??
+        (currentKdsHours.length > 0 ? currentKdsHours : currentStoreHours);
+      if (!isScheduleCovered(nextStoreHours, nextKdsHours)) {
+        throw new BadRequestException(
+          "KDS hours must cover all customer Store Hours",
+        );
+      }
+    }
     if ("trustedIpRanges" in nextData) {
       const normalized = normalizeTrustedIpRanges(nextData.trustedIpRanges);
       if (normalized.length > MAX_TRUSTED_IP_RANGES) {
@@ -263,6 +308,22 @@ export class LocationSettingsService {
         });
       }
 
+      if (kdsHoursInput) {
+        await tx.locationHours.deleteMany({
+          where: { locationId, serviceType: KDS_HOURS_SERVICE_TYPE },
+        });
+        await tx.locationHours.createMany({
+          data: kdsHoursInput.map((row) => ({
+            locationId,
+            serviceType: KDS_HOURS_SERVICE_TYPE,
+            dayOfWeek: row.dayOfWeek,
+            timeFrom: row.timeFrom,
+            timeTo: row.timeTo,
+            isClosed: row.isClosed,
+          })),
+        });
+      }
+
       // If kdsPasswordHash was updated, revoke all active KDS *and* POS
       // station sessions - both surfaces are unlocked by the same shared
       // password, so a password rotation must invalidate both.
@@ -290,6 +351,9 @@ export class LocationSettingsService {
             storeHours: storeHoursInput
               ? serializeStoreHours(storeHoursInput)
               : undefined,
+            kdsHours: kdsHoursInput
+              ? serializeStoreHours(kdsHoursInput)
+              : undefined,
             kdsPasswordHash: undefined,
           }, // Don't log hash
         },
@@ -300,17 +364,35 @@ export class LocationSettingsService {
 
     const { kdsPasswordHash, ...rest } = updated;
     await this.invalidateCatalogCaches(locationId);
+    if (kdsHoursInput) {
+      this.realtime.emitKdsScheduleUpdated(locationId);
+    }
+    const [savedStoreHours, savedKdsHours, location] = await Promise.all([
+      storeHoursInput
+        ? Promise.resolve(storeHoursInput)
+        : this.prisma.locationHours.findMany({
+            where: { locationId, serviceType: STORE_HOURS_SERVICE_TYPE },
+            orderBy: [{ dayOfWeek: "asc" }, { timeFrom: "asc" }],
+          }),
+      kdsHoursInput
+        ? Promise.resolve(kdsHoursInput)
+        : this.prisma.locationHours.findMany({
+            where: { locationId, serviceType: KDS_HOURS_SERVICE_TYPE },
+            orderBy: [{ dayOfWeek: "asc" }, { timeFrom: "asc" }],
+          }),
+      this.prisma.location.findUnique({
+        where: { id: locationId },
+        select: { timezoneName: true },
+      }),
+    ]);
     return {
       ...rest,
+      timezone: location?.timezoneName ?? "America/Toronto",
       kdsPasswordConfigured: !!kdsPasswordHash,
-      storeHours: storeHoursInput
-        ? serializeStoreHours(storeHoursInput)
-        : serializeStoreHours(
-            await this.prisma.locationHours.findMany({
-              where: { locationId, serviceType: STORE_HOURS_SERVICE_TYPE },
-              orderBy: [{ dayOfWeek: "asc" }, { timeFrom: "asc" }],
-            }),
-          ),
+      storeHours: serializeStoreHours(savedStoreHours),
+      kdsHours: serializeStoreHours(
+        savedKdsHours.length > 0 ? savedKdsHours : savedStoreHours,
+      ),
     };
   }
 }

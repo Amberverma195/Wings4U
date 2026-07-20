@@ -41,20 +41,23 @@ export function Navbar() {
 
   return (
     <nav style={styles.nav} className="wk-nav-bar">
-      <div style={styles.navStart}>
+      <div style={styles.navStart} className="wk-nav-start">
         <WingsBrandLockup
+          className="wk-nav-brand-lockup"
+          wordmarkClassName="wk-nav-brand-wordmark"
           priority
           wordmarkImageSrc="/Logo_title.png"
           wordmarkImageHeight={34}
           wordmarkImageWidth={163}
         />
       </div>
-      <div style={styles.navActions}>
+      <div style={styles.navActions} className="wk-nav-actions">
         {isCustomerSession ? (
           <>
             <Link
               href="/account/profile"
               style={styles.navProfileBtn}
+              className="wk-nav-profile-btn"
               aria-label="Open profile"
               title="Profile"
             >
@@ -66,6 +69,7 @@ export function Navbar() {
             <Link
               href={staffSurfaceHref}
               style={styles.navProfileBtn}
+              className="wk-nav-profile-btn"
               aria-label={
                 session.user?.role === "ADMIN"
                   ? "Open admin profile"
