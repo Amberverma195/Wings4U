@@ -13,6 +13,7 @@ import { KdsOperatingHoursService } from "./kds-operating-hours.service";
 
 export const KDS_STATION_COOKIE_NAME = "w4u_kds_session";
 export const KDS_STATION_COOKIE_PATH = "/";
+const KDS_STATION_SESSION_TTL_MS = 8 * 24 * 60 * 60 * 1_000;
 
 @Injectable()
 export class KdsAuthService {
@@ -88,10 +89,8 @@ export class KdsAuthService {
     const token = randomBytes(64).toString("base64");
     const tokenHash = await bcrypt.hash(token, 10);
 
-    const [expiresAt, schedule] = await Promise.all([
-      this.operatingHours.getDailySessionExpiry(locationId),
-      this.operatingHours.getClientState(locationId),
-    ]);
+    const expiresAt = new Date(Date.now() + KDS_STATION_SESSION_TTL_MS);
+    const schedule = await this.operatingHours.getClientState(locationId);
 
     await this.prisma.kdsStationSession.create({
       data: {
@@ -140,14 +139,6 @@ export class KdsAuthService {
       where: { sessionKey, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-  }
-
-  async revokeLocationSessions(locationId: string): Promise<number> {
-    const result = await this.prisma.kdsStationSession.updateMany({
-      where: { locationId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-    return result.count;
   }
 
   async validateSession(cookieValue: string) {

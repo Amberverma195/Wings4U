@@ -10,16 +10,22 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   Min,
   IsDateString,
+  ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
 import type { Request } from "express";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import {
@@ -33,6 +39,34 @@ import { BusyModeService } from "./busy-mode.service";
 import { DeliveryPinService } from "./delivery-pin.service";
 import { KdsService } from "./kds.service";
 import { KdsOperatingHoursService } from "./kds-operating-hours.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
+
+class KdsOperatingHourDto {
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  day_of_week!: number;
+
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/)
+  time_from!: string;
+
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/)
+  time_to!: string;
+
+  @IsBoolean()
+  is_closed!: boolean;
+}
+
+class UpdateKdsScheduleDto {
+  @IsArray()
+  @ArrayMinSize(7)
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => KdsOperatingHourDto)
+  hours!: KdsOperatingHourDto[];
+}
 
 class KdsOrdersQueryDto {
   @IsOptional()
@@ -198,12 +232,27 @@ export class KdsController {
     private readonly busyMode: BusyModeService,
     private readonly deliveryPin: DeliveryPinService,
     private readonly operatingHours: KdsOperatingHoursService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   @Get("schedule")
   @AllowOutsideKdsHours()
   async getSchedule(@Req() req: Request) {
     return this.operatingHours.getClientState(req.locationId!);
+  }
+
+  @Post("schedule")
+  @AllowOutsideKdsHours()
+  async updateSchedule(
+    @Body() body: UpdateKdsScheduleDto,
+    @Req() req: Request,
+  ) {
+    const schedule = await this.operatingHours.updateHours(
+      req.locationId!,
+      body.hours,
+    );
+    this.realtime.emitKdsScheduleUpdated(req.locationId!);
+    return schedule;
   }
 
   // PRD §11.2: busy mode status + toggle + history.

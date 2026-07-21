@@ -29,7 +29,7 @@ export class KdsPresenceService {
 
   markUnsubscribed(locationId: string, socketId: string, now = Date.now()): void {
     if (this.locationBySocket.get(socketId) !== locationId) return;
-    this.removeSocket(locationId, socketId, now);
+    this.removeSocket(locationId, socketId, now, false);
   }
 
   isHealthy(locationId: string, now = Date.now()): boolean {
@@ -41,13 +41,22 @@ export class KdsPresenceService {
     return lastSeenAt != null && now - lastSeenAt <= KDS_RECONNECT_GRACE_MS;
   }
 
-  private removeSocket(locationId: string, socketId: string, now: number): void {
+  private removeSocket(
+    locationId: string,
+    socketId: string,
+    now: number,
+    preserveReconnectGrace = true,
+  ): void {
     const sockets = this.socketsByLocation.get(locationId);
     sockets?.delete(socketId);
     if (sockets?.size === 0) {
       this.socketsByLocation.delete(locationId);
     }
     this.locationBySocket.delete(socketId);
-    this.lastSeenAtByLocation.set(locationId, now);
+    if (preserveReconnectGrace) {
+      this.lastSeenAtByLocation.set(locationId, now);
+    } else if (!this.socketsByLocation.has(locationId)) {
+      this.lastSeenAtByLocation.delete(locationId);
+    }
   }
 }

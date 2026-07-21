@@ -7,6 +7,11 @@ function createGateway() {
     location: {
       findUnique: jest.fn(),
     },
+    locationSettings: {
+      findUnique: jest.fn().mockResolvedValue({
+        trustedIpRanges: ["127.0.0.1"],
+      }),
+    },
   };
   const kdsPresence = {
     markSubscribed: jest.fn(),
@@ -21,9 +26,7 @@ function createGateway() {
     }),
     hasActiveTickets: jest.fn().mockResolvedValue(false),
   };
-  const kdsAuth = {
-    revokeLocationSessions: jest.fn().mockResolvedValue(1),
-  };
+  const kdsAuth = {};
   const gateway = new RealtimeGateway(
     {} as never,
     prisma as never,
@@ -33,7 +36,7 @@ function createGateway() {
     operatingHours as never,
   );
 
-  return { gateway, prisma, kdsPresence, operatingHours, kdsAuth };
+  return { gateway, prisma, kdsPresence, operatingHours };
 }
 
 function createSocket() {
@@ -44,6 +47,10 @@ function createSocket() {
     leave: jest.fn(),
     emit: jest.fn(),
     disconnect: jest.fn(),
+    handshake: {
+      headers: {},
+      address: "127.0.0.1",
+    },
   };
 }
 
@@ -148,6 +155,40 @@ describe("RealtimeGateway location subscriptions", () => {
     });
   });
 
+  it("rejects a station orders subscription outside the allowed store IP", async () => {
+    const { gateway, prisma } = createGateway();
+    const socket = createSocket();
+    socket.handshake.address = "203.0.113.20";
+    prisma.location.findUnique.mockResolvedValue({
+      id: LOCATION_ID,
+      isActive: true,
+    });
+    prisma.locationSettings.findUnique.mockResolvedValue({
+      trustedIpRanges: ["198.51.100.10"],
+    });
+    jest
+      .spyOn(gateway as never, "revalidateSocketUser" as never)
+      .mockResolvedValue({
+        userId: "kds-station:session-1",
+        role: "KDS_STATION",
+        stationLocationId: LOCATION_ID,
+        isPosSession: false,
+        sessionId: "kds:session-1",
+      } as never);
+
+    const result = await gateway.handleSubscribe(
+      { channel: "orders:LON01" },
+      socket as never,
+    );
+
+    expect(socket.join).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      subscribed: false,
+      channel: "orders:LON01",
+      error: "Store access is restricted to in-store network only",
+    });
+  });
+
   it("resolves the same room when unsubscribing a KDS station", async () => {
     const { gateway, prisma, kdsPresence } = createGateway();
     const socket = createSocket();
@@ -176,10 +217,11 @@ describe("RealtimeGateway location subscriptions", () => {
     });
   });
 
-  it("disconnects KDS sockets at closing when no active tickets remain", async () => {
+  it("keeps the KDS session connected while leaving live orders at closing", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-07-19T14:00:00.000Z"));
     try {
-      const { gateway, prisma, operatingHours, kdsAuth } = createGateway();
+      const { gateway, prisma, kdsPresence, operatingHours } =
+        createGateway();
       const socket = createSocket();
       const user = {
         userId: "kds-station:session-1",
@@ -201,7 +243,9 @@ describe("RealtimeGateway location subscriptions", () => {
       jest
         .spyOn(gateway as never, "revalidateSocketUser" as never)
         .mockResolvedValue(user as never);
+      const controlEmit = jest.fn();
       gateway.server = {
+        to: jest.fn().mockReturnValue({ emit: controlEmit }),
         sockets: { sockets: new Map([[socket.id, socket]]) },
       } as never;
 
@@ -212,14 +256,18 @@ describe("RealtimeGateway location subscriptions", () => {
       await jest.advanceTimersByTimeAsync(60_000);
 
       expect(operatingHours.hasActiveTickets).toHaveBeenCalledWith(LOCATION_ID);
-      expect(kdsAuth.revokeLocationSessions).toHaveBeenCalledWith(LOCATION_ID);
-      expect(socket.emit).toHaveBeenCalledWith("kds.schedule_closed", {
+      expect(controlEmit).toHaveBeenCalledWith("kds.schedule_closed", {
         location_id: LOCATION_ID,
       });
-      expect(socket.disconnect).toHaveBeenCalledWith(true);
-      expect(
-        kdsAuth.revokeLocationSessions.mock.invocationCallOrder[0],
-      ).toBeLessThan(socket.disconnect.mock.invocationCallOrder[0]);
+      expect(socket.leave).toHaveBeenCalledWith(`orders:${LOCATION_ID}`);
+      expect(kdsPresence.markUnsubscribed).toHaveBeenCalledWith(
+        LOCATION_ID,
+        socket.id,
+      );
+      expect(socket.leave.mock.invocationCallOrder[0]).toBeLessThan(
+        controlEmit.mock.invocationCallOrder[0],
+      );
+      expect(socket.disconnect).not.toHaveBeenCalled();
       gateway.onApplicationShutdown();
     } finally {
       jest.useRealTimers();
@@ -229,7 +277,7 @@ describe("RealtimeGateway location subscriptions", () => {
   it("keeps the location closing timer after the last KDS socket disconnects", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-07-19T14:00:00.000Z"));
     try {
-      const { gateway, prisma, operatingHours, kdsAuth } = createGateway();
+      const { gateway, prisma, operatingHours } = createGateway();
       const socket = createSocket();
       const user = {
         userId: "kds-station:session-1",
@@ -252,6 +300,7 @@ describe("RealtimeGateway location subscriptions", () => {
         .spyOn(gateway as never, "revalidateSocketUser" as never)
         .mockResolvedValue(user as never);
       gateway.server = {
+        to: jest.fn().mockReturnValue({ emit: jest.fn() }),
         sockets: { sockets: new Map([[socket.id, socket]]) },
       } as never;
 
@@ -262,7 +311,7 @@ describe("RealtimeGateway location subscriptions", () => {
       gateway.handleDisconnect(socket as never);
       await jest.advanceTimersByTimeAsync(60_000);
 
-      expect(kdsAuth.revokeLocationSessions).toHaveBeenCalledWith(LOCATION_ID);
+      expect(operatingHours.hasActiveTickets).toHaveBeenCalledWith(LOCATION_ID);
       gateway.onApplicationShutdown();
     } finally {
       jest.useRealTimers();
@@ -270,7 +319,7 @@ describe("RealtimeGateway location subscriptions", () => {
   });
 
   it("queues a drain recheck when terminal events overlap", async () => {
-    const { gateway, operatingHours, kdsAuth } = createGateway();
+    const { gateway, operatingHours } = createGateway();
     let resolveFirstCheck!: (hasActiveTickets: boolean) => void;
     operatingHours.hasActiveTickets
       .mockImplementationOnce(
@@ -298,11 +347,10 @@ describe("RealtimeGateway location subscriptions", () => {
     await Promise.all([firstCheck, queuedCheck]);
 
     expect(operatingHours.hasActiveTickets).toHaveBeenCalledTimes(2);
-    expect(kdsAuth.revokeLocationSessions).toHaveBeenCalledWith(LOCATION_ID);
   });
 
   it("hands a queued drain recheck across in-flight cleanup", async () => {
-    const { gateway, operatingHours, kdsAuth } = createGateway();
+    const { gateway, operatingHours } = createGateway();
     const loggerError = jest
       .spyOn(
         (gateway as unknown as { logger: { error(message: string): void } })
@@ -338,7 +386,6 @@ describe("RealtimeGateway location subscriptions", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(operatingHours.hasActiveTickets).toHaveBeenCalledTimes(2);
-    expect(kdsAuth.revokeLocationSessions).toHaveBeenCalledWith(LOCATION_ID);
     loggerError.mockRestore();
   });
 

@@ -61,6 +61,10 @@ const TERMINAL_ORDER_STATUSES = new Set([
   "CANCELLED",
 ]);
 
+function kdsControlChannel(locationId: string): string {
+  return `kds-control:${locationId}`;
+}
+
 interface SocketUser {
   userId: string;
   role: "CUSTOMER" | "STAFF" | "ADMIN" | "KDS_STATION" | "POS_STATION";
@@ -161,6 +165,12 @@ export class RealtimeGateway
     socket.data.preferredStationSurface = preferredStationSurface;
     socket.data.user = resolved.user;
     this.trackSessionSocket(resolved.user.sessionId, socket.id);
+    if (
+      resolved.user.role === "KDS_STATION" &&
+      resolved.user.stationLocationId
+    ) {
+      await socket.join(kdsControlChannel(resolved.user.stationLocationId));
+    }
     this.logger.log(
       `Client connected: ${socket.id} (user=${resolved.user.userId}, role=${resolved.user.role})`,
     );
@@ -374,7 +384,7 @@ export class RealtimeGateway
   }
 
   emitKdsScheduleUpdated(locationId: string): void {
-    this.emitToChannel(`orders:${locationId}`, "kds.schedule_updated", {
+    this.emitToKdsControl(locationId, "kds.schedule_updated", {
       location_id: locationId,
     });
     if (
@@ -432,7 +442,7 @@ export class RealtimeGateway
     if (await this.operatingHours.hasActiveTickets(locationId)) {
       this.drainingLocations.add(locationId);
       this.logKdsTransition("DRAINING", locationId);
-      this.emitToKdsSockets(locationId, "kds.schedule_draining", {
+      this.emitToKdsControl(locationId, "kds.schedule_draining", {
         location_id: locationId,
       });
       return;
@@ -473,16 +483,15 @@ export class RealtimeGateway
     }
   }
 
-  private emitToKdsSockets(
+  private emitToKdsControl(
     locationId: string,
-    event: "kds.schedule_draining" | "kds.schedule_closed",
+    event:
+      | "kds.schedule_updated"
+      | "kds.schedule_draining"
+      | "kds.schedule_closed",
     payload: Record<string, unknown>,
   ): void {
-    const socketIds = this.kdsSocketsByLocation.get(locationId);
-    if (!socketIds || !this.server) return;
-    for (const socketId of socketIds) {
-      this.server.sockets.sockets.get(socketId)?.emit(event, payload);
-    }
+    this.server?.to(kdsControlChannel(locationId)).emit(event, payload);
   }
 
   private closeKdsLocation(locationId: string): Promise<void> {
@@ -502,22 +511,24 @@ export class RealtimeGateway
     const timer = this.kdsClosingTimers.get(locationId);
     if (timer) clearTimeout(timer);
     this.kdsClosingTimers.delete(locationId);
-    const revokedSessions =
-      await this.kdsAuthService.revokeLocationSessions(locationId);
     const socketIds = [
       ...(this.kdsSocketsByLocation.get(locationId) ?? new Set<string>()),
     ];
-    this.emitToKdsSockets(locationId, "kds.schedule_closed", {
-      location_id: locationId,
-    });
     if (this.server) {
       for (const socketId of socketIds) {
-        this.server.sockets.sockets.get(socketId)?.disconnect(true);
+        const socket = this.server.sockets.sockets.get(socketId);
+        if (!socket) continue;
+        await socket.leave(`orders:${locationId}`);
+        this.kdsPresence.markUnsubscribed(locationId, socketId);
+        this.untrackKdsSocket(socketId, locationId);
       }
     }
     this.kdsSocketsByLocation.delete(locationId);
+    this.emitToKdsControl(locationId, "kds.schedule_closed", {
+      location_id: locationId,
+    });
     this.logKdsTransition("SCHEDULED_CLOSED", locationId, {
-      revoked_sessions: revokedSessions,
+      preserved_sessions: true,
     });
   }
 
@@ -822,19 +833,15 @@ export class RealtimeGateway
     }
 
     if (user.role === "KDS_STATION") {
-      return user.stationLocationId === locationId
-        ? null
-        : "Insufficient permissions - wrong KDS station location";
+      if (user.stationLocationId !== locationId) {
+        return "Insufficient permissions - wrong KDS station location";
+      }
     }
 
-    const settings = await this.prisma.locationSettings.findUnique({
-      where: { locationId },
-      select: { trustedIpRanges: true },
-    });
-    const clientIp = this.extractSocketClientIp(socket);
-    if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
-      return "Store access is restricted to in-store network only";
-    }
+    const networkError = await this.authorizeStoreNetwork(locationId, socket);
+    if (networkError) return networkError;
+
+    if (user.role === "KDS_STATION") return null;
 
     if (user.role === "ADMIN") {
       return null;
@@ -865,19 +872,15 @@ export class RealtimeGateway
     }
 
     if (user.role === "KDS_STATION" || user.role === "POS_STATION") {
-      return user.stationLocationId === locationId
-        ? null
-        : "Insufficient permissions - wrong station location";
+      if (user.stationLocationId !== locationId) {
+        return "Insufficient permissions - wrong station location";
+      }
     }
 
-    const settings = await this.prisma.locationSettings.findUnique({
-      where: { locationId },
-      select: { trustedIpRanges: true },
-    });
-    const clientIp = this.extractSocketClientIp(socket);
-    if (!isAllowedStoreIp(clientIp, settings?.trustedIpRanges)) {
-      return "Store access is restricted to in-store network only";
-    }
+    const networkError = await this.authorizeStoreNetwork(locationId, socket);
+    if (networkError) return networkError;
+
+    if (user.role === "KDS_STATION" || user.role === "POS_STATION") return null;
 
     if (user.role === "ADMIN") {
       return null;
@@ -896,6 +899,20 @@ export class RealtimeGateway
     }
 
     return null;
+  }
+
+  private async authorizeStoreNetwork(
+    locationId: string,
+    socket: Socket,
+  ): Promise<string | null> {
+    const settings = await this.prisma.locationSettings.findUnique({
+      where: { locationId },
+      select: { trustedIpRanges: true },
+    });
+    const clientIp = this.extractSocketClientIp(socket);
+    return isAllowedStoreIp(clientIp, settings?.trustedIpRanges)
+      ? null
+      : "Store access is restricted to in-store network only";
   }
 
   private extractSocketClientIp(socket: Socket): string {

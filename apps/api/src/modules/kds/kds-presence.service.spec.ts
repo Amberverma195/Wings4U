@@ -30,6 +30,14 @@ describe("KdsPresenceService", () => {
     expect(service.isHealthy("loc-1", 2_000 + KDS_RECONNECT_GRACE_MS + 1)).toBe(true);
   });
 
+  it("marks a deliberate orders unsubscribe offline immediately", () => {
+    const service = new KdsPresenceService();
+    service.markSubscribed("loc-1", "socket-1", 1_000);
+    service.markUnsubscribed("loc-1", "socket-1", 2_000);
+
+    expect(service.isHealthy("loc-1", 2_000)).toBe(false);
+  });
+
   it("moves a socket without leaking presence to its previous location", () => {
     const service = new KdsPresenceService();
     service.markSubscribed("loc-1", "socket-1", 1_000);
