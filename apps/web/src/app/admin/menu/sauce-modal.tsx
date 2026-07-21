@@ -24,8 +24,9 @@ export function SauceModal({
 }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState<SauceCategory>("MEDIUM");
-  const [sortOrder, setSortOrder] = useState(0);
+  const [sortOrder, setSortOrder] = useState(1);
   const [isActive, setIsActive] = useState(true);
+  const [allSauces, setAllSauces] = useState<WingFlavour[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -51,7 +52,6 @@ export function SauceModal({
   }, []);
 
   useEffect(() => {
-    if (!sauceId) return;
     let cancel = false;
 
     async function load() {
@@ -59,13 +59,20 @@ export function SauceModal({
       setError(null);
       try {
         const all = await adminFetch<WingFlavour[]>(`${ADMIN_MENU_API_BASE}/wing-flavours`);
-        const existing = all.find((flavour) => flavour.id === sauceId);
-        if (!existing) throw new Error("Sauce not found");
         if (!cancel) {
-          setName(existing.name);
-          setCategory(normalizeCategory(existing.heatLevel));
-          setSortOrder(existing.sortOrder);
-          setIsActive(existing.isActive);
+          setAllSauces(all);
+          if (sauceId) {
+            const existing = all.find((flavour) => flavour.id === sauceId);
+            if (!existing) throw new Error("Sauce not found");
+            setName(existing.name);
+            setCategory(normalizeCategory(existing.heatLevel));
+            setSortOrder(existing.sortOrder);
+            setIsActive(existing.isActive);
+          } else {
+            setSortOrder(
+              all.filter((flavour) => flavour.heatLevel === "MEDIUM").length + 1,
+            );
+          }
         }
       } catch (err) {
         if (!cancel) setError(err instanceof Error ? err.message : "Failed to load sauce");
@@ -79,6 +86,11 @@ export function SauceModal({
       cancel = true;
     };
   }, [sauceId]);
+
+  const maximumPosition =
+    allSauces.filter(
+      (flavour) => flavour.id !== sauceId && flavour.heatLevel === category,
+    ).length + 1;
 
   async function handleSave() {
     setSaving(true);
@@ -171,7 +183,16 @@ export function SauceModal({
                 <select
                   className={styles.formSelect}
                   value={category}
-                  onChange={(event) => setCategory(event.target.value as SauceCategory)}
+                  onChange={(event) => {
+                    const nextCategory = event.target.value as SauceCategory;
+                    setCategory(nextCategory);
+                    setSortOrder(
+                      allSauces.filter(
+                        (flavour) =>
+                          flavour.id !== sauceId && flavour.heatLevel === nextCategory,
+                      ).length + 1,
+                    );
+                  }}
                 >
                   <option value="MILD">Mild</option>
                   <option value="MEDIUM">Medium</option>
@@ -182,12 +203,18 @@ export function SauceModal({
 
               <div className={styles.formRow}>
                 <div className={styles.formGroup}>
-                  <label className={styles.label}>Sort Order</label>
+                  <label className={styles.label}>Position in category</label>
                   <input
                     type="number"
                     className={styles.formInput}
                     value={sortOrder}
-                    onChange={(event) => setSortOrder(Number.parseInt(event.target.value, 10) || 0)}
+                    min={1}
+                    max={maximumPosition}
+                    step={1}
+                    title="Moving this sauce shifts the other sauces automatically"
+                    onChange={(event) =>
+                      setSortOrder(Number.parseInt(event.target.value, 10) || 1)
+                    }
                   />
                 </div>
 

@@ -202,7 +202,14 @@ export function WingBuilder({ item, onClose }: Props) {
       if (!map.has(level)) map.set(level, []);
       map.get(level)!.push(f);
     }
-    for (const arr of map.values()) arr.sort((a, b) => a.sort_order - b.sort_order);
+    for (const arr of map.values()) {
+      arr.sort(
+        (a, b) =>
+          a.sort_order - b.sort_order ||
+          a.name.localeCompare(b.name) ||
+          a.id.localeCompare(b.id),
+      );
+    }
     const ordered: { level: string; items: WingFlavour[] }[] = [];
     for (const level of HEAT_ORDER) {
       const items = map.get(level);

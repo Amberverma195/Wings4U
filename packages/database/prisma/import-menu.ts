@@ -286,16 +286,21 @@ async function main() {
     }
 
     // 5) Create wing flavours.
+    const flavourPositionByHeat = new Map<string, number>();
     await tx.wingFlavour.createMany({
-      data: menu.wing_flavours.map((f, idx) => ({
-        locationId: location.id,
-        name: f.name,
-        slug: f.slug,
-        heatLevel: f.heat_level,
-        sortOrder: idx + 1,
-        isPlain: f.is_plain ?? false,
-        isActive: true,
-      })),
+      data: menu.wing_flavours.map((f) => {
+        const sortOrder = (flavourPositionByHeat.get(f.heat_level) ?? 0) + 1;
+        flavourPositionByHeat.set(f.heat_level, sortOrder);
+        return {
+          locationId: location.id,
+          name: f.name,
+          slug: f.slug,
+          heatLevel: f.heat_level,
+          sortOrder,
+          isPlain: f.is_plain ?? false,
+          isActive: true,
+        };
+      }),
     });
 
     const wingFlavours = await tx.wingFlavour.findMany({

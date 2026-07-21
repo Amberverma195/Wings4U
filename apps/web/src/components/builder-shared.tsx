@@ -502,7 +502,12 @@ export function FlavourPicker({
     }
 
     for (const entries of map.values()) {
-      entries.sort((left, right) => left.sort_order - right.sort_order);
+      entries.sort(
+        (left, right) =>
+          left.sort_order - right.sort_order ||
+          left.name.localeCompare(right.name) ||
+          left.id.localeCompare(right.id),
+      );
     }
 
     const ordered: Array<{ level: string; items: WingFlavour[] }> = HEAT_ORDER
@@ -663,7 +668,12 @@ export function ExtraFlavourPicker({
           const level = getHeatLevel(f);
           return (tab.levels as readonly string[]).includes(level);
         })
-        .sort((a, b) => a.sort_order - b.sort_order),
+        .sort(
+          (a, b) =>
+            a.sort_order - b.sort_order ||
+            a.name.localeCompare(b.name) ||
+            a.id.localeCompare(b.id),
+        ),
     })).filter((tab) => tab.items.length > 0);
   }, [flavours]);
 

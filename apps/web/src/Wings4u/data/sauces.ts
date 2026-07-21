@@ -5,6 +5,7 @@ type MenuWingFlavour = {
   slug: string;
   heat_level: MenuHeatLevel;
   is_plain?: boolean;
+  sort_order?: number;
 };
 
 const WING_FLAVOURS: MenuWingFlavour[] = [
@@ -285,7 +286,7 @@ const SOURCE_FLAVOURS = WING_FLAVOURS.filter(
 );
 
 function mapSourceFlavoursToSauceFlavours(
-  source: Array<Pick<MenuWingFlavour, "name" | "slug" | "heat_level">>,
+  source: Array<Pick<MenuWingFlavour, "name" | "slug" | "heat_level" | "sort_order">>,
 ): SauceFlavour[] {
   const nameCounts = source.reduce<Record<string, number>>((counts, flavour) => {
     const key = flavour.name.toLowerCase();
@@ -293,7 +294,14 @@ function mapSourceFlavoursToSauceFlavours(
     return counts;
   }, {});
 
-  return source.map((flavour, index) => {
+  const categoryNumbers: Record<SauceCategory, number> = {
+    mild: 0,
+    medium: 0,
+    hot: 0,
+    dryrub: 0,
+  };
+
+  return source.map((flavour) => {
     const cat =
       HEAT_LEVEL_TO_CATEGORY[flavour.heat_level as Exclude<MenuHeatLevel, "PLAIN">];
     const hasDuplicateName = (nameCounts[flavour.name.toLowerCase()] ?? 0) > 1;
@@ -301,6 +309,7 @@ function mapSourceFlavoursToSauceFlavours(
       cat === "dryrub" && hasDuplicateName && !/dry rub/i.test(flavour.name)
         ? `${flavour.name} Dry Rub`
         : flavour.name;
+    categoryNumbers[cat] += 1;
 
     return {
       id: flavour.slug,
@@ -312,14 +321,20 @@ function mapSourceFlavoursToSauceFlavours(
       visualAccent: pickSauceVisualAccent(flavour.name, cat),
       heat: deriveGridHeat(flavour.name, cat),
       carouselHeat: deriveCarouselHeat(cat),
-      number: index + 1,
+      number: categoryNumbers[cat],
     };
   });
 }
 
 /** Build display sauces from live API wing-flavour rows (cached on the server). */
 export function buildSauceFlavoursFromApi(
-  flavours: Array<{ name: string; slug: string; heat_level: string; is_plain?: boolean }>,
+  flavours: Array<{
+    name: string;
+    slug: string;
+    heat_level: string;
+    is_plain?: boolean;
+    sort_order?: number;
+  }>,
 ): SauceFlavour[] {
   const source = flavours.flatMap((flavour) => {
     if (
@@ -330,8 +345,30 @@ export function buildSauceFlavoursFromApi(
       return [];
     }
 
-    return [{ name: flavour.name, slug: flavour.slug, heat_level: flavour.heat_level }];
+    return [{
+      name: flavour.name,
+      slug: flavour.slug,
+      heat_level: flavour.heat_level,
+      sort_order: flavour.sort_order,
+    }];
   });
+  source.sort((left, right) => {
+    const leftCategory =
+      HEAT_LEVEL_TO_CATEGORY[left.heat_level as Exclude<MenuHeatLevel, "PLAIN">];
+    const rightCategory =
+      HEAT_LEVEL_TO_CATEGORY[right.heat_level as Exclude<MenuHeatLevel, "PLAIN">];
+    const categoryDifference =
+      SAUCE_CATEGORY_ORDER.indexOf(leftCategory) -
+      SAUCE_CATEGORY_ORDER.indexOf(rightCategory);
+    if (categoryDifference !== 0) return categoryDifference;
+
+    const positionDifference =
+      (left.sort_order ?? Number.MAX_SAFE_INTEGER) -
+      (right.sort_order ?? Number.MAX_SAFE_INTEGER);
+    if (positionDifference !== 0) return positionDifference;
+    return left.name.localeCompare(right.name) || left.slug.localeCompare(right.slug);
+  });
+
   return mapSourceFlavoursToSauceFlavours(source);
 }
 

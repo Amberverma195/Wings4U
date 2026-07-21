@@ -374,12 +374,19 @@ export function AdminMenuClient() {
             <div className={styles.sauceGrid}>
               {SAUCE_HEAT_LEVELS.map((heat) => {
                 const groupTotal = sauces.filter((sauce) => sauce.heatLevel === heat).length;
-                const groupSauces = sauces.filter((sauce) => {
-                  if (sauce.heatLevel !== heat) return false;
-                  return normalizedSauceSearch
-                    ? sauce.name.toLocaleLowerCase().includes(normalizedSauceSearch)
-                    : true;
-                });
+                const groupSauces = sauces
+                  .filter((sauce) => {
+                    if (sauce.heatLevel !== heat) return false;
+                    return normalizedSauceSearch
+                      ? sauce.name.toLocaleLowerCase().includes(normalizedSauceSearch)
+                      : true;
+                  })
+                  .sort(
+                    (left, right) =>
+                      left.sortOrder - right.sortOrder ||
+                      left.name.localeCompare(right.name) ||
+                      left.id.localeCompare(right.id),
+                  );
                 return (
                   <section key={heat} className={styles.sauceGroup}>
                     <div className={styles.sauceGroupHeader}>
@@ -395,14 +402,14 @@ export function AdminMenuClient() {
                       </div>
                     ) : (
                       <div className={styles.sauceList}>
-                        {groupSauces.map((sauce, index) => (
+                        {groupSauces.map((sauce) => (
                           <div
                             key={sauce.id}
                             className={styles.sauceRow}
                             data-inactive={!sauce.isActive}
                           >
                             <div className={styles.sauceRowMain}>
-                              <span className={styles.sauceSortBadge}>{index + 1}</span>
+                              <span className={styles.sauceSortBadge}>{sauce.sortOrder}</span>
                               <div className={styles.sauceNameBlock}>
                                 <span className={styles.sauceName}>{sauce.name}</span>
                                 {!sauce.isActive ? (

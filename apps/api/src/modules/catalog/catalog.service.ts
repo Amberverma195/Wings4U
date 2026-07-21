@@ -613,7 +613,13 @@ export class CatalogService {
 
     const flavours = await this.prisma.wingFlavour.findMany({
       where: { locationId, isActive: true, archivedAt: null },
-      orderBy: { sortOrder: "asc" },
+      orderBy: [
+        { sortOrder: "asc" },
+        { heatLevel: "asc" },
+        { updatedAt: "desc" },
+        { createdAt: "asc" },
+        { id: "asc" },
+      ],
     });
 
     const serialized = flavours.map((flavour) => ({

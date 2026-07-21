@@ -46,10 +46,12 @@ export type CreateUpdateCategoryPayload = {
 
 export type CreateUpdateWingFlavourPayload = {
   name: string;
-  category: "MILD" | "MEDIUM" | "HOT" | "DRY_RUB";
+  category: WingFlavourCategory;
   sort_order: number;
   is_active: boolean;
 };
+
+type WingFlavourCategory = "MILD" | "MEDIUM" | "HOT" | "DRY_RUB";
 
 // ── Helpers ──
 
@@ -144,6 +146,13 @@ function normalizeOptionName(name: string): string {
   return name.trim().toLocaleLowerCase("en-CA");
 }
 
+function normalizeWingFlavourPosition(requested: number, maximum: number): number {
+  if (!Number.isInteger(requested) || requested < 1) {
+    throw new BadRequestException("Sauce position must be 1 or greater");
+  }
+  return Math.min(requested, maximum);
+}
+
 // ── Service ──
 
 @Injectable()
@@ -172,6 +181,62 @@ export class AdminMenuService {
     const result = await resultPromise;
     await this.invalidateCatalogCaches(locationId);
     return result;
+  }
+
+  private async runWingFlavourTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(operation, {
+          isolationLevel: "Serializable",
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code !== "P2034" || attempt === 3) {
+          throw error;
+        }
+      }
+    }
+
+    throw new ConflictException("Sauce order changed concurrently. Please try again.");
+  }
+
+  private async orderedWingFlavourIds(
+    tx: Prisma.TransactionClient,
+    locationId: string,
+    category: WingFlavourCategory,
+    excludeId?: string,
+  ): Promise<string[]> {
+    const flavours = await tx.wingFlavour.findMany({
+      where: {
+        locationId,
+        heatLevel: category,
+        archivedAt: null,
+        isPlain: false,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      orderBy: [
+        { sortOrder: "asc" },
+        { updatedAt: "desc" },
+        { createdAt: "asc" },
+        { id: "asc" },
+      ],
+      select: { id: true },
+    });
+
+    return flavours.map((flavour) => flavour.id);
+  }
+
+  private async rewriteWingFlavourOrder(
+    tx: Prisma.TransactionClient,
+    orderedIds: string[],
+  ): Promise<void> {
+    for (const [index, id] of orderedIds.entries()) {
+      await tx.wingFlavour.update({
+        where: { id },
+        data: { sortOrder: index + 1 },
+      });
+    }
   }
 
   private async syncWingComboSideOptions(
@@ -377,7 +442,11 @@ export class AdminMenuService {
     return this.prisma.wingFlavour.findMany({
       where: { locationId, archivedAt: null, heatLevel: { not: "PLAIN" } },
       orderBy: [
-        { sortOrder: "asc" }
+        { sortOrder: "asc" },
+        { heatLevel: "asc" },
+        { updatedAt: "desc" },
+        { createdAt: "asc" },
+        { id: "asc" },
       ],
     });
   }
@@ -386,66 +455,118 @@ export class AdminMenuService {
     if ((data as { category?: string }).category === "PLAIN") {
       throw new UnprocessableEntityException("Plain sauce is managed by the system");
     }
-    const slug = generateSlug(data.name);
-    const existing = await this.prisma.wingFlavour.findUnique({
-      where: { locationId_slug: { locationId, slug } },
-    });
-    const finalSlug = existing ? `${slug}-${crypto.randomBytes(2).toString("hex")}` : slug;
-
     return this.invalidateCatalogAfter(
       locationId,
-      this.prisma.wingFlavour.create({
-        data: {
+      this.runWingFlavourTransaction(async (tx) => {
+        const slug = generateSlug(data.name);
+        const existing = await tx.wingFlavour.findUnique({
+          where: { locationId_slug: { locationId, slug } },
+        });
+        const finalSlug = existing
+          ? `${slug}-${crypto.randomBytes(2).toString("hex")}`
+          : slug;
+        const orderedIds = await this.orderedWingFlavourIds(
+          tx,
           locationId,
-          name: data.name,
-          slug: finalSlug,
-          heatLevel: data.category,
-          isPlain: false,
-          isActive: data.is_active,
-          sortOrder: data.sort_order,
-        },
+          data.category,
+        );
+        const position = normalizeWingFlavourPosition(
+          data.sort_order,
+          orderedIds.length + 1,
+        );
+        const created = await tx.wingFlavour.create({
+          data: {
+            locationId,
+            name: data.name,
+            slug: finalSlug,
+            heatLevel: data.category,
+            isPlain: false,
+            isActive: data.is_active,
+            sortOrder: position,
+          },
+        });
+
+        orderedIds.splice(position - 1, 0, created.id);
+        await this.rewriteWingFlavourOrder(tx, orderedIds);
+        return { ...created, sortOrder: position };
       }),
     );
   }
 
   async updateWingFlavour(locationId: string, id: string, data: CreateUpdateWingFlavourPayload) {
-    const flavour = await this.prisma.wingFlavour.findFirst({
-      where: { id, locationId, archivedAt: null },
-    });
-    if (!flavour) throw new NotFoundException("Sauce not found");
-    if (flavour.heatLevel === "PLAIN") {
-      throw new UnprocessableEntityException("Plain sauce is managed by the system");
-    }
-
     return this.invalidateCatalogAfter(
       locationId,
-      this.prisma.wingFlavour.update({
-        where: { id },
-        data: {
-          name: data.name,
-          heatLevel: data.category,
-          isPlain: false,
-          isActive: data.is_active,
-          sortOrder: data.sort_order,
-        },
+      this.runWingFlavourTransaction(async (tx) => {
+        const flavour = await tx.wingFlavour.findFirst({
+          where: { id, locationId, archivedAt: null },
+        });
+        if (!flavour) throw new NotFoundException("Sauce not found");
+        if (flavour.heatLevel === "PLAIN") {
+          throw new UnprocessableEntityException("Plain sauce is managed by the system");
+        }
+
+        const destinationIds = await this.orderedWingFlavourIds(
+          tx,
+          locationId,
+          data.category,
+          id,
+        );
+        const position = normalizeWingFlavourPosition(
+          data.sort_order,
+          destinationIds.length + 1,
+        );
+        const updated = await tx.wingFlavour.update({
+          where: { id },
+          data: {
+            name: data.name,
+            heatLevel: data.category,
+            isPlain: false,
+            isActive: data.is_active,
+            sortOrder: position,
+          },
+        });
+
+        if (flavour.heatLevel !== data.category) {
+          const sourceIds = await this.orderedWingFlavourIds(
+            tx,
+            locationId,
+            flavour.heatLevel as WingFlavourCategory,
+            id,
+          );
+          await this.rewriteWingFlavourOrder(tx, sourceIds);
+        }
+
+        destinationIds.splice(position - 1, 0, id);
+        await this.rewriteWingFlavourOrder(tx, destinationIds);
+        return { ...updated, sortOrder: position };
       }),
     );
   }
 
   async archiveWingFlavour(locationId: string, id: string) {
-    const flavour = await this.prisma.wingFlavour.findFirst({
-      where: { id, locationId, archivedAt: null },
-    });
-    if (!flavour) throw new NotFoundException("Sauce not found");
-    if (flavour.heatLevel === "PLAIN") {
-      throw new UnprocessableEntityException("Plain sauce is managed by the system");
-    }
-
     return this.invalidateCatalogAfter(
       locationId,
-      this.prisma.wingFlavour.update({
-        where: { id },
-        data: { archivedAt: new Date(), isActive: false },
+      this.runWingFlavourTransaction(async (tx) => {
+        const flavour = await tx.wingFlavour.findFirst({
+          where: { id, locationId, archivedAt: null },
+        });
+        if (!flavour) throw new NotFoundException("Sauce not found");
+        if (flavour.heatLevel === "PLAIN") {
+          throw new UnprocessableEntityException("Plain sauce is managed by the system");
+        }
+
+        const archived = await tx.wingFlavour.update({
+          where: { id },
+          data: { archivedAt: new Date(), isActive: false },
+        });
+        const remainingIds = await this.orderedWingFlavourIds(
+          tx,
+          locationId,
+          flavour.heatLevel as WingFlavourCategory,
+          id,
+        );
+        await this.rewriteWingFlavourOrder(tx, remainingIds);
+        return archived;
       }),
     );
   }

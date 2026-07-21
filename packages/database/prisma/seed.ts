@@ -534,7 +534,10 @@ async function main() {
     // ── 11. WingFlavours ─────────────────────────────────────────────────
     console.log(`Creating wing flavours (${WING_FLAVOURS.length})…`);
     const flavourRows: { id: string; name: string }[] = [];
-    for (const [idx, f] of WING_FLAVOURS.entries()) {
+    const flavourPositionByHeat = new Map<string, number>();
+    for (const f of WING_FLAVOURS) {
+      const sortOrder = (flavourPositionByHeat.get(f.heat) ?? 0) + 1;
+      flavourPositionByHeat.set(f.heat, sortOrder);
       const row = await tx.wingFlavour.create({
         data: {
           locationId: location.id,
@@ -542,7 +545,7 @@ async function main() {
           slug: f.slug,
           heatLevel: f.heat,
           isPlain: f.heat === "PLAIN",
-          sortOrder: idx + 1,
+          sortOrder,
         },
       });
       flavourRows.push({ id: row.id, name: f.name });

@@ -41,6 +41,7 @@ class CreateUpdateWingFlavourDto {
   category!: "MILD" | "MEDIUM" | "HOT" | "DRY_RUB";
 
   @IsInt()
+  @Min(1)
   sort_order!: number;
 
   @IsBoolean()
