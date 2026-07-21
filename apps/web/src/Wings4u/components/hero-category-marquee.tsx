@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 const ITEMS = [
-  { emoji: "\u{1F357}", text: "WINGS" },
-  { emoji: "\u{1F9C4}", text: "GARLIC BREADS" },
-  { emoji: "\u{1F35F}", text: "POUTINES" },
-  { emoji: "\u{1F32F}", text: "WRAPS" },
-  { emoji: "\u{1F354}", text: "BURGERS" },
-  { emoji: "\u{1F957}", text: "SALADS" },
-  { emoji: "\u{1F357}", text: "CHICKEN TENDERS" },
-  { emoji: "\u{1F95F}", text: "APPETIZERS" },
+  { emoji: "\u{1F357}", text: "WINGS", slug: "wings" },
+  { emoji: "\u{1F9C4}", text: "GARLIC BREADS", slug: "breads" },
+  { emoji: "\u{1F35F}", text: "POUTINES", slug: "poutines-and-sides" },
+  { emoji: "\u{1F32F}", text: "WRAPS", slug: "wraps" },
+  { emoji: "\u{1F354}", text: "BURGERS", slug: "burgers" },
+  { emoji: "\u{1F957}", text: "SALADS", slug: "salads" },
+  { emoji: "\u{1F357}", text: "CHICKEN TENDERS", slug: "tenders" },
+  { emoji: "\u{1F95F}", text: "APPETIZERS", slug: "appetizers" },
 ] as const;
 
 /** Muted tints from the site palette (gold / amber / warm cream) â€” one per category, no duplicate hex */
@@ -60,12 +61,17 @@ export function HeroCategoryMarquee() {
     <div
       ref={rootRef}
       className={`wk-hero-marquee${inView ? " wk-hero-marquee--in-view" : ""}`}
-      aria-hidden="true"
+      role="navigation"
+      aria-label="Menu categories"
     >
       <div className="wk-hero-marquee-viewport">
         <div className="wk-hero-marquee-track">
           {Array.from({ length: COPIES }, (_, copyIdx) => (
-            <div key={copyIdx} className="wk-hero-marquee-chunk">
+            <div
+              key={copyIdx}
+              className="wk-hero-marquee-chunk"
+              aria-hidden={copyIdx === 0 ? undefined : true}
+            >
               {ITEMS.map((item, itemIdx) => {
                 const globalIndex = copyIdx * ITEMS.length + itemIdx;
                 /* Every 4th: accent color only â€” no emoji glow / halo in CSS */
@@ -77,19 +83,22 @@ export function HeroCategoryMarquee() {
 
                 return (
                   <span key={`${copyIdx}-${itemIdx}`} className="wk-hero-marquee-item-wrap">
-                    <span
+                    <Link
+                      href={`/order?cat=${item.slug}`}
                       className={
                         isAccent
                           ? "wk-hero-marquee-item wk-hero-marquee-item--accent"
                           : "wk-hero-marquee-item wk-hero-marquee-item--ghost"
                       }
                       style={isAccent ? undefined : { color: ghostColor }}
+                      tabIndex={copyIdx === 0 ? undefined : -1}
+                      aria-label={`View ${item.text.toLowerCase()} menu`}
                     >
                       <span className="wk-hero-marquee-emoji" aria-hidden="true">
                         {item.emoji}
                       </span>{" "}
                       {item.text}
-                    </span>
+                    </Link>
                     {!isLastInTrack ? <span className="wk-hero-marquee-sep">{"\u00B7"}</span> : null}
                   </span>
                 );

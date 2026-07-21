@@ -338,6 +338,7 @@
 
 .kds-schedule-row > strong {
   align-self: center;
+  color: #3f2b20;
 }
 
 .kds-schedule-row label:not(.kds-schedule-row__closed) span {
@@ -365,6 +366,7 @@
   align-items: center;
   gap: 0.45rem;
   min-height: 2.5rem;
+  color: #3f2b20;
   font-size: 0.85rem;
   font-weight: 700;
 }

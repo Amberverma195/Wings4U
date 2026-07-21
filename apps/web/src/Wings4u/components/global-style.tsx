@@ -626,7 +626,19 @@ export function WingKingsGlobalStyle() {
         font-size: clamp(18px, 2.35vw, 24px);
         font-weight: 600;
         letter-spacing: 0.06em;
+        text-decoration: none;
         text-transform: uppercase;
+        transition: color 160ms ease, opacity 160ms ease;
+      }
+
+      .wk-hero-marquee-item:hover {
+        color: #ffb000 !important;
+      }
+
+      .wk-hero-marquee-item:focus-visible {
+        color: #ffb000 !important;
+        outline: 2px solid #ffb000;
+        outline-offset: 5px;
       }
 
       .wk-hero-marquee-item--ghost {

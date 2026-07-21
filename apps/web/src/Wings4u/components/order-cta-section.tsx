@@ -40,7 +40,7 @@ export function OrderCtaSection() {
           <Link href="/order" className="btn-fire">
             <span className="order-cta-btn-label">START YOUR ORDER {"\u2192"}</span>
           </Link>
-          <Link href="/#sauces" className="btn-ghost">
+          <Link href="/sauces" className="btn-ghost">
             <span className="order-cta-btn-label">EXPLORE SAUCES</span>
           </Link>
         </div>
