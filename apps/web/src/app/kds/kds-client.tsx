@@ -1775,6 +1775,27 @@ function normalizeScheduleTime(value: string, label: string): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function scheduleHoursComparisonKey(hours: KdsScheduleHour[]): string {
+  return normalizeKdsScheduleHours(hours)
+    .map((hour) => {
+      const comparableTime = (value: string) => {
+        try {
+          return normalizeScheduleTime(value, "Time");
+        } catch {
+          return value.trim();
+        }
+      };
+
+      return [
+        hour.day_of_week,
+        comparableTime(hour.time_from),
+        comparableTime(hour.time_to),
+        hour.is_closed,
+      ].join(":");
+    })
+    .join("|");
+}
+
 function KdsScheduleModal({
   schedule,
   onClose,
@@ -1784,11 +1805,17 @@ function KdsScheduleModal({
   onClose: () => void;
   onSaved: (schedule: KdsSchedule) => void;
 }) {
-  const [hours, setHours] = useState(() =>
+  const [initialHours] = useState(() =>
     normalizeKdsScheduleHours(schedule.hours),
+  );
+  const [hours, setHours] = useState(() =>
+    initialHours.map((hour) => ({ ...hour })),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasChanges =
+    scheduleHoursComparisonKey(hours) !==
+    scheduleHoursComparisonKey(initialHours);
 
   const updateHour = (
     dayOfWeek: number,
@@ -1803,7 +1830,7 @@ function KdsScheduleModal({
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (saving) return;
+    if (saving || !hasChanges) return;
     setSaving(true);
     setError(null);
     try {
@@ -1928,7 +1955,11 @@ function KdsScheduleModal({
           >
             Cancel
           </button>
-          <button type="submit" className="btn-primary" disabled={saving}>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={saving || !hasChanges}
+          >
             {saving ? "Saving..." : "Save schedule"}
           </button>
         </div>

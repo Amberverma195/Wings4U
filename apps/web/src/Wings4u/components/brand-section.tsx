@@ -148,9 +148,10 @@ export function BrandSection() {
           <span className="brand-heading-line">We Don&rsquo;t Cut</span>
           <span className="brand-heading-line gradient-text">Corners.</span>
           <span className="brand-heading-line">
-            We Cut Deep Into <span className="gradient-text">Flavor.</span>
+            We Cut Deep Into <span className="gradient-text">Flavour.</span>
           </span>
         </h2>
+        <p className="brand-flavour-subtitle">Your Taste Buds will Thank U</p>
         <p className="brand-body">
           Wings4U was born from one obsession: making the{" "}
           <strong>crispiest, sauciest wings</strong> London has ever tasted. Every order is hand-breaded

@@ -376,8 +376,8 @@ export function SaucesPage({ flavours }: { flavours: SauceFlavour[] }) {
               <span>FLAVOURS</span>
             </h1>
             <p className={styles.sauceHeroSub}>
-              Sauces. Dry rubs. From mild and mellow to absolutely unhinged. Every single one made
-              in-house, fresh, daily.
+              Sauces. Dry rubs. From mild and mellow to absolutely unhinged. Enjoy 6 Sauces made in
+              house daily.
             </p>
 
             <div className={styles.sauceStats}>
@@ -564,17 +564,9 @@ export function SaucesPage({ flavours }: { flavours: SauceFlavour[] }) {
             <div className={styles.footerLinks}>
               <Link href="/">Home</Link>
               <Link href="/order?fulfillment_type=DELIVERY">Menu</Link>
-              <a href="#nutrition-note">Nutrition</a>
-              <a href="#allergen-note">Allergens</a>
             </div>
             <div className={styles.footerCopy}>{"\u00A9"} 2026 Wings 4 U</div>
           </div>
-          <span id="nutrition-note" className={styles.visuallyHidden}>
-            Nutrition details vary by flavour and serving size.
-          </span>
-          <span id="allergen-note" className={styles.visuallyHidden}>
-            Allergen details vary by flavour and kitchen preparation.
-          </span>
         </footer>
       </div>
 

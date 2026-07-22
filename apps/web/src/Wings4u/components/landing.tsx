@@ -69,7 +69,7 @@ export function Landing({
               <span className="wk-hero-title-line wk-hero-title-line--different" style={styles.heroTitleGradient}>DIFFERENT</span>
             </h1>
             <p style={styles.heroSub}>
-              <span style={{ display: "block" }}>Hand-breaded. Sauced to perfection.</span>
+              <span style={{ display: "block" }}>Freshly Hand-breaded daily in house.</span>
               <span style={{ display: "block" }}>Crispy Every Time. NO EXCUSES...</span>
             </p>
             <div className="wk-hero-buttons" style={styles.heroButtons}>

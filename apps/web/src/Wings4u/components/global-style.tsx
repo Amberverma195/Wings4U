@@ -866,6 +866,14 @@ export function WingKingsGlobalStyle() {
         -webkit-text-fill-color: transparent;
       }
 
+      .brand-flavour-subtitle {
+        margin: -6px 0 22px;
+        color: #cc8855;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 18px;
+        line-height: 1.5;
+      }
+
       .brand-body {
         font-size: 17px;
         color: #ffd966;

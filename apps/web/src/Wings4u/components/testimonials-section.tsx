@@ -34,7 +34,7 @@ const REVIEWS: Review[] = [
   },
   {
     quote:
-      "Bone-in, extra sauce, no regrets. The buffalo has actual heat and flavor \u2014 not just vinegar.",
+      "Bone-in, extra sauce, no regrets. The buffalo has actual heat and flavour \u2014 not just vinegar.",
     name: "Jordan L.",
     handle: "@jordo_wings",
     source: "Google",

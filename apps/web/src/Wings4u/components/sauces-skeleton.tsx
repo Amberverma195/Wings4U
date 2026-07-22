@@ -30,8 +30,8 @@ export function SaucesSkeleton() {
             <span className={styles.heroWord}>FLAVOURS</span>
           </h1>
           <p className={styles.heroSub}>
-            Sauces. Dry rubs. From mild and mellow to absolutely unhinged. Every single one made
-            in-house, fresh, daily.
+            Sauces. Dry rubs. From mild and mellow to absolutely unhinged. Enjoy 6 Sauces made in
+            house daily.
           </p>
 
           <div className={styles.stats}>
