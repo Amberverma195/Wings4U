@@ -15,8 +15,10 @@ import {
 } from "@/lib/cart-item-utils";
 import { buildLineSummary } from "@/lib/cart-line-summary";
 import {
+  clearPendingGuestDeliveryAddress,
   FIXED_DELIVERY_CITY,
   hasCompleteDeliveryAddress,
+  persistPendingGuestDeliveryAddress,
 } from "@/lib/delivery-address";
 import {
   DELIVERY_UNAVAILABLE_MESSAGE,
@@ -336,6 +338,13 @@ export function CheckoutClient() {
     setState({ step: "submitting" });
     const key = generateIdempotencyKey();
 
+    if (cart.fulfillmentType === "DELIVERY") {
+      await persistPendingGuestDeliveryAddress(
+        session.refresh,
+        session.clear,
+      );
+    }
+
     const payload: Record<string, unknown> = {
       location_id: cart.locationId,
       fulfillment_type: cart.fulfillmentType,
@@ -404,6 +413,7 @@ export function CheckoutClient() {
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(WINGS_REWARD_STORAGE_KEY);
         clearPromoHandoffStorage();
+        clearPendingGuestDeliveryAddress();
       }
       setState({ step: "success", order });
     } catch (e) {

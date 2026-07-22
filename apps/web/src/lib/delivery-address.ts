@@ -32,6 +32,9 @@ const DELIVERY_ADDRESS_STORAGE_KEY = "wings4u.delivery-address";
 
 const DELIVERY_ADDRESSES_LIST_KEY = "wings4u.delivery-addresses";
 
+const PENDING_GUEST_DELIVERY_ADDRESS_KEY =
+  "wings4u.pending-guest-delivery-address";
+
 /** Fired when the saved-address list changes (same tab + sessionStorage). */
 export const DELIVERY_ADDRESSES_UPDATED_EVENT = "wings4u-delivery-addresses-updated";
 
@@ -108,6 +111,7 @@ type CustomerAddressApiRow = {
 };
 
 let isAuthenticatedForAddresses = false;
+let pendingGuestAddressMigration: Promise<boolean> | null = null;
 
 /**
  * Called by DeliveryAddressProvider whenever the session auth state flips.
@@ -121,11 +125,97 @@ export function setDeliveryAddressAuthState(authed: boolean): boolean {
   if (!authed && typeof window !== "undefined") {
     window.sessionStorage.removeItem(DELIVERY_ADDRESSES_LIST_KEY);
     window.sessionStorage.removeItem(DELIVERY_ADDRESS_STORAGE_KEY);
+    window.sessionStorage.removeItem(PENDING_GUEST_DELIVERY_ADDRESS_KEY);
     window.dispatchEvent(new Event(DELIVERY_ADDRESSES_UPDATED_EVENT));
     window.dispatchEvent(new Event(DELIVERY_ADDRESS_UPDATED_EVENT));
   }
 
   return true;
+}
+
+function loadPendingGuestDeliveryAddress(): DeliveryAddressDraft | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(
+    PENDING_GUEST_DELIVERY_ADDRESS_KEY,
+  );
+  if (!raw) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isDeliveryAddressDraft(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingGuestDeliveryAddress(): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(PENDING_GUEST_DELIVERY_ADDRESS_KEY);
+}
+
+/**
+ * Merge the address selected while signed out into the authenticated
+ * customer's address book. The API's create endpoint is an idempotent upsert,
+ * so an existing normalized street + postal match is never duplicated.
+ */
+export async function persistPendingGuestDeliveryAddress(
+  refresh?: () => Promise<void | boolean>,
+  clear?: () => void,
+): Promise<boolean> {
+  if (!isAuthenticatedForAddresses || typeof window === "undefined") {
+    return false;
+  }
+  if (pendingGuestAddressMigration) return pendingGuestAddressMigration;
+
+  const pending = loadPendingGuestDeliveryAddress();
+  if (!pending || !hasCompleteDeliveryAddress(pending)) return false;
+
+  const request = (async () => {
+    try {
+      const fetchCall = () =>
+        apiFetch("/api/v1/customer/addresses/ensure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            line1: pending.line1.trim(),
+            city: pending.city.trim(),
+            postal_code: normalizeDeliveryPostalCode(pending.postalCode),
+          }),
+        });
+      const res =
+        refresh && clear
+          ? await withSilentRefresh(fetchCall, refresh, clear)
+          : await fetchCall();
+      if (!res.ok) {
+        console.warn(
+          `[Addresses] Guest address migration failed: ${res.status} ${res.statusText}`,
+        );
+        return false;
+      }
+
+      const currentPending = loadPendingGuestDeliveryAddress();
+      if (
+        currentPending &&
+        deliveryAddressDedupeKey(currentPending) ===
+          deliveryAddressDedupeKey(pending)
+      ) {
+        clearPendingGuestDeliveryAddress();
+      }
+      return true;
+    } catch (error) {
+      console.warn("[Addresses] Guest address migration failed", error);
+      return false;
+    }
+  })();
+
+  pendingGuestAddressMigration = request;
+  try {
+    return await request;
+  } finally {
+    if (pendingGuestAddressMigration === request) {
+      pendingGuestAddressMigration = null;
+    }
+  }
 }
 
 function toSavedAddress(row: CustomerAddressApiRow): SavedDeliveryAddress {
@@ -442,6 +532,12 @@ export function saveDeliveryAddressDraft(address: DeliveryAddressDraft): void {
     DELIVERY_ADDRESS_STORAGE_KEY,
     JSON.stringify(address),
   );
+  if (!isAuthenticatedForAddresses) {
+    window.sessionStorage.setItem(
+      PENDING_GUEST_DELIVERY_ADDRESS_KEY,
+      JSON.stringify(address),
+    );
+  }
   window.dispatchEvent(new Event(DELIVERY_ADDRESS_UPDATED_EVENT));
 }
 

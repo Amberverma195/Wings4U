@@ -108,6 +108,19 @@ export class CustomerAddressesController {
     });
   }
 
+  @Post("ensure")
+  @Roles("CUSTOMER", "ADMIN")
+  async ensure(
+    @Body() body: CreateCustomerAddressDto,
+    @CurrentUser() user: NonNullable<Request["user"]>,
+  ) {
+    return this.service.ensure(user.userId, {
+      line1: body.line1,
+      city: body.city,
+      postalCode: body.postal_code,
+    });
+  }
+
   @Patch(":id")
   @Roles("CUSTOMER", "ADMIN")
   async update(

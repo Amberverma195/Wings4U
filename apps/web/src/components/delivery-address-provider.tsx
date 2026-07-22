@@ -19,6 +19,7 @@ import {
   loadSavedAddresses,
   normalizeDeliveryPostalCode,
   patchDeliveryAddressDraft,
+  persistPendingGuestDeliveryAddress,
   saveDeliveryAddressDraft,
   setDeliveryAddressAuthState,
   syncSavedAddressesFromServer,
@@ -65,18 +66,32 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
 
   /**
    * Mirror session auth state into the address module so writes go to the DB
-   * for signed-in users. On sign-in we pull the server list and replace the
-   * local cache; on sign-out the cache is wiped by setDeliveryAddressAuthState.
+   * for signed-in users. On sign-in we first merge a pending guest-selected
+   * address, then replace the local cache with the authoritative server list.
+   * On sign-out the cache is wiped by setDeliveryAddressAuthState.
    */
   useEffect(() => {
     if (!session.loaded) return;
     const changed = setDeliveryAddressAuthState(session.authenticated);
     if (session.authenticated) {
-      void syncSavedAddressesFromServer();
+      void (async () => {
+        await persistPendingGuestDeliveryAddress(
+          session.refresh,
+          session.clear,
+        );
+        await syncSavedAddressesFromServer(session.refresh, session.clear);
+      })();
     } else if (changed) {
       refresh();
     }
-  }, [session.loaded, session.authenticated, session.user?.id, refresh]);
+  }, [
+    session.loaded,
+    session.authenticated,
+    session.user?.id,
+    session.refresh,
+    session.clear,
+    refresh,
+  ]);
 
   useEffect(() => {
     function onSync() {

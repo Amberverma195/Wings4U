@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import type { CustomerAddress } from "@prisma/client";
+import type { CustomerAddress, Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 
 export interface CustomerAddressDto {
@@ -27,6 +27,43 @@ export interface UpsertCustomerAddressInput {
 
 export type UpdateCustomerAddressInput = Partial<UpsertCustomerAddressInput>;
 
+type CustomerAddressClient = Pick<Prisma.TransactionClient, "customerAddress">;
+
+/**
+ * Ensure checkout's selected delivery address belongs to the customer.
+ * Existing rows are returned untouched; a different address is appended.
+ */
+export async function ensureCustomerAddressExists(
+  client: CustomerAddressClient,
+  userId: string,
+  input: UpsertCustomerAddressInput,
+): Promise<CustomerAddressDto> {
+  const line1 = input.line1.trim();
+  const city = input.city.trim();
+  const postalCode = normalizePostalCode(input.postalCode);
+
+  const existing = await client.customerAddress.findFirst({
+    where: {
+      userId,
+      postalCode,
+      line1: { equals: line1, mode: "insensitive" },
+    },
+  });
+  if (existing) return toDto(existing);
+
+  const created = await client.customerAddress.create({
+    data: {
+      userId,
+      line1,
+      city,
+      postalCode,
+      label: sanitizeLabel(input.label),
+      isDefault: input.isDefault ?? false,
+    },
+  });
+  return toDto(created);
+}
+
 /**
  * Persisted customer delivery addresses. Rows belong to a user so they follow
  * the user across devices. We keep dedupe at the app layer (normalized
@@ -43,6 +80,13 @@ export class CustomerAddressesService {
       orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
     });
     return rows.map(toDto);
+  }
+
+  async ensure(
+    userId: string,
+    input: UpsertCustomerAddressInput,
+  ): Promise<CustomerAddressDto> {
+    return ensureCustomerAddressExists(this.prisma, userId, input);
   }
 
   /**

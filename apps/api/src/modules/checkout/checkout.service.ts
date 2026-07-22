@@ -18,6 +18,10 @@ import {
   getDeliveryEligibilityForCustomer,
 } from "../customers/no-show-policy";
 import {
+  ensureCustomerAddressExists,
+  type UpsertCustomerAddressInput,
+} from "../customers/customer-addresses.service";
+import {
   StripePaymentsService,
   type VerifiedStripePayment,
 } from "../payments/stripe-payments.service";
@@ -79,6 +83,29 @@ type PlaceOrderParams = {
   paymentMethod?: "PAY_AT_STORE" | "ONLINE_CARD";
   stripePaymentIntentId?: string;
 };
+
+function requireDeliveryAddress(
+  value: Record<string, unknown> | undefined,
+): UpsertCustomerAddressInput {
+  const line1 = typeof value?.line1 === "string" ? value.line1.trim() : "";
+  const city = typeof value?.city === "string" ? value.city.trim() : "";
+  const rawPostal =
+    typeof value?.postal_code === "string"
+      ? value.postal_code
+      : typeof value?.postalCode === "string"
+        ? value.postalCode
+        : "";
+  const postalCode = rawPostal.trim().replace(/\s+/g, " ").toUpperCase();
+
+  if (!line1 || !city || !postalCode) {
+    throw new UnprocessableEntityException({
+      message: "A complete delivery address is required",
+      field: "address_snapshot_json",
+    });
+  }
+
+  return { line1, city, postalCode };
+}
 
 function getRemovedIngredientsFromInput(params: {
   removedIngredients?: RemovedIngredientInput[];
@@ -220,6 +247,11 @@ export class CheckoutService {
   ) {}
 
   async placeOrder(params: PlaceOrderParams) {
+    const deliveryAddress =
+      params.fulfillmentType === "DELIVERY"
+        ? requireDeliveryAddress(params.addressSnapshotJson)
+        : null;
+
     const orderId = await this.prisma.$transaction(async (tx) => {
       const existingKey = await tx.checkoutIdempotencyKey.findUnique({
         where: { idempotencyKey: params.idempotencyKey },
@@ -314,13 +346,7 @@ export class CheckoutService {
             )
           : [];
         if (allowedPostals.length > 0) {
-          const addr = params.addressSnapshotJson as
-            | Record<string, unknown>
-            | undefined;
-          const rawPostal =
-            (typeof addr?.postal_code === "string" && addr.postal_code) ||
-            (typeof addr?.postalCode === "string" && addr.postalCode) ||
-            "";
+          const rawPostal = deliveryAddress?.postalCode ?? "";
           const normalize = (p: string) =>
             p.replace(/\s+/g, "").toUpperCase();
           const normalized = normalize(rawPostal);
@@ -1038,6 +1064,14 @@ export class CheckoutService {
         }
       }
 
+      if (deliveryAddress) {
+        await ensureCustomerAddressExists(
+          tx,
+          params.userId,
+          deliveryAddress,
+        );
+      }
+
       const createdOrder = await tx.order.create({
         data: {
           locationId: params.locationId,
@@ -1055,8 +1089,12 @@ export class CheckoutService {
           customerNameSnapshot: customerName,
           customerPhoneSnapshot: customerPhone,
           customerEmailSnapshot: customerEmail,
-          addressSnapshotJson: params.addressSnapshotJson
-            ? (params.addressSnapshotJson as unknown as Parameters<typeof tx.order.create>[0]["data"]["addressSnapshotJson"])
+          addressSnapshotJson: deliveryAddress
+            ? ({
+                line1: deliveryAddress.line1,
+                city: deliveryAddress.city,
+                postal_code: deliveryAddress.postalCode,
+              } as unknown as Parameters<typeof tx.order.create>[0]["data"]["addressSnapshotJson"])
             : undefined,
           pricingSnapshotJson: pricingSnapshot,
           itemSubtotalCents: pricing.itemSubtotalCents,
