@@ -482,24 +482,19 @@ export function SaucesPage({ flavours }: { flavours: SauceFlavour[] }) {
 
                         <div className={styles.sauceSpiceFooter}>
                           <div className={styles.sauceCardHeat} aria-hidden="true">
-                          {Array.from({ length: 5 }, (_, index) => {
-                            const isActive = index < sauce.heat;
-                            const pipColor = sauce.visualAccent;
-                            return (
-                              <span
-                                key={`${sauce.id}-pip-${index}`}
-                                className={styles.heatPip}
-                                style={
-                                  isActive
-                                    ? ({
-                                        background: pipColor,
-                                        boxShadow: `0 0 6px ${pipColor}55`,
-                                      } as CSSProperties)
-                                    : undefined
-                                }
-                              />
-                            );
-                          })}
+                            {Array.from({ length: 5 }, (_, index) => {
+                              const isActive = index < sauce.heat;
+                              return (
+                                <span
+                                  key={`${sauce.id}-chilli-${index}`}
+                                  className={`${styles.heatChilli} ${
+                                    isActive ? styles.heatChilliActive : ""
+                                  }`}
+                                >
+                                  {"\u{1F336}\u{FE0F}"}
+                                </span>
+                              );
+                            })}
                           </div>
 
                           <span

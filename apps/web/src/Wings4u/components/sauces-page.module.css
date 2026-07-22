@@ -516,14 +516,23 @@
   flex-shrink: 0;
 }
 
-.heatPip {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  transform: rotate(45deg);
-  background: #1a0600;
-  box-shadow: none;
+.heatChilli {
+  display: inline-flex;
+  width: 13px;
+  height: 13px;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  filter: grayscale(1);
+  opacity: 0.16;
   flex-shrink: 0;
+}
+
+.heatChilliActive {
+  filter: none;
+  opacity: 1;
+  text-shadow: 0 0 6px rgba(255, 77, 0, 0.45);
 }
 
 .sauceCardBadge {

@@ -34,16 +34,12 @@ function SauceCard({ sauce }: { sauce: SauceFlavour }) {
           {[0, 1, 2, 3].map((i) => (
             <span
               key={i}
-              className={`heat-pip${i < sauce.carouselHeat ? " heat-pip--filled" : ""}`}
-              style={
-                i < sauce.carouselHeat
-                  ? ({
-                      backgroundColor: visualAccent,
-                      boxShadow: `0 0 6px ${visualAccent}55`,
-                    } as CSSProperties)
-                  : undefined
-              }
-            />
+              className={`heat-chilli${
+                i < sauce.carouselHeat ? " heat-chilli--active" : ""
+              }`}
+            >
+              {"\u{1F336}\u{FE0F}"}
+            </span>
           ))}
         </div>
         <span

@@ -1249,13 +1249,23 @@ export function WingKingsGlobalStyle() {
         flex-shrink: 0;
       }
 
-      .heat-pip {
-        width: 7px;
-        height: 7px;
-        border-radius: 2px;
-        transform: rotate(45deg);
-        background: #1a0600;
+      .heat-chilli {
+        display: inline-flex;
+        width: 13px;
+        height: 13px;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        line-height: 1;
+        filter: grayscale(1);
+        opacity: 0.16;
         flex-shrink: 0;
+      }
+
+      .heat-chilli--active {
+        filter: none;
+        opacity: 1;
+        text-shadow: 0 0 6px rgba(255, 77, 0, 0.45);
       }
 
       .sauce-badge {
