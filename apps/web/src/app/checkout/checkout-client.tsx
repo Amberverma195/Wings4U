@@ -16,10 +16,17 @@ import {
 import { buildLineSummary } from "@/lib/cart-line-summary";
 import {
   clearPendingGuestDeliveryAddress,
+  type DeliveryAddressDraft,
   FIXED_DELIVERY_CITY,
   hasCompleteDeliveryAddress,
   persistPendingGuestDeliveryAddress,
 } from "@/lib/delivery-address";
+import {
+  getStoredDeliveryQuote,
+  removeStoredDeliveryQuote,
+  storeDeliveryQuote,
+  type DeliveryQuote,
+} from "@/lib/delivery-quote";
 import {
   DELIVERY_UNAVAILABLE_MESSAGE,
   isMinimumDeliverySubtotalError,
@@ -51,6 +58,24 @@ type CheckoutState =
   | { step: "submitting" }
   | { step: "success"; order: CheckoutResponse }
   | { step: "error"; message: string };
+
+type DeliveryQuoteStatus = "idle" | "loading" | "ready" | "error";
+
+function getApiErrorDetails(
+  body: unknown,
+  fallback: string,
+): { code: string | null; message: string } {
+  const candidate =
+    body && typeof body === "object"
+      ? (body as {
+          errors?: Array<{ code?: string; message?: string }>;
+        })
+      : null;
+  return {
+    code: candidate?.errors?.[0]?.code ?? null,
+    message: getApiErrorMessage(body, fallback),
+  };
+}
 
 function generateIdempotencyKey(): string {
   return crypto.randomUUID();
@@ -87,6 +112,17 @@ export function CheckoutClient() {
   const [state, setState] = useState<CheckoutState>({ step: "review" });
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
+  const [activeDeliveryQuoteContextKey, setActiveDeliveryQuoteContextKey] =
+    useState("");
+  const [deliveryQuoteStatus, setDeliveryQuoteStatus] =
+    useState<DeliveryQuoteStatus>("idle");
+  const [deliveryQuoteError, setDeliveryQuoteError] = useState<{
+    code: string | null;
+    message: string;
+  } | null>(null);
+  const [deliveryQuoteRefreshNonce, setDeliveryQuoteRefreshNonce] = useState(0);
+  const autoRefreshedTokenRef = useRef<string | null>(null);
   const [promoRejectionMessage, setPromoRejectionMessage] = useState<string | null>(null);
   const promoRejectionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   /**
@@ -151,6 +187,10 @@ export function CheckoutClient() {
   /** Checkout order summary: line keys with expanded detail (default all collapsed). */
   const [checkoutLineExpanded, setCheckoutLineExpanded] = useState<Record<string, boolean>>({});
   const pendingSubmitRef = useRef(false);
+  const checkoutAttemptRef = useRef<{
+    fingerprint: string;
+    idempotencyKey: string;
+  } | null>(null);
   const successPanelRef = useRef<HTMLElement | null>(null);
 
   /** Sign-in modal: cursor-following amber rim, mirrors the login card behaviour. */
@@ -190,6 +230,68 @@ export function CheckoutClient() {
   const addressLine1 = address?.line1 ?? "";
   const addressPostal = address?.postalCode ?? "";
   const hasSelectedDeliveryAddress = hasCompleteDeliveryAddress(address);
+  const selectedDeliveryAddress = useMemo<DeliveryAddressDraft | null>(
+    () =>
+      hasSelectedDeliveryAddress
+        ? {
+            line1: address.line1.trim(),
+            city: address.city.trim(),
+            postalCode: address.postalCode.trim(),
+          }
+        : null,
+    [address, hasSelectedDeliveryAddress],
+  );
+  const currentDeliveryQuoteContextKey = useMemo(
+    () =>
+      JSON.stringify({
+        location_id: cart.locationId,
+        fulfillment_type: cart.fulfillmentType,
+        line1: selectedDeliveryAddress?.line1.toUpperCase() ?? "",
+        city: selectedDeliveryAddress?.city.toUpperCase() ?? "",
+        postal_code:
+          selectedDeliveryAddress?.postalCode.replace(/\s/g, "").toUpperCase() ??
+          "",
+      }),
+    [
+      cart.fulfillmentType,
+      cart.locationId,
+      selectedDeliveryAddress,
+    ],
+  );
+  const deliveryQuoteReady =
+    cart.fulfillmentType !== "DELIVERY" ||
+    (deliveryQuoteStatus === "ready" &&
+      deliveryQuote !== null &&
+      activeDeliveryQuoteContextKey === currentDeliveryQuoteContextKey);
+  const retryDeliveryQuote = useCallback(() => {
+    if (selectedDeliveryAddress) {
+      void removeStoredDeliveryQuote(
+        cart.locationId,
+        selectedDeliveryAddress,
+      );
+    }
+    setDeliveryQuote(null);
+    setQuote(null);
+    setQuoteError(null);
+    setDeliveryQuoteError(null);
+    setDeliveryQuoteStatus(
+      cart.fulfillmentType === "DELIVERY" ? "loading" : "idle",
+    );
+    setDeliveryQuoteRefreshNonce((value) => value + 1);
+  }, [
+    cart.fulfillmentType,
+    cart.locationId,
+    selectedDeliveryAddress,
+  ]);
+  const refreshExpiredDeliveryQuoteOnce = useCallback(
+    (token: string): boolean => {
+      if (autoRefreshedTokenRef.current === token) return false;
+      autoRefreshedTokenRef.current = token;
+      retryDeliveryQuote();
+      return true;
+    },
+    [retryDeliveryQuote],
+  );
   const scheduleDateLabel = formatScheduleDateLabel(
     cart.scheduledFor,
     cart.locationTimezone,
@@ -209,12 +311,13 @@ export function CheckoutClient() {
       }),
     [cart.items, cart.locationTimezone, cart.scheduledFor],
   );
+  const deliveryFailureMessage = deliveryQuoteError?.message ?? quoteError;
   const deliveryBlockedMessage =
     cart.fulfillmentType === "DELIVERY" &&
-    (quoteError === DELIVERY_UNAVAILABLE_MESSAGE ||
-      quoteError?.includes("Delivery is currently unavailable") ||
-      quoteError?.includes("Delivery is unavailable"))
-      ? quoteError
+    (deliveryFailureMessage === DELIVERY_UNAVAILABLE_MESSAGE ||
+      deliveryFailureMessage?.includes("Delivery is currently unavailable") ||
+      deliveryFailureMessage?.includes("Delivery is unavailable"))
+      ? deliveryFailureMessage
       : null;
 
   const fallbackSubtotal = useMemo(
@@ -232,6 +335,119 @@ export function CheckoutClient() {
     return Math.round((subtotalForTip * cart.driverTipPercent) / 100);
   }, [cart.driverTipPercent, subtotalForTip]);
 
+  useEffect(() => {
+    if (cart.fulfillmentType !== "DELIVERY") {
+      setDeliveryQuote(null);
+      setDeliveryQuoteStatus("idle");
+      setDeliveryQuoteError(null);
+      setActiveDeliveryQuoteContextKey(currentDeliveryQuoteContextKey);
+      return;
+    }
+    if (
+      !cart.isCartHydrated ||
+      cart.isCartHydrating ||
+      cart.items.length === 0 ||
+      !selectedDeliveryAddress
+    ) {
+      setDeliveryQuote(null);
+      setQuote(null);
+      setQuoteError(null);
+      setDeliveryQuoteStatus("idle");
+      setDeliveryQuoteError(null);
+      setActiveDeliveryQuoteContextKey(currentDeliveryQuoteContextKey);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const cached = await getStoredDeliveryQuote(
+          cart.locationId,
+          selectedDeliveryAddress,
+        );
+        if (cancelled) return;
+        if (cached) {
+          setDeliveryQuote(cached);
+          setQuote(null);
+          setQuoteError(null);
+          setDeliveryQuoteStatus("ready");
+          setDeliveryQuoteError(null);
+          setActiveDeliveryQuoteContextKey(currentDeliveryQuoteContextKey);
+          return;
+        }
+
+        setDeliveryQuote(null);
+        setQuote(null);
+        setQuoteError(null);
+        setDeliveryQuoteStatus("loading");
+        setDeliveryQuoteError(null);
+        setActiveDeliveryQuoteContextKey(currentDeliveryQuoteContextKey);
+
+        const response = await apiFetch("/api/v1/delivery/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location_id: cart.locationId,
+            address_snapshot_json: {
+              line1: selectedDeliveryAddress.line1,
+              city: selectedDeliveryAddress.city,
+              postal_code: selectedDeliveryAddress.postalCode,
+            },
+            scheduled_for: cart.scheduledFor ?? undefined,
+          }),
+          locationId: cart.locationId,
+          signal: controller.signal,
+        });
+        const body = (await response.json()) as ApiEnvelope<DeliveryQuote>;
+        if (cancelled) return;
+        if (!response.ok || !body.data) {
+          const error = getApiErrorDetails(
+            body,
+            `Delivery estimate failed (${response.status})`,
+          );
+          setDeliveryQuoteStatus("error");
+          setDeliveryQuoteError(error);
+          return;
+        }
+
+        void storeDeliveryQuote(
+          cart.locationId,
+          selectedDeliveryAddress,
+          body.data,
+        );
+        setDeliveryQuote(body.data);
+        setDeliveryQuoteStatus("ready");
+        setDeliveryQuoteError(null);
+      } catch (error) {
+        if (cancelled) return;
+        setDeliveryQuoteStatus("error");
+        setDeliveryQuoteError({
+          code: "DELIVERY_QUOTE_NETWORK_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Delivery could not be confirmed. Please retry or choose pickup.",
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    cart.fulfillmentType,
+    cart.isCartHydrated,
+    cart.isCartHydrating,
+    cart.items.length,
+    cart.locationId,
+    currentDeliveryQuoteContextKey,
+    deliveryQuoteRefreshNonce,
+    selectedDeliveryAddress,
+  ]);
+
   /** Do not stay on checkout if delivery subtotal is below minimum — cart shows the fix. */
   useEffect(() => {
     if (isMinimumDeliverySubtotalError(quoteError)) {
@@ -241,6 +457,13 @@ export function CheckoutClient() {
 
   useEffect(() => {
     if (cart.items.length === 0) return;
+    if (
+      cart.fulfillmentType === "DELIVERY" &&
+      (!deliveryQuoteReady || !deliveryQuote || !selectedDeliveryAddress)
+    ) {
+      return;
+    }
+    let cancelled = false;
     void (async () => {
       try {
         const res = await apiFetch("/api/v1/cart/quote", {
@@ -264,26 +487,55 @@ export function CheckoutClient() {
             apply_wings_reward:
               applyWingsReward && !promoApplied ? true : undefined,
             promo_code: promoApplied,
+            delivery_quote_token:
+              cart.fulfillmentType === "DELIVERY"
+                ? deliveryQuote?.delivery_quote_token
+                : undefined,
+            address_snapshot_json:
+              cart.fulfillmentType === "DELIVERY" && selectedDeliveryAddress
+                ? {
+                    line1: selectedDeliveryAddress.line1,
+                    city: selectedDeliveryAddress.city,
+                    postal_code: selectedDeliveryAddress.postalCode,
+                  }
+                : undefined,
           }),
           locationId: cart.locationId,
         });
         const body = (await res.json()) as ApiEnvelope<CartQuoteResponse>;
+        if (cancelled) return;
         if (res.ok && body.data) {
           setQuote(body.data);
           setQuoteError(null);
           return;
         }
-        const message = getApiErrorMessage(body, `Quote failed (${res.status})`);
-        if (promoApplied && isPromoRejectedQuoteError(message)) {
-          clearRejectedPromo(message);
+        const error = getApiErrorDetails(body, `Quote failed (${res.status})`);
+        if (promoApplied && isPromoRejectedQuoteError(error.message)) {
+          clearRejectedPromo(error.message);
+          return;
+        }
+        if (
+          cart.fulfillmentType === "DELIVERY" &&
+          deliveryQuote &&
+          (error.code === "DELIVERY_QUOTE_EXPIRED" ||
+            error.code === "INVALID_DELIVERY_QUOTE") &&
+          refreshExpiredDeliveryQuoteOnce(deliveryQuote.delivery_quote_token)
+        ) {
           return;
         }
         setQuote(null);
-        setQuoteError(message);
-      } catch {
-        /* quote is optional context; checkout will re-validate server-side */
+        setQuoteError(error.message);
+      } catch (error) {
+        if (cancelled) return;
+        setQuote(null);
+        setQuoteError(
+          error instanceof Error ? error.message : "Unable to refresh checkout totals",
+        );
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [
     cart.fulfillmentType,
     cart.items,
@@ -293,6 +545,10 @@ export function CheckoutClient() {
     applyWingsReward,
     promoApplied,
     clearRejectedPromo,
+    deliveryQuote,
+    deliveryQuoteReady,
+    refreshExpiredDeliveryQuoteOnce,
+    selectedDeliveryAddress,
   ]);
 
   const handleAuthComplete = useCallback(() => {
@@ -335,8 +591,19 @@ export function CheckoutClient() {
   }, [state]);
 
   const doSubmit = useCallback(async () => {
+    if (
+      cart.fulfillmentType === "DELIVERY" &&
+      (!deliveryQuoteReady || !deliveryQuote || !selectedDeliveryAddress || !quote)
+    ) {
+      setState({ step: "review" });
+      setDeliveryQuoteError({
+        code: "DELIVERY_QUOTE_REQUIRED",
+        message: "Wait for the delivery fee to be confirmed before placing your order.",
+      });
+      return;
+    }
+
     setState({ step: "submitting" });
-    const key = generateIdempotencyKey();
 
     if (cart.fulfillmentType === "DELIVERY") {
       await persistPendingGuestDeliveryAddress(
@@ -369,11 +636,26 @@ export function CheckoutClient() {
 
     if (cart.fulfillmentType === "DELIVERY") {
       payload.address_snapshot_json = {
-        line1: addressLine1.trim(),
-        city: FIXED_DELIVERY_CITY,
-        postal_code: addressPostal.trim(),
+        line1: selectedDeliveryAddress!.line1,
+        city: selectedDeliveryAddress!.city,
+        postal_code: selectedDeliveryAddress!.postalCode,
+      };
+      payload.delivery_quote_token = deliveryQuote!.delivery_quote_token;
+    }
+
+    const logicalPayload = { ...payload };
+    delete logicalPayload.delivery_quote_token;
+    const submissionFingerprint = JSON.stringify(logicalPayload);
+    if (
+      !checkoutAttemptRef.current ||
+      checkoutAttemptRef.current.fingerprint !== submissionFingerprint
+    ) {
+      checkoutAttemptRef.current = {
+        fingerprint: submissionFingerprint,
+        idempotencyKey: generateIdempotencyKey(),
       };
     }
+    const key = checkoutAttemptRef.current.idempotencyKey;
 
     try {
       const res = await withSilentRefresh(
@@ -394,13 +676,21 @@ export function CheckoutClient() {
       const body = (await res.json()) as ApiEnvelope<CheckoutResponse> | Record<string, unknown>;
 
       if (!res.ok || !("data" in body) || !body.data) {
-        const message = getApiErrorMessage(body, `Checkout failed (${res.status})`);
-        if (isPromoRejectedQuoteError(message)) {
-          clearRejectedPromo(message);
+        const error = getApiErrorDetails(body, `Checkout failed (${res.status})`);
+        if (isPromoRejectedQuoteError(error.message)) {
+          clearRejectedPromo(error.message);
           setState({ step: "review" });
           return;
         }
-        setState({ step: "error", message });
+        if (
+          deliveryQuote &&
+          error.code === "DELIVERY_QUOTE_EXPIRED" &&
+          refreshExpiredDeliveryQuoteOnce(deliveryQuote.delivery_quote_token)
+        ) {
+          setState({ step: "review" });
+          return;
+        }
+        setState({ step: "error", message: error.message });
         return;
       }
 
@@ -415,6 +705,7 @@ export function CheckoutClient() {
         clearPromoHandoffStorage();
         clearPendingGuestDeliveryAddress();
       }
+      checkoutAttemptRef.current = null;
       setState({ step: "success", order });
     } catch (e) {
       setState({
@@ -426,13 +717,16 @@ export function CheckoutClient() {
     cart,
     notes,
     contactlessPref,
-    addressLine1,
-    addressPostal,
     session,
     tipCents,
     applyWingsReward,
     promoApplied,
     clearRejectedPromo,
+    deliveryQuote,
+    deliveryQuoteReady,
+    quote,
+    refreshExpiredDeliveryQuoteOnce,
+    selectedDeliveryAddress,
   ]);
 
   const submit = useCallback(() => {
@@ -456,6 +750,16 @@ export function CheckoutClient() {
       openAddressPicker();
       return;
     }
+    if (
+      cart.fulfillmentType === "DELIVERY" &&
+      (!deliveryQuoteReady || !deliveryQuote || !quote)
+    ) {
+      setDeliveryQuoteError({
+        code: "DELIVERY_QUOTE_REQUIRED",
+        message: "Wait for the delivery fee to be confirmed before placing your order.",
+      });
+      return;
+    }
 
     // Not authenticated? Open auth modal
     if (!session.authenticated) {
@@ -474,12 +778,15 @@ export function CheckoutClient() {
     cart.fulfillmentType,
     doSubmit,
     deliveryBlockedMessage,
+    deliveryQuote,
+    deliveryQuoteReady,
     hasSelectedDeliveryAddress,
     lunchScheduleConflict,
     openAddressPicker,
     session.authenticated,
     session.needsProfileCompletion,
     quoteError,
+    quote,
     router,
   ]);
 
@@ -698,19 +1005,19 @@ export function CheckoutClient() {
         })}
       </div>
 
-      {quote && (
+      {(quote || cart.fulfillmentType === "DELIVERY") && (
         <div className="quote-summary">
           <div className="quote-row">
             <span>Subtotal</span>
-            <span>{cents(quote.item_subtotal_cents)}</span>
+            <span>{cents(quote?.item_subtotal_cents ?? fallbackSubtotal)}</span>
           </div>
-          {quote.wings_reward.applied && quote.wings_reward.discount_cents > 0 ? (
+          {quote?.wings_reward.applied && quote.wings_reward.discount_cents > 0 ? (
             <div className="quote-row" style={{ color: "#16a34a" }}>
               <span>Wings reward (1lb free)</span>
               <span>−{cents(quote.wings_reward.discount_cents)}</span>
             </div>
           ) : null}
-          {quote.promo_discount_cents && quote.promo_discount_cents > 0 ? (
+          {quote?.promo_discount_cents && quote.promo_discount_cents > 0 ? (
             <div className="quote-row" style={{ color: "#34d399" }}>
               <span>Promo code ({quote.applied_promo_code})</span>
               <span>−{cents(quote.promo_discount_cents)}</span>
@@ -718,9 +1025,29 @@ export function CheckoutClient() {
           ) : null}
           {cart.fulfillmentType === "DELIVERY" && (
             <div className="quote-row">
-              <span>Delivery fee</span>
               <span>
-                {quote.delivery_fee_waived && quote.delivery_fee_stated_cents > 0 ? (
+                Delivery fee
+                {deliveryQuoteReady &&
+                deliveryQuote?.attribution === "Google Maps" ? (
+                  <small
+                    style={{
+                      display: "block",
+                      marginTop: 2,
+                      fontSize: "0.72rem",
+                      opacity: 0.7,
+                    }}
+                  >
+                    Calculated using Google Maps
+                  </small>
+                ) : null}
+              </span>
+              <span>
+                {!deliveryQuoteReady ? (
+                  deliveryQuoteStatus === "error"
+                    ? "Unavailable"
+                    : "Estimating delivery fee…"
+                ) : quote?.delivery_fee_waived &&
+                  quote.delivery_fee_stated_cents > 0 ? (
                   <>
                     <span style={{ textDecoration: "line-through", opacity: 0.65, marginRight: 6 }}>
                       {cents(quote.delivery_fee_stated_cents)}
@@ -728,25 +1055,33 @@ export function CheckoutClient() {
                     Free
                   </>
                 ) : (
-                  cents(quote.delivery_fee_cents)
+                  cents(
+                    quote?.delivery_fee_cents ??
+                      deliveryQuote?.delivery_fee_cents ??
+                      500,
+                  )
                 )}
               </span>
             </div>
           )}
-          {quote.driver_tip_cents > 0 && (
+          {quote && quote.driver_tip_cents > 0 && (
             <div className="quote-row">
               <span>Tip</span>
               <span>{cents(quote.driver_tip_cents)}</span>
             </div>
           )}
-          <div className="quote-row">
-            <span>Tax(13%)</span>
-            <span>{cents(quote.tax_cents)}</span>
-          </div>
-          <div className="quote-row quote-total">
-            <span>Total</span>
-            <span>{cents(quote.final_payable_cents)}</span>
-          </div>
+          {quote ? (
+            <>
+              <div className="quote-row">
+                <span>Tax(13%)</span>
+                <span>{cents(quote.tax_cents)}</span>
+              </div>
+              <div className="quote-row quote-total">
+                <span>Total</span>
+                <span>{cents(quote.final_payable_cents)}</span>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
 
@@ -807,11 +1142,57 @@ export function CheckoutClient() {
         </p>
       )}
       {deliveryBlockedMessage && state.step !== "error" && (
-        <p className="surface-error" style={{ marginBottom: "1rem" }}>
-          {deliveryBlockedMessage}
-        </p>
+        <div style={{ marginBottom: "1rem" }}>
+          <p className="surface-error" style={{ marginBottom: "0.6rem" }}>
+            {deliveryBlockedMessage}
+          </p>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => cart.setFulfillmentType("PICKUP")}
+          >
+            Choose pickup
+          </button>
+        </div>
       )}
+      {deliveryQuoteError &&
+      !deliveryBlockedMessage &&
+      cart.fulfillmentType === "DELIVERY" &&
+      state.step !== "error" ? (
+        <div style={{ marginBottom: "1rem" }}>
+          <p className="surface-error" style={{ marginBottom: "0.6rem" }}>
+            {deliveryQuoteError.message}
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+            {deliveryQuoteError.code === "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE" ||
+            deliveryQuoteError.code === "DELIVERY_QUOTE_NETWORK_ERROR" ? (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={retryDeliveryQuote}
+              >
+                Retry
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={openAddressPicker}
+            >
+              Edit address
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => cart.setFulfillmentType("PICKUP")}
+            >
+              Choose pickup
+            </button>
+          </div>
+        </div>
+      ) : null}
       {quoteError &&
+        !deliveryQuoteError &&
         !deliveryBlockedMessage &&
         quoteError !== lunchScheduleConflict?.message &&
         !isMinimumDeliverySubtotalError(quoteError) &&
@@ -834,7 +1215,13 @@ export function CheckoutClient() {
           Boolean(
             lunchScheduleConflict ||
               deliveryBlockedMessage ||
-              isMinimumDeliverySubtotalError(quoteError),
+              isMinimumDeliverySubtotalError(quoteError) ||
+              (cart.fulfillmentType === "DELIVERY" &&
+                (!deliveryQuoteReady ||
+                  !deliveryQuote ||
+                  !quote ||
+                  quote.delivery_fee_is_estimate ||
+                  deliveryQuoteError)),
           )
         }
         onClick={submit}

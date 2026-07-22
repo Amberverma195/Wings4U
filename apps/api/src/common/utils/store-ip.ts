@@ -83,6 +83,21 @@ function matchesEntry(ip: string, entry: string): boolean {
   return normalizeIpCandidate(entry)?.toLowerCase() === ip.toLowerCase();
 }
 
+function trustedProxyRanges(): string[] {
+  return (process.env.TRUSTED_PROXY_IP_RANGES ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(
+      (entry) =>
+        entry.length > 0 &&
+        (entry.includes("/") ? isValidCidr(entry) : isValidIpLiteral(entry)),
+    );
+}
+
+function isTrustedProxyIp(ip: string, ranges: string[]): boolean {
+  return ranges.some((entry) => matchesEntry(ip, entry));
+}
+
 function verifySignedClientIp(ip: string, signature: string): boolean {
   if (!isValidIpLiteral(ip) || !/^[a-f0-9]{64}$/i.test(signature)) {
     return false;
@@ -161,16 +176,35 @@ export function isAllowedStoreIp(
 }
 
 export function extractClientIp(
-  req: Pick<Request, "headers" | "ip">,
+  req: Pick<Request, "headers"> &
+    Partial<Pick<Request, "ip" | "socket">>,
 ): string {
   const signedClientIp = extractSignedClientIp(req);
   if (signedClientIp) return signedClientIp;
 
+  const peerIp =
+    normalizeIpCandidate(req.ip) ??
+    normalizeIpCandidate(req.socket?.remoteAddress) ??
+    "";
+  const proxyRanges = trustedProxyRanges();
+  if (!peerIp || !isTrustedProxyIp(peerIp, proxyRanges)) {
+    return peerIp;
+  }
+
   const forwarded = req.headers["x-forwarded-for"];
   if (typeof forwarded === "string") {
-    const firstIp = forwarded.split(",")[0]?.trim();
-    const normalized = normalizeIpCandidate(firstIp);
-    if (normalized) return normalized;
+    const chain = forwarded
+      .split(",")
+      .map((candidate) => normalizeIpCandidate(candidate))
+      .filter(
+        (candidate): candidate is string =>
+          !!candidate && isValidIpLiteral(candidate),
+      );
+    for (let index = chain.length - 1; index >= 0; index -= 1) {
+      const candidate = chain[index]!;
+      if (!isTrustedProxyIp(candidate, proxyRanges)) return candidate;
+    }
+    if (chain[0]) return chain[0];
   }
 
   const realIp = req.headers["x-real-ip"];
@@ -179,5 +213,5 @@ export function extractClientIp(
     if (normalized) return normalized;
   }
 
-  return normalizeIpCandidate(req.ip) ?? "";
+  return peerIp;
 }

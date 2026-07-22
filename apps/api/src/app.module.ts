@@ -39,6 +39,7 @@ import { RealtimeModule } from "./modules/realtime/realtime.module";
 import { JobsModule } from "./modules/jobs/jobs.module";
 import { RateLimitModule } from "./modules/rate-limit/rate-limit.module";
 import { SessionModule } from "./common/session/session.module";
+import { DeliveryPricingModule } from "./modules/delivery-pricing/delivery-pricing.module";
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { SessionModule } from "./common/session/session.module";
     IdentitiesModule,
     LocationsModule,
     CatalogModule,
+    DeliveryPricingModule,
     CartModule,
     SavedCartModule,
     CheckoutModule,

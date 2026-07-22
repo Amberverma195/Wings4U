@@ -202,7 +202,7 @@ async function main() {
     await prisma.locationSettings.update({
       where: { locationId: existing.id },
       data: {
-        deliveryFeeCents: 499,
+        deliveryFeeCents: 500,
         defaultPrepTimeMinutes: 30,
         defaultPickupMinMinutes: 30,
         defaultPickupMaxMinutes: 40,
@@ -346,7 +346,7 @@ async function main() {
       );
     }
     console.log(
-      "Seed data already exists (location LON01 found). Refreshed delivery fee to $4.99 (499¢). Full seed skipped.",
+      "Seed data already exists (location LON01 found). Refreshed delivery fee to $5.00 (500¢). Full seed skipped.",
     );
     return;
   }
@@ -376,7 +376,7 @@ async function main() {
         taxDeliveryFee: true,
         taxTip: false,
         discountsReduceTaxableBase: true,
-        deliveryFeeCents: 499,
+        deliveryFeeCents: 500,
         freeDeliveryThresholdCents: 4000,
         minimumDeliverySubtotalCents: 2000,
         defaultPrepTimeMinutes: 30,
@@ -386,8 +386,8 @@ async function main() {
         defaultDeliveryMaxMinutes: 60,
         busyModeEnabled: false,
         overdueDeliveryGraceMinutes: 10,
-        trustedIpRanges: JSON.stringify(["192.168.1.0/24", "10.0.0.0/8"]),
-        allowedPostalCodes: JSON.stringify(["N5W", "N5V", "N5X", "N5Y", "N5Z", "N6A", "N6B", "N6C", "N6E", "N6G", "N6H"]),
+        trustedIpRanges: ["192.168.1.0/24", "10.0.0.0/8"],
+        allowedPostalCodes: ["N5W", "N5V", "N5X", "N5Y", "N5Z", "N6A", "N6B", "N6C", "N6E", "N6G", "N6H"],
       },
     });
     await tx.locationHours.createMany({

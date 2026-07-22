@@ -11,6 +11,7 @@ import { Injectable, Logger, OnApplicationShutdown } from "@nestjs/common";
 import type { Request } from "express";
 import { Server, Socket } from "socket.io";
 import { SessionValidator } from "../../common/session/session-validator.service";
+import { isAllowedCorsOrigin } from "../../common/utils/cors-origins";
 import { resolveLocationRef } from "../../common/utils/location-ref";
 import { extractClientIp, isAllowedStoreIp } from "../../common/utils/store-ip";
 import { PrismaService } from "../../database/prisma.service";
@@ -105,7 +106,12 @@ function isTerminalOrderEvent(
 @Injectable()
 @WebSocketGateway({
   path: "/ws",
-  cors: { origin: true, credentials: true },
+  cors: {
+    origin(origin, callback) {
+      callback(null, isAllowedCorsOrigin(origin));
+    },
+    credentials: true,
+  },
 })
 export class RealtimeGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown

@@ -18,8 +18,10 @@ import {
   KDS_HOURS_SERVICE_TYPE,
   STORE_HOURS_SERVICE_TYPE,
 } from "../kds/kds-operating-hours";
+import { normalizeAllowedPostalCodes } from "../delivery-pricing/delivery-address";
 
 const STORE_HOURS_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+const MAX_ALLOWED_POSTAL_CODES = 100;
 
 function normalizeMinuteOfDay(value: unknown, fieldName: string): number | null {
   if (value == null || value === "") return null;
@@ -173,6 +175,7 @@ export class LocationSettingsService {
     const { kdsPasswordHash, ...rest } = settings;
     return {
       ...rest,
+      allowedPostalCodes: normalizeAllowedPostalCodes(rest.allowedPostalCodes),
       timezone: location?.timezoneName ?? "America/Toronto",
       kdsPasswordConfigured: !!kdsPasswordHash,
       storeHours: serializeStoreHours(storeHours),
@@ -181,6 +184,15 @@ export class LocationSettingsService {
   }
 
   async updateSettings(locationId: string, data: Record<string, any>, actorUserId: string) {
+    if (
+      Object.prototype.hasOwnProperty.call(data, "deliveryFeeCents") ||
+      Object.prototype.hasOwnProperty.call(data, "delivery_fee_cents")
+    ) {
+      throw new BadRequestException(
+        "Delivery fee is calculated by the server and cannot be changed in settings",
+      );
+    }
+
     const existing = await this.prisma.locationSettings.findUnique({
       where: { locationId },
     });
@@ -236,6 +248,22 @@ export class LocationSettingsService {
         );
       }
       nextData.trustedIpRanges = normalized;
+    }
+    if ("allowedPostalCodes" in nextData) {
+      let normalized: string[];
+      try {
+        normalized = normalizeAllowedPostalCodes(nextData.allowedPostalCodes);
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : "Invalid allowed postal codes",
+        );
+      }
+      if (normalized.length > MAX_ALLOWED_POSTAL_CODES) {
+        throw new BadRequestException(
+          `You can store at most ${MAX_ALLOWED_POSTAL_CODES} postal zones`,
+        );
+      }
+      nextData.allowedPostalCodes = normalized;
     }
 
     if (nextData.kdsPassword !== undefined) {
@@ -387,6 +415,7 @@ export class LocationSettingsService {
     ]);
     return {
       ...rest,
+      allowedPostalCodes: normalizeAllowedPostalCodes(rest.allowedPostalCodes),
       timezone: location?.timezoneName ?? "America/Toronto",
       kdsPasswordConfigured: !!kdsPasswordHash,
       storeHours: serializeStoreHours(savedStoreHours),

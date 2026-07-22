@@ -306,6 +306,7 @@ export type CartQuoteResponse = {
   delivery_fee_cents: number;
   delivery_fee_stated_cents: number;
   delivery_fee_waived: boolean;
+  delivery_fee_is_estimate: boolean;
   applied_promo_code?: string;
   promo_discount_cents?: number;
   driver_tip_cents: number;

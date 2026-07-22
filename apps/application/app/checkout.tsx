@@ -52,6 +52,18 @@ type StripePaymentIntentResponse = StripeConfigResponse & {
   quote?: CartQuoteResponse;
 };
 
+type DeliveryQuoteResponse = {
+  delivery_quote_token: string;
+  delivery_fee_cents: number;
+  expires_at: string;
+  attribution: "Google Maps" | null;
+};
+
+type DeliveryQuoteStatus = "idle" | "loading" | "ready" | "error";
+
+const CANADIAN_POSTAL_CODE_RE =
+  /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i;
+
 function cartItemUnitCents(item: CartItem): number {
   return (
     item.base_price_cents +
@@ -97,6 +109,12 @@ function makeIdempotencyKey(): string {
   return `mobile-${Date.now()}-${random}`;
 }
 
+function getApiErrorCode(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const errors = (body as { errors?: Array<{ code?: string }> }).errors;
+  return errors?.[0]?.code ?? null;
+}
+
 export default function CheckoutScreen() {
   const router = useRouter();
   const cart = useCart();
@@ -117,7 +135,23 @@ export default function CheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("PAY_AT_STORE");
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
   const [stripeConfigLoading, setStripeConfigLoading] = useState(true);
+  const [deliveryQuote, setDeliveryQuote] =
+    useState<DeliveryQuoteResponse | null>(null);
+  const [deliveryQuoteStatus, setDeliveryQuoteStatus] =
+    useState<DeliveryQuoteStatus>("idle");
+  const [deliveryQuoteError, setDeliveryQuoteError] = useState<string | null>(
+    null,
+  );
+  const [deliveryQuoteRetryNonce, setDeliveryQuoteRetryNonce] = useState(0);
   const pendingSubmitRef = useRef(false);
+  const checkoutAttemptRef = useRef<{
+    fingerprint: string;
+    idempotencyKey: string;
+  } | null>(null);
+  const paidIntentRef = useRef<{
+    fingerprint: string;
+    paymentIntentId: string;
+  } | null>(null);
 
   const subtotal = useMemo(
     () =>
@@ -135,6 +169,21 @@ export default function CheckoutScreen() {
     return Math.round((subtotal * cart.driverTipPercent) / 100);
   }, [cart.driverTipPercent, cart.fulfillmentType, subtotal]);
 
+  const deliveryAddress = useMemo(
+    () => ({
+      line1: line1.trim(),
+      city: FIXED_DELIVERY_CITY,
+      postal_code: postalCode.trim().toUpperCase(),
+    }),
+    [line1, postalCode],
+  );
+  const hasCompleteDeliveryAddress =
+    deliveryAddress.line1.length > 0 &&
+    CANADIAN_POSTAL_CODE_RE.test(deliveryAddress.postal_code);
+  const deliveryQuoteReady =
+    cart.fulfillmentType !== "DELIVERY" ||
+    (deliveryQuoteStatus === "ready" && deliveryQuote !== null);
+
   const quoteKey = useMemo(
     () =>
       JSON.stringify({
@@ -142,8 +191,15 @@ export default function CheckoutScreen() {
         fulfillmentType: cart.fulfillmentType,
         scheduledFor: cart.scheduledFor,
         tipCents,
+        deliveryQuoteToken: deliveryQuote?.delivery_quote_token ?? null,
       }),
-    [cart.fulfillmentType, cart.items, cart.scheduledFor, tipCents],
+    [
+      cart.fulfillmentType,
+      cart.items,
+      cart.scheduledFor,
+      deliveryQuote?.delivery_quote_token,
+      tipCents,
+    ],
   );
 
   useEffect(() => {
@@ -176,9 +232,108 @@ export default function CheckoutScreen() {
   }, []);
 
   useEffect(() => {
+    if (
+      cart.fulfillmentType !== "DELIVERY" ||
+      !cart.isCartHydrated ||
+      cart.isCartHydrating ||
+      cart.items.length === 0 ||
+      !hasCompleteDeliveryAddress
+    ) {
+      setDeliveryQuote(null);
+      setDeliveryQuoteStatus("idle");
+      setDeliveryQuoteError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      setDeliveryQuote(null);
+      setDeliveryQuoteStatus("loading");
+      setDeliveryQuoteError(null);
+      void (async () => {
+        try {
+          const response = await apiFetch("/api/v1/delivery/quote", {
+            method: "POST",
+            locationId: cart.locationId,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location_id: cart.locationId,
+              address_snapshot_json: deliveryAddress,
+              scheduled_for: cart.scheduledFor ?? undefined,
+            }),
+            signal: controller.signal,
+          });
+          const body = (await response.json().catch(() => null)) as
+            | ApiEnvelope<DeliveryQuoteResponse>
+            | null;
+          if (cancelled) return;
+          if (!response.ok || !body?.data) {
+            setDeliveryQuoteStatus("error");
+            setDeliveryQuoteError(
+              getApiErrorMessage(
+                body,
+                `Delivery estimate failed (${response.status})`,
+              ),
+            );
+            return;
+          }
+          setDeliveryQuote(body.data);
+          setDeliveryQuoteStatus("ready");
+          setDeliveryQuoteError(null);
+        } catch (cause) {
+          if (cancelled) return;
+          setDeliveryQuoteStatus("error");
+          setDeliveryQuoteError(
+            cause instanceof Error
+              ? cause.message
+              : "Delivery could not be confirmed. Retry or choose pickup.",
+          );
+        }
+      })();
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [
+    cart.fulfillmentType,
+    cart.isCartHydrated,
+    cart.isCartHydrating,
+    cart.items.length,
+    cart.locationId,
+    deliveryAddress,
+    deliveryQuoteRetryNonce,
+    hasCompleteDeliveryAddress,
+  ]);
+
+  useEffect(() => {
+    if (!deliveryQuote) return;
+    const delay = new Date(deliveryQuote.expires_at).getTime() - Date.now();
+    if (delay <= 0) {
+      setDeliveryQuote(null);
+      setDeliveryQuoteRetryNonce((value) => value + 1);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      setDeliveryQuote(null);
+      setDeliveryQuoteRetryNonce((value) => value + 1);
+    }, Math.min(delay, 2_147_483_647));
+    return () => clearTimeout(timeout);
+  }, [deliveryQuote]);
+
+  useEffect(() => {
     if (cart.items.length === 0) {
       setQuote(null);
       setQuoteError(null);
+      return;
+    }
+    if (cart.fulfillmentType === "DELIVERY" && !deliveryQuoteReady) {
+      setQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(deliveryQuoteStatus === "loading");
       return;
     }
 
@@ -198,6 +353,14 @@ export default function CheckoutScreen() {
               items: checkoutItems(cart.items),
               scheduled_for: cart.scheduledFor ?? undefined,
               driver_tip_cents: tipCents,
+              delivery_quote_token:
+                cart.fulfillmentType === "DELIVERY"
+                  ? deliveryQuote?.delivery_quote_token
+                  : undefined,
+              address_snapshot_json:
+                cart.fulfillmentType === "DELIVERY"
+                  ? deliveryAddress
+                  : undefined,
             }),
           });
           if (!cancelled) {
@@ -218,7 +381,15 @@ export default function CheckoutScreen() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [cart, quoteKey, tipCents]);
+  }, [
+    cart,
+    deliveryAddress,
+    deliveryQuote?.delivery_quote_token,
+    deliveryQuoteReady,
+    deliveryQuoteStatus,
+    quoteKey,
+    tipCents,
+  ]);
 
   const payableCents = quote?.final_payable_cents ?? subtotal;
   const stripeOnlineEnabled =
@@ -236,6 +407,13 @@ export default function CheckoutScreen() {
     if (cart.fulfillmentType === "DELIVERY") {
       if (!line1.trim() || !postalCode.trim()) {
         setSubmitError("Enter your delivery address before placing the order.");
+        return;
+      }
+      if (!deliveryQuoteReady || !deliveryQuote || !quote) {
+        setSubmitError(
+          deliveryQuoteError ??
+            "Wait for the delivery fee to be confirmed before placing the order.",
+        );
         return;
       }
       if (!contactlessPref) {
@@ -262,15 +440,29 @@ export default function CheckoutScreen() {
     if (orderNotes.trim()) payload.special_instructions = orderNotes.trim();
     if (contactlessPref) payload.contactless_pref = contactlessPref;
     if (cart.fulfillmentType === "DELIVERY") {
-      payload.address_snapshot_json = {
-        line1: line1.trim(),
-        city: FIXED_DELIVERY_CITY,
-        postal_code: postalCode.trim().toUpperCase(),
+      payload.address_snapshot_json = deliveryAddress;
+      payload.delivery_quote_token = deliveryQuote!.delivery_quote_token;
+    }
+    payload.payment_method = paymentMethod;
+
+    const logicalPayload = { ...payload };
+    delete logicalPayload.delivery_quote_token;
+    const submissionFingerprint = JSON.stringify(logicalPayload);
+    if (
+      !checkoutAttemptRef.current ||
+      checkoutAttemptRef.current.fingerprint !== submissionFingerprint
+    ) {
+      checkoutAttemptRef.current = {
+        fingerprint: submissionFingerprint,
+        idempotencyKey: makeIdempotencyKey(),
       };
     }
 
     try {
-      let stripePaymentIntentId: string | null = null;
+      let stripePaymentIntentId =
+        paidIntentRef.current?.fingerprint === submissionFingerprint
+          ? paidIntentRef.current.paymentIntentId
+          : null;
       if (paymentMethod === "ONLINE_CARD") {
         if (!stripeOnlineEnabled) {
           throw new Error(
@@ -280,7 +472,8 @@ export default function CheckoutScreen() {
           );
         }
 
-        const intentRes = await withSilentRefresh(
+        if (!stripePaymentIntentId) {
+          const intentRes = await withSilentRefresh(
           () =>
             apiFetch("/api/v1/payments/stripe/payment-intent", {
               method: "POST",
@@ -292,49 +485,60 @@ export default function CheckoutScreen() {
                 items: checkoutItems(cart.items),
                 scheduled_for: cart.scheduledFor ?? undefined,
                 driver_tip_cents: tipCents,
+                delivery_quote_token: deliveryQuote?.delivery_quote_token,
+                address_snapshot_json:
+                  cart.fulfillmentType === "DELIVERY"
+                    ? deliveryAddress
+                    : undefined,
               }),
             }),
           session.refresh,
           session.clear,
         );
-        const intentBody = (await intentRes.json().catch(() => null)) as
+          const intentBody = (await intentRes.json().catch(() => null)) as
           | ApiEnvelope<StripePaymentIntentResponse>
           | null;
-        const intent = intentBody?.data;
-        if (!intentRes.ok || !intent) {
-          throw new Error(getApiErrorMessage(intentBody, `Payment setup failed (${intentRes.status})`));
-        }
-        if (!intent.configured || !intent.client_secret || !intent.payment_intent_id) {
-          throw new Error(intent.message ?? "Online card payments are not configured yet.");
-        }
+          const intent = intentBody?.data;
+          if (!intentRes.ok || !intent) {
+            throw new Error(getApiErrorMessage(intentBody, `Payment setup failed (${intentRes.status})`));
+          }
+          if (!intent.configured || !intent.client_secret || !intent.payment_intent_id) {
+            throw new Error(intent.message ?? "Online card payments are not configured yet.");
+          }
 
-        await initStripe({
-          publishableKey: intent.publishable_key,
-          merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
-        });
+          await initStripe({
+            publishableKey: intent.publishable_key,
+            merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
+          });
 
-        const sheet = await initPaymentSheet({
-          merchantDisplayName: intent.merchant_display_name || "Wings4U",
-          paymentIntentClientSecret: intent.client_secret,
-          returnURL: STRIPE_RETURN_URL,
-        });
-        if (sheet.error) {
-          throw new Error(sheet.error.message);
-        }
+          const sheet = await initPaymentSheet({
+            merchantDisplayName: intent.merchant_display_name || "Wings4U",
+            paymentIntentClientSecret: intent.client_secret,
+            returnURL: STRIPE_RETURN_URL,
+          });
+          if (sheet.error) {
+            throw new Error(sheet.error.message);
+          }
 
-        const payment = await presentPaymentSheet();
-        if (payment.error) {
-          throw new Error(payment.error.message || "Payment was cancelled.");
+          const payment = await presentPaymentSheet();
+          if (payment.error) {
+            throw new Error(payment.error.message || "Payment was cancelled.");
+          }
+          stripePaymentIntentId = intent.payment_intent_id;
+          paidIntentRef.current = {
+            fingerprint: submissionFingerprint,
+            paymentIntentId: stripePaymentIntentId,
+          };
         }
-        stripePaymentIntentId = intent.payment_intent_id;
+      } else {
+        paidIntentRef.current = null;
       }
 
-      payload.payment_method = paymentMethod;
       if (stripePaymentIntentId) {
         payload.stripe_payment_intent_id = stripePaymentIntentId;
       }
 
-      const idempotencyKey = makeIdempotencyKey();
+      const idempotencyKey = checkoutAttemptRef.current.idempotencyKey;
       const res = await withSilentRefresh(
         () =>
           apiFetch("/api/v1/checkout", {
@@ -353,9 +557,19 @@ export default function CheckoutScreen() {
         | ApiEnvelope<CheckoutResponse>
         | null;
       if (!res.ok || !body?.data) {
+        const errorCode = getApiErrorCode(body);
+        if (
+          errorCode === "DELIVERY_QUOTE_EXPIRED" ||
+          errorCode === "INVALID_DELIVERY_QUOTE"
+        ) {
+          setDeliveryQuote(null);
+          setDeliveryQuoteRetryNonce((value) => value + 1);
+        }
         throw new Error(getApiErrorMessage(body, `Checkout failed (${res.status})`));
       }
       const order = body.data;
+      checkoutAttemptRef.current = null;
+      paidIntentRef.current = null;
       cart.clear();
       router.replace(`/orders/${order.id}`);
     } catch (cause) {
@@ -366,12 +580,17 @@ export default function CheckoutScreen() {
   }, [
     cart,
     contactlessPref,
+    deliveryAddress,
+    deliveryQuote,
+    deliveryQuoteError,
+    deliveryQuoteReady,
     initPaymentSheet,
     line1,
     orderNotes,
     paymentMethod,
     postalCode,
     presentPaymentSheet,
+    quote,
     router,
     session,
     stripeConfigLoading,
@@ -473,6 +692,40 @@ export default function CheckoutScreen() {
                       autoCapitalize="characters"
                     />
                   </View>
+                  {deliveryQuoteStatus === "loading" ? (
+                    <Text style={styles.deliveryStatusText}>
+                      Estimating delivery fee…
+                    </Text>
+                  ) : null}
+                  {deliveryQuoteStatus === "ready" &&
+                  deliveryQuote?.attribution ? (
+                    <Text style={styles.deliveryStatusText}>
+                      Calculated using {deliveryQuote.attribution}
+                    </Text>
+                  ) : null}
+                  {deliveryQuoteError ? (
+                    <View style={styles.deliveryErrorBlock}>
+                      <Text style={styles.errorText}>{deliveryQuoteError}</Text>
+                      <View style={styles.deliveryActions}>
+                        <TouchableOpacity
+                          style={styles.deliveryActionButton}
+                          onPress={() =>
+                            setDeliveryQuoteRetryNonce((value) => value + 1)
+                          }
+                        >
+                          <Text style={styles.deliveryActionText}>Retry</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deliveryActionButton}
+                          onPress={() => cart.setFulfillmentType("PICKUP")}
+                        >
+                          <Text style={styles.deliveryActionText}>
+                            Choose pickup
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : null}
                   <View style={styles.chipRow}>
                     {[
                       ["HAND_TO_ME", "Hand to me"],
@@ -568,9 +821,19 @@ export default function CheckoutScreen() {
               </Section>
 
               <TouchableOpacity
-                style={[styles.placeButton, submitting && styles.disabledButton]}
+                style={[
+                  styles.placeButton,
+                  (submitting ||
+                    (cart.fulfillmentType === "DELIVERY" &&
+                      (!deliveryQuoteReady || !quote))) &&
+                    styles.disabledButton,
+                ]}
                 onPress={placeOrder}
-                disabled={submitting}
+                disabled={
+                  submitting ||
+                  (cart.fulfillmentType === "DELIVERY" &&
+                    (!deliveryQuoteReady || !quote))
+                }
               >
                 {submitting ? (
                   <ActivityIndicator color="#FFF" />
@@ -909,6 +1172,33 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: "#EFEFEF",
     marginVertical: 4,
+  },
+  deliveryStatusText: {
+    color: "#666",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 8,
+  },
+  deliveryErrorBlock: {
+    marginTop: 2,
+  },
+  deliveryActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  deliveryActionButton: {
+    borderWidth: 1,
+    borderColor: "#FF4D4D",
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  deliveryActionText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "800",
   },
   errorText: {
     color: "#B91C1C",

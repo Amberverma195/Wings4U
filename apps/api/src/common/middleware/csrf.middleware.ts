@@ -6,8 +6,9 @@ const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * Pre-authentication endpoints that legitimately run before a csrf_token
  * cookie has been issued to the browser.
  *
- * This list also includes the one intentionally public cart mutation that
- * should stay callable before any auth interaction: `POST /cart/quote`.
+ * This list also includes intentionally public quote mutations that should
+ * stay callable before any auth interaction: `POST /cart/quote` and
+ * `POST /delivery/quote`.
  *
  * Important: keep this narrower than the set of `@Public()` routes.
  * `PUT/DELETE /cart/me` and `POST /cart/merge` are public for guests, but the
@@ -27,10 +28,11 @@ function skipCsrf(path: string): boolean {
   if (path.startsWith("/api/v1/kds/auth/logout")) return true;
   if (path.startsWith("/api/v1/pos/auth/login")) return true;
   if (path.startsWith("/api/v1/pos/auth/logout")) return true;
-  // Public quote endpoint. Saved-cart mutations are intentionally NOT
+  // Public quote endpoints. Saved-cart mutations are intentionally NOT
   // allowlisted here because they become authenticated user-cart writes once
   // `req.user` is present.
   if (path === "/api/v1/cart/quote") return true;
+  if (path === "/api/v1/delivery/quote") return true;
   return false;
 }
 

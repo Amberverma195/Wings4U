@@ -105,6 +105,14 @@ class CreateStripePaymentIntentDto {
   @IsOptional()
   @IsBoolean()
   apply_wings_reward?: boolean;
+
+  @IsOptional()
+  @IsString()
+  delivery_quote_token?: string;
+
+  @IsOptional()
+  @IsObject()
+  address_snapshot_json?: Record<string, unknown>;
 }
 
 @Controller("payments/stripe")
@@ -148,6 +156,8 @@ export class StripePaymentsController {
       walletAppliedCents: body.wallet_applied_cents,
       scheduledFor: body.scheduled_for,
       applyWingsReward: body.apply_wings_reward,
+      deliveryQuoteToken: body.delivery_quote_token,
+      addressSnapshotJson: body.address_snapshot_json,
     });
   }
 }

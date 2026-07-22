@@ -949,12 +949,12 @@ export function CartPage() {
                                 marginRight: 6,
                               }}
                             >
-                              {cents(quote.delivery_fee_stated_cents)}
+                              From $5
                             </span>
                             Free
                           </>
                         ) : (
-                          cents(quote.delivery_fee_cents)
+                          "From $5 — calculated at checkout"
                         )}
                       </span>
                     </div>

@@ -114,7 +114,7 @@ export function MenuClient() {
           {menu.location.busy_mode && " | Busy mode"}
           {" | "}~{menu.location.estimated_prep_minutes} min
           {cart.fulfillmentType === "DELIVERY" &&
-            ` | Delivery ${cents(menu.location.delivery_fee_cents)}`}
+            ` | Delivery from ${cents(menu.location.delivery_fee_cents)}`}
         </p>
 
         <div className="fulfillment-toggle" style={{ marginTop: "1rem" }}>

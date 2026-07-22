@@ -5,6 +5,7 @@ import { ApiExceptionFilter } from "./common/filters/api-exception.filter";
 import { EnvelopeInterceptor } from "./common/interceptors/envelope.interceptor";
 import { csrfMiddleware } from "./common/middleware/csrf.middleware";
 import { requestIdMiddleware } from "./common/middleware/request-id.middleware";
+import { isAllowedCorsOrigin } from "./common/utils/cors-origins";
 
 /** Shared HTTP + WebSocket bootstrap for `main.ts` and e2e tests. */
 export function configureApp(app: INestApplication): void {
@@ -24,5 +25,10 @@ export function configureApp(app: INestApplication): void {
       errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY
     })
   );
-  app.enableCors({ origin: true, credentials: true });
+  app.enableCors({
+    origin(origin, callback) {
+      callback(null, isAllowedCorsOrigin(origin));
+    },
+    credentials: true,
+  });
 }

@@ -331,10 +331,12 @@ export type CartQuoteResponse = {
   taxable_subtotal_cents: number;
   tax_cents: number;
   delivery_fee_cents: number;
-  /** Location’s configured delivery fee (e.g. 499); 0 when fulfillment is pickup. */
+  /** Server-stated delivery fee before a free-delivery rule; 0 for pickup. */
   delivery_fee_stated_cents: number;
   /** True when free-delivery threshold applied and the charged fee is 0. */
   delivery_fee_waived: boolean;
+  /** True when the $5 starting fee is shown without an address-based quote. */
+  delivery_fee_is_estimate: boolean;
   applied_promo_code?: string;
   promo_discount_cents?: number;
   driver_tip_cents: number;

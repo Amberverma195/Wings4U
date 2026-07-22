@@ -4,6 +4,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
 import { requireDeliveryPinFromPhone } from "../../common/utils/delivery-pin-phone";
@@ -25,6 +26,10 @@ import {
   StripePaymentsService,
   type VerifiedStripePayment,
 } from "../payments/stripe-payments.service";
+import {
+  buildCheckoutCartHash,
+  buildCheckoutRequestFingerprint,
+} from "../payments/checkout-cart-hash";
 import {
   RewardsService,
   STAMPS_PER_REWARD,
@@ -51,6 +56,18 @@ import {
   loadWingFlavourMapForRefs,
   throwScheduleViolations,
 } from "../shared/order-validation";
+import {
+  assertPostalCodeAllowed,
+  normalizeDeliveryAddress,
+} from "../delivery-pricing/delivery-address";
+import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
+import {
+  DELIVERY_BASE_FEE_CENTS,
+  DELIVERY_INCLUDED_DISTANCE_METRES,
+  DELIVERY_INCREMENT_CENTS,
+  DELIVERY_MAXIMUM_DISTANCE_METRES,
+  DELIVERY_PRICING_RULE_VERSION,
+} from "../delivery-pricing/delivery-pricing.constants";
 
 type PlaceOrderParams = {
   userId: string;
@@ -82,29 +99,93 @@ type PlaceOrderParams = {
   promoCode?: string;
   paymentMethod?: "PAY_AT_STORE" | "ONLINE_CARD";
   stripePaymentIntentId?: string;
+  deliveryQuoteToken?: string;
 };
 
 function requireDeliveryAddress(
   value: Record<string, unknown> | undefined,
 ): UpsertCustomerAddressInput {
-  const line1 = typeof value?.line1 === "string" ? value.line1.trim() : "";
-  const city = typeof value?.city === "string" ? value.city.trim() : "";
-  const rawPostal =
-    typeof value?.postal_code === "string"
-      ? value.postal_code
-      : typeof value?.postalCode === "string"
-        ? value.postalCode
-        : "";
-  const postalCode = rawPostal.trim().replace(/\s+/g, " ").toUpperCase();
+  const address = normalizeDeliveryAddress(value);
+  return {
+    line1: address.line1,
+    city: address.city,
+    postalCode: address.postalCode,
+  };
+}
 
-  if (!line1 || !city || !postalCode) {
-    throw new UnprocessableEntityException({
-      message: "A complete delivery address is required",
-      field: "address_snapshot_json",
-    });
+function mapCheckoutItems(params: PlaceOrderParams) {
+  return params.items.map((item) => ({
+    menu_item_id: item.menuItemId,
+    quantity: item.quantity,
+    modifier_selections: item.modifierSelections?.map((selection) => ({
+      modifier_option_id: selection.modifierOptionId,
+    })),
+    removed_ingredients: item.removedIngredients,
+    special_instructions: item.specialInstructions,
+    builder_payload: item.builderPayload,
+  }));
+}
+
+function getCheckoutCartHash(
+  params: PlaceOrderParams,
+  statedDeliveryFeeCents: number,
+): string {
+  return buildCheckoutCartHash({
+    location_id: params.locationId,
+    fulfillment_type: params.fulfillmentType,
+    items: mapCheckoutItems(params),
+    promo_code: params.promoCode,
+    driver_tip_cents: params.driverTipCents,
+    wallet_applied_cents: params.walletAppliedCents,
+    scheduled_for: params.scheduledFor,
+    apply_wings_reward: params.applyWingsReward,
+    delivery_quote_token: params.deliveryQuoteToken,
+    delivery_fee_stated_cents: statedDeliveryFeeCents,
+    address_snapshot_json: params.addressSnapshotJson,
+  });
+}
+
+function getCheckoutRequestFingerprint(params: PlaceOrderParams): string {
+  return buildCheckoutRequestFingerprint({
+    location_id: params.locationId,
+    fulfillment_type: params.fulfillmentType,
+    items: mapCheckoutItems(params),
+    promo_code: params.promoCode,
+    driver_tip_cents: params.driverTipCents,
+    wallet_applied_cents: params.walletAppliedCents,
+    scheduled_for: params.scheduledFor,
+    apply_wings_reward: params.applyWingsReward,
+    address_snapshot_json: params.addressSnapshotJson,
+    payment_method: params.paymentMethod,
+    customer_order_notes: params.specialInstructions,
+    contactless_pref: params.contactlessPref,
+    is_student_order: params.isStudentOrder,
+    student_id_snapshot: params.studentIdSnapshot,
+    stripe_payment_intent_id: params.stripePaymentIntentId,
+  });
+}
+
+function assertIdempotencyOwnership(params: {
+  existingUserId: string | null;
+  existingLocationId: string;
+  existingFingerprint: string;
+  userId: string;
+  locationId: string;
+  requestFingerprint: string;
+}) {
+  if (
+    params.existingUserId !== params.userId ||
+    params.existingLocationId !== params.locationId
+  ) {
+    throw new ConflictException(
+      "Idempotency key was already used for another checkout",
+    );
   }
-
-  return { line1, city, postalCode };
+  if (params.existingFingerprint !== params.requestFingerprint) {
+    throw new ConflictException(
+      "Idempotency key was already used for a different checkout request",
+    );
+  }
 }
 
 function getRemovedIngredientsFromInput(params: {
@@ -244,20 +325,92 @@ export class CheckoutService {
     private readonly rewardsService: RewardsService,
     private readonly promotionsService: PromotionsService,
     private readonly stripePaymentsService: StripePaymentsService,
+    private readonly deliveryQuoteVerifier: DeliveryQuoteVerifierService,
   ) {}
 
   async placeOrder(params: PlaceOrderParams) {
+    const requestFingerprint = getCheckoutRequestFingerprint(params);
+    const existingKey = await this.prisma.checkoutIdempotencyKey.findUnique({
+      where: { idempotencyKey: params.idempotencyKey },
+      select: {
+        userId: true,
+        locationId: true,
+        orderId: true,
+        requestFingerprint: true,
+      },
+    });
+    if (existingKey) {
+      assertIdempotencyOwnership({
+        existingUserId: existingKey.userId,
+        existingLocationId: existingKey.locationId,
+        existingFingerprint: existingKey.requestFingerprint,
+        userId: params.userId,
+        locationId: params.locationId,
+        requestFingerprint,
+      });
+      if (!existingKey.orderId) {
+        throw new ConflictException(
+          "Checkout already in progress for this idempotency key",
+        );
+      }
+      return this.getOrderById(existingKey.orderId);
+    }
+
+    if (
+      (params.paymentMethod ?? "PAY_AT_STORE") === "ONLINE_CARD" &&
+      params.stripePaymentIntentId?.trim()
+    ) {
+      const existingStripeOrderId = await this.findOwnedStripePaymentOrderId(
+        this.prisma,
+        params.stripePaymentIntentId.trim(),
+        params.userId,
+        params.locationId,
+      );
+      if (existingStripeOrderId) {
+        return this.getOrderById(existingStripeOrderId);
+      }
+    }
+
     const deliveryAddress =
       params.fulfillmentType === "DELIVERY"
         ? requireDeliveryAddress(params.addressSnapshotJson)
         : null;
+    const verifiedDeliveryQuote =
+      params.fulfillmentType === "DELIVERY"
+        ? this.deliveryQuoteVerifier.verifyForDelivery({
+            locationId: params.locationId,
+            addressSnapshotJson: params.addressSnapshotJson,
+            deliveryQuoteToken: params.deliveryQuoteToken,
+            required: true,
+          })
+        : null;
+    const statedDeliveryFeeCents =
+      params.fulfillmentType === "DELIVERY"
+        ? verifiedDeliveryQuote?.delivery_fee_cents ?? DELIVERY_BASE_FEE_CENTS
+        : 0;
+    const checkoutCartHash = getCheckoutCartHash(
+      params,
+      statedDeliveryFeeCents,
+    );
 
-    const orderId = await this.prisma.$transaction(async (tx) => {
+    let orderId: string;
+    let isReplay = false;
+    try {
+      orderId = await this.prisma.$transaction(async (tx) => {
       const existingKey = await tx.checkoutIdempotencyKey.findUnique({
         where: { idempotencyKey: params.idempotencyKey },
       });
       if (existingKey) {
+        assertIdempotencyOwnership({
+          existingUserId: existingKey.userId,
+          existingLocationId: existingKey.locationId,
+          existingFingerprint: existingKey.requestFingerprint,
+          userId: params.userId,
+          locationId: params.locationId,
+          requestFingerprint,
+        });
         if (existingKey.orderId) {
+          isReplay = true;
           return existingKey.orderId;
         }
         throw new ConflictException("Checkout already in progress for this idempotency key");
@@ -268,7 +421,7 @@ export class CheckoutService {
           idempotencyKey: params.idempotencyKey,
           userId: params.userId,
           locationId: params.locationId,
-          requestFingerprint: params.idempotencyKey,
+          requestFingerprint,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });
@@ -337,27 +490,10 @@ export class CheckoutService {
         documentFuturePrepaymentPolicy();
         assertCustomerMayUseDelivery(deliveryEligibility);
 
-        // PRD §8: delivery postal code must be in allowed_postal_codes (when
-        // configured). Empty list = zone enforcement disabled. Normalize to
-        // uppercase, no-whitespace for Canadian-style comparison.
-        const allowedPostals = Array.isArray(settings.allowedPostalCodes)
-          ? (settings.allowedPostalCodes as unknown[]).filter(
-              (v): v is string => typeof v === "string",
-            )
-          : [];
-        if (allowedPostals.length > 0) {
-          const rawPostal = deliveryAddress?.postalCode ?? "";
-          const normalize = (p: string) =>
-            p.replace(/\s+/g, "").toUpperCase();
-          const normalized = normalize(rawPostal);
-          const allowedNormalized = allowedPostals.map(normalize);
-          if (!normalized || !allowedNormalized.includes(normalized)) {
-            throw new UnprocessableEntityException({
-              message: `Delivery is not available to postal code "${rawPostal || "unknown"}"`,
-              field: "address_snapshot_json.postal_code",
-            });
-          }
-        }
+        assertPostalCodeAllowed(
+          deliveryAddress?.postalCode ?? "",
+          settings.allowedPostalCodes,
+        );
       }
 
       // PRD §8: minimum lead time. Scheduled orders cannot be placed for a
@@ -795,6 +931,7 @@ export class CheckoutService {
       });
 
       let deliveryFeeCents = 0;
+      let deliveryFeeWaived = false;
       if (params.fulfillmentType === "DELIVERY") {
         if (
           settings.minimumDeliverySubtotalCents > 0 &&
@@ -809,7 +946,8 @@ export class CheckoutService {
         const waived =
           settings.freeDeliveryThresholdCents != null &&
           itemSubtotalCents >= settings.freeDeliveryThresholdCents;
-        deliveryFeeCents = waived ? 0 : settings.deliveryFeeCents;
+        deliveryFeeWaived = waived;
+        deliveryFeeCents = waived ? 0 : statedDeliveryFeeCents;
       }
 
       const driverTipCents = params.driverTipCents ?? 0;
@@ -924,6 +1062,7 @@ export class CheckoutService {
           discountAmountCents: promoApplication.redemptionValueCents,
         });
         if (promoApplication.waivesDelivery) {
+          deliveryFeeWaived = true;
           deliveryFeeCents = 0;
         }
       }
@@ -943,6 +1082,7 @@ export class CheckoutService {
         promoDiscountCents += firstOrderDeal.discountCents;
         promoRedemptions.push(...firstOrderDeal.redemptions);
         if (firstOrderDeal.waivesDelivery) {
+          deliveryFeeWaived = true;
           deliveryFeeCents = 0;
         }
       }
@@ -979,16 +1119,19 @@ export class CheckoutService {
           });
         }
 
-        const existingStripePayment = await tx.orderPayment.findFirst({
-          where: {
-            provider: "stripe",
-            providerTransactionId: params.stripePaymentIntentId,
-            transactionStatus: "SUCCESS",
-          },
-          select: { orderId: true },
-        });
-        if (existingStripePayment) {
-          throw new ConflictException("Stripe payment has already been used for an order");
+        const existingStripeOrderId = await this.findOwnedStripePaymentOrderId(
+          tx,
+          params.stripePaymentIntentId,
+          params.userId,
+          params.locationId,
+        );
+        if (existingStripeOrderId) {
+          await tx.checkoutIdempotencyKey.update({
+            where: { idempotencyKey: params.idempotencyKey },
+            data: { orderId: existingStripeOrderId },
+          });
+          isReplay = true;
+          return existingStripeOrderId;
         }
 
         stripePayment =
@@ -998,6 +1141,7 @@ export class CheckoutService {
             locationId: params.locationId,
             amountCents: pricing.finalPayableCents,
             currency: "CAD",
+            cartHash: checkoutCartHash,
           });
       } else if (params.stripePaymentIntentId?.trim()) {
         throw new UnprocessableEntityException({
@@ -1041,6 +1185,19 @@ export class CheckoutService {
         final_payable_cents: pricing.finalPayableCents,
         applied_promo_code: appliedPromoCode,
         promo_discount_cents: promoDiscountCents,
+        ...(params.fulfillmentType === "DELIVERY"
+          ? {
+              delivery_pricing: {
+                rule_version: DELIVERY_PRICING_RULE_VERSION,
+                base_fee_cents: DELIVERY_BASE_FEE_CENTS,
+                included_distance_metres: DELIVERY_INCLUDED_DISTANCE_METRES,
+                increment_cents: DELIVERY_INCREMENT_CENTS,
+                maximum_distance_metres: DELIVERY_MAXIMUM_DISTANCE_METRES,
+                stated_delivery_fee_cents: statedDeliveryFeeCents,
+                delivery_fee_waived: deliveryFeeWaived,
+              },
+            }
+          : {}),
       };
 
       const cancelAllowedUntil = new Date(Date.now() + 2 * 60 * 1000);
@@ -1320,26 +1477,101 @@ export class CheckoutService {
       });
 
       return createdOrder.id;
-    });
+      });
+    } catch (error) {
+      if (
+        params.stripePaymentIntentId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        (JSON.stringify(error.meta ?? {}).includes("provider_transaction") ||
+          JSON.stringify(error.meta ?? {}).includes("providerTransactionId"))
+      ) {
+        const existingStripeOrderId = await this.findOwnedStripePaymentOrderId(
+          this.prisma,
+          params.stripePaymentIntentId,
+          params.userId,
+          params.locationId,
+        );
+        if (existingStripeOrderId) {
+          await this.prisma.checkoutIdempotencyKey.updateMany({
+            where: {
+              idempotencyKey: params.idempotencyKey,
+              orderId: null,
+            },
+            data: { orderId: existingStripeOrderId },
+          });
+          return this.getOrderById(existingStripeOrderId);
+        }
+        throw new ConflictException(
+          "Stripe payment has already been used for an order",
+        );
+      }
+      throw error;
+    }
 
     const serialized = await this.getOrderById(orderId);
 
-    this.realtime.emitOrderEvent(
-      params.locationId,
-      serialized.id as string,
-      "order.placed",
-      {
-        order_id: serialized.id,
-        order_number: serialized.order_number,
-        status: serialized.status,
-        fulfillment_type: serialized.fulfillment_type,
-        estimated_ready_at: serialized.estimated_ready_at,
-      },
-    );
+    if (!isReplay) {
+      this.realtime.emitOrderEvent(
+        params.locationId,
+        serialized.id as string,
+        "order.placed",
+        {
+          order_id: serialized.id,
+          order_number: serialized.order_number,
+          status: serialized.status,
+          fulfillment_type: serialized.fulfillment_type,
+          estimated_ready_at: serialized.estimated_ready_at,
+        },
+      );
 
-    await this.autoAcceptScheduler.scheduleOrder(orderId);
+      await this.autoAcceptScheduler.scheduleOrder(orderId);
+    }
 
     return serialized;
+  }
+
+  /**
+   * Locate a succeeded Stripe PaymentIntent for this customer/location only.
+   * A PaymentIntent already attached to another customer's order is a conflict,
+   * never a successful replay of that order.
+   */
+  private async findOwnedStripePaymentOrderId(
+    db: PrismaService | Prisma.TransactionClient,
+    paymentIntentId: string,
+    userId: string,
+    locationId: string,
+  ): Promise<string | null> {
+    const existingStripePayment = await db.orderPayment.findFirst({
+      where: {
+        provider: "stripe",
+        providerTransactionId: paymentIntentId.trim(),
+        transactionStatus: "SUCCESS",
+      },
+      select: {
+        orderId: true,
+        locationId: true,
+        order: {
+          select: {
+            customerUserId: true,
+            locationId: true,
+          },
+        },
+      },
+    });
+    if (!existingStripePayment) {
+      return null;
+    }
+    if (
+      existingStripePayment.order.customerUserId !== userId ||
+      existingStripePayment.order.locationId !== locationId ||
+      existingStripePayment.locationId !== locationId
+    ) {
+      throw new ConflictException(
+        "Stripe payment has already been used for an order",
+      );
+    }
+    return existingStripePayment.orderId;
   }
 
   async getOrderById(orderId: string) {

@@ -297,7 +297,7 @@ model LocationSettings {
   taxDeliveryFee               Boolean  @default(true) @map("tax_delivery_fee")
   taxTip                       Boolean  @default(false) @map("tax_tip")
   discountsReduceTaxableBase   Boolean  @default(true) @map("discounts_reduce_taxable_base")
-  deliveryFeeCents             Int      @default(499) @map("delivery_fee_cents")
+  deliveryFeeCents             Int      @default(500) @map("delivery_fee_cents")
   freeDeliveryThresholdCents   Int?     @map("free_delivery_threshold_cents")
   minimumDeliverySubtotalCents Int      @default(0) @map("minimum_delivery_subtotal_cents")
   deliveryDisabled             Boolean  @default(false) @map("delivery_disabled")
@@ -1023,6 +1023,7 @@ model OrderPayment {
   location              Location                 @relation(fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order                 Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@unique([provider, providerTransactionId], map: "uq_order_payments_provider_transaction")
   @@index([orderId, createdAt], map: "idx_order_payments_order")
   @@map("order_payments")
 }

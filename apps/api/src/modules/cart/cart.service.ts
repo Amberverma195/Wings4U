@@ -28,6 +28,11 @@ import {
   loadWingFlavourMapForRefs,
   throwScheduleViolations,
 } from "../shared/order-validation";
+import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
+import {
+  DELIVERY_BASE_FEE_CENTS,
+  isDeliveryDistancePricingEnabled,
+} from "../delivery-pricing/delivery-pricing.constants";
 
 type CartItemInput = {
   menu_item_id: string;
@@ -67,6 +72,7 @@ export class CartService {
     private readonly prisma: PrismaService,
     private readonly rewardsService: RewardsService,
     private readonly promotionsService: PromotionsService,
+    private readonly deliveryQuoteVerifier: DeliveryQuoteVerifierService,
   ) {}
 
   async computeQuote(
@@ -79,6 +85,9 @@ export class CartService {
     scheduledFor?: string,
     userId?: string,
     applyWingsReward?: boolean,
+    deliveryQuoteToken?: string,
+    addressSnapshotJson?: Record<string, unknown>,
+    requireExactDeliveryQuote = false,
   ) {
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
@@ -310,7 +319,14 @@ export class CartService {
     let deliveryFeeCents = 0;
     let deliveryFeeStatedCents = 0;
     let deliveryFeeWaived = false;
+    let deliveryFeeIsEstimate = false;
     if (fulfillmentType === "DELIVERY") {
+      const deliveryQuote = this.deliveryQuoteVerifier.verifyForDelivery({
+        locationId,
+        addressSnapshotJson,
+        deliveryQuoteToken,
+        required: requireExactDeliveryQuote,
+      });
       const deliveryEligibility = await getDeliveryEligibilityForCustomer(
         this.prisma,
         locationId,
@@ -320,7 +336,10 @@ export class CartService {
       documentFuturePrepaymentPolicy();
       assertCustomerMayUseDelivery(deliveryEligibility);
 
-      deliveryFeeStatedCents = settings.deliveryFeeCents;
+      deliveryFeeStatedCents =
+        deliveryQuote?.delivery_fee_cents ?? DELIVERY_BASE_FEE_CENTS;
+      deliveryFeeIsEstimate =
+        isDeliveryDistancePricingEnabled() && deliveryQuote == null;
       if (settings.minimumDeliverySubtotalCents > 0 && itemSubtotalCents < settings.minimumDeliverySubtotalCents) {
         const shortfallCents = settings.minimumDeliverySubtotalCents - itemSubtotalCents;
         throw new UnprocessableEntityException({
@@ -333,7 +352,7 @@ export class CartService {
         settings.freeDeliveryThresholdCents != null &&
         itemSubtotalCents >= settings.freeDeliveryThresholdCents;
       deliveryFeeWaived = waived;
-      deliveryFeeCents = waived ? 0 : settings.deliveryFeeCents;
+      deliveryFeeCents = waived ? 0 : deliveryFeeStatedCents;
     }
 
     const policy: PricingPolicy = {
@@ -469,6 +488,7 @@ export class CartService {
       final_payable_cents: breakdown.finalPayableCents,
       delivery_fee_stated_cents: deliveryFeeStatedCents,
       delivery_fee_waived: deliveryFeeWaived,
+      delivery_fee_is_estimate: deliveryFeeIsEstimate,
       applied_promo_code: appliedPromoCode,
       promo_discount_cents: promoDiscountCents,
       lines: lineDetails,

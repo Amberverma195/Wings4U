@@ -92,6 +92,14 @@ class CartQuoteDto {
   @IsString()
   scheduled_for?: string;
 
+  @IsOptional()
+  @IsString()
+  delivery_quote_token?: string;
+
+  @IsOptional()
+  @IsObject()
+  address_snapshot_json?: Record<string, unknown>;
+
   /**
    * When true, the signed-in customer wants to redeem their wings-rewards
    * stamp card ("Get 1lb of wings free"). The quote re-validates — it must
@@ -124,6 +132,8 @@ export class CartController {
       body.scheduled_for,
       req.user?.userId,
       body.apply_wings_reward,
+      body.delivery_quote_token,
+      body.address_snapshot_json,
     );
   }
 }

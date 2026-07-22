@@ -13,7 +13,6 @@ type Settings = {
   taxDeliveryFee: boolean;
   taxTip: boolean;
   discountsReduceTaxableBase: boolean;
-  deliveryFeeCents: number;
   freeDeliveryThresholdCents: number | null;
   minimumDeliverySubtotalCents: number;
   deliveryDisabled: boolean;
@@ -33,6 +32,7 @@ type Settings = {
   defaultDeliveryMinMinutes: number;
   defaultDeliveryMaxMinutes: number;
   overdueDeliveryGraceMinutes: number;
+  allowedPostalCodes: string[];
   trustedIpRanges: string[];
   kdsPasswordConfigured?: boolean;
   storeHours: StoreHour[];
@@ -50,7 +50,13 @@ type FieldDef = {
   key: keyof Settings;
   label: string;
   group: string;
-  kind: "number" | "boolean" | "cents" | "nullable-int" | "time-minutes";
+  kind:
+    | "number"
+    | "boolean"
+    | "cents"
+    | "nullable-int"
+    | "time-minutes"
+    | "postal-list";
   /** Extra hint for money fields shown in dollars while API/DB use cents */
   description?: string;
   trueLabel?: string;
@@ -68,13 +74,6 @@ const FIELDS: FieldDef[] = [
     kind: "boolean",
   },
   {
-    key: "deliveryFeeCents",
-    label: "Delivery fee",
-    group: "Delivery",
-    kind: "cents",
-    description: "Flat delivery fee in dollars (e.g. 3.50).",
-  },
-  {
     key: "freeDeliveryThresholdCents",
     label: "Free delivery threshold",
     group: "Delivery",
@@ -88,6 +87,14 @@ const FIELDS: FieldDef[] = [
     kind: "cents",
     description:
       "Minimum cart subtotal for delivery, in dollars (e.g. 20 for $20). Pickup is not affected.",
+  },
+  {
+    key: "allowedPostalCodes",
+    label: "Delivery postal zones",
+    group: "Delivery",
+    kind: "postal-list",
+    description:
+      "Comma- or line-separated Canadian FSA prefixes (e.g. N5W) or full postal codes. Blank allows all London postal codes.",
   },
   {
     key: "defaultDeliveryMinMinutes",
@@ -426,6 +433,23 @@ function HoursEditor({
 
 function parseValue(raw: string, kind: FieldDef["kind"]): unknown {
   if (kind === "boolean") return raw === "true";
+  if (kind === "postal-list") {
+    const values: string[] = [];
+    const seen = new Set<string>();
+    for (const entry of raw.split(/[\n,]+/)) {
+      const compact = entry.trim().replace(/\s/g, "").toUpperCase();
+      if (!compact) continue;
+      const canonical =
+        compact.length === 6
+          ? `${compact.slice(0, 3)} ${compact.slice(3)}`
+          : compact;
+      if (!seen.has(canonical)) {
+        seen.add(canonical);
+        values.push(canonical);
+      }
+    }
+    return values;
+  }
   if (kind === "time-minutes") {
     const t = raw.trim();
     if (t === "") return null;
@@ -463,6 +487,11 @@ function parseValue(raw: string, kind: FieldDef["kind"]): unknown {
 
 function valueToInput(value: unknown, kind: FieldDef["kind"]): string {
   if (kind === "boolean") return value ? "true" : "false";
+  if (kind === "postal-list") {
+    return Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string").join(", ")
+      : "";
+  }
   if (kind === "time-minutes") {
     if (typeof value !== "number" || !Number.isFinite(value)) return "";
     const minutes = Math.max(0, Math.min(1439, Math.floor(value)));
@@ -848,6 +877,25 @@ export function SettingsClient() {
                             </>
                           )}
                         </select>
+                      ) : f.kind === "postal-list" ? (
+                        <textarea
+                          rows={3}
+                          value={draft[f.key] ?? ""}
+                          onChange={(e) =>
+                            setDraft((prev) => ({ ...prev, [f.key]: e.target.value }))
+                          }
+                          disabled={!isAdmin}
+                          style={{
+                            display: "block",
+                            marginTop: "0.25rem",
+                            padding: "0.4rem 0.5rem",
+                            borderRadius: "0.375rem",
+                            border: "1px solid #d4d4d4",
+                            width: "100%",
+                            resize: "vertical",
+                            fontFamily: "inherit",
+                          }}
+                        />
                       ) : (
                         <input
                           type={f.kind === "time-minutes" ? "time" : "number"}

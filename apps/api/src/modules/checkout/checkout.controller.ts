@@ -111,6 +111,10 @@ class PlaceOrderDto {
   address_snapshot_json?: Record<string, unknown>;
 
   @IsOptional()
+  @IsString()
+  delivery_quote_token?: string;
+
+  @IsOptional()
   @IsBoolean()
   is_student_order?: boolean;
 
@@ -198,6 +202,7 @@ export class CheckoutController {
       promoCode: body.promo_code,
       paymentMethod: body.payment_method,
       stripePaymentIntentId: body.stripe_payment_intent_id,
+      deliveryQuoteToken: body.delivery_quote_token,
     });
   }
 }

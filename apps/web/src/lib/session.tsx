@@ -15,6 +15,10 @@ import {
   notifyAuthSessionCleared,
 } from "./auth-events";
 import type { ApiEnvelope } from "@wings4u/contracts";
+import {
+  clearStoredDeliveryQuotes,
+  pruneStoredDeliveryQuotes,
+} from "./delivery-quote";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -211,6 +215,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [applySignedOut, data.authenticated]);
 
   useEffect(() => {
+    pruneStoredDeliveryQuotes();
     void fetchSession();
   }, [fetchSession]);
 
@@ -255,6 +260,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [data.authenticated, isProtectedSurface, loaded, router]);
 
   const clear = useCallback(() => {
+    clearStoredDeliveryQuotes();
     applySignedOut();
     notifyAuthSessionCleared();
   }, [applySignedOut]);

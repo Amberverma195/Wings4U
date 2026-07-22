@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import {
   BadRequestException,
   Injectable,
@@ -7,6 +6,7 @@ import {
 } from "@nestjs/common";
 import Stripe from "stripe";
 import { CartService } from "../cart/cart.service";
+import { buildCheckoutCartHash } from "./checkout-cart-hash";
 
 const STRIPE_SECRET_PLACEHOLDER = "sk_test_placeholder";
 const STRIPE_PUBLISHABLE_PLACEHOLDER = "pk_test_placeholder";
@@ -31,6 +31,8 @@ type CreatePaymentIntentParams = {
   walletAppliedCents?: number;
   scheduledFor?: string;
   applyWingsReward?: boolean;
+  deliveryQuoteToken?: string;
+  addressSnapshotJson?: Record<string, unknown>;
 };
 
 export type VerifiedStripePayment = {
@@ -81,13 +83,6 @@ function isStripeWebhookConfigured(): boolean {
   return webhookSecret.startsWith("whsec_") && !isPlaceholderKey(webhookSecret);
 }
 
-function stableHash(value: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(value))
-    .digest("hex")
-    .slice(0, 64);
-}
-
 @Injectable()
 export class StripePaymentsService {
   private stripeClient: StripeClient | null = null;
@@ -127,6 +122,9 @@ export class StripePaymentsService {
       params.scheduledFor,
       params.userId,
       params.applyWingsReward,
+      params.deliveryQuoteToken,
+      params.addressSnapshotJson,
+      true,
     );
 
     if (quote.final_payable_cents <= 0) {
@@ -136,15 +134,18 @@ export class StripePaymentsService {
       });
     }
 
-    const cartHash = stableHash({
+    const cartHash = buildCheckoutCartHash({
       location_id: params.locationId,
       fulfillment_type: params.fulfillmentType,
       items: params.items,
       promo_code: params.promoCode,
       driver_tip_cents: params.driverTipCents ?? 0,
       wallet_applied_cents: params.walletAppliedCents ?? 0,
-      scheduled_for: params.scheduledFor ?? null,
+      scheduled_for: params.scheduledFor,
       apply_wings_reward: params.applyWingsReward ?? false,
+      delivery_quote_token: params.deliveryQuoteToken,
+      delivery_fee_stated_cents: quote.delivery_fee_stated_cents,
+      address_snapshot_json: params.addressSnapshotJson,
     });
 
     const intent = await this.getStripeClient().paymentIntents.create({
@@ -175,6 +176,7 @@ export class StripePaymentsService {
     locationId: string;
     amountCents: number;
     currency?: string;
+    cartHash: string;
   }): Promise<VerifiedStripePayment> {
     if (!isStripeConfigured()) {
       throw new ServiceUnavailableException(
@@ -225,6 +227,12 @@ export class StripePaymentsService {
     ) {
       throw new UnprocessableEntityException({
         message: "Stripe payment was created for a different customer.",
+        field: "stripe_payment_intent_id",
+      });
+    }
+    if (intent.metadata.wings4u_cart_hash !== params.cartHash) {
+      throw new UnprocessableEntityException({
+        message: "Stripe payment does not match the submitted cart.",
         field: "stripe_payment_intent_id",
       });
     }

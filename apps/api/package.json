@@ -7,6 +7,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "start:cron:overdue-deliveries": "node dist/cron/overdue-deliveries.js",
+    "test:unit": "jest --config ./jest-unit.json --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {

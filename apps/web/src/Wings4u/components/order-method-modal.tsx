@@ -486,7 +486,7 @@ export function OrderMethodModal({
                   ) : null}
                 </div>
                 <div className="wk-method-tags">
-                  <span className="wk-method-tag">$4.99 FEE</span>
+                  <span className="wk-method-tag">FROM $5</span>
                   <span className="wk-method-tag">~30 MIN</span>
                 </div>
                 <div className="wk-method-option-name">DELIVERY</div>
