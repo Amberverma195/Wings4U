@@ -916,9 +916,37 @@ export class RealtimeGateway
       select: { trustedIpRanges: true },
     });
     const clientIp = this.extractSocketClientIp(socket);
-    return isAllowedStoreIp(clientIp, settings?.trustedIpRanges)
+    const allowed = isAllowedStoreIp(clientIp, settings?.trustedIpRanges);
+    if (!allowed) {
+      this.logger.warn(
+        JSON.stringify({
+          event: "realtime.store_network_denied",
+          location_id: locationId,
+          socket_peer_ip: socket.handshake.address || null,
+          forwarded_for: this.ipHeaderForDiagnostics(
+            socket.handshake.headers["x-forwarded-for"],
+          ),
+          real_ip: this.ipHeaderForDiagnostics(
+            socket.handshake.headers["x-real-ip"],
+          ),
+          extracted_client_ip: clientIp || null,
+          trusted_proxy_ranges_configured:
+            (process.env.TRUSTED_PROXY_IP_RANGES ?? "").trim().length > 0,
+        }),
+      );
+    }
+    return allowed
       ? null
       : "Store access is restricted to in-store network only";
+  }
+
+  private ipHeaderForDiagnostics(
+    value: string | string[] | undefined,
+  ): string | null {
+    const header = Array.isArray(value) ? value.join(", ") : value;
+    return typeof header === "string" && header.length > 0
+      ? header.slice(0, 512)
+      : null;
   }
 
   private extractSocketClientIp(socket: Socket): string {
