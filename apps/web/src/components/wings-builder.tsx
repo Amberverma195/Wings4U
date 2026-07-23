@@ -1515,7 +1515,7 @@ export function WingsBuilder({
                   className={`builder-option-pill${extraPlacement === "ON_WINGS" ? " builder-option-pill-active" : ""}`}
                   onClick={() => setExtraPlacement("ON_WINGS")}
                 >
-                  Tossed on wings
+                  Sauced on wings
                 </button>
                 <button
                   type="button"

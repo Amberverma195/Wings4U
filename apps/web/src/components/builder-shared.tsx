@@ -120,7 +120,7 @@ function getSaucingOptions(
 ) {
   if (effectiveSaucedCount <= 1) {
     return [
-      { value: "ON_WINGS", label: "Tossed on wings" },
+      { value: "ON_WINGS", label: "Sauced on wings" },
       { value: "ON_SIDE", label: "On the side" },
     ];
   }
@@ -144,7 +144,6 @@ function getSaucingOptions(
   if (effectiveSaucedCount === 2) {
     return [
       { value: "HALF_HALF", label: "Half and half" },
-      { value: "MIXED", label: "Mixed together" },
       { value: "SIDE", label: "Sauce on the side" },
     ];
   }

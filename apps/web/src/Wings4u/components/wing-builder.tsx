@@ -39,7 +39,6 @@ const HEAT_ORDER = ["PLAIN", "MILD", "MEDIUM", "HOT", "DRY_RUB"] as const;
 
 const SAUCING_METHODS: { label: string; value: string }[] = [
   { label: "Half & Half", value: "HALF_AND_HALF" },
-  { label: "Mixed", value: "MIXED" },
   { label: "Side", value: "SIDE" },
   { label: "Split Evenly", value: "SPLIT_EVENLY" },
   { label: "All Mixed", value: "ALL_MIXED" },

@@ -92,7 +92,7 @@ function buildSaucingSummaryLines(payload: WingBuilderPayload): string[] {
 
   switch (method) {
     case "ON_WINGS":
-      return n <= 1 ? ["Saucing method: Tossed on wings"] : [];
+      return n <= 1 ? ["Saucing method: Sauced on wings"] : [];
     case "ON_SIDE":
       return n <= 1 ? ["Saucing method: On the side"] : [];
     case "HALF_HALF":

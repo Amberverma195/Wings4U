@@ -151,7 +151,6 @@ export function BrandSection() {
             We Cut Deep Into <span className="gradient-text">Flavour.</span>
           </span>
         </h2>
-        <p className="brand-flavour-subtitle">Your Taste Buds will Thank U</p>
         <p className="brand-body">
           Wings4U was born from one obsession: making the{" "}
           <strong>crispiest, sauciest wings</strong> London has ever tasted. Every order is hand-breaded

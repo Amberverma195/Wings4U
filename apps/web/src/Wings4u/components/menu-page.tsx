@@ -262,6 +262,7 @@ export function MenuPage({
   const [isCommittingFulfillment, setIsCommittingFulfillment] = useState(false);
   /** JS-pinned bar (not CSS sticky): follows scroll until it meets the nav, then stays under it. */
   const [orderStackPinned, setOrderStackPinned] = useState(false);
+  const [orderSettingsScrollHidden, setOrderSettingsScrollHidden] = useState(false);
   const [orderStackHeight, setOrderStackHeight] = useState(0);
   const [orderStackPinRect, setOrderStackPinRect] = useState<{ left: number; width: number } | null>(
     null,
@@ -278,6 +279,9 @@ export function MenuPage({
   const stickyStackRef = useRef<HTMLDivElement | null>(null);
   const orderSettingsRef = useRef<HTMLDivElement | null>(null);
   const orderStackPinnedRef = useRef(false);
+  const orderSettingsScrollHiddenRef = useRef(false);
+  const lastOrderStackScrollYRef = useRef(0);
+  const orderStackScrollDeltaRef = useRef(0);
   const isScrollingToRef = useRef(false);
   const commitTimerRef = useRef<number | null>(null);
   const didScrollToHashRef = useRef(false);
@@ -506,6 +510,13 @@ export function MenuPage({
 
     const root = document.documentElement;
     const navEl = document.querySelector(".wk-nav-bar") as HTMLElement | null;
+    lastOrderStackScrollYRef.current = window.scrollY;
+
+    const setScrollHidden = (hidden: boolean) => {
+      if (hidden === orderSettingsScrollHiddenRef.current) return;
+      orderSettingsScrollHiddenRef.current = hidden;
+      setOrderSettingsScrollHidden(hidden);
+    };
 
     /** Pin flush to the nav bottom — any gap lets scroll content show between nav and the bar. */
     const NAV_TOP_GAP_PX = 0;
@@ -545,12 +556,42 @@ export function MenuPage({
 
       orderStackPinnedRef.current = nextPin;
       setOrderStackPinned(nextPin);
+      orderStackScrollDeltaRef.current = 0;
 
       if (nextPin) {
         const rect = stackEl.getBoundingClientRect();
         setOrderStackPinRect({ left: rect.left, width: rect.width });
       } else {
         setOrderStackPinRect(null);
+        setScrollHidden(false);
+      }
+    };
+
+    const updateScrollDirection = () => {
+      const nextScrollY = Math.max(window.scrollY, 0);
+      const delta = nextScrollY - lastOrderStackScrollYRef.current;
+      lastOrderStackScrollYRef.current = nextScrollY;
+
+      updatePin();
+      if (!orderStackPinnedRef.current || orderSettingsOpen || Math.abs(delta) < 1) {
+        if (orderSettingsOpen) setScrollHidden(false);
+        return;
+      }
+
+      if (
+        orderStackScrollDeltaRef.current !== 0 &&
+        Math.sign(orderStackScrollDeltaRef.current) !== Math.sign(delta)
+      ) {
+        orderStackScrollDeltaRef.current = 0;
+      }
+      orderStackScrollDeltaRef.current += delta;
+
+      if (orderStackScrollDeltaRef.current >= 12) {
+        setScrollHidden(true);
+        orderStackScrollDeltaRef.current = 0;
+      } else if (orderStackScrollDeltaRef.current <= -12) {
+        setScrollHidden(false);
+        orderStackScrollDeltaRef.current = 0;
       }
     };
 
@@ -575,11 +616,11 @@ export function MenuPage({
     }
 
     window.addEventListener("resize", tick);
-    window.addEventListener("scroll", updatePin, { passive: true });
+    window.addEventListener("scroll", updateScrollDirection, { passive: true });
 
     return () => {
       window.removeEventListener("resize", tick);
-      window.removeEventListener("scroll", updatePin);
+      window.removeEventListener("scroll", updateScrollDirection);
       observer?.disconnect();
     };
   }, [orderSettingsOpen, menu?.categories.length]);
@@ -1145,7 +1186,10 @@ export function MenuPage({
                 : undefined
             }
           >
-          <div className="wk-order-settings-shell" ref={orderSettingsRef}>
+          <div
+            className={`wk-order-settings-shell${orderSettingsScrollHidden ? " wk-order-settings-shell--scroll-hidden" : ""}`}
+            ref={orderSettingsRef}
+          >
             <div className="wk-order-settings-bar">
               <div className="wk-order-fulfillment-display" aria-label="Selected fulfillment type">
                 {(["PICKUP", "DELIVERY"] as const).map((option) => (

@@ -2095,6 +2095,24 @@ export function WingKingsGlobalStyle() {
         box-sizing: border-box;
       }
 
+      .wk-order-sticky-stack--pinned > .wk-order-settings-shell {
+        position: relative;
+        z-index: 0;
+        transition: transform 220ms ease;
+        will-change: transform;
+      }
+
+      .wk-order-sticky-stack--pinned > .wk-order-settings-shell--scroll-hidden {
+        transform: translateY(calc(-100% - 10px));
+        pointer-events: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .wk-order-sticky-stack--pinned > .wk-order-settings-shell {
+          transition: none;
+        }
+      }
+
       .wk-order-sticky-stack > .wk-menu-sticky-cats {
         box-sizing: border-box;
         width: 100%;
