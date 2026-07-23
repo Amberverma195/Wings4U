@@ -2096,14 +2096,17 @@ export function WingKingsGlobalStyle() {
       }
 
       .wk-order-sticky-stack--pinned > .wk-order-settings-shell {
-        position: relative;
+        position: absolute;
+        top: 8px;
+        left: 0;
         z-index: 0;
-        transition: transform 220ms ease;
+        opacity: 0;
+        transform: translateY(calc(-100% - 10px));
+        transition: opacity 160ms ease, transform 220ms ease;
         will-change: transform;
       }
 
       .wk-order-sticky-stack--pinned > .wk-order-settings-shell--scroll-hidden {
-        transform: translateY(calc(-100% - 10px));
         pointer-events: none;
       }
 
