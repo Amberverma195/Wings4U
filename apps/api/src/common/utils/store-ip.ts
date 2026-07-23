@@ -6,6 +6,7 @@ import { getJwtSecret } from "./jwt-secret";
 const LOOPBACK_IPS = new Set(["127.0.0.1", "::1", "localhost"]);
 const SIGNED_CLIENT_IP_HEADER = "x-w4u-client-ip";
 const SIGNED_CLIENT_IP_SIGNATURE_HEADER = "x-w4u-client-ip-signature";
+const RAILWAY_PRIVATE_PROXY_CIDR = "100.64.0.0/10";
 
 function normalizeIpCandidate(ip: string | null | undefined): string | null {
   if (typeof ip !== "string") return null;
@@ -200,6 +201,11 @@ export function extractClientIp(
         (candidate): candidate is string =>
           !!candidate && isValidIpLiteral(candidate),
       );
+    // Railway controls the leftmost X-Forwarded-For value. Its CDN hop IPs are
+    // not stable, so trust that value only after validating the private peer.
+    if (matchesEntry(peerIp, RAILWAY_PRIVATE_PROXY_CIDR) && chain[0]) {
+      return chain[0];
+    }
     for (let index = chain.length - 1; index >= 0; index -= 1) {
       const candidate = chain[index]!;
       if (!isTrustedProxyIp(candidate, proxyRanges)) return candidate;
