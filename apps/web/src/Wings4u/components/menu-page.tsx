@@ -567,6 +567,14 @@ export function MenuPage({
       }
     };
 
+    /**
+     * Keep the category navigation anchored while allowing only the order-settings
+     * card to retreat behind the main navbar. We accumulate a small amount of
+     * same-direction movement before changing visibility so trackpads, touch
+     * momentum, and mobile overscroll do not make the card flicker. Reversing
+     * direction resets the accumulator, and opening the settings panel always
+     * restores the card so its controls remain reachable.
+     */
     const updateScrollDirection = () => {
       const nextScrollY = Math.max(window.scrollY, 0);
       const delta = nextScrollY - lastOrderStackScrollYRef.current;
