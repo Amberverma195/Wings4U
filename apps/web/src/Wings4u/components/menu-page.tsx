@@ -23,6 +23,7 @@ import {
 import { styles } from "../styles";
 import {
   buildDisplayMenuCategories,
+  combineSideCategories,
   ensureSaladsCategoryInDisplay,
   sortMenuCategories,
   type DisplayMenuCategory,
@@ -286,7 +287,9 @@ export function MenuPage({
   const displayCategories = useMemo<DisplayMenuCategory[]>(
     () =>
       ensureSaladsCategoryInDisplay(
-        buildDisplayMenuCategories(sortMenuCategories(menu?.categories ?? [])),
+        buildDisplayMenuCategories(
+          sortMenuCategories(combineSideCategories(menu?.categories ?? [])),
+        ),
       ),
     [menu?.categories],
   );

@@ -302,6 +302,9 @@ function shouldRenderAddonOption(params: {
     return params.selectedSizeNames.includes(sizeScope);
   }
 
+  if (params.addonMatchNormalized === "__always__") {
+    return true;
+  }
   if (params.addonMatchNormalized) {
     return params.normalizedIngredientNames.includes(params.addonMatchNormalized);
   }
@@ -1515,7 +1518,7 @@ export function WingsBuilder({
                   className={`builder-option-pill${extraPlacement === "ON_WINGS" ? " builder-option-pill-active" : ""}`}
                   onClick={() => setExtraPlacement("ON_WINGS")}
                 >
-                  Sauced on wings
+                  Sauce on wings
                 </button>
                 <button
                   type="button"

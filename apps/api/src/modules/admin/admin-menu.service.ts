@@ -29,6 +29,11 @@ export type CreateUpdateItemPayload = {
   allowed_fulfillment_type: "BOTH" | "PICKUP" | "DELIVERY";
   modifier_groups?: Array<{ id: string }>;
   removable_ingredients?: Array<{ name: string; sortOrder: number }>;
+  additional_ingredients?: Array<{
+    name: string;
+    price_delta_cents: number;
+    matches_ingredient?: string;
+  }>;
   schedules?: Array<{
     day_of_week: number;
     time_from: string;
@@ -52,6 +57,7 @@ export type CreateUpdateWingFlavourPayload = {
 };
 
 type WingFlavourCategory = "MILD" | "MEDIUM" | "HOT" | "DRY_RUB";
+const ALWAYS_AVAILABLE_ADDON_MATCH = "__always__";
 
 // ── Helpers ──
 
@@ -116,6 +122,15 @@ function normalizeMinuteOfDay(value: unknown, fieldName: string): number | null 
     throw new BadRequestException(`${fieldName} must be between 00:00 and 23:59`);
   }
   return minutes;
+}
+
+function normalizeIngredientText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeCategoryAvailability(data: CreateUpdateCategoryPayload) {
@@ -423,6 +438,7 @@ export class AdminMenuService {
         selectionMode: true,
         isRequired: true,
         sortOrder: true,
+        contextKey: true,
         options: {
           where: { isActive: true },
           orderBy: { sortOrder: "asc" },
@@ -697,6 +713,15 @@ export class AdminMenuService {
         }
 
         await this.syncWingComboSideOptions(tx, locationId, item);
+        if (data.additional_ingredients !== undefined) {
+          await this.createAdditionalIngredientsGroup(
+            tx,
+            locationId,
+            item.id,
+            item.name,
+            data.additional_ingredients,
+          );
+        }
 
         return item;
       }),
@@ -730,6 +755,39 @@ export class AdminMenuService {
     return this.invalidateCatalogAfter(
       locationId,
       this.prisma.$transaction(async (tx) => {
+        let existingAddonGroupIds: string[] = [];
+        if (data.additional_ingredients !== undefined) {
+          const existingLinks = await tx.menuItemModifierGroup.findMany({
+            where: { menuItemId: id },
+            select: {
+              modifierGroupId: true,
+              contextKey: true,
+              modifierGroup: {
+                select: { contextKey: true },
+              },
+            },
+          });
+          existingAddonGroupIds = existingLinks
+            .filter(
+              (link) =>
+                link.contextKey === "addon" ||
+                link.modifierGroup.contextKey === "addon",
+            )
+            .map((link) => link.modifierGroupId);
+
+          if (
+            data.modifier_groups === undefined &&
+            existingAddonGroupIds.length > 0
+          ) {
+            await tx.menuItemModifierGroup.deleteMany({
+              where: {
+                menuItemId: id,
+                modifierGroupId: { in: existingAddonGroupIds },
+              },
+            });
+          }
+        }
+
         // Replace-all: ingredients
         if (data.removable_ingredients) {
           await tx.removableIngredient.deleteMany({
@@ -796,6 +854,28 @@ export class AdminMenuService {
         });
 
         await this.syncWingComboSideOptions(tx, locationId, updatedItem);
+        if (data.additional_ingredients !== undefined) {
+          for (const groupId of existingAddonGroupIds) {
+            const remainingLink = await tx.menuItemModifierGroup.findFirst({
+              where: { modifierGroupId: groupId },
+              select: { modifierGroupId: true },
+            });
+            if (!remainingLink) {
+              await tx.modifierGroup.update({
+                where: { id: groupId },
+                data: { archivedAt: new Date() },
+              });
+            }
+          }
+
+          await this.createAdditionalIngredientsGroup(
+            tx,
+            locationId,
+            id,
+            updatedItem.name,
+            data.additional_ingredients,
+          );
+        }
 
         return updatedItem;
       }),
@@ -1041,5 +1121,60 @@ export class AdminMenuService {
         "One or more modifier groups not found or do not belong to this location",
       );
     }
+  }
+
+  private async createAdditionalIngredientsGroup(
+    tx: Prisma.TransactionClient,
+    locationId: string,
+    menuItemId: string,
+    itemName: string,
+    rows: NonNullable<CreateUpdateItemPayload["additional_ingredients"]>,
+  ): Promise<void> {
+    const ingredients = rows
+      .map((row) => ({
+        name: row.name.trim(),
+        priceDeltaCents: Math.max(0, row.price_delta_cents),
+        addonMatchNormalized: row.matches_ingredient?.trim()
+          ? normalizeIngredientText(row.matches_ingredient)
+          : ALWAYS_AVAILABLE_ADDON_MATCH,
+      }))
+      .filter((row) => row.name.length > 0);
+
+    if (ingredients.length === 0) return;
+
+    const group = await tx.modifierGroup.create({
+      data: {
+        locationId,
+        name: `${itemName} Additional Ingredients`,
+        displayLabel: "Additional ingredients",
+        selectionMode: "MULTI",
+        minSelect: 0,
+        maxSelect: ingredients.length,
+        isRequired: false,
+        sortOrder: 30,
+        contextKey: "addon",
+      },
+    });
+
+    await tx.modifierOption.createMany({
+      data: ingredients.map((ingredient, index) => ({
+        modifierGroupId: group.id,
+        name: ingredient.name,
+        priceDeltaCents: ingredient.priceDeltaCents,
+        isDefault: false,
+        isActive: true,
+        sortOrder: index + 1,
+        addonMatchNormalized: ingredient.addonMatchNormalized,
+      })),
+    });
+
+    await tx.menuItemModifierGroup.create({
+      data: {
+        menuItemId,
+        modifierGroupId: group.id,
+        sortOrder: 30,
+        contextKey: "addon",
+      },
+    });
   }
 }

@@ -554,3 +554,91 @@ describe("AdminMenuService wing combo side synchronization", () => {
     });
   });
 });
+
+describe("AdminMenuService additional ingredient management", () => {
+  it("creates an item-specific addon group from admin-managed ingredients", async () => {
+    const createdItem = {
+      id: "item-loaded-fries",
+      name: "Chicken Loaded Fries",
+      isWingComboSide: false,
+      isAvailable: true,
+      archivedAt: null,
+    };
+    const tx = {
+      menuItem: {
+        create: jest.fn().mockResolvedValue(createdItem),
+      },
+      menuItemSchedule: { createMany: jest.fn() },
+      modifierGroup: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: "admin-addon-group" }),
+      },
+      modifierOption: {
+        create: jest.fn(),
+        update: jest.fn(),
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+      menuItemModifierGroup: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const prisma = createItemMutationPrismaMock(tx);
+    const service = new AdminMenuService(
+      prisma as any,
+      createCacheMock() as any,
+      createWebRevalidationMock() as any,
+      createRealtimeMock() as any,
+    );
+
+    await service.createItem("loc-1", {
+      ...itemPayload,
+      name: "Chicken Loaded Fries",
+      is_wing_combo_side: false,
+      additional_ingredients: [
+        {
+          name: "Extra Cheese",
+          price_delta_cents: 100,
+          matches_ingredient: "Blend Cheese",
+        },
+        {
+          name: "Add Jalapenos",
+          price_delta_cents: 75,
+        },
+      ],
+    });
+
+    expect(tx.modifierGroup.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        locationId: "loc-1",
+        name: "Chicken Loaded Fries Additional Ingredients",
+        displayLabel: "Additional ingredients",
+        contextKey: "addon",
+        maxSelect: 2,
+      }),
+    });
+    expect(tx.modifierOption.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          modifierGroupId: "admin-addon-group",
+          name: "Extra Cheese",
+          priceDeltaCents: 100,
+          addonMatchNormalized: "blend cheese",
+        }),
+        expect.objectContaining({
+          modifierGroupId: "admin-addon-group",
+          name: "Add Jalapenos",
+          priceDeltaCents: 75,
+          addonMatchNormalized: "__always__",
+        }),
+      ],
+    });
+    expect(tx.menuItemModifierGroup.create).toHaveBeenCalledWith({
+      data: {
+        menuItemId: "item-loaded-fries",
+        modifierGroupId: "admin-addon-group",
+        sortOrder: 30,
+        contextKey: "addon",
+      },
+    });
+  });
+});

@@ -120,7 +120,7 @@ function getSaucingOptions(
 ) {
   if (effectiveSaucedCount <= 1) {
     return [
-      { value: "ON_WINGS", label: "Sauced on wings" },
+      { value: "ON_WINGS", label: "Sauce on wings" },
       { value: "ON_SIDE", label: "On the side" },
     ];
   }

@@ -2,19 +2,37 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { adminFetch, adminApiFetch } from "../admin-api";
+import type { Category } from "./admin-menu.types";
 import styles from "./admin-menu.module.css";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ADMIN_MENU_API_BASE = "/api/v1/admin/menu";
+const ADDITIONAL_INGREDIENT_CATEGORY_SLUGS = new Set([
+  "wraps",
+  "burgers",
+  "salads",
+  "poutines-and-sides",
+  "poutines-sides",
+  "specialty-fries",
+]);
+const ADDITIONAL_INGREDIENT_ITEM_SLUGS = new Set([
+  "chicken-loaded-fries",
+  "bacon-loaded-fries",
+]);
 
 type Props = {
   itemId: string | null;
-  categories: Array<{ id: string; name: string }>;
+  categories: Category[];
   onClose: () => void;
   onSaved: () => void;
 };
 
 type IngredientRow = { name: string; sortOrder: number };
+type AdditionalIngredientRow = {
+  name: string;
+  price_delta_cents: number;
+  matches_ingredient: string;
+};
 type ScheduleRow = { day_of_week: number; time_from: string; time_to: string };
 type ModGroupRef = { id: string };
 type AvailableModGroup = {
@@ -23,6 +41,7 @@ type AvailableModGroup = {
   displayLabel: string;
   selectionMode: string;
   isRequired: boolean;
+  contextKey: string | null;
   options: Array<{ id: string; name: string; priceDeltaCents: number }>;
 };
 
@@ -37,8 +56,18 @@ type FormState = {
   allowed_fulfillment_type: "BOTH" | "PICKUP" | "DELIVERY";
   modifier_groups: ModGroupRef[];
   removable_ingredients: IngredientRow[];
+  additional_ingredients: AdditionalIngredientRow[];
   schedules: ScheduleRow[];
 };
+
+function normalizeIngredientText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 
 export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
   const [form, setForm] = useState<FormState>({
@@ -52,11 +81,20 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
     allowed_fulfillment_type: "BOTH",
     modifier_groups: [],
     removable_ingredients: [],
+    additional_ingredients: [],
     schedules: [],
   });
+  const [itemSlug, setItemSlug] = useState<string | null>(null);
+  const [loadedAddonGroupIds, setLoadedAddonGroupIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [initialFormSnapshot, setInitialFormSnapshot] = useState<string | null>(
+    null,
+  );
 
   const [loading, setLoading] = useState(!!itemId);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -89,7 +127,16 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
         );
         if (cancelled) return;
 
-        setForm({
+        const addonMappings = (data.modifierGroups || []).filter(
+          (mapping: any) =>
+            mapping.contextKey === "addon" ||
+            mapping.modifierGroup?.contextKey === "addon",
+        );
+        const removableIngredients = (data.removableIngredients || []).map(
+          (ri: any) => ({ name: ri.name, sortOrder: ri.sortOrder }),
+        );
+
+        const loadedForm: FormState = {
           name: data.name,
           description: data.description || "",
           base_price_cents: data.basePriceCents,
@@ -101,8 +148,16 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
           modifier_groups: (data.modifierGroups || []).map(
             (mg: any) => ({ id: mg.modifierGroupId } as ModGroupRef),
           ),
-          removable_ingredients: (data.removableIngredients || []).map(
-            (ri: any) => ({ name: ri.name, sortOrder: ri.sortOrder }),
+          removable_ingredients: removableIngredients,
+          additional_ingredients: addonMappings.flatMap((mapping: any) =>
+            (mapping.modifierGroup?.options || []).map((option: any) => ({
+              name: option.name,
+              price_delta_cents: option.priceDeltaCents,
+              matches_ingredient:
+                option.addonMatchNormalized === "__always__"
+                  ? ""
+                  : option.addonMatchNormalized || "",
+            })),
           ),
           schedules: (data.schedules || []).map((s: any) => {
             const from = new Date(s.timeFrom);
@@ -113,7 +168,13 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
               time_to: `${String(to.getUTCHours()).padStart(2, "0")}:${String(to.getUTCMinutes()).padStart(2, "0")}`,
             };
           }),
-        });
+        };
+        setForm(loadedForm);
+        setInitialFormSnapshot(JSON.stringify(loadedForm));
+        setItemSlug(data.slug || null);
+        setLoadedAddonGroupIds(
+          new Set(addonMappings.map((mapping: any) => mapping.modifierGroupId)),
+        );
 
         setImageRemoved(false);
         setImageFile(null);
@@ -165,6 +226,28 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
 
   // ── Schedules ──
 
+  const addAdditionalIngredient = () =>
+    set("additional_ingredients", [
+      ...form.additional_ingredients,
+      { name: "", price_delta_cents: 0, matches_ingredient: "" },
+    ]);
+
+  const updateAdditionalIngredient = (
+    idx: number,
+    field: keyof AdditionalIngredientRow,
+    value: string | number,
+  ) => {
+    const next = [...form.additional_ingredients];
+    next[idx] = { ...next[idx], [field]: value };
+    set("additional_ingredients", next);
+  };
+
+  const removeAdditionalIngredient = (idx: number) =>
+    set(
+      "additional_ingredients",
+      form.additional_ingredients.filter((_, i) => i !== idx),
+    );
+
   const addSchedule = () =>
     set("schedules", [
       ...form.schedules,
@@ -187,6 +270,29 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
   // ── Modifier groups ──
 
   const linkedGroupIds = new Set(form.modifier_groups.map((mg) => mg.id));
+  const selectedCategory = categories.find(
+    (category) => category.id === form.category_id,
+  );
+  const canManageAdditionalIngredients =
+    ADDITIONAL_INGREDIENT_CATEGORY_SLUGS.has(selectedCategory?.slug || "") ||
+    ADDITIONAL_INGREDIENT_ITEM_SLUGS.has(itemSlug || "") ||
+    (!itemSlug &&
+      /^(chicken|bacon)\s+loaded\s+fries$/i.test(form.name.trim()));
+  const addonGroupIds = new Set([
+    ...loadedAddonGroupIds,
+    ...availableModGroups
+      .filter((group) => group.contextKey === "addon")
+      .map((group) => group.id),
+  ]);
+  const visibleModGroups = canManageAdditionalIngredients
+    ? availableModGroups.filter((group) => group.contextKey !== "addon")
+    : availableModGroups;
+  const hasUnsavedChanges = itemId
+    ? initialFormSnapshot !== null &&
+      (JSON.stringify(form) !== initialFormSnapshot ||
+        imageFile !== null ||
+        imageRemoved)
+    : true;
 
   const toggleModGroup = (groupId: string) => {
     if (linkedGroupIds.has(groupId)) {
@@ -226,17 +332,34 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
 
     try {
       let savedId = itemId;
+      const payload: Record<string, unknown> = {
+        ...form,
+        modifier_groups: canManageAdditionalIngredients
+          ? form.modifier_groups.filter((group) => !addonGroupIds.has(group.id))
+          : form.modifier_groups,
+      };
+      if (!canManageAdditionalIngredients) {
+        delete payload.additional_ingredients;
+      } else {
+        payload.additional_ingredients = form.additional_ingredients
+          .map((ingredient) => ({
+            ...ingredient,
+            name: ingredient.name.trim(),
+            price_delta_cents: Math.max(0, ingredient.price_delta_cents),
+          }))
+          .filter((ingredient) => ingredient.name.length > 0);
+      }
 
       if (!itemId) {
         const created = await adminFetch<{ id: string }>(
           `${ADMIN_MENU_API_BASE}/items`,
-          { method: "POST", body: JSON.stringify(form) },
+          { method: "POST", body: JSON.stringify(payload) },
         );
         savedId = created.id;
       } else {
         await adminFetch(`${ADMIN_MENU_API_BASE}/items/${itemId}`, {
           method: "PUT",
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
       }
 
@@ -259,6 +382,26 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save item");
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!itemId || deleting) return;
+    const confirmed = window.confirm(
+      `Delete "${form.name}"? It will be removed from customer ordering. This action cannot be undone from the admin menu.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    try {
+      await adminFetch(`${ADMIN_MENU_API_BASE}/items/${itemId}`, {
+        method: "DELETE",
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete item");
+      setDeleting(false);
     }
   };
 
@@ -528,16 +671,109 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
               </div>
             </div>
 
+            {canManageAdditionalIngredients && (
+              <div className={styles.formSection}>
+                <h3>Additional Ingredients</h3>
+                <p className={styles.formSectionHint}>
+                  Paid ingredients shown to customers. Optionally match an
+                  extra to a removable ingredient already listed above.
+                </p>
+                <div className={styles.listEditor}>
+                  <div
+                    className={styles.additionalIngredientHeaders}
+                    aria-hidden="true"
+                  >
+                    <span>Customer-facing option</span>
+                    <span>Price (cents)</span>
+                    <span>Availability</span>
+                  </div>
+                  {form.additional_ingredients.map((ingredient, idx) => (
+                    <div
+                      key={idx}
+                      className={`${styles.listRow} ${styles.additionalIngredientRow}`}
+                    >
+                      <input
+                        type="text"
+                        className={styles.formInput}
+                        value={ingredient.name}
+                        placeholder="Option name, e.g. Extra Cheese"
+                        aria-label={`Additional ingredient ${idx + 1} name`}
+                        onChange={(e) =>
+                          updateAdditionalIngredient(idx, "name", e.target.value)
+                        }
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className={`${styles.formInput} ${styles.additionalIngredientPrice}`}
+                        value={ingredient.price_delta_cents}
+                        placeholder="Price (cents)"
+                        aria-label={`Additional ingredient ${idx + 1} price in cents`}
+                        onChange={(e) =>
+                          updateAdditionalIngredient(
+                            idx,
+                            "price_delta_cents",
+                            parseInt(e.target.value, 10) || 0,
+                          )
+                        }
+                      />
+                      <select
+                        className={`${styles.formSelect} ${styles.additionalIngredientMatch}`}
+                        value={ingredient.matches_ingredient}
+                        aria-label={`Additional ingredient ${idx + 1} matching ingredient`}
+                        onChange={(e) =>
+                          updateAdditionalIngredient(
+                            idx,
+                            "matches_ingredient",
+                            e.target.value,
+                          )
+                        }
+                      >
+                        <option value="">Always available</option>
+                        {form.removable_ingredients
+                          .filter((row) => row.name.trim())
+                          .map((row, ingredientIndex) => (
+                            <option
+                              key={`${row.name}-${ingredientIndex}`}
+                              value={normalizeIngredientText(row.name)}
+                            >
+                              Matches: {row.name}
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={styles.listRowRemove}
+                        onClick={() => removeAdditionalIngredient(idx)}
+                        title="Remove"
+                        aria-label={`Remove additional ingredient ${idx + 1}`}
+                      >
+                        &#x2715;
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className={styles.addRowBtn}
+                    onClick={addAdditionalIngredient}
+                  >
+                    + Add additional ingredient
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* ── Modifier Groups (link/unlink) ── */}
             <div className={styles.formSection}>
               <h3>Modifier Groups</h3>
-              {availableModGroups.length === 0 ? (
+              {visibleModGroups.length === 0 ? (
                 <div style={{ color: "#71717a", fontSize: "0.85rem" }}>
                   No modifier groups configured for this location.
                 </div>
               ) : (
                 <div className={styles.modGroupList}>
-                  {availableModGroups.map((mg) => (
+                  {visibleModGroups.map((mg) => (
                     <label key={mg.id} className={styles.modGroupItem}>
                       <input
                         type="checkbox"
@@ -627,16 +863,40 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                 type="button"
                 onClick={onClose}
                 className={styles.btnCancel}
+                disabled={saving || deleting}
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                className={styles.btnSave}
-                disabled={saving || !form.name || !form.category_id}
-              >
-                {saving ? "Saving..." : "Save Item"}
-              </button>
+              <div className={styles.modalFooterActions}>
+                {itemId && (
+                  <button
+                    type="button"
+                    className={styles.btnDanger}
+                    onClick={handleDelete}
+                    disabled={saving || deleting}
+                  >
+                    {deleting ? "Deleting..." : "Delete Item"}
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className={styles.btnSave}
+                  disabled={
+                    saving ||
+                    deleting ||
+                    !form.name ||
+                    !form.category_id ||
+                    !hasUnsavedChanges
+                  }
+                  title={
+                    !hasUnsavedChanges
+                      ? "Make a change before saving"
+                      : undefined
+                  }
+                >
+                  {saving ? "Saving..." : "Save Item"}
+                </button>
+              </div>
             </div>
           </form>
         )}

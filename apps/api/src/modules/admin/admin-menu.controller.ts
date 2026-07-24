@@ -63,6 +63,19 @@ class RemovableIngredientDto {
   sortOrder!: number;
 }
 
+class AdditionalIngredientDto {
+  @IsString()
+  name!: string;
+
+  @IsInt()
+  @Min(0)
+  price_delta_cents!: number;
+
+  @IsOptional()
+  @IsString()
+  matches_ingredient?: string;
+}
+
 class ScheduleWindowDto {
   @IsInt()
   @Min(0)
@@ -117,6 +130,12 @@ class CreateUpdateItemDto {
   @ValidateNested({ each: true })
   @Type(() => RemovableIngredientDto)
   removable_ingredients?: RemovableIngredientDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AdditionalIngredientDto)
+  additional_ingredients?: AdditionalIngredientDto[];
 
   @IsOptional()
   @IsArray()

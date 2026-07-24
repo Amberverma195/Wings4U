@@ -287,6 +287,9 @@ function shouldRenderAddonOption(
   if (sizeScope && selectedSizeNames.length > 0) {
     return selectedSizeNames.includes(sizeScope);
   }
+  if (option.addon_match_normalized === "__always__") {
+    return true;
+  }
   if (option.addon_match_normalized) {
     return normalizedIngredientNames.includes(option.addon_match_normalized);
   }

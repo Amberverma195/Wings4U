@@ -29,6 +29,7 @@ import { DEFAULT_SCHEDULING_CONFIG } from "@/lib/order-scheduling";
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import {
   buildDisplayMenuCategories,
+  combineSideCategories,
   type DisplayMenuItem,
   type LegacySizePickerGroup,
 } from "@/Wings4u/menu-display";
@@ -1060,7 +1061,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   );
 
   const displayCategories = useMemo(
-    () => (menu ? buildDisplayMenuCategories(menu.categories) : []),
+    () =>
+      menu
+        ? buildDisplayMenuCategories(combineSideCategories(menu.categories))
+        : [],
     [menu],
   );
 

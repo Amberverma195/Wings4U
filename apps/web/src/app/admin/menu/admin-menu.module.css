@@ -959,6 +959,37 @@
   flex: 1;
 }
 
+.formSectionHint {
+  margin: -0.1rem 0 0.15rem;
+  color: rgba(23, 18, 13, 0.62);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.additionalIngredientRow {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 8rem minmax(12rem, 0.8fr) auto;
+  align-items: center;
+}
+
+.additionalIngredientHeaders {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 8rem minmax(12rem, 0.8fr) auto;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  color: rgba(23, 18, 13, 0.58);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.additionalIngredientPrice {
+  min-width: 0;
+}
+
+.additionalIngredientMatch {
+  min-width: 0;
+}
+
 .listRowRemove {
   background: none;
   border: none;
@@ -1240,6 +1271,18 @@
 
   .formRow {
     flex-direction: column;
+  }
+
+  .additionalIngredientRow {
+    grid-template-columns: minmax(0, 1fr) 7rem auto;
+  }
+
+  .additionalIngredientHeaders {
+    display: none;
+  }
+
+  .additionalIngredientMatch {
+    grid-column: 1 / -1;
   }
 
   .searchWrapper {

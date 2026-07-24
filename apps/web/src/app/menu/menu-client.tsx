@@ -15,6 +15,7 @@ import { ComboBuilder } from "@/components/combo-builder";
 import { ItemCustomizationOverlay } from "@/components/item-customization-overlay";
 import { ItemModal } from "@/components/item-modal";
 import { WingsBuilder } from "@/components/wings-builder";
+import { combineSideCategories } from "@/Wings4u/menu-display";
 
 export function MenuClient() {
   const cart = useCart();
@@ -132,7 +133,7 @@ export function MenuClient() {
 
       <section className="surface-card">
         <div className="category-tabs">
-          {menu.categories.map((category) => (
+          {combineSideCategories(menu.categories).map((category) => (
             <button
               key={category.id}
               data-active={activeCategoryId === category.id}

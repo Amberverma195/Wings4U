@@ -15,7 +15,6 @@ const MENU_CATEGORY_SLUG_ORDER: string[] = [
   "salads",
   "poutines-and-sides",
   "sides",
-  "specialty-fries",
   "appetizers",
   "breads",
   "specials",
@@ -33,6 +32,48 @@ export function sortMenuCategories(categories: MenuCategory[]): MenuCategory[] {
     const bKey = bi === -1 ? 1000 + b.sort_order : bi;
     if (aKey !== bKey) return aKey - bKey;
     return a.sort_order - b.sort_order;
+  });
+}
+
+/**
+ * Present regular sides and the legacy specialty-fries collection as one
+ * customer-facing Sides category. The catalog keeps the source categories
+ * separate for backwards-compatible administration and item IDs, while every
+ * ordering surface receives one stable category with all items preserved.
+ */
+export function combineSideCategories(categories: MenuCategory[]): MenuCategory[] {
+  const primarySides = categories.find((category) => category.slug === "sides");
+  const specialtySides = categories.filter(
+    (category) => category.slug === "specialty-fries",
+  );
+
+  if (!primarySides || specialtySides.length === 0) {
+    return categories;
+  }
+
+  const seenItemIds = new Set<string>();
+  const combinedItems = [primarySides, ...specialtySides].flatMap((category) =>
+    category.items.filter((item) => {
+      if (seenItemIds.has(item.id)) return false;
+      seenItemIds.add(item.id);
+      return true;
+    }),
+  );
+
+  return categories.flatMap((category) => {
+    if (category.slug === "specialty-fries") {
+      return [];
+    }
+    if (category.id !== primarySides.id) {
+      return [category];
+    }
+    return [
+      {
+        ...primarySides,
+        name: "Sides",
+        items: combinedItems,
+      },
+    ];
   });
 }
 
