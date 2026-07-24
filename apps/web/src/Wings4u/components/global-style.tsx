@@ -84,9 +84,11 @@ export function WingKingsGlobalStyle() {
         --wing-i-dot-top: 0.02em;
       }
 
-      @media (max-width: 640px) {
+      @media (max-width: 768px) {
         .hero-title-wing-i {
-          --wing-i-dot-left: 52%;
+          /* The dotless glyph has extra left-side bearing at smaller sizes.
+             Use an em offset so the yellow bar stays centered on the visible stem. */
+          --wing-i-dot-left: calc(50% + 0.055em);
         }
       }
 
