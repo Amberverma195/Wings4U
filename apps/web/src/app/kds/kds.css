@@ -191,7 +191,8 @@
 
 .kds-order-actions .btn-primary,
 .kds-order-actions .btn-danger,
-.kds-order-actions .btn-secondary {
+.kds-order-actions .btn-secondary,
+.kds-order-actions .kds-external-delivered {
   width: 100%;
   min-height: 2.65rem;
   padding: 0.5rem 1rem;
@@ -199,6 +200,29 @@
   font-weight: 600;
   border-radius: 12px;
   box-sizing: border-box;
+}
+
+.kds-external-delivered {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #19733a;
+  background: #238b4b;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.kds-external-delivered:hover:not(:disabled) {
+  border-color: #145e2f;
+  background: #19733a;
+}
+
+.kds-external-delivered:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Header toolbar — manual refresh (easy to tap / spot in a busy kitchen) */

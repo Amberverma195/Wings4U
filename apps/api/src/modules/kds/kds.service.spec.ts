@@ -38,3 +38,151 @@ describe("KdsService acceptance race protection", () => {
     expect(realtime.emitOrderEvent).not.toHaveBeenCalled();
   });
 });
+
+describe("KdsService external delivery bypass", () => {
+  function createHarness(
+    orderOverrides: Record<string, unknown> = {},
+  ) {
+    const order = {
+      id: "order-1",
+      locationId: "loc-1",
+      status: "READY",
+      fulfillmentType: "DELIVERY",
+      assignedDriverUserId: null,
+      customerUserId: "customer-1",
+      orderNumber: 101n,
+      addressSnapshotJson: {
+        line1: "123 Dundas Street",
+        city: "London",
+        postal_code: "N6A 1A1",
+      },
+      orderItems: [],
+      cancellationRequests: [],
+      ...orderOverrides,
+    };
+    const tx = {
+      order: {
+        update: jest.fn(
+          ({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({
+              ...order,
+              ...data,
+              orderItems: [],
+              cancellationRequests: [],
+            }),
+        ),
+      },
+      orderStatusEvent: { create: jest.fn().mockResolvedValue({}) },
+      customerProfile: { upsert: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      order: { findUnique: jest.fn().mockResolvedValue(order) },
+      $transaction: jest.fn(
+        (callback: (client: typeof tx) => unknown) => callback(tx),
+      ),
+    };
+    const chat = { closeConversation: jest.fn().mockResolvedValue(undefined) };
+    const realtime = {
+      emitOrderEvent: jest.fn(),
+      emitDriverEvent: jest.fn(),
+    };
+    const rewards = {
+      accrueForOrderInTransaction: jest.fn().mockResolvedValue(undefined),
+    };
+    const emails = { send: jest.fn().mockResolvedValue(undefined) };
+    const service = new KdsService(
+      prisma as any,
+      chat as any,
+      realtime as any,
+      {} as any,
+      {} as any,
+      rewards as any,
+      emails as any,
+    );
+
+    return { service, prisma, tx, chat, realtime, rewards, emails };
+  }
+
+  it.each([
+    ["DELIVERED", true],
+    ["NO_SHOW_DELIVERY", false],
+  ] as const)(
+    "closes an unassigned READY delivery as %s",
+    async (outcome, accruesRewards) => {
+      const harness = createHarness();
+
+      const result = await harness.service.completeExternalDelivery(
+        "order-1",
+        "staff-1",
+        "loc-1",
+        outcome,
+      );
+
+      expect(result.status).toBe(outcome);
+      expect(result.address_snapshot_json).toEqual({
+        line1: "123 Dundas Street",
+        city: "London",
+        postal_code: "N6A 1A1",
+      });
+      expect(harness.tx.order.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: outcome,
+            deliveryCompletedByUserId: "staff-1",
+          }),
+        }),
+      );
+      expect(harness.tx.orderStatusEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          fromStatus: "READY",
+          toStatus: outcome,
+          eventType: "EXTERNAL_DELIVERY_BYPASS",
+          actorUserId: "staff-1",
+        }),
+      });
+      expect(harness.chat.closeConversation).toHaveBeenCalledWith("order-1");
+
+      if (accruesRewards) {
+        expect(harness.rewards.accrueForOrderInTransaction).toHaveBeenCalled();
+        expect(harness.emails.send).toHaveBeenCalledWith(
+          expect.objectContaining({ status: "DELIVERED" }),
+          "DELIVERED",
+        );
+      } else {
+        expect(harness.tx.customerProfile.upsert).toHaveBeenCalled();
+        expect(harness.rewards.accrueForOrderInTransaction).not.toHaveBeenCalled();
+        expect(harness.emails.send).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("does not weaken the generic READY status transition", async () => {
+    const harness = createHarness();
+
+    await expect(
+      harness.service.updateOrderStatus(
+        "order-1",
+        "staff-1",
+        "loc-1",
+        "DELIVERED",
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects the bypass when an internal driver is assigned", async () => {
+    const harness = createHarness({ assignedDriverUserId: "driver-1" });
+
+    await expect(
+      harness.service.completeExternalDelivery(
+        "order-1",
+        "staff-1",
+        "loc-1",
+        "DELIVERED",
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

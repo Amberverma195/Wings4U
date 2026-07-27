@@ -137,6 +137,7 @@ function serializeKdsOrder(
     delivery_completed_at: o.deliveryCompletedAt,
     customer_name_snapshot: o.customerNameSnapshot,
     customer_phone_snapshot: o.customerPhoneSnapshot,
+    address_snapshot_json: o.addressSnapshotJson ?? null,
     customer_order_count: customerStats?.orderCount ?? null,
     customer_no_show_pickup_count: customerStats?.noShowPickupCount ?? null,
     customer_no_show_delivery_count: customerStats?.noShowDeliveryCount ?? null,
@@ -187,6 +188,10 @@ type ReleasedDeliveryDriver = {
   driverUserId: string;
   isOnDelivery: boolean;
   availabilityStatus: "AVAILABLE" | "ON_DELIVERY";
+};
+
+type OrderStatusTransitionOptions = {
+  externalDeliveryBypass?: boolean;
 };
 
 function createEmptyCustomerStats(): KdsCustomerOrderStats {
@@ -612,12 +617,41 @@ export class KdsService {
     return serializeKdsOrder(updated as unknown as Record<string, unknown>);
   }
 
+  /**
+   * Temporary manual close path for orders fulfilled by a third-party courier.
+   *
+   * The normal driver assignment, start-delivery, and PIN completion methods
+   * remain unchanged. This narrowly permits only an unassigned READY delivery
+   * order to move directly to a terminal delivery outcome.
+   */
+  async completeExternalDelivery(
+    orderId: string,
+    actorUserId: string | null,
+    locationId: string,
+    outcome: "DELIVERED" | "NO_SHOW_DELIVERY",
+  ) {
+    const reason =
+      outcome === "DELIVERED"
+        ? "Completed through external delivery provider"
+        : "External delivery was not completed";
+
+    return this.updateOrderStatus(
+      orderId,
+      actorUserId,
+      locationId,
+      outcome,
+      reason,
+      { externalDeliveryBypass: true },
+    );
+  }
+
   async updateOrderStatus(
     orderId: string,
     actorUserId: string | null,
     locationId: string,
     newStatus: string,
     reason?: string,
+    options?: OrderStatusTransitionOptions,
   ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -631,6 +665,22 @@ export class KdsService {
     }
 
     const currentStatus = order.status;
+    const externalDeliveryBypassRequested =
+      options?.externalDeliveryBypass === true;
+    const isExternalDeliveryBypass =
+      externalDeliveryBypassRequested &&
+      currentStatus === "READY" &&
+      order.fulfillmentType === "DELIVERY" &&
+      !order.assignedDriverUserId &&
+      (newStatus === "DELIVERED" || newStatus === "NO_SHOW_DELIVERY");
+
+    if (externalDeliveryBypassRequested && !isExternalDeliveryBypass) {
+      throw new UnprocessableEntityException({
+        message:
+          "External delivery bypass is only valid for unassigned READY delivery orders",
+        field: "status",
+      });
+    }
 
     if (TERMINAL_STATUSES.has(currentStatus)) {
       throw new UnprocessableEntityException({
@@ -647,7 +697,10 @@ export class KdsService {
       }
     } else {
       const allowed = ALLOWED_TRANSITIONS[currentStatus] ?? [];
-      if (!allowed.includes(newStatus as OrderStatus)) {
+      if (
+        !isExternalDeliveryBypass &&
+        !allowed.includes(newStatus as OrderStatus)
+      ) {
         throw new UnprocessableEntityException({
           message: `Transition from "${currentStatus}" to "${newStatus}" is not allowed`,
           field: "status",
@@ -744,7 +797,9 @@ export class KdsService {
           locationId,
           fromStatus: currentStatus,
           toStatus: newStatus as OrderStatus,
-          eventType: "KDS_STATUS_CHANGE",
+          eventType: isExternalDeliveryBypass
+            ? "EXTERNAL_DELIVERY_BYPASS"
+            : "KDS_STATUS_CHANGE",
           actorUserId,
           reasonText: reason,
         },

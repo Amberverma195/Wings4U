@@ -52,6 +52,15 @@ type KdsPendingCancelRequest = {
   created_at: string;
 };
 
+type KdsDeliveryAddress = {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+  postalCode?: string;
+};
+
 type KdsOrder = {
   id: string;
   order_number: number;
@@ -61,6 +70,7 @@ type KdsOrder = {
   placed_at: string;
   customer_name_snapshot: string | null;
   customer_phone_snapshot: string | null;
+  address_snapshot_json: KdsDeliveryAddress | null;
   customer_order_count?: number | string | null;
   customer_no_show_pickup_count?: number | string | null;
   customer_no_show_delivery_count?: number | string | null;
@@ -227,6 +237,23 @@ function formatKdsOrderPhone(phone: string): string {
     return `(${a}) ${b}-${c}`;
   }
   return phone.trim();
+}
+
+function formatKdsDeliveryAddress(
+  address: KdsDeliveryAddress | null,
+): string | null {
+  if (!address) return null;
+  const parts = [
+    address.line1,
+    address.line2,
+    address.city,
+    address.province,
+    address.postal_code ?? address.postalCode,
+  ].filter(
+    (part): part is string =>
+      typeof part === "string" && part.trim().length > 0,
+  );
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function getKdsHistoryActiveOrder(
@@ -499,6 +526,76 @@ function NoShowModal({
           </button>
           <button type="button" className="btn-danger" onClick={confirm} disabled={busy}>
             {busy ? "Processing..." : "Yes, mark as No-Show"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  External Delivery Confirm Modal                                    */
+/* ------------------------------------------------------------------ */
+
+type ExternalDeliveryOutcome = "DELIVERED" | "NO_SHOW_DELIVERY";
+
+function ExternalDeliveryModal({
+  orderId,
+  outcome,
+  session,
+  onDone,
+  onClose,
+}: {
+  orderId: string;
+  outcome: ExternalDeliveryOutcome;
+  session: KdsSessionControls;
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const isDelivered = outcome === "DELIVERED";
+
+  const confirm = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await kdsAction(session, `${orderId}/external-delivery`, "POST", {
+        outcome,
+      });
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="kds-modal-overlay" onClick={onClose}>
+      <div className="kds-modal-card" onClick={(e) => e.stopPropagation()}>
+        <h3>{isDelivered ? "Confirm Delivered" : "Confirm No-Show"}</h3>
+        <p className="kds-modal-copy" style={{ margin: "0 0 1rem" }}>
+          {isDelivered
+            ? "Confirm that the external courier delivered this order. This will close the order."
+            : "Confirm that the external delivery was not completed. This will close the order as a no-show."}
+        </p>
+        {err && <p className="surface-error" style={{ margin: "0 0 0.5rem" }}>{err}</p>}
+        <div className="kds-modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={busy}>
+            Go back
+          </button>
+          <button
+            type="button"
+            className={isDelivered ? "btn-primary" : "btn-danger"}
+            onClick={confirm}
+            disabled={busy}
+          >
+            {busy
+              ? "Processing..."
+              : isDelivered
+                ? "Yes, mark Delivered"
+                : "Yes, mark as No-Show"}
           </button>
         </div>
       </div>
@@ -860,6 +957,8 @@ function KdsOrderCard({
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelModal, setCancelModal] = useState<CancelMode | null>(null);
   const [noShowModal, setNoShowModal] = useState<"NO_SHOW_PICKUP" | "NO_SHOW_DELIVERY" | null>(null);
+  const [externalDeliveryModal, setExternalDeliveryModal] =
+    useState<ExternalDeliveryOutcome | null>(null);
   const [driverModal, setDriverModal] = useState(false);
   const [pinModal, setPinModal] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -973,6 +1072,26 @@ function KdsOrderCard({
         actions.push(
           <button key="driver" className="btn-primary" onClick={() => setDriverModal(true)} disabled={actionBusy}>
             Assign Driver
+          </button>,
+        );
+        actions.push(
+          <button
+            key="external-delivered"
+            className="kds-external-delivered"
+            onClick={() => setExternalDeliveryModal("DELIVERED")}
+            disabled={actionBusy}
+          >
+            Delivered
+          </button>,
+        );
+        actions.push(
+          <button
+            key="external-noshow"
+            className="btn-danger"
+            onClick={() => setExternalDeliveryModal("NO_SHOW_DELIVERY")}
+            disabled={actionBusy}
+          >
+            No-Show
           </button>,
         );
       } else {
@@ -1256,6 +1375,18 @@ function KdsOrderCard({
             onRefresh();
           }}
           onClose={() => setNoShowModal(null)}
+        />
+      )}
+      {externalDeliveryModal && (
+        <ExternalDeliveryModal
+          orderId={order.id}
+          outcome={externalDeliveryModal}
+          session={session}
+          onDone={() => {
+            setExternalDeliveryModal(null);
+            onRefresh();
+          }}
+          onClose={() => setExternalDeliveryModal(null)}
         />
       )}
       {driverModal && (
@@ -1597,6 +1728,10 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
   const placedDate = new Date(order.placed_at);
   const isTerminal = ["DELIVERED", "PICKED_UP", "CANCELLED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY"].includes(order.status);
   const customerCounters = formatKdsCustomerCounters(order);
+  const deliveryAddress =
+    order.fulfillment_type === "DELIVERY"
+      ? formatKdsDeliveryAddress(order.address_snapshot_json)
+      : null;
   const showChat = canShowKdsOrderChat(order);
 
   return (
@@ -1604,31 +1739,55 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
       <div className="kds-modal-card" style={{ maxWidth: "1200px", width: "95vw", height: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: "1rem", marginBottom: "1rem" }}>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{ margin: "0 0 0.25rem" }}>Order #{order.order_number} <span style={{ fontSize: "1rem", color: "var(--text-muted)", fontWeight: "normal" }}>({order.id})</span></h2>
-            <p style={{ 
-              margin: 0, 
-              fontSize: "0.95rem",
-              background: "#fef3c7",
-              padding: "0.5rem 0.85rem",
-              borderRadius: "12px",
-              border: "1px solid rgba(217, 119, 6, 0.2)",
-              color: "#111827",
-              fontWeight: 600,
-              display: "inline-grid",
-              gap: "0.18rem",
-            }}>
-              <span>
-                {order.customer_name_snapshot ?? "Guest"}
-                {order.customer_phone_snapshot
-                  ? ` | ${formatKdsOrderPhone(order.customer_phone_snapshot)}`
-                  : ""}
-                {customerCounters ? ` | ${customerCounters}` : ""}
-              </span>
-              <span>
-                {order.fulfillment_type} | Placed: {placedDate.toLocaleTimeString()} | ETA: {formatKitchenTime(order.estimated_ready_at)}
-              </span>
-            </p>
+            <div style={{ display: "flex", alignItems: "stretch", gap: "0.65rem", flexWrap: "wrap" }}>
+              <p style={{
+                margin: 0,
+                fontSize: "0.95rem",
+                background: "#fef3c7",
+                padding: "0.5rem 0.85rem",
+                borderRadius: "12px",
+                border: "1px solid rgba(217, 119, 6, 0.2)",
+                color: "#111827",
+                fontWeight: 600,
+                display: "inline-grid",
+                gap: "0.18rem",
+              }}>
+                <span>
+                  {order.customer_name_snapshot ?? "Guest"}
+                  {order.customer_phone_snapshot
+                    ? ` | ${formatKdsOrderPhone(order.customer_phone_snapshot)}`
+                    : ""}
+                  {customerCounters ? ` | ${customerCounters}` : ""}
+                </span>
+                <span>
+                  {order.fulfillment_type} | Placed: {placedDate.toLocaleTimeString()} | ETA: {formatKitchenTime(order.estimated_ready_at)}
+                </span>
+              </p>
+              {order.fulfillment_type === "DELIVERY" && (
+                <div
+                  style={{
+                    display: "grid",
+                    alignContent: "center",
+                    gap: "0.15rem",
+                    maxWidth: "30rem",
+                    padding: "0.5rem 0.85rem",
+                    border: "1px solid rgba(37, 99, 235, 0.22)",
+                    borderRadius: "12px",
+                    background: "#eff6ff",
+                    color: "#111827",
+                  }}
+                >
+                  <strong style={{ fontSize: "0.75rem", color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Delivery Address
+                  </strong>
+                  <span style={{ fontSize: "0.95rem", fontWeight: 600, overflowWrap: "anywhere" }}>
+                    {deliveryAddress ?? "Address unavailable"}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
           <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
         </div>

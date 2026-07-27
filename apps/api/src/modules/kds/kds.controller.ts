@@ -184,6 +184,11 @@ class CompleteDeliveryDto {
   pin?: string;
 }
 
+class CompleteExternalDeliveryDto {
+  @IsIn(["DELIVERED", "NO_SHOW_DELIVERY"])
+  outcome!: "DELIVERED" | "NO_SHOW_DELIVERY";
+}
+
 class VerifyPinDto {
   @IsString()
   pin!: string;
@@ -409,6 +414,22 @@ export class KdsController {
     @Req() req: Request,
   ) {
     return this.kdsService.startDelivery(id, (req.user?.userId ?? null), req.locationId!);
+  }
+
+  // Temporary third-party delivery bypass. This closes an unassigned READY
+  // delivery order without weakening the normal driver + PIN workflow.
+  @Post("orders/:id/external-delivery")
+  async completeExternalDelivery(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: CompleteExternalDeliveryDto,
+    @Req() req: Request,
+  ) {
+    return this.kdsService.completeExternalDelivery(
+      id,
+      (req.user?.userId ?? null),
+      req.locationId!,
+      body.outcome,
+    );
   }
 
   @Post("orders/:id/complete-delivery")
