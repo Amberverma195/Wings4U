@@ -96,6 +96,57 @@
   box-shadow: 0 0 0 3px rgba(217, 138, 0, 0.15);
 }
 
+.kds-sound-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.4rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid rgba(180, 83, 9, 0.38);
+  border-radius: 12px;
+  background: #fff4d6;
+  color: #7c2d12;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.kds-sound-button--enabled {
+  border-color: rgba(22, 101, 52, 0.32);
+  background: #eaf8ef;
+  color: #166534;
+}
+
+.kds-sound-button--blocked {
+  border-color: rgba(185, 28, 28, 0.36);
+  background: #fff0f0;
+  color: #991b1b;
+}
+
+.kds-sound-button:hover {
+  filter: brightness(0.97);
+}
+
+.kds-sound-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(185, 28, 28, 0.28);
+  border-radius: 14px;
+  background: #fff4f2;
+  color: #7f1d1d;
+  font-size: 0.9rem;
+}
+
+.kds-sound-warning .kds-sound-button {
+  margin-left: auto;
+}
+
 .kds-schedule-button {
   display: inline-flex;
   align-items: center;

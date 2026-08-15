@@ -155,6 +155,8 @@ type KdsLifecycleState =
   | "REALTIME_FALLBACK"
   | "DRAINING";
 
+type KdsSoundState = "NEEDS_ENABLE" | "ENABLED" | "BLOCKED";
+
 /* ------------------------------------------------------------------ */
 /*  Status columns                                                     */
 /* ------------------------------------------------------------------ */
@@ -2205,7 +2207,15 @@ function KdsStatusScreen({
   );
 }
 
-function KdsLoginScreen({ onLogin }: { onLogin: (schedule: KdsSchedule) => void }) {
+function KdsLoginScreen({
+  onLogin,
+  soundState,
+  onTestSound,
+}: {
+  onLogin: (schedule: KdsSchedule) => void;
+  soundState: KdsSoundState;
+  onTestSound: () => void;
+}) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2323,6 +2333,19 @@ function KdsLoginScreen({ onLogin }: { onLogin: (schedule: KdsSchedule) => void 
           >
             Enter Station Password
           </h1>
+
+          <button
+            type="button"
+            className={`kds-sound-button kds-sound-button--${soundState.toLowerCase().replace("_", "-")}`}
+            data-kds-sound-control
+            onClick={onTestSound}
+          >
+            {soundState === "ENABLED"
+              ? "Sound enabled — Test again"
+              : soundState === "BLOCKED"
+                ? "Sound blocked — Tap to retry"
+                : "Enable & Test Sound"}
+          </button>
 
           <div
             className="kds-pin-display"
@@ -2480,6 +2503,8 @@ export function KdsClient() {
   const [schedule, setSchedule] = useState<KdsSchedule | null>(null);
   const [draining, setDraining] = useState(false);
   const [scheduleRefreshing, setScheduleRefreshing] = useState(false);
+  const [soundState, setSoundState] =
+    useState<KdsSoundState>("NEEDS_ENABLE");
   const drainRefreshPendingRef = useRef(false);
   const scheduleRefreshPendingRef = useRef(false);
   const loadOrdersPromiseRef = useRef<Promise<KdsOrder[] | null> | null>(null);
@@ -2496,6 +2521,17 @@ export function KdsClient() {
   const lifecycleStateRef = useRef<KdsLifecycleState | null>(null);
   const sessionControls = KDS_SESSION_CONTROLS;
 
+  const getKdsAlertAudio = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    if (!alertAudioRef.current) {
+      const audio = new Audio(KDS_ALERT_SOUND_SRC);
+      audio.preload = "auto";
+      audio.volume = 1;
+      alertAudioRef.current = audio;
+    }
+    return alertAudioRef.current;
+  }, []);
+
   const stopKdsAlert = useCallback(() => {
     const listener = stopAlertListenerRef.current;
     if (listener) {
@@ -2510,25 +2546,54 @@ export function KdsClient() {
     }
   }, []);
 
-  const startKdsAlert = useCallback(() => {
-    if (typeof window === "undefined") return;
+  const enableKdsSound = useCallback(async (playTest: boolean) => {
+    const audio = getKdsAlertAudio();
+    if (!audio) return;
 
-    let audio = alertAudioRef.current;
-    if (!audio) {
-      audio = new Audio(KDS_ALERT_SOUND_SRC);
-      audio.loop = true;
-      audio.preload = "auto";
-      alertAudioRef.current = audio;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.loop = false;
+    audio.volume = 1;
+    audio.muted = !playTest;
+
+    try {
+      await audio.play();
+      setSoundState("ENABLED");
+      if (!playTest) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    } catch (cause) {
+      setSoundState("BLOCKED");
+      console.warn(
+        "[KDS sound] Browser blocked new-order audio",
+        cause instanceof Error ? cause.message : cause,
+      );
+    } finally {
+      audio.muted = false;
     }
+  }, [getKdsAlertAudio]);
 
+  const startKdsAlert = useCallback(() => {
+    const audio = getKdsAlertAudio();
+    if (!audio) return;
+
+    audio.muted = false;
+    audio.volume = 1;
     audio.loop = true;
     if (audio.paused) {
       audio.currentTime = 0;
     }
-    void audio.play().catch(() => {
-      // Browsers can block audio before the KDS station has had a user gesture.
-      // The station unlock flow usually satisfies that, so this is best-effort.
-    });
+    void audio.play().then(
+      () => setSoundState("ENABLED"),
+      (cause) => {
+        setSoundState("BLOCKED");
+        console.warn(
+          "[KDS sound] New-order alert could not play",
+          cause instanceof Error ? cause.message : cause,
+        );
+      },
+    );
 
     if (!stopAlertListenerRef.current) {
       const stop = () => {
@@ -2553,7 +2618,34 @@ export function KdsClient() {
         once: true,
       });
     }
-  }, []);
+  }, [getKdsAlertAudio]);
+
+  // Prime the exact audio element on the first kitchen-screen interaction.
+  // This satisfies Safari/Chrome autoplay rules even when the station session
+  // was restored from a cookie and the PIN screen was skipped.
+  useEffect(() => {
+    if (soundState === "ENABLED") return;
+
+    const primeOnInteraction = (event: Event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("[data-kds-sound-control]")
+      ) {
+        return;
+      }
+      window.removeEventListener("pointerdown", primeOnInteraction, true);
+      window.removeEventListener("keydown", primeOnInteraction, true);
+      void enableKdsSound(false);
+    };
+
+    window.addEventListener("pointerdown", primeOnInteraction, true);
+    window.addEventListener("keydown", primeOnInteraction, true);
+    return () => {
+      window.removeEventListener("pointerdown", primeOnInteraction, true);
+      window.removeEventListener("keydown", primeOnInteraction, true);
+    };
+  }, [enableKdsSound, soundState]);
 
   const applySchedule = useCallback((nextSchedule: KdsSchedule) => {
     setSchedule(nextSchedule);
@@ -2742,8 +2834,8 @@ export function KdsClient() {
       hasLoadedVisibleOrdersRef.current = false;
       return;
     }
-    if (pageVisible) void loadOrders({ showLoading: true });
-  }, [canUseBoard, loadOrders, pageVisible, stopKdsAlert]);
+    void loadOrders({ showLoading: true });
+  }, [canUseBoard, loadOrders, stopKdsAlert]);
 
   useEffect(() => {
     return () => stopKdsAlert();
@@ -2837,19 +2929,19 @@ export function KdsClient() {
   }, [draining, finishScheduledClose, orders.length]);
 
   // Realtime should be the fast path, but a disconnected KDS board still
-  // needs an explicit, visible safety refresh.
+  // needs a safety refresh, including while its browser tab is backgrounded.
   useEffect(() => {
-    if (!canUseBoard || !pageVisible || realtimeSubscribed) return;
+    if (!canUseBoard || realtimeSubscribed) return;
     const intervalId = window.setInterval(() => {
       void loadOrdersRef.current({ backgroundRefresh: true });
     }, 60_000);
     return () => window.clearInterval(intervalId);
-  }, [canUseBoard, pageVisible, realtimeSubscribed]);
+  }, [canUseBoard, realtimeSubscribed]);
   // Socket.IO realtime — subscribe to location-level orders channel.
   // `subscribeToChannels` keeps the subscription alive across reconnects
   // so KDS updates come from realtime events after the initial load.
   useEffect(() => {
-    if (stationAuth !== "AUTHENTICATED" || !pageVisible) {
+    if (stationAuth !== "AUTHENTICATED") {
       setRealtimeTransportConnected(false);
       setRealtimeSubscribed(false);
       setRealtimeConnecting(false);
@@ -2949,14 +3041,13 @@ export function KdsClient() {
     };
   }, [
     finishScheduledClose,
-    pageVisible,
     refreshSchedule,
     startKdsAlert,
     stationAuth,
   ]);
 
   useEffect(() => {
-    if (!socketClient || !canUseBoard || !pageVisible) {
+    if (!socketClient || !canUseBoard) {
       setRealtimeSubscribed(false);
       setRealtimeConnecting(false);
       return;
@@ -2986,7 +3077,7 @@ export function KdsClient() {
       setRealtimeSubscribed(false);
       setRealtimeConnecting(false);
     };
-  }, [canUseBoard, pageVisible, refreshSchedule, socketClient]);
+  }, [canUseBoard, refreshSchedule, socketClient]);
 
   const isLive = canUseBoard && realtimeSubscribed;
   const liveStatus = isLive
@@ -3011,6 +3102,19 @@ export function KdsClient() {
         <span aria-hidden="true" />
         {liveStatus === "NOT_LIVE" ? "Not live" : liveStatus.toLowerCase()}
       </span>
+      <button
+        type="button"
+        className={`kds-sound-button kds-sound-button--${soundState.toLowerCase().replace("_", "-")}`}
+        data-kds-sound-control
+        onClick={() => void enableKdsSound(true)}
+        title={
+          soundState === "ENABLED"
+            ? "Play the new-order alert now"
+            : "Enable and test new-order sound"
+        }
+      >
+        {soundState === "ENABLED" ? "Test sound" : "Enable sound"}
+      </button>
       <button
         type="button"
         className="btn-secondary kds-schedule-button"
@@ -3047,6 +3151,8 @@ export function KdsClient() {
     // No session or wrong session - show station password unlock
     return (
       <KdsLoginScreen
+        soundState={soundState}
+        onTestSound={() => void enableKdsSound(true)}
         onLogin={(nextSchedule) => {
           applySchedule(nextSchedule);
           setStationAuth("AUTHENTICATED");
@@ -3137,10 +3243,26 @@ export function KdsClient() {
         </div>
       </div>
 
-      {canUseBoard && pageVisible && !realtimeSubscribed ? (
+      {canUseBoard && !realtimeSubscribed ? (
         <p className="surface-error" style={{ marginTop: 0 }}>
           KDS realtime is not connected. Using a background refresh every 60 seconds.
         </p>
+      ) : null}
+      {soundState !== "ENABLED" ? (
+        <div className="kds-sound-warning" role="status">
+          <strong>New-order sound is off.</strong>
+          <span>
+            Tap Enable sound above and confirm that you hear the test alert.
+          </span>
+          <button
+            type="button"
+            className="kds-sound-button kds-sound-button--needs-enable"
+            data-kds-sound-control
+            onClick={() => void enableKdsSound(true)}
+          >
+            Enable & Test Sound
+          </button>
+        </div>
       ) : null}
       {backgroundRefreshing ? (
         <p className="surface-muted">Loading kitchen tickets (background refresh)...</p>
