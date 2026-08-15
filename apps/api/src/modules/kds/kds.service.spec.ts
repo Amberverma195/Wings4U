@@ -51,6 +51,8 @@ describe("KdsService external delivery bypass", () => {
       assignedDriverUserId: null,
       customerUserId: "customer-1",
       orderNumber: 101n,
+      customerNameSnapshot: "Jamie",
+      customerEmailSnapshot: "jamie@example.com",
       addressSnapshotJson: {
         line1: "123 Dundas Street",
         city: "London",
@@ -169,6 +171,27 @@ describe("KdsService external delivery bypass", () => {
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
 
     expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("emails the customer after a restaurant cancellation is finalized", async () => {
+    const harness = createHarness();
+
+    await harness.service.updateOrderStatus(
+      "order-1",
+      "staff-1",
+      "loc-1",
+      "CANCELLED",
+      "Kitchen equipment issue",
+    );
+
+    expect(harness.emails.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "CANCELLED",
+        cancellationReason: "Kitchen equipment issue",
+        cancellationSource: "STAFF",
+      }),
+      "CANCELLED",
+    );
   });
 
   it("rejects the bypass when an internal driver is assigned", async () => {

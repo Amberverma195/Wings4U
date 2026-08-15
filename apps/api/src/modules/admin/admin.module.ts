@@ -4,6 +4,7 @@ import { WalletsModule } from "../wallets/wallets.module";
 import { RefundModule } from "../refunds/refund.module";
 import { SupportModule } from "../support/support.module";
 import { CatalogModule } from "../catalog/catalog.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { AdminController } from "./admin.controller";
 import { AdminService } from "./admin.service";
 import { AdminMenuController } from "./admin-menu.controller";
@@ -14,7 +15,14 @@ import { AdminPromosController } from "./admin-promos.controller";
 import { AdminPromosService } from "./admin-promos.service";
 
 @Module({
-  imports: [ChatModule, WalletsModule, RefundModule, SupportModule, CatalogModule],
+  imports: [
+    ChatModule,
+    WalletsModule,
+    RefundModule,
+    SupportModule,
+    CatalogModule,
+    NotificationsModule,
+  ],
   controllers: [AdminController, AdminMenuController, AdminStaffController, AdminPromosController],
   providers: [AdminService, AdminMenuService, AdminStaffService, AdminPromosService],
   exports: [AdminService],

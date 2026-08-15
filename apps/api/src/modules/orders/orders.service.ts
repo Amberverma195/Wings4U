@@ -11,6 +11,7 @@ import { PrismaService } from "../../database/prisma.service";
 import { ChatService } from "../chat/chat.service";
 import { RefundService } from "../refunds/refund.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { OrderStatusEmailService } from "../notifications/order-status-email.service";
 
 // PRD §12.1: fixed default reason string for customer self-cancellations.
 const SELF_CANCEL_DEFAULT_REASON = "Customer cancelled within window";
@@ -195,6 +196,7 @@ export class OrdersService {
     private readonly chatService: ChatService,
     private readonly refundService: RefundService,
     private readonly realtime: RealtimeGateway,
+    private readonly orderStatusEmails: OrderStatusEmailService,
   ) {}
 
   async listOrders(params: {
@@ -398,6 +400,7 @@ export class OrdersService {
     });
 
     await this.chatService.closeConversation(orderId);
+    await this.orderStatusEmails.send(updated, "CANCELLED");
 
     // PRD §12.6: paid order cancelled → auto-create PENDING refund_request.
     await this.refundService.createForCancelledOrder({

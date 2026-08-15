@@ -1,12 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 
-export type OrderEmailStatus = "ACCEPTED" | "PICKED_UP" | "DELIVERED";
+export type OrderEmailStatus =
+  | "ACCEPTED"
+  | "PICKED_UP"
+  | "DELIVERED"
+  | "CANCELLED";
 
 export type OrderEmailDetails = {
   id: string;
   orderNumber: bigint | number;
   customerNameSnapshot: string;
   customerEmailSnapshot: string | null;
+  cancellationReason?: string | null;
+  cancellationSource?: string | null;
 };
 
 type RenderedEmail = {
@@ -54,18 +60,35 @@ function renderEmail(
       message:
         "Thanks for inviting Wings 4 U to your table. We hope everything arrived hot, fresh, and delicious.",
     },
+    CANCELLED: {
+      subject: `${orderLabel} cancelled | Wings 4 U`,
+      headline: `${orderLabel} has been cancelled`,
+      message:
+        order.cancellationSource === "CUSTOMER_SELF"
+          ? "Your cancellation is confirmed."
+          : "We’re sorry, but Wings 4 U had to cancel your order.",
+    },
   };
   const selected = content[status];
+  const cancellationReason =
+    status === "CANCELLED" ? order.cancellationReason?.trim() : null;
+  const reasonText = cancellationReason
+    ? `\n\nReason: ${cancellationReason}`
+    : "";
+  const reasonHtml = cancellationReason
+    ? `<p style="margin:14px 0 0;font-size:15px;line-height:1.5;"><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>`
+    : "";
 
   return {
     subject: selected.subject,
-    text: `${greeting}\n\n${selected.message}`,
+    text: `${greeting}\n\n${selected.message}${reasonText}`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
         <h2 style="margin:0 0 8px;color:#e85d04;">Wings 4 U</h2>
         <h1 style="margin:0 0 20px;font-size:24px;line-height:1.25;">${escapeHtml(selected.headline)}</h1>
         <p style="margin:0 0 14px;font-size:15px;line-height:1.5;">${escapeHtml(greeting)}</p>
         <p style="margin:0;font-size:15px;line-height:1.5;">${escapeHtml(selected.message)}</p>
+        ${reasonHtml}
       </div>
     `,
   };

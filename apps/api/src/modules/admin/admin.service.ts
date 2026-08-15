@@ -9,6 +9,7 @@ import { ChatService } from "../chat/chat.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { WalletsService } from "../wallets/wallets.service";
 import { RefundService } from "../refunds/refund.service";
+import { OrderStatusEmailService } from "../notifications/order-status-email.service";
 
 const TERMINAL_ORDER_STATUSES = new Set([
   "CANCELLED",
@@ -115,6 +116,7 @@ export class AdminService {
     private readonly realtime: RealtimeGateway,
     private readonly walletsService: WalletsService,
     private readonly refundService: RefundService,
+    private readonly orderStatusEmails: OrderStatusEmailService,
   ) {}
 
   async decideCancellation(
@@ -196,6 +198,14 @@ export class AdminService {
       });
 
       await this.chatService.closeConversation(order.id);
+      await this.orderStatusEmails.send(
+        {
+          ...order,
+          cancellationReason: request.reasonText,
+          cancellationSource: orderCancellationSource,
+        },
+        "CANCELLED",
+      );
     }
 
     await this.createAuditLog({
@@ -361,6 +371,14 @@ export class AdminService {
     });
 
     await this.chatService.closeConversation(orderId);
+    await this.orderStatusEmails.send(
+      {
+        ...order,
+        cancellationReason: reason,
+        cancellationSource: "ADMIN",
+      },
+      "CANCELLED",
+    );
 
     this.realtime.emitOrderEvent(locationId, orderId, "order.cancelled", {
       order_id: orderId,

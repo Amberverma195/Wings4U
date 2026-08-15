@@ -897,7 +897,11 @@ export class KdsService {
       });
     }
 
-    if (newStatus === "PICKED_UP" || newStatus === "DELIVERED") {
+    if (
+      newStatus === "PICKED_UP" ||
+      newStatus === "DELIVERED" ||
+      newStatus === "CANCELLED"
+    ) {
       await this.orderStatusEmails.send(updated, newStatus);
     }
 
@@ -1087,7 +1091,13 @@ export class KdsService {
     if (action === "APPROVE") {
       const order = await this.prisma.order.findUniqueOrThrow({
         where: { id: orderId },
-        select: { status: true },
+        select: {
+          id: true,
+          status: true,
+          orderNumber: true,
+          customerNameSnapshot: true,
+          customerEmailSnapshot: true,
+        },
       });
       fromStatus = order.status;
 
@@ -1136,6 +1146,17 @@ export class KdsService {
       });
 
       await this.chatService.closeConversation(orderId);
+      await this.orderStatusEmails.send(
+        {
+          ...order,
+          cancellationReason: cancelRequest.reasonText,
+          cancellationSource:
+            cancelRequest.requestSource === "KDS_CHAT_REQUEST"
+              ? "KDS_CHAT_REQUEST"
+              : "KDS_CANCEL_REQUEST",
+        },
+        "CANCELLED",
+      );
     } else {
       await this.prisma.cancellationRequest.update({
         where: { id: cancelRequest.id },

@@ -11,6 +11,8 @@ const order = {
   orderNumber: 1042n,
   customerNameSnapshot: "Jamie & Sam",
   customerEmailSnapshot: "jamie@example.com",
+  cancellationReason: "Kitchen closed <early>",
+  cancellationSource: "KDS_CANCEL_REQUEST",
 };
 
 describe("OrderStatusEmailService", () => {
@@ -37,6 +39,7 @@ describe("OrderStatusEmailService", () => {
     ["ACCEPTED", "Order #1042 accepted | Wings 4 U"],
     ["PICKED_UP", "Order #1042 picked up | Wings 4 U"],
     ["DELIVERED", "Order #1042 delivered | Wings 4 U"],
+    ["CANCELLED", "Order #1042 cancelled | Wings 4 U"],
   ] as Array<[OrderEmailStatus, string]>)(
     "sends the %s email directly through Resend",
     async (status, expectedSubject) => {
@@ -57,6 +60,11 @@ describe("OrderStatusEmailService", () => {
       expect(payload.subject).toBe(expectedSubject);
       expect(payload.text).toContain("Jamie & Sam");
       expect(payload.html).toContain("Jamie &amp; Sam");
+      if (status === "CANCELLED") {
+        expect(payload.text).toContain("Reason: Kitchen closed <early>");
+        expect(payload.html).toContain("Reason:");
+        expect(payload.html).toContain("Kitchen closed &lt;early&gt;");
+      }
     },
   );
 
