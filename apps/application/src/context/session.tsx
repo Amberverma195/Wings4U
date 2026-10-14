@@ -52,7 +52,7 @@ export interface SessionState {
   profileComplete: boolean;
   needsProfileCompletion: boolean;
   /** Re-fetch session from server */
-  refresh: () => Promise<void>;
+  refresh: () => Promise<boolean>;
   /** Clear local session (on logout) */
   clear: () => void;
 }
@@ -80,7 +80,7 @@ const SessionContext = createContext<SessionState>({
   user: null,
   profileComplete: false,
   needsProfileCompletion: false,
-  refresh: async () => {},
+  refresh: async () => false,
   clear: () => {},
 });
 
@@ -103,11 +103,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const fetchSession = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/v1/auth/session");
+      let res = await apiFetch("/api/v1/auth/session");
+      let next = res.ok
+        ? ((await res.json()) as ApiEnvelope<SessionApiResponse>).data
+        : null;
+      // Restore an expired access token with the stored refresh token on launch.
+      if ((!next?.authenticated && res.ok) || res.status === 401) {
+        const restored = await performRefresh();
+        if (restored.refreshed) {
+          res = await apiFetch("/api/v1/auth/session");
+          next = res.ok
+            ? ((await res.json()) as ApiEnvelope<SessionApiResponse>).data
+            : null;
+        } else if (!restored.definitive) {
+          // A temporary network/server problem must not sign out an existing user.
+          return false;
+        }
+      }
       if (res.ok) {
-        const envelope =
-          (await res.json()) as ApiEnvelope<SessionApiResponse>;
-        setData(envelope.data ?? SIGNED_OUT_SESSION);
+        setData(next ?? SIGNED_OUT_SESSION);
+        return next?.authenticated === true;
       } else if (res.status === 401 || res.status === 403) {
         applySignedOut();
       }
@@ -116,6 +131,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoaded(true);
     }
+    return false;
   }, [applySignedOut]);
 
   // Initial session fetch
@@ -167,9 +183,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 /*  Silent refresh helper                                              */
 /* ------------------------------------------------------------------ */
 
-let inFlightRefresh: Promise<{ refreshed: boolean }> | null = null;
+type RefreshResult = { refreshed: boolean; definitive: boolean };
+let inFlightRefresh: Promise<RefreshResult> | null = null;
 
-async function performRefresh(): Promise<{ refreshed: boolean }> {
+async function performRefresh(): Promise<RefreshResult> {
   if (inFlightRefresh) {
     return inFlightRefresh;
   }
@@ -177,7 +194,7 @@ async function performRefresh(): Promise<{ refreshed: boolean }> {
   inFlightRefresh = (async () => {
     try {
       const refreshToken = await getRefreshToken();
-      if (!refreshToken) return { refreshed: false };
+      if (!refreshToken) return { refreshed: false, definitive: true };
 
       const refreshRes = await apiFetch("/api/v1/auth/refresh", {
         method: "POST",
@@ -185,22 +202,21 @@ async function performRefresh(): Promise<{ refreshed: boolean }> {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!refreshRes.ok) {
-        return { refreshed: false };
+        return { refreshed: false, definitive: refreshRes.status < 500 };
       }
       const envelope = (await refreshRes.json()) as ApiEnvelope<{
         refreshed: boolean;
         access_token?: string;
         refresh_token?: string;
       }>;
-      if (envelope.data?.access_token) {
+      if (envelope.data?.refreshed && envelope.data.access_token && envelope.data.refresh_token) {
         await setAccessToken(envelope.data.access_token);
-      }
-      if (envelope.data?.refresh_token) {
         await setRefreshToken(envelope.data.refresh_token);
+        return { refreshed: true, definitive: false };
       }
-      return { refreshed: envelope.data?.refreshed === true };
+      return { refreshed: false, definitive: envelope.data?.refreshed === false };
     } catch {
-      return { refreshed: false };
+      return { refreshed: false, definitive: false };
     }
   })();
 
@@ -218,7 +234,7 @@ async function performRefresh(): Promise<{ refreshed: boolean }> {
  */
 export async function withSilentRefresh(
   apiCall: () => Promise<Response>,
-  sessionRefresh: () => Promise<void>,
+  sessionRefresh: () => Promise<unknown>,
   sessionClear: () => void
 ): Promise<Response> {
   const res = await apiCall();
@@ -227,13 +243,13 @@ export async function withSilentRefresh(
     return res;
   }
 
-  const { refreshed } = await performRefresh();
+  const { refreshed, definitive } = await performRefresh();
 
   if (refreshed) {
     await sessionRefresh();
     return apiCall();
   }
 
-  sessionClear();
+  if (definitive) sessionClear();
   return res;
 }

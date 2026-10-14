@@ -68,6 +68,8 @@ export async function apiFetch(
   const base = getApiBase();
   return fetch(`${base}${path}`, {
     ...rest,
+    // Native auth uses explicit Bearer/refresh tokens, not the native cookie jar.
+    credentials: "omit",
     headers,
   });
 }

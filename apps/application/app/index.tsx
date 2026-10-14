@@ -328,9 +328,6 @@ export default function Home() {
         {/* Categories Strip */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Menu</Text>
-          <Text style={styles.categoryCount}>
-            {sortedCategories.length} categories
-          </Text>
         </View>
 
         <Animated.ScrollView
@@ -701,11 +698,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#1A1A1A',
-  },
-  categoryCount: {
-    color: '#999',
-    fontWeight: '600',
-    fontSize: 13,
   },
   itemCount: {
     color: '#999',
