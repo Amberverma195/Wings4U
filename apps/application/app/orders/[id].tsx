@@ -1,9 +1,9 @@
+import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -124,7 +124,7 @@ export default function OrderDetailScreen() {
 
   if (!orderId) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
         <View style={styles.centerState}>
           <Text style={styles.errorText}>Order id is missing.</Text>
         </View>
@@ -133,7 +133,7 @@ export default function OrderDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={styles.keyboard}

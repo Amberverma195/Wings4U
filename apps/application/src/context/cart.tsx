@@ -263,10 +263,17 @@ export function CartProvider({
   const [cartExpiresAt, setCartExpiresAt] = useState<string | null>(null);
   const [isGuestCart, setIsGuestCart] = useState(true);
   const [isCartHydrated, setIsCartHydrated] = useState(false);
+  const [hydratedLocationId, setHydratedLocationId] = useState<string | null>(null);
   const [cartAddNonce, setCartAddNonce] = useState(0);
 
   const skipNextSyncRef = useRef(false);
   const lastAuthenticatedRef = useRef<boolean | null>(null);
+  const localCartRef = useRef({
+    items, fulfillmentType, locationTimezone, scheduledFor, driverTipPercent,
+  });
+  localCartRef.current = {
+    items, fulfillmentType, locationTimezone, scheduledFor, driverTipPercent,
+  };
 
   const applySnapshot = useCallback((snapshot: SavedCartSnapshot | null) => {
     if (!snapshot) {
@@ -307,6 +314,7 @@ export function CartProvider({
       skipNextSyncRef.current = true;
       lastAuthenticatedRef.current = session.authenticated;
       setIsCartHydrated(true);
+      setHydratedLocationId(locationId);
 
       if (useDraft && draft) {
         const written = await putSavedCart(locationId, {
@@ -329,7 +337,7 @@ export function CartProvider({
   }, [applySnapshot, locationId, session.loaded]);
 
   useEffect(() => {
-    if (!session.loaded || !isCartHydrated) return;
+    if (!session.loaded || hydratedLocationId !== locationId) return;
     const previous = lastAuthenticatedRef.current;
     if (previous === null || previous === session.authenticated) {
       lastAuthenticatedRef.current = session.authenticated;
@@ -340,28 +348,30 @@ export function CartProvider({
     let cancelled = false;
 
     if (previous === false && session.authenticated) {
-      const localPayload = {
-        items,
-        fulfillmentType,
-        locationTimezone,
-        scheduledFor,
-        driverTipPercent,
-      };
+      const localPayload = localCartRef.current;
       setIsCartHydrated(false);
       void (async () => {
-        const merged = await mergeSavedCartOnLogin(locationId);
-        let snapshot = merged.snapshot ?? (await fetchSavedCart(locationId));
-        if ((!snapshot || snapshot.items.length === 0) && localPayload.items.length > 0) {
-          snapshot = await putSavedCart(locationId, localPayload);
+        try {
+          const merged = await mergeSavedCartOnLogin(locationId);
+          let snapshot = merged.snapshot ?? (await fetchSavedCart(locationId));
+          if ((!snapshot || snapshot.items.length === 0) && localPayload.items.length > 0) {
+            // Keep the local cart if saving it fails during sign-in.
+            snapshot = (await putSavedCart(locationId, localPayload)) ?? snapshot;
+            if (!snapshot || snapshot.items.length === 0) return;
+          }
+          if (cancelled) return;
+          applySnapshot(snapshot);
+          skipNextSyncRef.current = true;
+        } catch {
+          // A failed merge must leave the local cart usable.
+        } finally {
+          if (!cancelled) setIsCartHydrated(true);
         }
-        if (cancelled) return;
-        applySnapshot(snapshot);
-        skipNextSyncRef.current = true;
-        setIsCartHydrated(true);
       })();
     } else if (previous === true && !session.authenticated) {
       skipNextSyncRef.current = true;
       applySnapshot(null);
+      setIsCartHydrated(true);
       void clearPersistedDraft(locationId);
     }
 
@@ -370,13 +380,8 @@ export function CartProvider({
     };
   }, [
     applySnapshot,
-    driverTipPercent,
-    fulfillmentType,
-    isCartHydrated,
-    items,
+    hydratedLocationId,
     locationId,
-    locationTimezone,
-    scheduledFor,
     session.authenticated,
     session.loaded,
   ]);

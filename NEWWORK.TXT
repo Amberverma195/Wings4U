@@ -1,0 +1,49 @@
+issue - 'Framework (confirmed) Next.js 15 App Router + React 19 (apps/web). Public pages live under apps/web/src/app/; UI is mostly in apps/web/src/Wings4u/components/ and shared shell components. Findings by page Home (/) Check Status Single <h1> OK — one in landing.tsx hero Heading order Issues — SaucesSection has no h2 (only a <p class="section-label"> + styled spans). NewsletterSection uses <h3> while sibling sections use <h2>, so order jumps h2 → h3 without a parent h2 context for newsletter Semantic HTML Issues — hero and page wrapper are plain <div>s; no <main> Images No <img> on homepage (emoji/CSS only). Logo in navbar uses next/image with alt="Wings 4 U" Proposed hierarchy after fix: h1 (hero) → h2 (Brand, Sauces, How It Works, Spotlight, Testimonials, Newsletter, Order CTA) Menu / Order (/menu, /order) Check Status Single <h1> Missing — only h2 (category) + h3 (item names) Heading order Broken — starts at h2 with no page-level h1 Semantic HTML Issues — outer wrapper is <div>, categories are <div class="wk-menu-section"> not <section> Images Raw <img src={imageUrl} alt={item.displayName}> — alt present but generic; not using next/image (no lazy load / responsive sizing) Sauces (/sauces) Check Status Single <h1> OK — "70+ FLAVOURS" Heading order OK — h1 → h2 (categories, bottom CTA) Semantic HTML Strong — already uses <main>, <section>, <article>, <nav>, <footer> Images Logo only via WingsBrandLockup (good alt). Sauce cards use emoji, not images Minor optional improvement: sauce names inside <article> could become <h3> for richer structure. Catering (/catering) Check Status Single <h1> OK — via SurfacePlaceholder Semantic HTML OK — already <main> + <section> Shell (Header / Footer) Component Status navbar.tsx Already <nav> site-footer.tsx Already <footer>, but column titles use <h4> (skips h2/h3) wingkings-shell.tsx Page content wrapped in <div class="wk-shell-main"> — should be <main> Image audit Asset / usage Alt text Notes public/logo.png (26 KB) "Wings 4 U" Uses next/image Menu item <img> in menu-page.tsx item.displayName Present but minimal; could add context e.g. "{name} on the Wings 4 U menu" Cart line <img> in cart-page.tsx item.name Present (cart is noindex — lower priority) Admin menu images N/A Staff-only, out of scope No public-facing images with missing alt were found on the pages you listed. Heavy assets (Vercel / performance) File Size Concern public/uploads/menu/combo-*.jpeg (×5) ~1,039 KB each (~5.2 MB total) Very large for web; one is your default OG image. Should be compressed to WebP/AVIF (~80–150 KB each) public/notification.wav 521 KB Ships with deploy; only needed for KDS/notifications, not public SEO pages public/logo.png 26 KB Fine three + floating-lines.tsx Large JS bundle Only loaded on login/signup (lazy) — not a homepage concern Menu images from the API are external URLs — switching to next/image would need images.remotePatterns in next.config.ts for your API/CDN host. Files I intend to change 1. apps/web/src/components/wingkings-shell.tsx Replace content wrapper <div class="wk-shell-main"> with <main id="main-content"> Sauces-only shell: wrap {children} in <main> as well 2. apps/web/src/Wings4u/components/landing.tsx Outer <div style={styles.landing}> → <main> Hero block <div class="wk-landing-hero"> → <section aria-label="Hero"> Hero proof strip <div class="hero-proof"> → <ul> / <li> (or <aside> with list) Keep single <h1>; remove redundant aria-label on h1 if visible text is sufficient 3. apps/web/src/Wings4u/components/sauces-section.tsx Add visible <h2> for the sauces block (e.g. “70+ Sauces & Dry Rubs”) — currently missing from heading tree Wrap carousel in a named <section> sub-region if needed 4. apps/web/src/Wings4u/components/newsletter-section.tsx Change <h3 id="newsletter-heading"> → <h2> to match sibling sections 5. apps/web/src/Wings4u/components/how-it-works-section.tsx Each step <div class="step"> → <article> (section already correct) 6. apps/web/src/Wings4u/components/spotlight-section.tsx Optional: spotlight visual column → <figure> with decorative emoji as presentation-only 7. apps/web/src/Wings4u/components/menu-page.tsx Add page <h1> (visually hidden or styled): “Menu” on /menu, “Order Online” on /order (via routeKey prop) Outer <div style={styles.menuPage}> → <main> Category blocks <div class="wk-menu-section"> → <section aria-labelledby="..."> Menu cards <div style={styles.menuCard}> → <article> Improve <img alt> to "{displayName} — Wings 4 U menu item" Add loading="lazy" and decoding="async" on menu <img> (or migrate to next/image if you want that in scope) 8. apps/web/src/Wings4u/components/menu-skeleton.tsx Match menu page: <main> wrapper + screen-reader <h1> consistent with loaded state 9. apps/web/src/components/site-footer.tsx Footer column <h4> → <h3> (“Menu”, “Visit”, “Info”) footer-top inner structure: optional <nav aria-label="Footer"> for link columns 10. apps/web/src/components/footer-menu-links.tsx <h4>Menu</h4> → <h3>Menu</h3> (matches footer) 11. apps/web/src/Wings4u/components/sauces-page.tsx (minor) Sauce card name <div className={styles.sauceCardName}> → <h3> inside existing <article> 12. apps/web/src/components/shells/surface-placeholder.tsx (Catering / Privacy / Terms — already OK) No change required unless you want <article> inside the section Files I would not change (unless you ask) File Reason cart-page.tsx Checkout/cart is noindex; lower SEO priority Admin components Blocked in robots.txt auth-shell.tsx / login pages noindex auth surfaces next.config.ts Only if we migrate menu images to next/image Image compression in /public Asset optimization — separate task (high impact) Summary Page h1 Heading order Semantics Images Home OK Fix sauces + newsletter Add <main>, hero <section> N/A Menu/Order Add h1 Fix after h1 Add <main>, <section>, <article> Improve alt + lazy load Sauces OK OK Minor h3 in cards OK Catering OK OK OK N/A Header/Footer N/A Footer h4→h3 Shell <main> Logo OK Biggest wins: add h1 on Menu/Order, fix homepage heading gaps, wrap shell in <main>, compress the ~5 MB of combo JPEGs. If this plan looks good, say “go ahead” (or note any files to skip), and I’ll apply the changes and push to main. If you also want image compression or next/image for menu photos, say that explicitly — it’s a slightly larger scope.'
+
+fix - 'All 12 planned changes are applied, the build passes, and everything is committed locally as 930277a — not pushed to main.
+
+What changed
+#	File	Changes
+1
+wingkings-shell.tsx
+<main id="main-content"> for routes without their own main; avoids nested <main> on menu/order/sauces/catering/legal pages
+2
+landing.tsx
+Hero → <section>, proof strip → <ul>/<li>, removed redundant h1 aria-label
+3
+sauces-section.tsx
+Sauce count block → <h2> (“70+ Sauces & Dry Rubs”)
+4
+newsletter-section.tsx
+<h3> → <h2>
+5
+how-it-works-section.tsx
+Step cards → <article>
+6
+spotlight-section.tsx
+Visual column → <figure> + <figcaption>
+7
+menu-page.tsx
+<main>, visually hidden local SEO <h1>, category <section>, item <article>, improved alt + lazy images
+8
+menu-skeleton.tsx
+<main> + matching visually hidden <h1>
+9
+site-footer.tsx
+<h4> → <h3>, Info column → <nav>
+10
+footer-menu-links.tsx
+<h4> → <h3>
+11
+sauces-page.tsx
+Sauce names → <h3> inside <article>
+12
+globals.css + global-style.tsx + sauces-page.module.css
+.wk-visually-hidden utility, CSS updates for new heading/semantic tags
+Local SEO <h1> tags (visually hidden)
+/menu: “Wings 4 U Menu in London, Ontario”
+/order: “Order Chicken Wings Online in London, Ontario”
+Same headings appear in loading/error skeleton states.
+
+Menu images
+Alt text is now contextual, e.g. Classic Buffalo — on the Wings 4 U menu, with loading="lazy" and decoding="async".'

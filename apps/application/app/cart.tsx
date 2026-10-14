@@ -1,7 +1,7 @@
+import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -160,7 +160,7 @@ export default function CartScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
       <StatusBar style="dark" />
       <ScrollView
         style={styles.scroll}

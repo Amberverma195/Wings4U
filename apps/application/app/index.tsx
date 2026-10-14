@@ -1,27 +1,33 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import { SafeAreaView } from "react-native-safe-area-context";
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ShoppingBag, Clock, MapPin, ChevronRight, Flame, AlertCircle, User } from 'lucide-react-native';
+import Animated, {
+  Easing,
+  interpolateColor,
+  useAnimatedStyle,
+  useAnimatedScrollHandler,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { ShoppingBag, Clock, AlertCircle, User } from 'lucide-react-native';
 import { useMenu } from '../src/hooks/use-menu';
 import { useSession } from '../src/context/session';
 import { useCart } from '../src/context/cart';
 import { AuthSheet } from '../src/components/auth-sheet';
 import { MenuItemBuilder } from '../src/components/menu-item-builder';
 import type { MenuCategory, MenuItem } from '../src/lib/types';
-
-const { width } = Dimensions.get('window');
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -105,13 +111,48 @@ function sortCategories(categories: MenuCategory[]): MenuCategory[] {
 /* ------------------------------------------------------------------ */
 
 export default function Home() {
+  const { width } = useWindowDimensions();
+  const compactHeader = width < 380;
   const cart = useCart();
   const fulfillmentType = cart.fulfillmentType;
+  const fulfillmentProgress = useSharedValue(fulfillmentType === 'DELIVERY' ? 1 : 0);
+  const fulfillmentOptionWidth = ((compactHeader ? 110 : 136) - 6) / 2;
+
+  useEffect(() => {
+    fulfillmentProgress.value = withTiming(fulfillmentType === 'DELIVERY' ? 1 : 0, {
+      duration: 280,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+    });
+  }, [fulfillmentType, fulfillmentProgress]);
+
+  const fulfillmentPillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: fulfillmentProgress.value * fulfillmentOptionWidth }],
+  }));
+  const pickupLabelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(fulfillmentProgress.value, [0, 1], ['#FFFFFF', '#666666']),
+  }));
+  const deliveryLabelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(fulfillmentProgress.value, [0, 1], ['#666666', '#FFFFFF']),
+  }));
   const { menu, loading, error, refetch } = useMenu(fulfillmentType);
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [categoryViewportWidth, setCategoryViewportWidth] = useState(0);
+  const [categoryContentWidth, setCategoryContentWidth] = useState(0);
+  const categoryScrollX = useSharedValue(0);
+  const categoryScrollHandler = useAnimatedScrollHandler((event) => {
+    categoryScrollX.value = event.contentOffset.x;
+  });
+  const swipeThumbWidth = Math.max(16, Math.min(80,
+    categoryContentWidth > 0 ? (categoryViewportWidth / categoryContentWidth) * 80 : 80,
+  ));
+  const swipeThumbStyle = useAnimatedStyle(() => {
+    const scrollRange = Math.max(1, categoryContentWidth - categoryViewportWidth);
+    const progress = Math.max(0, Math.min(1, categoryScrollX.value / scrollRange));
+    return { transform: [{ translateX: progress * (80 - swipeThumbWidth) }] };
+  });
   const session = useSession();
   const router = useRouter();
 
@@ -139,9 +180,10 @@ export default function Home() {
     setActiveCategorySlug(slug);
   }, []);
 
-  const toggleFulfillment = useCallback(() => {
-    cart.setFulfillmentType(fulfillmentType === 'PICKUP' ? 'DELIVERY' : 'PICKUP');
-    if (fulfillmentType === 'DELIVERY') {
+  const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {
+    if (type === fulfillmentType) return;
+    cart.setFulfillmentType(type);
+    if (type === 'PICKUP') {
       cart.setDriverTipPercent('none');
     }
     setActiveCategorySlug(null);
@@ -202,33 +244,75 @@ export default function Home() {
         }
       >
         {/* Header Section */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{greeting}</Text>
-            <Text style={styles.title}>Wings4U</Text>
-          </View>
-          <View style={styles.headerActions}>
-            {/* Auth button */}
-            {session.authenticated ? (
-              <TouchableOpacity style={styles.authAvatarBtn} onPress={() => router.push('/profile')}>
-                <User size={18} color="#FFF" />
+        <View style={[styles.header, compactHeader && styles.headerCompact]}>
+          <Text style={styles.greeting}>{greeting}</Text>
+          <View style={styles.headerRow}>
+            <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1}>
+              Wings4U
+            </Text>
+            <View
+              style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Order type"
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.fulfillmentPill,
+                  { width: fulfillmentOptionWidth },
+                  fulfillmentPillStyle,
+                ]}
+              />
+              {(['PICKUP', 'DELIVERY'] as const).map((type) => {
+                const selected = fulfillmentType === type;
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={styles.fulfillmentOption}
+                    activeOpacity={1}
+                    onPress={() => selectFulfillment(type)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={type === 'PICKUP' ? 'Pickup' : 'Delivery'}
+                  >
+                    <Animated.Text
+                      style={[
+                        styles.fulfillmentLabel,
+                        compactHeader && styles.fulfillmentLabelCompact,
+                        type === 'PICKUP' ? pickupLabelStyle : deliveryLabelStyle,
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {type === 'PICKUP' ? 'Pickup' : 'Delivery'}
+                    </Animated.Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.headerActions}>
+              {/* Auth button */}
+              {session.authenticated ? (
+                <TouchableOpacity style={[styles.authAvatarBtn, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/profile')}>
+                  <User size={18} color="#FFF" />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={[styles.authGuestBtn, compactHeader && styles.headerIconCompact]} onPress={() => setAuthVisible(true)}>
+                  <User size={20} color="#FF4D4D" />
+                </TouchableOpacity>
+              )}
+              {/* Cart button */}
+              <TouchableOpacity style={[styles.cartButton, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/cart')}>
+                <ShoppingBag size={24} color="#000" />
+                {cart.itemCount > 0 ? (
+                  <View style={styles.cartBadge}>
+                    <Text style={styles.cartBadgeText}>
+                      {cart.itemCount > 9 ? '9+' : cart.itemCount}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.authGuestBtn} onPress={() => setAuthVisible(true)}>
-                <User size={20} color="#FF4D4D" />
-              </TouchableOpacity>
-            )}
-            {/* Cart button */}
-            <TouchableOpacity style={styles.cartButton} onPress={() => router.push('/cart')}>
-              <ShoppingBag size={24} color="#000" />
-              {cart.itemCount > 0 ? (
-                <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>
-                    {cart.itemCount > 9 ? '9+' : cart.itemCount}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -241,41 +325,6 @@ export default function Home() {
           onClose={() => setSelectedItem(null)}
         />
 
-        {/* Location Bar */}
-        <TouchableOpacity style={styles.locationBar}>
-          <MapPin size={20} color="#FF4D4D" />
-          <Text style={styles.locationText} numberOfLines={1}>
-            {menu?.location.name ?? 'Wings4U'}
-          </Text>
-          <ChevronRight size={20} color="#999" />
-        </TouchableOpacity>
-
-        {/* Hero Promo */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroContent}>
-            <View style={styles.promoBadge}>
-              <Flame size={14} color="#FFF" fill="#FFF" />
-              <Text style={styles.promoBadgeText}>
-                {fulfillmentType === 'PICKUP' ? 'PICKUP' : 'DELIVERY'}
-              </Text>
-            </View>
-            <Text style={styles.heroTitle}>
-              {fulfillmentType === 'PICKUP' ? 'Ready for Pickup!' : 'We Deliver!'}
-            </Text>
-            <Text style={styles.heroSubtitle}>
-              {fulfillmentType === 'PICKUP'
-                ? `Est. ${menu?.location.pickup_min_minutes ?? 30}-${menu?.location.pickup_max_minutes ?? 40} min`
-                : `Est. ${menu?.location.delivery_min_minutes ?? 40}-${menu?.location.delivery_max_minutes ?? 60} min`}
-            </Text>
-            <TouchableOpacity style={styles.heroButton} onPress={toggleFulfillment}>
-              <Text style={styles.heroButtonText}>
-                Switch to {fulfillmentType === 'PICKUP' ? 'Delivery' : 'Pickup'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.heroImagePlaceholder} />
-        </View>
-
         {/* Categories Strip */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Menu</Text>
@@ -284,9 +333,13 @@ export default function Home() {
           </Text>
         </View>
 
-        <ScrollView
+        <Animated.ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          onLayout={(event) => setCategoryViewportWidth(event.nativeEvent.layout.width)}
+          onContentSizeChange={(contentWidth) => setCategoryContentWidth(contentWidth)}
+          onScroll={categoryScrollHandler}
+          scrollEventThrottle={16}
           style={styles.categoriesScroll}
           contentContainerStyle={styles.categoriesContent}
         >
@@ -295,22 +348,32 @@ export default function Home() {
             return (
               <TouchableOpacity
                 key={cat.id}
-                style={[styles.categoryCard, isActive && styles.categoryCardActive]}
+                style={styles.categoryCard}
                 onPress={() => handleCategoryPress(cat.slug)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={cat.name}
               >
                 <View style={[styles.categoryIcon, isActive && styles.categoryIconActive]}>
                   <Text style={styles.categoryEmoji}>{emojiForCategorySlug(cat.slug)}</Text>
                 </View>
                 <Text
                   style={[styles.categoryText, isActive && styles.categoryTextActive]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                 >
                   {cat.name}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </Animated.ScrollView>
+        {categoryContentWidth > categoryViewportWidth && categoryViewportWidth > 0 ? (
+          <View style={styles.categorySwipeTrack}>
+            <Animated.View
+              style={[styles.categorySwipeThumb, { width: swipeThumbWidth }, swipeThumbStyle]}
+            />
+          </View>
+        ) : null}
 
         {/* Active Category Items */}
         {activeCategory && (
@@ -494,9 +557,16 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 20,
+    gap: 6,
+  },
+  headerCompact: {
+    paddingHorizontal: 16,
+  },
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 6,
   },
   greeting: {
     fontSize: 14,
@@ -507,7 +577,49 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#1A1A1A',
-    marginTop: 2,
+    flexShrink: 1,
+  },
+  titleCompact: {
+    fontSize: 20,
+  },
+  fulfillmentSwitch: {
+    width: 136,
+    flexDirection: 'row',
+    backgroundColor: '#F0F0F0',
+    borderRadius: 22,
+    padding: 3,
+  },
+  fulfillmentSwitchCompact: {
+    width: 110,
+  },
+  fulfillmentOption: {
+    flex: 1,
+    minHeight: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 19,
+    paddingHorizontal: 4,
+  },
+  fulfillmentPill: {
+    position: 'absolute',
+    top: 3,
+    bottom: 3,
+    left: 3,
+    borderRadius: 19,
+    backgroundColor: '#FF4D4D',
+  },
+  fulfillmentLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#666',
+  },
+  fulfillmentLabelCompact: {
+    fontSize: 11,
+  },
+  headerIconCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   cartButton: {
     width: 48,
@@ -545,7 +657,7 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
   },
   authAvatarBtn: {
     width: 42,
@@ -576,92 +688,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  /* Location */
-  locationBar: {
-    marginHorizontal: 20,
-    marginTop: 20,
-    padding: 12,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  locationText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#444',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-
-  /* Hero */
-  heroCard: {
-    margin: 20,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 24,
-    padding: 24,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  heroContent: {
-    flex: 1,
-    zIndex: 1,
-  },
-  promoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 77, 77, 0.2)',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  promoBadgeText: {
-    color: '#FF4D4D',
-    fontSize: 10,
-    fontWeight: '800',
-    marginLeft: 4,
-  },
-  heroTitle: {
-    color: '#FFF',
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  heroSubtitle: {
-    color: '#AAA',
-    fontSize: 14,
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  heroButton: {
-    backgroundColor: '#FF4D4D',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  heroButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  heroImagePlaceholder: {
-    position: 'absolute',
-    right: -20,
-    bottom: -20,
-    width: 140,
-    height: 140,
-    backgroundColor: '#2A2A2A',
-    borderRadius: 70,
-  },
-
   /* Section headers */
   sectionHeader: {
     flexDirection: 'row',
@@ -690,44 +716,38 @@ const styles = StyleSheet.create({
   /* Categories strip */
   categoriesScroll: {
     paddingLeft: 20,
-    marginBottom: 25,
+    marginBottom: 10,
   },
   categoriesContent: {
     paddingRight: 20,
   },
   categoryCard: {
-    width: 80,
-    height: 100,
+    width: 76,
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  categoryIcon: {
+    width: 64,
+    height: 64,
     backgroundColor: '#FFF',
-    borderRadius: 20,
+    borderRadius: 32,
+    marginBottom: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
   },
-  categoryCardActive: {
+  categoryIconActive: {
     backgroundColor: '#FF4D4D',
   },
-  categoryIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 20,
-    marginBottom: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryIconActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
   categoryEmoji: {
-    fontSize: 20,
+    fontSize: 24,
   },
   categoryText: {
+    minHeight: 30,
     fontSize: 11,
     fontWeight: '600',
     color: '#666',
@@ -735,7 +755,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   categoryTextActive: {
-    color: '#FFF',
+    color: '#FF4D4D',
+    fontWeight: '700',
+  },
+  categorySwipeTrack: {
+    width: 80,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E5E5',
+    alignSelf: 'center',
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  categorySwipeThumb: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FF4D4D',
   },
 
   /* Empty category */

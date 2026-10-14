@@ -10,6 +10,7 @@
  * For iOS Simulator, `localhost` / `127.0.0.1` works directly.
  */
 import Constants from "expo-constants";
+import { isDevice } from "expo-device";
 import { Platform } from "react-native";
 
 /** Fallback dev host: Android emulator -> 10.0.2.2, iOS sim -> 127.0.0.1 */
@@ -20,10 +21,14 @@ const DEV_API_PORT = "3001";
  * Base URL for `/api/v1/*` JSON calls.
  *
  * Resolution order:
- *   1. `Constants.expoConfig?.extra?.apiOrigin`  – explicit override in app.json
- *   2. Dev fallback based on platform
+ *   1. Android emulator in development: host loopback through `10.0.2.2`
+ *   2. `Constants.expoConfig?.extra?.apiOrigin` – explicit override in app.json
+ *   3. Dev fallback based on platform
  */
 export function getApiBase(): string {
+  if (__DEV__ && Platform.OS === "android" && !isDevice) {
+    return `http://10.0.2.2:${DEV_API_PORT}`;
+  }
   const explicit =
     (Constants.expoConfig?.extra as Record<string, unknown> | undefined)
       ?.apiOrigin;

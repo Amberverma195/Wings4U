@@ -1,9 +1,9 @@
+import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -318,7 +318,7 @@ export default function ProfileScreen() {
 
   if (!session.loaded || !user || account.loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#FF4D4D" />
@@ -329,7 +329,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
       <StatusBar style="dark" />
       <ScrollView
         showsVerticalScrollIndicator={false}

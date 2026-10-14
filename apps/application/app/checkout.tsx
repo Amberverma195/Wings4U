@@ -1,10 +1,10 @@
+import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -607,7 +607,7 @@ export default function CheckoutScreen() {
   }, [placeOrder, session.authenticated, session.needsProfileCompletion]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
       <StatusBar style="dark" />
       <AuthSheet
         visible={authVisible}
