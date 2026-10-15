@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
 } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 
 interface CreditDebitParams {
@@ -33,39 +34,51 @@ export class WalletsService {
   }
 
   async credit(params: CreditDebitParams) {
+    return this.prisma.$transaction((tx) =>
+      this.creditInTransaction(tx, params),
+    );
+  }
+
+  /**
+   * Credit variant that joins an existing transaction. Callers that must keep
+   * a wallet credit atomic with other writes (e.g. refund issuance) use this
+   * so the credit and its ledger row commit or roll back together with them.
+   */
+  async creditInTransaction(
+    tx: Prisma.TransactionClient,
+    params: CreditDebitParams,
+  ) {
     if (params.amountCents <= 0) {
       throw new BadRequestException("Credit amount must be positive");
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const wallet = await tx.customerWallet.upsert({
-        where: { customerUserId: params.userId },
-        update: {
-          balanceCents: { increment: params.amountCents },
-          lifetimeCreditCents: { increment: params.amountCents },
-        },
-        create: {
-          customerUserId: params.userId,
-          balanceCents: params.amountCents,
-          lifetimeCreditCents: params.amountCents,
-        },
-      });
-
-      await tx.customerCreditLedger.create({
-        data: {
-          customerUserId: params.userId,
-          amountCents: params.amountCents,
-          balanceAfterCents: wallet.balanceCents,
-          entryType: params.entryType,
-          reasonText: params.reason,
-          orderId: params.orderId,
-          refundRequestId: params.refundRequestId,
-          createdByUserId: params.createdByUserId,
-        },
-      });
-
-      return wallet;
+    const wallet = await tx.customerWallet.upsert({
+      where: { customerUserId: params.userId },
+      update: {
+        balanceCents: { increment: params.amountCents },
+        lifetimeCreditCents: { increment: params.amountCents },
+      },
+      create: {
+        customerUserId: params.userId,
+        balanceCents: params.amountCents,
+        lifetimeCreditCents: params.amountCents,
+      },
     });
+
+    await tx.customerCreditLedger.create({
+      data: {
+        customerUserId: params.userId,
+        amountCents: params.amountCents,
+        balanceAfterCents: wallet.balanceCents,
+        entryType: params.entryType,
+        reasonText: params.reason,
+        orderId: params.orderId,
+        refundRequestId: params.refundRequestId,
+        createdByUserId: params.createdByUserId,
+      },
+    });
+
+    return wallet;
   }
 
   async debit(params: CreditDebitParams) {

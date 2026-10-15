@@ -143,6 +143,20 @@ export class PaymentsService {
    * an order row lock so balance checks and the insert cannot interleave.
    */
   async createPayment(params: CreatePaymentParams) {
+    return this.prisma.$transaction((tx) =>
+      this.createPaymentInTransaction(tx, params),
+    );
+  }
+
+  /**
+   * Ledger-write core that joins an existing transaction. Callers that must
+   * keep the ledger row atomic with other writes (e.g. refund issuance) use
+   * this so everything commits or rolls back together.
+   */
+  async createPaymentInTransaction(
+    tx: Prisma.TransactionClient,
+    params: CreatePaymentParams,
+  ) {
     const isRefund = params.transactionType === "REFUND";
     const amount = isRefund
       ? -Math.abs(params.signedAmountCents)
@@ -151,7 +165,7 @@ export class PaymentsService {
       throw new BadRequestException("Amount must be greater than zero");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    {
       const order = await this.lockOrder(tx, params.orderId, params.locationId);
       const successful = await tx.orderPayment.findMany({
         where: { orderId: params.orderId, transactionStatus: "SUCCESS" },
@@ -228,7 +242,7 @@ export class PaymentsService {
         },
       });
       return payment;
-    });
+    }
   }
 
   /**

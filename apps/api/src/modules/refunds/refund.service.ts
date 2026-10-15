@@ -95,85 +95,99 @@ export class RefundService {
   }
 
   async approveAndIssue(params: ApproveAndIssueParams) {
-    const refund = await this.prisma.refundRequest.findUnique({
-      where: { id: params.refundRequestId },
-      include: { order: true },
-    });
-    if (!refund) {
-      throw new NotFoundException("Refund request not found");
-    }
-
-    if (refund.status !== "PENDING") {
-      throw new ConflictException(
-        `Refund request is already "${refund.status}"`,
-      );
-    }
-
-    // Store credit lands in a customer's wallet, so it requires a real
-    // account. Guest orders (e.g. anonymous walk-in POS) have no
-    // `customer_user_id`; those must be refunded as cash / original payment.
-    if (params.refundMethod === "STORE_CREDIT" && !refund.order.customerUserId) {
-      throw new BadRequestException(
-        "Store credit requires a registered customer. Refund this guest order as cash or to the original payment method.",
-      );
-    }
-
     const returnsCollectedFunds =
       params.refundMethod === "ORIGINAL_PAYMENT" || params.refundMethod === "CASH";
-    if (returnsCollectedFunds) {
-      const successful = await this.prisma.orderPayment.findMany({
-        where: { orderId: refund.orderId, transactionStatus: "SUCCESS" },
-        select: { transactionType: true, signedAmountCents: true },
+
+    // The status transition, wallet credit and payment-ledger row all commit
+    // together. If any accounting write fails the ISSUED transition rolls back
+    // too, so a refund request can never show ISSUED without its matching
+    // ledger entry. The transition itself is claimed with a guarded
+    // updateMany so two concurrent approvals cannot both issue (double-refund).
+    return this.prisma.$transaction(async (tx) => {
+      const refund = await tx.refundRequest.findUnique({
+        where: { id: params.refundRequestId },
+        include: { order: true },
       });
-      const collected = netCollectedCents(successful);
-      if (refund.amountCents > collected) {
-        throw new BadRequestException(
-          `Only ${collected} cents has been collected for this order. Record the collection first or refund as store credit.`,
+      if (!refund) {
+        throw new NotFoundException("Refund request not found");
+      }
+      if (refund.status !== "PENDING") {
+        throw new ConflictException(
+          `Refund request is already "${refund.status}"`,
         );
       }
-    }
 
-    const now = new Date();
+      // Store credit lands in a customer's wallet, so it requires a real
+      // account. Guest orders (e.g. anonymous walk-in POS) have no
+      // `customer_user_id`; those must be refunded as cash / original payment.
+      if (params.refundMethod === "STORE_CREDIT" && !refund.order.customerUserId) {
+        throw new BadRequestException(
+          "Store credit requires a registered customer. Refund this guest order as cash or to the original payment method.",
+        );
+      }
 
-    const issued = await this.prisma.refundRequest.update({
-      where: { id: params.refundRequestId },
-      data: {
-        status: "ISSUED",
-        refundMethod: params.refundMethod,
-        approvedByUserId: params.approvedByUserId,
-        approvedAt: now,
-        issuedByUserId: params.approvedByUserId,
-        issuedAt: now,
-      },
+      if (returnsCollectedFunds) {
+        const successful = await tx.orderPayment.findMany({
+          where: { orderId: refund.orderId, transactionStatus: "SUCCESS" },
+          select: { transactionType: true, signedAmountCents: true },
+        });
+        const collected = netCollectedCents(successful);
+        if (refund.amountCents > collected) {
+          throw new BadRequestException(
+            `Only ${collected} cents has been collected for this order. Record the collection first or refund as store credit.`,
+          );
+        }
+      }
+
+      const now = new Date();
+
+      // Atomic claim: only the transaction that flips PENDING→ISSUED proceeds.
+      const claimed = await tx.refundRequest.updateMany({
+        where: { id: params.refundRequestId, status: "PENDING" },
+        data: {
+          status: "ISSUED",
+          refundMethod: params.refundMethod,
+          approvedByUserId: params.approvedByUserId,
+          approvedAt: now,
+          issuedByUserId: params.approvedByUserId,
+          issuedAt: now,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException(
+          "Refund request was already decided by another request",
+        );
+      }
+
+      if (params.refundMethod === "STORE_CREDIT" && refund.order.customerUserId) {
+        await this.walletsService.creditInTransaction(tx, {
+          userId: refund.order.customerUserId,
+          amountCents: refund.amountCents,
+          reason: `Refund for order #${refund.order.orderNumber}`,
+          entryType: "REFUND",
+          orderId: refund.orderId,
+          refundRequestId: refund.id,
+          createdByUserId: params.approvedByUserId,
+        });
+      }
+
+      if (returnsCollectedFunds) {
+        await this.paymentsService.createPaymentInTransaction(tx, {
+          orderId: refund.orderId,
+          locationId: refund.locationId,
+          transactionType: "REFUND",
+          paymentMethod: params.refundMethod === "CASH" ? "CASH" : "CARD",
+          signedAmountCents: -refund.amountCents,
+          initiatedByUserId: params.approvedByUserId,
+          createdByUserId: params.approvedByUserId,
+          actorRole: "ADMIN",
+        });
+      }
+
+      return tx.refundRequest.findUniqueOrThrow({
+        where: { id: params.refundRequestId },
+      });
     });
-
-    if (params.refundMethod === "STORE_CREDIT" && refund.order.customerUserId) {
-      await this.walletsService.credit({
-        userId: refund.order.customerUserId,
-        amountCents: refund.amountCents,
-        reason: `Refund for order #${refund.order.orderNumber}`,
-        entryType: "REFUND",
-        orderId: refund.orderId,
-        refundRequestId: refund.id,
-        createdByUserId: params.approvedByUserId,
-      });
-    }
-
-    if (returnsCollectedFunds) {
-      await this.paymentsService.createPayment({
-        orderId: refund.orderId,
-        locationId: refund.locationId,
-        transactionType: "REFUND",
-        paymentMethod:
-          params.refundMethod === "CASH" ? "CASH" : "CARD",
-        signedAmountCents: -refund.amountCents,
-        initiatedByUserId: params.approvedByUserId,
-        createdByUserId: params.approvedByUserId,
-        actorRole: "ADMIN",
-      });
-    }
-
-    return issued;
   }
 
   // PRD §12.6: when a cancelled order has a remaining refundable balance
