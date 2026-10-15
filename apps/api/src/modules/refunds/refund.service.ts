@@ -8,6 +8,7 @@ import type { RefundMethod } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import { WalletsService } from "../wallets/wallets.service";
 import { PaymentsService } from "../payments/payments.service";
+import { netCollectedCents } from "../payments/payment-policy";
 
 const REFUNDABLE_STATUSES = new Set([
   "COMPLETED",
@@ -117,6 +118,21 @@ export class RefundService {
       );
     }
 
+    const returnsCollectedFunds =
+      params.refundMethod === "ORIGINAL_PAYMENT" || params.refundMethod === "CASH";
+    if (returnsCollectedFunds) {
+      const successful = await this.prisma.orderPayment.findMany({
+        where: { orderId: refund.orderId, transactionStatus: "SUCCESS" },
+        select: { transactionType: true, signedAmountCents: true },
+      });
+      const collected = netCollectedCents(successful);
+      if (refund.amountCents > collected) {
+        throw new BadRequestException(
+          `Only ${collected} cents has been collected for this order. Record the collection first or refund as store credit.`,
+        );
+      }
+    }
+
     const now = new Date();
 
     const issued = await this.prisma.refundRequest.update({
@@ -143,10 +159,7 @@ export class RefundService {
       });
     }
 
-    if (
-      params.refundMethod === "ORIGINAL_PAYMENT" ||
-      params.refundMethod === "CASH"
-    ) {
+    if (returnsCollectedFunds) {
       await this.paymentsService.createPayment({
         orderId: refund.orderId,
         locationId: refund.locationId,
@@ -156,6 +169,7 @@ export class RefundService {
         signedAmountCents: -refund.amountCents,
         initiatedByUserId: params.approvedByUserId,
         createdByUserId: params.approvedByUserId,
+        actorRole: "ADMIN",
       });
     }
 

@@ -31,6 +31,8 @@ import {
   buildCheckoutRequestFingerprint,
 } from "../payments/checkout-cart-hash";
 import {
+  collectionPreferenceFromSnapshot,
+  collectionPreferenceLabel,
   onlinePaymentsEnabled,
   resolveCollectionPreference,
   type CollectionPreference,
@@ -220,19 +222,6 @@ function getRemovedIngredientsFromInput(params: {
   });
 }
 
-function collectionPreferenceFromSnapshot(snapshot: unknown): CollectionPreference | null {
-  if (!snapshot || typeof snapshot !== "object") return null;
-  const value = (snapshot as { collection_preference?: unknown }).collection_preference;
-  if (
-    value === "PAY_AT_STORE" ||
-    value === "CASH_ON_DELIVERY" ||
-    value === "CARD_ON_DELIVERY"
-  ) {
-    return value;
-  }
-  return null;
-}
-
 function serializeOrder(order: Record<string, unknown>) {
   const o = order as Record<string, unknown> & {
     orderNumber: bigint;
@@ -323,6 +312,9 @@ function serializeOrder(order: Record<string, unknown>) {
     final_payable_cents: o.finalPayableCents,
     payment_status_summary: o.paymentStatusSummary,
     collection_preference: collectionPreferenceFromSnapshot(o.pricingSnapshotJson),
+    collection_preference_label: collectionPreferenceLabel(
+      collectionPreferenceFromSnapshot(o.pricingSnapshotJson),
+    ),
     customer_order_notes: o.customerOrderNotes,
     special_instructions: o.customerOrderNotes,
     estimated_ready_at: o.estimatedReadyAt,

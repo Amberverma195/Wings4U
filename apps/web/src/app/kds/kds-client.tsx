@@ -6,6 +6,14 @@ import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { OrderChat } from "@/components/order-chat";
+import {
+  PaymentCollectionPanel,
+  PaymentStatusBadge,
+  PaymentStrip,
+  UnpaidCompletionWarning,
+  unpaidCompletionConfirmText,
+  type PaymentSummary,
+} from "@/components/payment-collection";
 import { CalendarClock, X } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -85,6 +93,8 @@ type KdsOrder = {
   wallet_applied_cents: number;
   final_payable_cents: number;
   assigned_driver_user_id: string | null;
+  assigned_driver_name?: string | null;
+  payment_summary?: PaymentSummary;
   kds_auto_accept_seconds: number | null;
   requires_manual_review: boolean;
   items: KdsItem[];
@@ -103,6 +113,7 @@ type KdsHistoryOrder = {
   phone_fallback?: string | null;
   placed_at: string;
   final_payable_cents: number;
+  payment_summary?: PaymentSummary;
 };
 
 type KdsDriver = {
@@ -545,12 +556,14 @@ function ExternalDeliveryModal({
   orderId,
   outcome,
   session,
+  paymentSummary,
   onDone,
   onClose,
 }: {
   orderId: string;
   outcome: ExternalDeliveryOutcome;
   session: KdsSessionControls;
+  paymentSummary?: PaymentSummary;
   onDone: () => void;
   onClose: () => void;
 }) {
@@ -582,6 +595,11 @@ function ExternalDeliveryModal({
             ? "Confirm that the external courier delivered this order. This will close the order."
             : "Confirm that the external delivery was not completed. This will close the order as a no-show."}
         </p>
+        {isDelivered ? (
+          <div style={{ margin: "0 0 1rem" }}>
+            <UnpaidCompletionWarning summary={paymentSummary} action="Marking it delivered" />
+          </div>
+        ) : null}
         {err && <p className="surface-error" style={{ margin: "0 0 0.5rem" }}>{err}</p>}
         <div className="kds-modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={busy}>
@@ -598,6 +616,46 @@ function ExternalDeliveryModal({
               : isDelivered
                 ? "Yes, mark Delivered"
                 : "Yes, mark as No-Show"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Payment Collection Modal                                           */
+/* ------------------------------------------------------------------ */
+
+function kdsPaymentsPath(orderId: string) {
+  return `/api/v1/kds/orders/${orderId}/payments`;
+}
+
+function PaymentCollectionModal({
+  order,
+  onRecorded,
+  onClose,
+}: {
+  order: KdsOrder;
+  onRecorded: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="kds-modal-overlay" onClick={onClose}>
+      <div
+        className="kds-modal-card"
+        style={{ maxWidth: "560px", maxHeight: "calc(100vh - 2.5rem)", overflowY: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>Payment — Order #{order.order_number}</h3>
+        <PaymentCollectionPanel
+          paymentsPath={kdsPaymentsPath(order.id)}
+          locationId={DEFAULT_LOCATION_ID}
+          onRecorded={onRecorded}
+        />
+        <div className="kds-modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close
           </button>
         </div>
       </div>
@@ -963,6 +1021,7 @@ function KdsOrderCard({
     useState<ExternalDeliveryOutcome | null>(null);
   const [driverModal, setDriverModal] = useState(false);
   const [pinModal, setPinModal] = useState(false);
+  const [paymentModal, setPaymentModal] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -987,8 +1046,16 @@ function KdsOrderCard({
   const accept = () => runAction(() => kdsAction(session, `${order.id}/accept`));
   const setReady = () =>
     runAction(() => kdsAction(session, `${order.id}/status`, "POST", { status: "READY" }));
-  const pickedUp = () =>
-    runAction(() => kdsAction(session, `${order.id}/status`, "POST", { status: "PICKED_UP" }));
+  const confirmUnpaidCompletion = (action: string) => {
+    const text = unpaidCompletionConfirmText(order.payment_summary, action);
+    return !text || window.confirm(text);
+  };
+  const pickedUp = () => {
+    if (!confirmUnpaidCompletion("Marking it picked up")) return;
+    return runAction(() =>
+      kdsAction(session, `${order.id}/status`, "POST", { status: "PICKED_UP" }),
+    );
+  };
   const startDelivery = () => runAction(() => kdsAction(session, `${order.id}/start-delivery`));
   // "Mark Delivered" is always gated through the PIN modal; the modal itself
   // calls /verify-pin + /complete-delivery after the correct PIN is entered.
@@ -1121,7 +1188,9 @@ function KdsOrderCard({
       <button
         key="delivered"
         className="btn-primary"
-        onClick={() => setPinModal(true)}
+        onClick={() => {
+          if (confirmUnpaidCompletion("Marking it delivered")) setPinModal(true);
+        }}
         disabled={actionBusy}
       >
         Mark Delivered
@@ -1135,6 +1204,19 @@ function KdsOrderCard({
         disabled={actionBusy}
       >
         No-Show
+      </button>,
+    );
+  }
+
+  if (order.payment_summary?.has_unpaid_balance) {
+    actions.push(
+      <button
+        key="record-payment"
+        className="btn-secondary"
+        onClick={() => setPaymentModal(true)}
+        disabled={actionBusy}
+      >
+        Record Payment
       </button>,
     );
   }
@@ -1216,6 +1298,13 @@ function KdsOrderCard({
             <p className="kds-order-card__eta">ETA {formatKitchenTime(order.estimated_ready_at)}</p>
           </div>
         </div>
+
+        {order.payment_summary ? <PaymentStrip summary={order.payment_summary} /> : null}
+        {order.fulfillment_type === "DELIVERY" && order.assigned_driver_user_id ? (
+          <p className="surface-muted" style={{ margin: "-0.3rem 0 0.6rem", fontSize: "0.8rem", fontWeight: 600 }}>
+            Driver: {order.assigned_driver_name ?? "Assigned"}
+          </p>
+        ) : null}
 
         {/* ETA delta controls (PRD §11.3) */}
         {etaControlsVisible && (
@@ -1384,6 +1473,7 @@ function KdsOrderCard({
           orderId={order.id}
           outcome={externalDeliveryModal}
           session={session}
+          paymentSummary={order.payment_summary}
           onDone={() => {
             setExternalDeliveryModal(null);
             onRefresh();
@@ -1411,6 +1501,13 @@ function KdsOrderCard({
             onRefresh();
           }}
           onClose={() => setPinModal(false)}
+        />
+      )}
+      {paymentModal && (
+        <PaymentCollectionModal
+          order={order}
+          onRecorded={onRefresh}
+          onClose={() => setPaymentModal(false)}
         />
       )}
     </>
@@ -1637,14 +1734,15 @@ function KdsOptionsModal({
                 <th style={{ padding: "0.5rem" }}>Phone</th>
                 <th style={{ padding: "0.5rem" }}>Placed Time</th>
                 <th style={{ padding: "0.5rem" }}>Total</th>
+                <th style={{ padding: "0.5rem" }}>Payment</th>
                 <th style={{ padding: "0.5rem" }}>Stats</th>
               </tr>
             </thead>
             <tbody>
               {busy ? (
-                <tr><td colSpan={8} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
               ) : history.length === 0 ? (
-                <tr><td colSpan={8} style={{ textAlign: "center", padding: "1rem" }}>No history found</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: "center", padding: "1rem" }}>No history found</td></tr>
               ) : history.map((o) => {
                 const activeOrder = getKdsHistoryActiveOrder(o, currentOrders);
                 const phone = getKdsHistoryPhone(o, currentOrders);
@@ -1660,6 +1758,18 @@ function KdsOptionsModal({
                     </td>
                     <td style={{ padding: "0.5rem" }}>{new Date(o.placed_at).toLocaleTimeString()}</td>
                     <td style={{ padding: "0.5rem" }}>{cents(o.final_payable_cents)}</td>
+                    <td style={{ padding: "0.5rem", whiteSpace: "nowrap" }}>
+                      {o.payment_summary ? (
+                        <>
+                          <PaymentStatusBadge summary={o.payment_summary} />
+                          {o.payment_summary.has_unpaid_balance ? (
+                            <span style={{ marginLeft: "0.35rem", fontWeight: 700, color: "#a3270f" }}>
+                              {cents(o.payment_summary.outstanding_cents)} due
+                            </span>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </td>
                     <td style={{ padding: "0.5rem" }}>
                       <button
                         type="button"
@@ -1877,6 +1987,15 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontWeight: "bold", fontSize: "1.1rem" }}>
                 <span>Total</span><span>{cents(order.final_payable_cents)}</span>
               </div>
+            </div>
+
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.75rem" }}>Payment</h3>
+              <PaymentCollectionPanel
+                paymentsPath={kdsPaymentsPath(order.id)}
+                locationId={DEFAULT_LOCATION_ID}
+                onRecorded={onRefresh}
+              />
             </div>
           </div>
 
@@ -3006,6 +3125,7 @@ export function KdsClient() {
     socket.on("order.delivery_started", refresh);
     socket.on("order.eta_updated", refresh);
     socket.on("order.manual_review_required", refresh);
+    socket.on("order.payment_updated", refresh);
     socket.on("cancellation.requested", refresh);
     socket.on("cancellation.decided", refresh);
     socket.on("kds.schedule_updated", onScheduleUpdated);
@@ -3025,6 +3145,7 @@ export function KdsClient() {
       socket.off("order.delivery_started", refresh);
       socket.off("order.eta_updated", refresh);
       socket.off("order.manual_review_required", refresh);
+      socket.off("order.payment_updated", refresh);
       socket.off("cancellation.requested", refresh);
       socket.off("cancellation.decided", refresh);
       socket.off("kds.schedule_updated", onScheduleUpdated);

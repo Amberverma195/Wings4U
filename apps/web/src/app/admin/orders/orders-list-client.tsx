@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderDetail, OrderItem } from "@/lib/types";
 import { OrderChat } from "@/components/order-chat";
+import {
+  PaymentCollectionPanel,
+  paymentStatusLabel,
+} from "@/components/payment-collection";
 import { adminApiFetch, formatCents, formatDateTime } from "../admin-api";
 
 type OrderSummary = {
@@ -13,6 +17,7 @@ type OrderSummary = {
   fulfillment_type: string;
   placed_at: string;
   final_payable_cents: number;
+  payment_status_summary?: string;
 };
 
 type ListResponse = {
@@ -270,6 +275,7 @@ export function OrdersListClient() {
                   <th style={{ padding: "0.5rem" }}>Fulfillment</th>
                   <th style={{ padding: "0.5rem" }}>Placed</th>
                   <th style={{ padding: "0.5rem" }}>Total</th>
+                  <th style={{ padding: "0.5rem" }}>Payment</th>
                   <th style={{ padding: "0.5rem" }} />
                 </tr>
               </thead>
@@ -291,6 +297,21 @@ export function OrdersListClient() {
                     </td>
                     <td style={{ padding: "0.45rem 0.5rem" }}>
                       {formatCents(row.final_payable_cents)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.45rem 0.5rem",
+                        fontWeight: 600,
+                        color:
+                          row.payment_status_summary === "UNPAID" ||
+                          row.payment_status_summary === "PARTIALLY_PAID"
+                            ? "#c0392b"
+                            : undefined,
+                      }}
+                    >
+                      {row.payment_status_summary
+                        ? paymentStatusLabel(row.payment_status_summary)
+                        : ""}
                     </td>
                     <td style={{ padding: "0.45rem 0" }}>
                       <button
@@ -348,6 +369,14 @@ export function OrdersListClient() {
         <AdminOrderDetailModal
           order={detailOrder}
           onClose={() => setDetailOrder(null)}
+          onPaymentRecorded={() =>
+            void load({
+              append: false,
+              cursor: null,
+              statusFilter: status,
+              placedOnFilter: placedOn,
+            })
+          }
         />
       ) : null}
     </>
@@ -357,9 +386,11 @@ export function OrdersListClient() {
 function AdminOrderDetailModal({
   order,
   onClose,
+  onPaymentRecorded,
 }: {
   order: OrderDetail;
   onClose: () => void;
+  onPaymentRecorded: () => void;
 }) {
   const isTerminal = TERMINAL_STATUSES.has(order.status);
   const address = formatAddress(order.address_snapshot_json);
@@ -596,6 +627,23 @@ function AdminOrderDetailModal({
                 <span>Total</span>
                 <span>{formatCents(order.final_payable_cents)}</span>
               </div>
+            </section>
+
+            <section
+              style={{
+                padding: "1rem",
+                border: "1px solid var(--border)",
+                borderRadius: "12px",
+                background: "var(--surface)",
+              }}
+            >
+              <h3 style={{ margin: "0 0 0.75rem" }}>Payment</h3>
+              <PaymentCollectionPanel
+                paymentsPath={`/api/v1/orders/${order.id}/payments`}
+                locationId={order.location_id}
+                fetcher={adminApiFetch}
+                onRecorded={onPaymentRecorded}
+              />
             </section>
           </div>
 

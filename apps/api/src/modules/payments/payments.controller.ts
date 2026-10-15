@@ -3,16 +3,21 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Req,
+  UnprocessableEntityException,
   UseGuards,
 } from "@nestjs/common";
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
-  IsUUID,
+  Length,
+  Max,
+  MaxLength,
   Min,
 } from "class-validator";
 import type { Request } from "express";
@@ -46,10 +51,40 @@ class CreatePaymentDto {
 
   @IsOptional()
   processor_payload_json?: unknown;
+}
+
+export class RecordCollectionDto {
+  @IsIn(["CASH", "CARD"])
+  method!: "CASH" | "CARD";
+
+  @IsIn(["SUCCESS", "DECLINED", "CANCELLED", "FAILED", "NOT_COLLECTED"])
+  outcome!: "SUCCESS" | "DECLINED" | "CANCELLED" | "FAILED" | "NOT_COLLECTED";
+
+  @IsInt()
+  @Min(1)
+  @Max(10_000_000)
+  amount_cents!: number;
+
+  @IsIn(["STORE", "DRIVER"])
+  collected_by!: "STORE" | "DRIVER";
 
   @IsOptional()
-  @IsUUID()
-  initiated_by_user_id?: string;
+  @IsString()
+  @MaxLength(64)
+  terminal_reference?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  reference_unavailable?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+
+  @IsString()
+  @Length(8, 100)
+  idempotency_key!: string;
 }
 
 @Controller("orders/:orderId/payments")
@@ -57,14 +92,22 @@ class CreatePaymentDto {
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
+  /** Manual ledger corrections. Refunds go through the refund request flow. */
   @Post()
-  @Roles("STAFF", "ADMIN")
+  @Roles("ADMIN")
   async create(
-    @Param("orderId") orderId: string,
+    @Param("orderId", ParseUUIDPipe) orderId: string,
     @Req() req: Request,
     @CurrentUser() user: NonNullable<Request["user"]>,
     @Body() body: CreatePaymentDto,
   ) {
+    if (body.transaction_type === "REFUND") {
+      throw new UnprocessableEntityException({
+        message: "Refunds must be issued through a refund request.",
+        field: "transaction_type",
+      });
+    }
+
     const payment = await this.paymentsService.createPayment({
       orderId,
       locationId: req.locationId!,
@@ -75,8 +118,9 @@ export class PaymentsController {
       provider: body.provider,
       providerTransactionId: body.provider_transaction_id,
       processorPayloadJson: body.processor_payload_json,
-      initiatedByUserId: body.initiated_by_user_id ?? user.userId,
+      initiatedByUserId: user.userId,
       createdByUserId: user.userId,
+      actorRole: "ADMIN",
     });
 
     return {
@@ -94,25 +138,52 @@ export class PaymentsController {
     };
   }
 
+  @Post("collect")
+  @Roles(
+    { userRoles: ["STAFF"], employeeRoles: ["MANAGER", "CASHIER", "DRIVER"] },
+    "ADMIN",
+  )
+  async collect(
+    @Param("orderId", ParseUUIDPipe) orderId: string,
+    @Req() req: Request,
+    @CurrentUser() user: NonNullable<Request["user"]>,
+    @Body() body: RecordCollectionDto,
+  ) {
+    const result = await this.paymentsService.recordCollection({
+      orderId,
+      locationId: req.locationId!,
+      method: body.method,
+      outcome: body.outcome,
+      amountCents: body.amount_cents,
+      collectedBy: body.collected_by,
+      terminalReference: body.terminal_reference,
+      referenceUnavailable: body.reference_unavailable,
+      note: body.note,
+      idempotencyKey: body.idempotency_key,
+      actor: {
+        userId: user.userId,
+        role: user.role === "ADMIN" ? "ADMIN" : "STAFF",
+        employeeRole: user.role === "STAFF" ? user.employeeRole ?? null : null,
+      },
+    });
+    const view = await this.paymentsService.getStaffPaymentView(
+      orderId,
+      req.locationId!,
+    );
+    return { ...view, replayed: result.replayed };
+  }
+
   @Get()
   @Roles("CUSTOMER", "STAFF", "ADMIN")
-  async list(@Param("orderId") orderId: string) {
-    const payments = await this.paymentsService.getPaymentsForOrder(orderId);
-
-    return {
-      payments: payments.map((p) => ({
-        id: p.id,
-        order_id: p.orderId,
-        location_id: p.locationId,
-        transaction_type: p.transactionType,
-        transaction_status: p.transactionStatus,
-        payment_method: p.paymentMethod,
-        signed_amount_cents: p.signedAmountCents,
-        currency: p.currency,
-        provider: p.provider,
-        provider_transaction_id: p.providerTransactionId,
-        created_at: p.createdAt,
-      })),
-    };
+  async list(
+    @Param("orderId", ParseUUIDPipe) orderId: string,
+    @Req() req: Request,
+    @CurrentUser() user: NonNullable<Request["user"]>,
+  ) {
+    return this.paymentsService.getPaymentsForViewer(orderId, {
+      userId: user.userId,
+      role: user.role,
+      locationId: req.locationId!,
+    });
   }
 }

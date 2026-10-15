@@ -40,6 +40,8 @@ import { DeliveryPinService } from "./delivery-pin.service";
 import { KdsService } from "./kds.service";
 import { KdsOperatingHoursService } from "./kds-operating-hours.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { PaymentsService } from "../payments/payments.service";
+import { RecordCollectionDto } from "../payments/payments.controller";
 
 class KdsOperatingHourDto {
   @IsInt()
@@ -238,6 +240,7 @@ export class KdsController {
     private readonly deliveryPin: DeliveryPinService,
     private readonly operatingHours: KdsOperatingHoursService,
     private readonly realtime: RealtimeGateway,
+    private readonly payments: PaymentsService,
   ) {}
 
   @Get("schedule")
@@ -558,6 +561,51 @@ export class KdsController {
       req.locationId!,
       body.delta_minutes,
     );
+  }
+
+  @Get("orders/:id/payments")
+  async getPayments(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.payments.getStaffPaymentView(id, req.locationId!);
+  }
+
+  // Staff confirm an in-person collection after the cash is in hand or the
+  // terminal shows approved. Delivery completion never records payment.
+  @Post("orders/:id/payments/collect")
+  async recordCollection(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: RecordCollectionDto,
+    @Req() req: Request,
+  ) {
+    const staffUser =
+      req.user?.role === "STAFF" || req.user?.role === "ADMIN" ? req.user : null;
+    const result = await this.payments.recordCollection({
+      orderId: id,
+      locationId: req.locationId!,
+      method: body.method,
+      outcome: body.outcome,
+      amountCents: body.amount_cents,
+      collectedBy: body.collected_by,
+      terminalReference: body.terminal_reference,
+      referenceUnavailable: body.reference_unavailable,
+      note: body.note,
+      idempotencyKey: body.idempotency_key,
+      actor: {
+        userId: staffUser?.userId ?? null,
+        role: staffUser?.role === "ADMIN" ? "ADMIN" : staffUser ? "STAFF" : "KDS_STATION",
+        kdsStationSessionId: req.kdsStationSession?.id ?? null,
+      },
+    });
+    const view = await this.payments.getStaffPaymentView(id, req.locationId!);
+    if (!result.replayed) {
+      this.realtime.emitOrderEvent(req.locationId!, id, "order.payment_updated", {
+        order_id: id,
+        payment_status_summary: view.payment_status_summary,
+      });
+    }
+    return { ...view, replayed: result.replayed };
   }
 
   @Post("orders/:id/refund-request")

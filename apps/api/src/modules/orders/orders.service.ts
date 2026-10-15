@@ -12,6 +12,11 @@ import { ChatService } from "../chat/chat.service";
 import { RefundService } from "../refunds/refund.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { OrderStatusEmailService } from "../notifications/order-status-email.service";
+import {
+  serializeCustomerPaymentRow,
+  serializePaymentSummary,
+  serializeStaffPaymentRow,
+} from "../payments/payment-collection-view";
 
 // PRD §12.1: fixed default reason string for customer self-cancellations.
 const SELF_CANCEL_DEFAULT_REASON = "Customer cancelled within window";
@@ -49,13 +54,19 @@ function serializeOrderSummary(order: Record<string, unknown>) {
   };
 }
 
-function serializeOrderDetail(order: Record<string, unknown>) {
+function serializeOrderDetail(
+  order: Record<string, unknown>,
+  audience: "CUSTOMER" | "STAFF",
+) {
   const o = order as Record<string, unknown> & {
     orderNumber: bigint;
+    finalPayableCents: number;
     orderItems?: Record<string, unknown>[];
     statusEvents?: Record<string, unknown>[];
     cancellationRequests?: Record<string, unknown>[];
-    payments?: Record<string, unknown>[];
+    payments?: (Parameters<typeof serializeStaffPaymentRow>[0] & {
+      transactionStatus: string;
+    })[];
     location?: { phoneNumber?: string | null; name?: string | null } | null;
     assignedDriver?: {
       userId?: string;
@@ -119,13 +130,14 @@ function serializeOrderDetail(order: Record<string, unknown>) {
     created_at: ev.createdAt,
   }));
 
-  const payments = (o.payments ?? []).map((p: Record<string, unknown>) => ({
-    id: p.id,
-    payment_method: p.paymentMethod,
-    amount_cents: p.amountCents,
-    status: p.status,
-    created_at: p.createdAt,
-  }));
+  const allPayments = o.payments ?? [];
+  const successfulPayments = allPayments.filter(
+    (payment) => payment.transactionStatus === "SUCCESS",
+  );
+  const payments =
+    audience === "STAFF"
+      ? allPayments.map(serializeStaffPaymentRow)
+      : successfulPayments.map(serializeCustomerPaymentRow);
 
   return {
     id: o.id,
@@ -162,6 +174,10 @@ function serializeOrderDetail(order: Record<string, unknown>) {
     wallet_applied_cents: o.walletAppliedCents,
     final_payable_cents: o.finalPayableCents,
     payment_status_summary: o.paymentStatusSummary,
+    payment_summary: serializePaymentSummary(
+      o as Parameters<typeof serializePaymentSummary>[0],
+      successfulPayments,
+    ),
     customer_order_notes: o.customerOrderNotes,
     estimated_ready_at: o.estimatedReadyAt,
     estimated_window_min_minutes: o.estimatedWindowMinMinutes,
@@ -323,7 +339,10 @@ export class OrdersService {
       throw new ForbiddenException("You do not have access to this order");
     }
 
-    return serializeOrderDetail(order as unknown as Record<string, unknown>);
+    return serializeOrderDetail(
+      order as unknown as Record<string, unknown>,
+      userRole === "CUSTOMER" ? "CUSTOMER" : "STAFF",
+    );
   }
 
   async customerCancel(orderId: string, userId: string, _reason?: string) {

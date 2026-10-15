@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import { ChatService } from "../chat/chat.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -14,6 +14,26 @@ import { RefundService } from "../refunds/refund.service";
 import { RewardsService } from "../rewards/rewards.service";
 import { OrderStatusEmailService } from "../notifications/order-status-email.service";
 import { DeliveryPinService } from "./delivery-pin.service";
+import { serializePaymentSummary } from "../payments/payment-collection-view";
+import {
+  collectionPreferenceFromSnapshot,
+  paymentBalance,
+} from "../payments/payment-policy";
+
+/** Joined onto KDS order reads so cards can show collected/outstanding. */
+const KDS_PAYMENT_INCLUDE = {
+  payments: {
+    where: { transactionStatus: "SUCCESS" as const },
+    select: { transactionType: true, signedAmountCents: true },
+  },
+  assignedDriver: {
+    select: {
+      employeeProfile: {
+        select: { user: { select: { displayName: true } } },
+      },
+    },
+  },
+};
 
 const DEFAULT_KDS_STATUSES: OrderStatus[] = [
   "PLACED",
@@ -73,8 +93,13 @@ function serializeKdsOrder(
 ) {
   const o = order as Record<string, unknown> & {
     orderNumber: bigint;
+    finalPayableCents: number;
     orderItems?: Record<string, unknown>[];
     cancellationRequests?: Record<string, unknown>[];
+    payments?: { transactionType: string; signedAmountCents: number }[];
+    assignedDriver?: {
+      employeeProfile?: { user?: { displayName?: string | null } | null } | null;
+    } | null;
   };
 
   const items = (o.orderItems ?? []).map((item: Record<string, unknown>) => ({
@@ -131,6 +156,8 @@ function serializeKdsOrder(
     completed_at: o.completedAt,
     cancelled_at: o.cancelledAt,
     assigned_driver_user_id: o.assignedDriverUserId,
+    assigned_driver_name:
+      o.assignedDriver?.employeeProfile?.user?.displayName ?? null,
     estimated_travel_minutes: o.estimatedTravelMinutes,
     estimated_arrival_at: o.estimatedArrivalAt,
     delivery_started_at: o.deliveryStartedAt,
@@ -151,6 +178,10 @@ function serializeKdsOrder(
     wallet_applied_cents: o.walletAppliedCents,
     final_payable_cents: o.finalPayableCents,
     payment_status_summary: o.paymentStatusSummary,
+    payment_summary: serializePaymentSummary(
+      o as Parameters<typeof serializePaymentSummary>[0],
+      o.payments,
+    ),
     estimated_ready_at: o.estimatedReadyAt,
     estimated_window_min_minutes: o.estimatedWindowMinMinutes,
     estimated_window_max_minutes: o.estimatedWindowMaxMinutes,
@@ -289,6 +320,7 @@ export class KdsService {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        ...KDS_PAYMENT_INCLUDE,
       },
       orderBy: { placedAt: "asc" },
     });
@@ -334,6 +366,7 @@ export class KdsService {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        ...KDS_PAYMENT_INCLUDE,
       },
     });
 
@@ -478,6 +511,11 @@ export class KdsService {
         deliveryPhoneSnapshot: true,
         placedAt: true,
         finalPayableCents: true,
+        paymentStatusSummary: true,
+        paymentMethod: true,
+        netPaidAmountCents: true,
+        pricingSnapshotJson: true,
+        payments: KDS_PAYMENT_INCLUDE.payments,
         customer: {
           select: {
             identities: {
@@ -514,6 +552,7 @@ export class KdsService {
             o.customerPhoneSnapshot || o.deliveryPhoneSnapshot || identityPhone || "",
           placed_at: o.placedAt,
           final_payable_cents: o.finalPayableCents,
+          payment_summary: serializePaymentSummary(o, o.payments),
         };
       }),
       next_cursor: nextCursor,
@@ -788,8 +827,18 @@ export class KdsService {
             where: { status: "PENDING" },
             take: 1,
           },
+          ...KDS_PAYMENT_INCLUDE,
         },
       });
+
+      if (newStatus === "PICKED_UP" || newStatus === "DELIVERED") {
+        await this.auditUnpaidCompletion(
+          tx,
+          order,
+          newStatus as OrderStatus,
+          actorUserId,
+        );
+      }
 
       await tx.orderStatusEvent.create({
         data: {
@@ -1484,8 +1533,10 @@ export class KdsService {
             where: { status: "PENDING" },
             take: 1,
           },
+          ...KDS_PAYMENT_INCLUDE,
         },
       });
+      await this.auditUnpaidCompletion(tx, order, "DELIVERED", actorUserId);
       await tx.orderStatusEvent.create({
         data: {
           orderId,
@@ -1638,8 +1689,10 @@ export class KdsService {
             orderBy: { lineNo: "asc" },
           },
           cancellationRequests: { where: { status: "PENDING" }, take: 1 },
+          ...KDS_PAYMENT_INCLUDE,
         },
       });
+      await this.auditUnpaidCompletion(tx, order, "NO_PIN_DELIVERY", actorUserId);
       await tx.orderStatusEvent.create({
         data: {
           orderId,
@@ -1986,6 +2039,50 @@ export class KdsService {
       estimated_window_max_minutes: updated.estimatedWindowMaxMinutes,
       delta_minutes: deltaMinutes,
     };
+  }
+
+  /**
+   * Completing a pickup or delivery never records a payment. When the order
+   * closes with a balance still due, leave an audit row for reconciliation.
+   */
+  private async auditUnpaidCompletion(
+    tx: Prisma.TransactionClient,
+    order: {
+      id: string;
+      locationId: string;
+      finalPayableCents: number;
+      pricingSnapshotJson: unknown;
+      assignedDriverUserId: string | null;
+    },
+    toStatus: OrderStatus,
+    actorUserId: string | null,
+  ) {
+    const successful = await tx.orderPayment.findMany({
+      where: { orderId: order.id, transactionStatus: "SUCCESS" },
+      select: { transactionType: true, signedAmountCents: true },
+    });
+    const balance = paymentBalance(order.finalPayableCents, successful, toStatus);
+    if (balance.outstanding_cents <= 0) return;
+
+    await tx.adminAuditLog.create({
+      data: {
+        locationId: order.locationId,
+        actorUserId,
+        actorRoleSnapshot: actorUserId ? "STAFF" : "KDS_STATION",
+        actionKey: "order.completed_with_unpaid_balance",
+        entityType: "Order",
+        entityId: order.id,
+        payloadJson: {
+          to_status: toStatus,
+          outstanding_cents: balance.outstanding_cents,
+          collected_cents: balance.collected_cents,
+          collection_preference: collectionPreferenceFromSnapshot(
+            order.pricingSnapshotJson,
+          ),
+          driver_user_id: order.assignedDriverUserId,
+        },
+      },
+    });
   }
 
   // Small helpers shared with controller / workers.

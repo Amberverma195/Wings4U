@@ -4,6 +4,7 @@ import { CatalogModule } from "../catalog/catalog.module";
 import { KdsStationGuard } from "../../common/guards/kds-station.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { RefundModule } from "../refunds/refund.module";
+import { PaymentsModule } from "../payments/payments.module";
 import { RewardsModule } from "../rewards/rewards.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { SupportModule } from "../support/support.module";
@@ -22,6 +23,7 @@ import { KdsStationAccessModule } from "./kds-station-access.module";
     ChatModule,
     SupportModule,
     RefundModule,
+    PaymentsModule,
     RewardsModule,
     CatalogModule,
     NotificationsModule,

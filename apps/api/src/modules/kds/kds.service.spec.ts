@@ -58,6 +58,9 @@ describe("KdsService external delivery bypass", () => {
         city: "London",
         postal_code: "N6A 1A1",
       },
+      finalPayableCents: 2500,
+      paymentStatusSummary: "UNPAID",
+      pricingSnapshotJson: { collection_preference: "CARD_ON_DELIVERY" },
       orderItems: [],
       cancellationRequests: [],
       ...orderOverrides,
@@ -76,6 +79,8 @@ describe("KdsService external delivery bypass", () => {
       },
       orderStatusEvent: { create: jest.fn().mockResolvedValue({}) },
       customerProfile: { upsert: jest.fn().mockResolvedValue({}) },
+      orderPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      adminAuditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
       order: { findUnique: jest.fn().mockResolvedValue(order) },
@@ -144,12 +149,34 @@ describe("KdsService external delivery bypass", () => {
       });
       expect(harness.chat.closeConversation).toHaveBeenCalledWith("order-1");
 
+      const updateData = harness.tx.order.update.mock.calls[0][0].data;
+      expect(updateData).not.toHaveProperty("paymentStatusSummary");
+      expect(updateData).not.toHaveProperty("netPaidAmountCents");
+
       if (accruesRewards) {
         expect(harness.rewards.accrueForOrderInTransaction).toHaveBeenCalled();
         expect(harness.emails.send).toHaveBeenCalledWith(
           expect.objectContaining({ status: "DELIVERED" }),
           "DELIVERED",
         );
+        expect(result.payment_summary).toEqual(
+          expect.objectContaining({
+            payment_status_summary: "UNPAID",
+            collection_preference_label: "Card on Delivery",
+            outstanding_cents: 2500,
+            has_unpaid_balance: true,
+          }),
+        );
+        expect(harness.tx.adminAuditLog.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            actionKey: "order.completed_with_unpaid_balance",
+            payloadJson: expect.objectContaining({
+              to_status: "DELIVERED",
+              outstanding_cents: 2500,
+              collection_preference: "CARD_ON_DELIVERY",
+            }),
+          }),
+        });
       } else {
         expect(harness.tx.customerProfile.upsert).toHaveBeenCalled();
         expect(harness.rewards.accrueForOrderInTransaction).not.toHaveBeenCalled();

@@ -35,6 +35,7 @@ type RealtimeEventName =
   | "order.delivery_started"
   | "order.eta_updated"
   | "order.manual_review_required"
+  | "order.payment_updated"
   | "chat.message"
   | "chat.read"
   | "cancellation.requested"
