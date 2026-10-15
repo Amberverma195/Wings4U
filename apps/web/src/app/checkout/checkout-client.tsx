@@ -45,7 +45,6 @@ import { useSession, withSilentRefresh } from "@/lib/session";
 import type { CartQuoteResponse, CheckoutResponse } from "@/lib/types";
 import type { ApiEnvelope } from "@wings4u/contracts";
 
-import { styles } from "@/Wings4u/styles";
 import { ContactlessPreferenceCombo } from "./contactless-preference-combo";
 import { deleteSavedCart } from "@/lib/saved-cart-api";
 import {
@@ -1029,58 +1028,6 @@ export function CheckoutClient() {
         })}
       </div>
 
-      <div style={{ marginTop: "1.25rem" }}>
-        <h3
-          style={{
-            fontFamily: "'Libre Baskerville', Georgia, 'Times New Roman', serif",
-            fontSize: 22,
-            fontWeight: 700,
-            color: "#111827",
-            margin: "0 0 12px",
-            letterSpacing: "0.5px",
-          }}
-        >
-          Deals & rewards
-        </h3>
-        <Link href="/cart" className="cart-see-coupons-btn" style={{ textDecoration: "none" }}>
-          <span className="cart-see-coupons-icon" aria-hidden>🎁</span>
-          <span style={{ flex: 1, textAlign: "left" }}>
-            {applyWingsReward
-              ? "1lb of wings free · Applied"
-              : promoApplied
-                ? `Promo ${promoApplied} · Applied`
-                : "See coupons & rewards"}
-          </span>
-          <span aria-hidden>→</span>
-        </Link>
-      </div>
-
-      <p style={styles.cartTipLabel}>
-        {cart.fulfillmentType === "DELIVERY" ? "Add a tip for your driver" : "Add a tip"}
-      </p>
-      <div className="cart-tip-segment-row" style={styles.cartTipSegmentRow}>
-        {(
-          [
-            { id: "none" as const, label: "None" },
-            { id: 10 as const, label: "10%" },
-            { id: 15 as const, label: "15%" },
-            { id: 20 as const, label: "20%" },
-          ] as const
-        ).map((seg) => {
-          const active = cart.driverTipPercent === seg.id;
-          return (
-            <button
-              key={String(seg.id)}
-              type="button"
-              className={`cart-tip-seg-btn${active ? " cart-tip-seg-btn--active" : ""}`}
-              onClick={() => cart.setDriverTipPercent(seg.id)}
-            >
-              <span className="cart-tip-seg-btn__label">{seg.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
       {(quote || cart.fulfillmentType === "DELIVERY") && (
         <div className="quote-summary">
           <div className="quote-row">
@@ -1140,10 +1087,10 @@ export function CheckoutClient() {
               </span>
             </div>
           )}
-          {cart.driverTipPercent !== "none" && (
+          {quote && quote.driver_tip_cents > 0 && (
             <div className="quote-row">
               <span>Tip</span>
-              <span>{cents(quote?.driver_tip_cents ?? tipCents)}</span>
+              <span>{cents(quote.driver_tip_cents)}</span>
             </div>
           )}
           {quote ? (
