@@ -310,7 +310,11 @@ export class PaymentsService {
           payload.outcome === params.outcome &&
           payload.collected_by === params.collectedBy &&
           replay.paymentMethod === params.method &&
-          replay.signedAmountCents === params.amountCents;
+          replay.signedAmountCents === params.amountCents &&
+          (payload.terminal_reference ?? null) === reference &&
+          (payload.note ?? null) === note &&
+          (payload.reference_unavailable === true) ===
+            (params.referenceUnavailable === true);
         if (!sameRequest) {
           throw new ConflictException(
             "This confirmation was already submitted with different details.",

@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import type { RefundMethod } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
@@ -21,6 +23,7 @@ interface CreateRefundRequestParams {
   orderId: string;
   locationId: string;
   requestedByUserId: string;
+  requesterRole: "CUSTOMER" | "STAFF" | "ADMIN";
   amountCents: number;
   reason: string;
 }
@@ -52,6 +55,20 @@ export class RefundService {
     });
     if (!order) {
       throw new NotFoundException("Order not found");
+    }
+
+    if (order.locationId !== params.locationId) {
+      throw new UnprocessableEntityException({
+        message: "Order does not belong to this location",
+        field: "location_id",
+      });
+    }
+
+    if (
+      params.requesterRole === "CUSTOMER" &&
+      order.customerUserId !== params.requestedByUserId
+    ) {
+      throw new ForbiddenException("You do not have access to this order");
     }
 
     if (!REFUNDABLE_STATUSES.has(order.status)) {
@@ -263,13 +280,24 @@ export class RefundService {
       );
     }
 
-    return this.prisma.refundRequest.update({
-      where: { id: params.refundRequestId },
+    // Conditional update so a concurrent approval that already left PENDING
+    // cannot be overwritten by this rejection.
+    const rejected = await this.prisma.refundRequest.updateMany({
+      where: { id: params.refundRequestId, status: "PENDING" },
       data: {
         status: "REJECTED",
         rejectedByUserId: params.rejectedByUserId,
         rejectedAt: new Date(),
       },
+    });
+    if (rejected.count !== 1) {
+      throw new ConflictException(
+        "Refund request was already decided by another request",
+      );
+    }
+
+    return this.prisma.refundRequest.findUniqueOrThrow({
+      where: { id: params.refundRequestId },
     });
   }
 }

@@ -32,6 +32,7 @@ export class RefundController {
       orderId,
       locationId: req.locationId!,
       requestedByUserId: user.userId,
+      requesterRole: user.role,
       amountCents: body.amount_cents,
       reason: body.reason,
     });

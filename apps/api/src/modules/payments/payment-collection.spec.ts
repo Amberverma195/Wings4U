@@ -458,6 +458,62 @@ describe("Payment collection: duplicates and concurrency", () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it("rejects a reused key when the terminal reference or note differs", async () => {
+    const harness = createHarness([makeOrder()]);
+    await harness.service.recordCollection(
+      collection({
+        method: "CARD",
+        terminalReference: "APPR-100",
+        note: "Counter terminal",
+      }),
+    );
+
+    await expect(
+      harness.service.recordCollection(
+        collection({
+          method: "CARD",
+          terminalReference: "APPR-200",
+          note: "Counter terminal",
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    await expect(
+      harness.service.recordCollection(
+        collection({
+          method: "CARD",
+          terminalReference: "APPR-100",
+          note: "Different note",
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(harness.state.payments).toHaveLength(1);
+  });
+
+  it("replays a card confirmation when the reference and note match", async () => {
+    const harness = createHarness([makeOrder()]);
+    const first = await harness.service.recordCollection(
+      collection({
+        method: "CARD",
+        terminalReference: " APPR-100 ",
+        note: " Counter terminal ",
+      }),
+    );
+
+    const second = await harness.service.recordCollection(
+      collection({
+        method: "CARD",
+        terminalReference: "APPR-100",
+        note: "Counter terminal",
+      }),
+    );
+
+    expect(second.replayed).toBe(true);
+    expect(second.payment.id).toBe(first.payment.id);
+    expect(harness.state.payments).toHaveLength(1);
+  });
+
   it("rejects the same terminal reference on a second order", async () => {
     const harness = createHarness([makeOrder(), makeOrder({ id: "order-2" })]);
     await harness.service.recordCollection(

@@ -1,5 +1,9 @@
 import "reflect-metadata";
-import { ConflictException } from "@nestjs/common";
+import {
+  ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { RefundService } from "./refund.service";
 import { PaymentsService } from "../payments/payments.service";
@@ -97,8 +101,28 @@ function createHarness(options: { failRefundLedger?: boolean } = {}) {
         Object.assign(refund, data);
         return { count: 1 };
       }),
+      findMany: jest.fn(async ({ where }: any) =>
+        [...state.refunds.values()].filter(
+          (refund) =>
+            refund.orderId === where.orderId &&
+            (!where.status?.in || where.status.in.includes(refund.status)),
+        ),
+      ),
+      create: jest.fn(async ({ data }: any) => {
+        const row = {
+          id: `refund-${state.refunds.size + 1}`,
+          status: "PENDING",
+          ...data,
+        };
+        state.refunds.set(row.id, row);
+        return { ...row };
+      }),
     },
     order: {
+      findUnique: jest.fn(async ({ where }: any) => {
+        const order = state.orders.get(where.id);
+        return order ? { ...order } : null;
+      }),
       findUniqueOrThrow: jest.fn(async ({ where }: any) => {
         const order = state.orders.get(where.id);
         if (!order) throw new Error("not found");
@@ -294,5 +318,97 @@ describe("Refund issuance atomicity and concurrency", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(harness.state.creditLedger).toHaveLength(1);
     expect(harness.state.wallets.get("customer-1")!.balanceCents).toBe(1000);
+  });
+});
+
+describe("Refund request authorization", () => {
+  it("lets the owning customer request a refund for their order", async () => {
+    const harness = createHarness();
+
+    const created = await harness.service.createRefundRequest({
+      orderId: "order-1",
+      locationId: "loc-1",
+      requestedByUserId: "customer-1",
+      requesterRole: "CUSTOMER",
+      amountCents: 500,
+      reason: "Missing item",
+    });
+
+    expect(created.status).toBe("PENDING");
+    expect(created.locationId).toBe("loc-1");
+    expect(created.requestedByUserId).toBe("customer-1");
+  });
+
+  it("refuses a customer refund request for someone else's order", async () => {
+    const harness = createHarness();
+
+    await expect(
+      harness.service.createRefundRequest({
+        orderId: "order-1",
+        locationId: "loc-1",
+        requestedByUserId: "customer-2",
+        requesterRole: "CUSTOMER",
+        amountCents: 500,
+        reason: "Missing item",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(harness.state.refunds.size).toBe(1);
+  });
+
+  it("refuses a refund request when the order is at another location", async () => {
+    const harness = createHarness();
+
+    await expect(
+      harness.service.createRefundRequest({
+        orderId: "order-1",
+        locationId: "loc-2",
+        requestedByUserId: "staff-1",
+        requesterRole: "STAFF",
+        amountCents: 500,
+        reason: "Missing item",
+      }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    expect(harness.state.refunds.size).toBe(1);
+  });
+});
+
+describe("Refund rejection concurrency", () => {
+  it("does not reject a refund that is no longer pending", async () => {
+    const harness = createHarness();
+    harness.state.refunds.get("refund-1")!.status = "ISSUED";
+
+    await expect(
+      harness.service.rejectRefund({
+        refundRequestId: "refund-1",
+        rejectedByUserId: "admin-2",
+        adminNotes: "Too late",
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(harness.state.refunds.get("refund-1")!.status).toBe("ISSUED");
+  });
+
+  it("does not overwrite a refund issued after the rejection read it as pending", async () => {
+    const harness = createHarness();
+    const read = harness.prisma.refundRequest.findUnique.getMockImplementation()!;
+    harness.prisma.refundRequest.findUnique.mockImplementationOnce(async (args: any) => {
+      const row = await read(args);
+      // Approval claims the row after rejection has already read PENDING.
+      harness.state.refunds.get("refund-1")!.status = "ISSUED";
+      return row;
+    });
+
+    await expect(
+      harness.service.rejectRefund({
+        refundRequestId: "refund-1",
+        rejectedByUserId: "admin-2",
+        adminNotes: "Reject",
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(harness.state.refunds.get("refund-1")!.status).toBe("ISSUED");
+    expect(harness.state.refunds.get("refund-1")!.rejectedByUserId).toBeUndefined();
   });
 });
