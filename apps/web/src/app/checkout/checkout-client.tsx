@@ -1299,17 +1299,16 @@ export function CheckoutClient() {
             <button
               key={value}
               type="button"
-              className={active ? "btn-primary" : "btn-secondary"}
+              className={`checkout-payment-option${active ? " checkout-payment-option--selected" : ""}`}
               aria-pressed={active}
               onClick={() =>
                 setCollectionPreference(
                   value as "PAY_AT_STORE" | "CASH_ON_DELIVERY" | "CARD_ON_DELIVERY",
                 )
               }
-              style={{ display: "block", width: "100%", textAlign: "left", marginTop: "0.5rem" }}
             >
               <strong>{title}</strong>
-              <span style={{ display: "block", fontWeight: 500, marginTop: "0.2rem" }}>{detail}</span>
+              <span className="checkout-payment-option-detail">{detail}</span>
             </button>
           );
         })}

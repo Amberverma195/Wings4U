@@ -963,7 +963,7 @@ export default function CheckoutScreen() {
               <Section title="Payment">
                 {paymentOptions.map((option) => {
                   const active = paymentMethod === option.value;
-                  const iconColor = active ? "#FFF" : "#FF4D4D";
+                  const iconColor = active ? "#EA580C" : "#FF4D4D";
                   return (
                     <PaymentOption
                       key={option.value}
@@ -1318,8 +1318,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   paymentOptionActive: {
-    borderColor: "#FF4D4D",
-    backgroundColor: "#FF4D4D",
+    borderColor: "rgba(234, 88, 12, 0.55)",
+    backgroundColor: "#FFF",
+    shadowColor: "rgba(234, 88, 12, 0.25)",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 3,
+    elevation: 1,
   },
   paymentOptionDisabled: {
     opacity: 0.52,
@@ -1333,7 +1338,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF0F0",
   },
   paymentIconActive: {
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(234, 88, 12, 0.12)",
   },
   paymentTextWrap: {
     flex: 1,
@@ -1344,7 +1349,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   paymentTitleActive: {
-    color: "#FFF",
+    color: "#9A3412",
   },
   paymentDetail: {
     color: "#777",
@@ -1354,7 +1359,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   paymentDetailActive: {
-    color: "#FFE6E6",
+    color: "#4B5563",
   },
   paymentRadio: {
     width: 18,
@@ -1364,8 +1369,8 @@ const styles = StyleSheet.create({
     borderColor: "#D9D9D9",
   },
   paymentRadioActive: {
-    borderColor: "#FFF",
-    backgroundColor: "#FFF",
+    borderColor: "#EA580C",
+    backgroundColor: "#EA580C",
   },
   summaryRow: {
     flexDirection: "row",

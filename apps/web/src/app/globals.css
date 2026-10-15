@@ -1701,6 +1701,60 @@ main {
   background: rgba(255, 255, 255, 0.55);
 }
 
+.checkout-page .checkout-payment-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 0.5rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(12, 3, 0, 0.14);
+  background: #fff;
+  color: #1a1510;
+  font-family: "DM Sans", system-ui, sans-serif;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.checkout-page .checkout-payment-option strong {
+  display: block;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  color: #0c0300;
+}
+
+.checkout-page .checkout-payment-option-detail {
+  display: block;
+  margin-top: 0.35rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(12, 3, 0, 0.68);
+}
+
+.checkout-page .checkout-payment-option:hover {
+  border-color: rgba(12, 3, 0, 0.22);
+  background: #fff;
+}
+
+.checkout-page .checkout-payment-option--selected {
+  border-color: rgba(234, 88, 12, 0.5);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(234, 88, 12, 0.18);
+}
+
+.checkout-page .checkout-payment-option--selected strong {
+  color: #9a3412;
+}
+
+.checkout-page .checkout-payment-option--selected .checkout-payment-option-detail {
+  color: rgba(12, 3, 0, 0.78);
+}
+
 .checkout-page .surface-error {
   color: #8e2f08;
   font-weight: 600;
