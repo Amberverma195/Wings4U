@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
@@ -22,13 +23,14 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { ShoppingBag, Clock, AlertCircle, User, CarFront, Bike } from 'lucide-react-native';
+import { ShoppingBag, Clock, AlertCircle, User, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
 import { useMenu } from '../src/hooks/use-menu';
 import { useSession } from '../src/context/session';
 import { useCart } from '../src/context/cart';
 import { AuthSheet } from '../src/components/auth-sheet';
 import { MenuItemBuilder } from '../src/components/menu-item-builder';
 import type { MenuCategory, MenuItem } from '../src/lib/types';
+import { filterMenuCategories } from '../src/lib/menu-search';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -115,12 +117,13 @@ export default function Home() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compactHeader = width < 380;
-  const headerHeight = Math.max(180, Math.min(width / 2, 260)) + insets.top;
+  const headerHeight = Math.max(192, Math.min(width * 0.48, 240)) + insets.top;
+  const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(headerHeight);
   const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
   const cart = useCart();
   const fulfillmentType = cart.fulfillmentType;
   const fulfillmentProgress = useSharedValue(fulfillmentType === 'DELIVERY' ? 1 : 0);
-  const fulfillmentOptionWidth = ((compactHeader ? 110 : 136) - 6) / 2;
+  const fulfillmentOptionWidth = ((compactHeader ? 172 : 184) - 6) / 2;
 
   useEffect(() => {
     fulfillmentProgress.value = withTiming(fulfillmentType === 'DELIVERY' ? 1 : 0, {
@@ -143,6 +146,9 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [categoryViewportWidth, setCategoryViewportWidth] = useState(0);
   const [categoryContentWidth, setCategoryContentWidth] = useState(0);
   const categoryScrollX = useSharedValue(0);
@@ -172,6 +178,11 @@ export default function Home() {
     () => sortedCategories.find((c) => c.slug === resolvedActiveSlug) ?? null,
     [sortedCategories, resolvedActiveSlug],
   );
+  const displayedCategories = useMemo(() => filterMenuCategories(
+    searchQuery.trim() ? sortedCategories : activeCategory ? [activeCategory] : [],
+    searchQuery,
+    availableOnly,
+  ), [sortedCategories, activeCategory, searchQuery, availableOnly]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -182,6 +193,7 @@ export default function Home() {
 
   const handleCategoryPress = useCallback((slug: string) => {
     setActiveCategorySlug(slug);
+    setSearchQuery('');
   }, []);
 
   const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {
@@ -192,14 +204,6 @@ export default function Home() {
     }
     setActiveCategorySlug(null);
   }, [cart, fulfillmentType]);
-
-  /* Greeting based on time of day */
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning!';
-    if (hour < 17) return 'Good afternoon!';
-    return 'Good evening!';
-  }, []);
 
   /* ---------------------------------------------------------------- */
   /*  Loading state                                                    */
@@ -243,9 +247,11 @@ export default function Home() {
       <StatusBar style={headerScrolledAway ? 'dark' : 'light'} />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentInsetAdjustmentBehavior="never"
         onScroll={({ nativeEvent }) => {
-          setHeaderScrolledAway(nativeEvent.contentOffset.y >= headerHeight - insets.top);
+          setHeaderScrolledAway(nativeEvent.contentOffset.y >= measuredHeaderHeight - insets.top);
         }}
         scrollEventThrottle={16}
         refreshControl={
@@ -253,7 +259,8 @@ export default function Home() {
         }
       >
         {/* Header Section */}
-        <View style={[styles.header, { minHeight: headerHeight }]}>
+        <View style={[styles.header, { minHeight: headerHeight }]}
+          onLayout={({ nativeEvent }) => setMeasuredHeaderHeight(nativeEvent.layout.height)}>
           <View
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
@@ -282,79 +289,37 @@ export default function Home() {
           <View style={[
             styles.headerContent,
             {
-              paddingTop: insets.top + 18,
+              paddingTop: insets.top + 12,
               paddingLeft: Math.max(compactHeader ? 16 : 20, insets.left),
               paddingRight: Math.max(compactHeader ? 16 : 20, insets.right),
             },
           ]}>
-            <Text style={styles.greeting}>{greeting}</Text>
             <View style={styles.headerRow}>
-              <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1}>
-                Wings4U
-              </Text>
-              <View
-                style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
-                accessibilityRole="radiogroup"
-                accessibilityLabel="Order type"
-              >
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.fulfillmentPill,
-                    { width: fulfillmentOptionWidth },
-                    fulfillmentPillStyle,
-                  ]}
-                />
-                {(['PICKUP', 'DELIVERY'] as const).map((type) => {
-                  const selected = fulfillmentType === type;
-                  const FulfillmentIcon = type === 'PICKUP' ? CarFront : Bike;
-                  return (
-                    <TouchableOpacity
-                      key={type}
-                      style={styles.fulfillmentOption}
-                      activeOpacity={1}
-                      onPress={() => selectFulfillment(type)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: selected }}
-                      accessibilityLabel={type === 'PICKUP' ? 'Pickup' : 'Delivery'}
-                    >
-                      <View pointerEvents="none" accessible={false}
-                        accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                        <FulfillmentIcon size={compactHeader ? 10 : 12}
-                          color={selected ? '#FFF' : '#666'} strokeWidth={2} />
-                      </View>
-                      <Animated.Text
-                        style={[
-                          styles.fulfillmentLabel,
-                          compactHeader && styles.fulfillmentLabelCompact,
-                          type === 'PICKUP' ? pickupLabelStyle : deliveryLabelStyle,
-                        ]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                      >
-                        {type === 'PICKUP' ? 'Pickup' : 'Delivery'}
-                      </Animated.Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.branding}>
+                <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1} accessibilityRole="header">
+                  Wings<Text style={styles.titleAccent}>4U</Text>
+                </Text>
+                <Text style={styles.tagline} numberOfLines={1} adjustsFontSizeToFit>
+                  WINGS · BURGERS · TENDERS · MORE
+                </Text>
               </View>
               <View style={styles.headerActions}>
                 {/* Auth button */}
                 {session.authenticated ? (
                   <TouchableOpacity style={[styles.authAvatarBtn, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/profile')}
                     accessibilityRole="button" accessibilityLabel="Open profile" hitSlop={4}>
-                    <User size={18} color="#FFF" />
+                    <User size={18} color="#1A1A1A" />
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity style={[styles.authGuestBtn, compactHeader && styles.headerIconCompact]} onPress={() => setAuthVisible(true)}
                     accessibilityRole="button" accessibilityLabel="Sign in" hitSlop={4}>
-                    <User size={20} color="#FFF" />
+                    <User size={20} color="#1A1A1A" />
                   </TouchableOpacity>
                 )}
                 {/* Cart button */}
                 <TouchableOpacity style={[styles.cartButton, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/cart')}
                   accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.itemCount} items`} hitSlop={4}>
-                  <ShoppingBag size={24} color="#FFF" />
+                  <ShoppingBag size={22} color="#1A1A1A" />
                   {cart.itemCount > 0 ? (
                     <View style={styles.cartBadge}>
                       <Text style={styles.cartBadgeText}>
@@ -365,6 +330,97 @@ export default function Home() {
                 </TouchableOpacity>
               </View>
             </View>
+            <View
+              style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Order type"
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.fulfillmentPill,
+                  { width: fulfillmentOptionWidth },
+                  fulfillmentPillStyle,
+                ]}
+              />
+              {(['PICKUP', 'DELIVERY'] as const).map((type) => {
+                const selected = fulfillmentType === type;
+                const FulfillmentIcon = type === 'PICKUP' ? CarFront : Bike;
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={styles.fulfillmentOption}
+                    activeOpacity={1}
+                    onPress={() => selectFulfillment(type)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={type === 'PICKUP' ? 'Pickup' : 'Delivery'}
+                  >
+                    <View pointerEvents="none" accessible={false}
+                      accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                      <FulfillmentIcon size={14}
+                        color={selected ? '#FFF' : '#666'} strokeWidth={2} />
+                    </View>
+                    <Animated.Text
+                      style={[
+                        styles.fulfillmentLabel,
+                        compactHeader && styles.fulfillmentLabelCompact,
+                        type === 'PICKUP' ? pickupLabelStyle : deliveryLabelStyle,
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {type === 'PICKUP' ? 'Pickup' : 'Delivery'}
+                    </Animated.Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          {/* Search and menu filters */}
+          <View style={styles.searchSection}>
+            <View style={styles.searchRow}>
+              <View style={styles.searchField}>
+                <Search size={18} color="#555" />
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search wings, combos, burgers, tenders..."
+                  placeholderTextColor="#888"
+                  accessibilityLabel="Search menu"
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+                {searchQuery.length > 0 && <TouchableOpacity
+                  onPress={() => setSearchQuery('')} accessibilityRole="button"
+                  accessibilityLabel="Clear search" style={styles.clearSearch}>
+                  <X size={16} color="#666" />
+                </TouchableOpacity>}
+              </View>
+              <TouchableOpacity
+                style={[styles.filterButton, availableOnly && styles.filterButtonActive]}
+                onPress={() => setFiltersVisible(value => !value)}
+                accessibilityRole="button"
+                accessibilityLabel="Menu filters"
+                accessibilityState={{ expanded: filtersVisible }}
+              >
+                <SlidersHorizontal size={20} color={availableOnly ? '#FFF' : '#333'} />
+              </TouchableOpacity>
+            </View>
+            {filtersVisible && <View style={styles.filtersPanel}>
+              <Text style={styles.filterLabel}>Show</Text>
+              <TouchableOpacity
+                style={[styles.filterChip, availableOnly && styles.filterChipActive]}
+                onPress={() => setAvailableOnly(value => !value)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: availableOnly }}
+                accessibilityLabel="Available items only"
+              >
+                {availableOnly && <Check size={14} color="#FF4D4D" />}
+                <Text style={styles.filterChipText}>Available now</Text>
+              </TouchableOpacity>
+            </View>}
           </View>
         </View>
 
@@ -425,8 +481,8 @@ export default function Home() {
         ) : null}
 
         {/* Active Category Items */}
-        {activeCategory && (
-          <>
+        {displayedCategories.map(activeCategory => (
+          <React.Fragment key={activeCategory.id}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{activeCategory.name}</Text>
               <Text style={styles.itemCount}>
@@ -453,8 +509,13 @@ export default function Home() {
                 />
               ))
             )}
-          </>
-        )}
+          </React.Fragment>
+        ))}
+        {displayedCategories.length === 0 && (searchQuery.trim() || availableOnly) ? (
+          <View style={styles.emptyCategory}>
+            <Text style={styles.emptyCategoryText}>No items match your search or filters.</Text>
+          </View>
+        ) : null}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -606,13 +667,11 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#120A08',
     overflow: 'hidden',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
   },
   headerContent: {
     flex: 1,
-    paddingBottom: 24,
-    gap: 8,
+    paddingBottom: 16,
+    gap: 12,
   },
   headerRow: {
     flexDirection: 'row',
@@ -620,35 +679,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  greeting: {
-    fontSize: 14,
-    color: '#E6D5CF',
-    fontWeight: '500',
+  branding: {
+    flex: 1,
+    gap: 3,
   },
   title: {
-    fontSize: 24,
+    fontSize: 34,
     fontWeight: '800',
     color: '#FFF',
     flexShrink: 1,
   },
   titleCompact: {
-    fontSize: 20,
+    fontSize: 30,
+  },
+  titleAccent: {
+    color: '#FF3434',
+  },
+  tagline: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#E8E0DD',
+    letterSpacing: 0.5,
   },
   fulfillmentSwitch: {
-    width: 136,
+    width: 184,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     backgroundColor: '#F0F0F0',
     borderRadius: 22,
     padding: 3,
   },
   fulfillmentSwitchCompact: {
-    width: 110,
+    width: 172,
   },
   fulfillmentOption: {
     flex: 1,
     flexDirection: 'row',
     gap: 3,
-    minHeight: 38,
+    minHeight: 30,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 19,
@@ -677,9 +745,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   cartButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: 'rgba(15, 10, 10, 0.78)',
+    width: 40,
+    height: 40,
+    backgroundColor: '#FFF',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.32)',
     borderRadius: 24,
@@ -693,14 +761,14 @@ const styles = StyleSheet.create({
   },
   cartBadge: {
     position: 'absolute',
-    top: 8,
-    right: 6,
-    minWidth: 18,
-    height: 18,
+    top: -3,
+    right: -2,
+    minWidth: 16,
+    height: 16,
     backgroundColor: '#FF4D4D',
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#24120F',
+    borderColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 3,
@@ -714,13 +782,13 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
   },
   authAvatarBtn: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: 21,
-    backgroundColor: '#FF4D4D',
+    backgroundColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -730,20 +798,58 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   authGuestBtn: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: 21,
-    backgroundColor: 'rgba(15, 10, 10, 0.78)',
+    backgroundColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#FF4D4D',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
+
+  /* Search inside the banner */
+  searchSection: {
+    marginHorizontal: 16,
+    paddingBottom: 16,
+    zIndex: 1,
+  },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  searchField: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  searchInput: { flex: 1, minWidth: 0, minHeight: 46, fontSize: 12, color: '#222' },
+  clearSearch: { minWidth: 30, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  filterButton: {
+    width: 46, height: 46, borderRadius: 23, backgroundColor: '#FFF',
+    alignItems: 'center', justifyContent: 'center', elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8,
+  },
+  filterButtonActive: { backgroundColor: '#FF4D4D' },
+  filtersPanel: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 12 },
+  filterLabel: { fontSize: 13, color: '#E8E0DD' },
+  filterChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20,
+    borderWidth: 1, borderColor: '#DDD', paddingHorizontal: 12, minHeight: 38,
+    backgroundColor: '#FFF',
+  },
+  filterChipActive: { borderColor: '#FF4D4D', backgroundColor: '#FFF1F1' },
+  filterChipText: { fontSize: 13, color: '#333' },
 
   /* Section headers */
   sectionHeader: {
