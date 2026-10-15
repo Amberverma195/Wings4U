@@ -270,33 +270,6 @@ export default function CartScreen() {
               </View>
             </View>
 
-            {cart.fulfillmentType === "DELIVERY" ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Driver tip</Text>
-                <View style={styles.tipRow}>
-                  {(["none", 10, 15, 20] as const).map((tip) => {
-                    const active = cart.driverTipPercent === tip;
-                    return (
-                      <TouchableOpacity
-                        key={String(tip)}
-                        style={[styles.tipButton, active && styles.tipButtonActive]}
-                        onPress={() => cart.setDriverTipPercent(tip)}
-                      >
-                        <Text
-                          style={[
-                            styles.tipButtonText,
-                            active && styles.tipButtonTextActive,
-                          ]}
-                        >
-                          {tip === "none" ? "No tip" : `${tip}%`}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : null}
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Items</Text>
               {cart.items.map((item) => {
@@ -499,26 +472,15 @@ export default function CartScreen() {
               ) : null}
             </View>
 
-            <View style={styles.footerActions}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => router.push("/")}
-              >
-                <Text style={styles.secondaryButtonText}>Add more</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.checkoutButton,
-                  (quoteLoading || !quote || Boolean(quoteError)) && styles.checkoutButtonDisabled,
-                ]}
-                disabled={quoteLoading || !quote || Boolean(quoteError)}
-                onPress={() => router.push("/checkout")}
-              >
-                <Text style={styles.checkoutButtonText}>Checkout</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.clearButton} onPress={cart.clear}>
-              <Text style={styles.clearButtonText}>Clear cart</Text>
+            <TouchableOpacity
+              style={[
+                styles.checkoutButton,
+                (quoteLoading || !quote || Boolean(quoteError)) && styles.checkoutButtonDisabled,
+              ]}
+              disabled={quoteLoading || !quote || Boolean(quoteError)}
+              onPress={() => router.push("/checkout")}
+            >
+              <Text style={styles.checkoutButtonText}>Checkout</Text>
             </TouchableOpacity>
           </>
         )}
@@ -599,32 +561,6 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: "#FFF",
-  },
-  tipRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  tipButton: {
-    flex: 1,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "#EFEFEF",
-  },
-  tipButtonActive: {
-    borderColor: "#FF4D4D",
-    backgroundColor: "rgba(255,77,77,0.08)",
-  },
-  tipButtonText: {
-    color: "#666",
-    fontWeight: "800",
-    fontSize: 13,
-  },
-  tipButtonTextActive: {
-    color: "#FF4D4D",
   },
   cartLine: {
     backgroundColor: "#FFF",
@@ -838,11 +774,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-  footerActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 14,
-  },
   primaryButton: {
     backgroundColor: "#FF4D4D",
     paddingHorizontal: 28,
@@ -854,32 +785,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 15,
   },
-  secondaryButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1A1A1A",
-  },
-  secondaryButtonText: {
-    color: "#FFF",
-    fontWeight: "800",
-  },
-  clearButton: {
-    marginTop: 10,
-    height: 48,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,77,77,0.08)",
-  },
-  clearButtonText: {
-    color: "#FF4D4D",
-    fontWeight: "800",
-  },
   checkoutButton: {
-    flex: 1,
+    marginTop: 14,
+    width: "100%",
     height: 48,
     borderRadius: 12,
     alignItems: "center",

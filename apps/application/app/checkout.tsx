@@ -43,7 +43,13 @@ import {
   quotePromoParams,
   wingsRewardBlockedReason,
 } from "../src/lib/promo-selection";
-import type { CartItem, CartQuoteResponse, CheckoutResponse } from "../src/lib/types";
+import { promoBenefitLabel } from "../src/lib/deals-display";
+import type {
+  ActivePromo,
+  CartItem,
+  CartQuoteResponse,
+  CheckoutResponse,
+} from "../src/lib/types";
 
 const FIXED_DELIVERY_CITY = "London";
 const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
@@ -182,12 +188,31 @@ export default function CheckoutScreen() {
     [cart.items],
   );
 
+  const subtotalForTip = quote?.item_subtotal_cents ?? subtotal;
   const tipCents = useMemo(() => {
-    if (cart.fulfillmentType !== "DELIVERY" || cart.driverTipPercent === "none") {
-      return 0;
-    }
-    return Math.round((subtotal * cart.driverTipPercent) / 100);
-  }, [cart.driverTipPercent, cart.fulfillmentType, subtotal]);
+    if (cart.driverTipPercent === "none") return 0;
+    return Math.round((subtotalForTip * cart.driverTipPercent) / 100);
+  }, [cart.driverTipPercent, subtotalForTip]);
+
+  const applyCoupon = (code: string) => {
+    setPromoNotice(null);
+    promo.applyPromoCode(code);
+  };
+
+  const applyReward = () => {
+    setPromoNotice(null);
+    promo.redeemWingsReward();
+  };
+
+  const rewards = account.data.wingsRewards;
+  const rewardEligible = Boolean(
+    rewards &&
+      rewards.stamps_per_reward > 0 &&
+      rewards.available_stamps >= rewards.stamps_per_reward,
+  );
+  const availableCoupons: ActivePromo[] = account.data.promos.filter(
+    (candidate) => !candidate.autoApply,
+  );
 
   const deliveryAddress = useMemo(
     () => ({
@@ -728,6 +753,114 @@ export default function CheckoutScreen() {
                 })}
               </Section>
 
+              <Section title="Deals & rewards">
+                {promo.promoCode ? (
+                  <View style={styles.appliedRow}>
+                    <View style={styles.appliedInfo}>
+                      <Text style={styles.appliedLabel}>Promo code</Text>
+                      <Text style={styles.appliedValue}>{promo.promoCode}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={promo.clearPromoCode}
+                      style={styles.removeChip}
+                    >
+                      <Text style={styles.removeChipText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : promo.applyWingsReward ? (
+                  <View style={styles.appliedRow}>
+                    <View style={styles.appliedInfo}>
+                      <Text style={styles.appliedLabel}>Reward</Text>
+                      <Text style={styles.appliedValue}>Free 1lb wings</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={promo.clearWingsReward}
+                      style={styles.removeChip}
+                    >
+                      <Text style={styles.removeChipText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {rewardBlockedReason ? (
+                  <Text style={styles.promoNotice}>{rewardBlockedReason}</Text>
+                ) : null}
+                {promoNotice ? (
+                  <Text style={styles.promoNotice}>{promoNotice}</Text>
+                ) : null}
+
+                {!session.authenticated ? (
+                  <Text style={styles.dealsHint}>
+                    Sign in from the Deals tab to use coupons and rewards.
+                  </Text>
+                ) : (
+                  <>
+                    {rewardEligible && !promo.applyWingsReward ? (
+                      <TouchableOpacity style={styles.dealOption} onPress={applyReward}>
+                        <View style={styles.dealOptionInfo}>
+                          <Text style={styles.dealOptionTitle}>Free 1lb wings</Text>
+                          <Text style={styles.dealOptionMeta}>Redeem your wings reward</Text>
+                        </View>
+                        <Text style={styles.applyText}>Apply</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {availableCoupons.map((coupon) => {
+                      const applied = promo.promoCode === coupon.code;
+                      return (
+                        <TouchableOpacity
+                          key={coupon.id}
+                          style={styles.dealOption}
+                          disabled={applied}
+                          onPress={() => applyCoupon(coupon.code)}
+                        >
+                          <View style={styles.dealOptionInfo}>
+                            <Text style={styles.dealOptionTitle}>{coupon.name}</Text>
+                            <Text style={styles.dealOptionMeta}>
+                              {coupon.code} • {promoBenefitLabel(coupon)}
+                            </Text>
+                          </View>
+                          <Text style={[styles.applyText, applied && styles.appliedText]}>
+                            {applied ? "Applied" : "Apply"}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                    {availableCoupons.length === 0 &&
+                    !rewardEligible &&
+                    !promo.promoCode &&
+                    !promo.applyWingsReward ? (
+                      <Text style={styles.dealsHint}>No coupons available right now.</Text>
+                    ) : null}
+                  </>
+                )}
+              </Section>
+
+              <Section title="Add a tip">
+                <View style={styles.tipRow}>
+                  {(["none", 10, 15, 20] as const).map((tip) => {
+                    const active = cart.driverTipPercent === tip;
+                    return (
+                      <TouchableOpacity
+                        key={String(tip)}
+                        style={[styles.tipButton, active && styles.tipButtonActive]}
+                        onPress={() => cart.setDriverTipPercent(tip)}
+                      >
+                        <Text
+                          style={[
+                            styles.tipButtonText,
+                            active && styles.tipButtonTextActive,
+                          ]}
+                        >
+                          {tip === "none" ? "None" : `${tip}%`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </Section>
+
               {cart.fulfillmentType === "DELIVERY" ? (
                 <Section title="Delivery">
                   <View style={styles.inputWithIcon}>
@@ -862,19 +995,22 @@ export default function CheckoutScreen() {
                 ))}
                 <SummaryRow label="Tax" value={quoteLoading ? "..." : cents(quote?.tax_cents ?? 0)} />
                 {cart.fulfillmentType === "DELIVERY" ? (
-                  <>
-                    <SummaryRow
-                      label="Delivery"
-                      value={
-                        quoteLoading
-                          ? "..."
-                          : quote?.delivery_fee_waived
-                            ? "Free"
-                            : cents(quote?.delivery_fee_cents ?? 0)
-                      }
-                    />
-                    <SummaryRow label="Tip" value={cents(quote?.driver_tip_cents ?? tipCents)} />
-                  </>
+                  <SummaryRow
+                    label="Delivery"
+                    value={
+                      quoteLoading
+                        ? "..."
+                        : quote?.delivery_fee_waived
+                          ? "Free"
+                          : cents(quote?.delivery_fee_cents ?? 0)
+                    }
+                  />
+                ) : null}
+                {cart.driverTipPercent !== "none" ? (
+                  <SummaryRow
+                    label="Tip"
+                    value={cents(quote?.driver_tip_cents ?? tipCents)}
+                  />
                 ) : null}
                 <View style={styles.divider} />
                 <SummaryRow
@@ -1307,6 +1443,121 @@ const styles = StyleSheet.create({
   },
   discountValue: {
     color: "#16A34A",
+  },
+  appliedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(22,163,74,0.08)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+  },
+  appliedInfo: {
+    flex: 1,
+  },
+  appliedLabel: {
+    color: "#15803D",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  appliedValue: {
+    color: "#166534",
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  removeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(185,28,28,0.08)",
+  },
+  removeChipText: {
+    color: "#B91C1C",
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  promoNotice: {
+    color: "#B45309",
+    backgroundColor: "rgba(245,158,11,0.1)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontWeight: "700",
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  dealsHint: {
+    color: "#888",
+    fontSize: 13,
+    fontWeight: "600",
+    paddingVertical: 4,
+  },
+  dealOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#EFEFEF",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  dealOptionInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  dealOptionTitle: {
+    color: "#1A1A1A",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  dealOptionMeta: {
+    color: "#777",
+    fontSize: 12,
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  applyText: {
+    color: "#FF4D4D",
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  appliedText: {
+    color: "#16A34A",
+  },
+  tipRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  tipButton: {
+    flex: 1,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "#EFEFEF",
+  },
+  tipButtonActive: {
+    borderColor: "#FF4D4D",
+    backgroundColor: "rgba(255,77,77,0.08)",
+  },
+  tipButtonText: {
+    color: "#666",
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  tipButtonTextActive: {
+    color: "#FF4D4D",
   },
   primaryButton: {
     backgroundColor: "#FF4D4D",
