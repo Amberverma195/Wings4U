@@ -23,6 +23,7 @@ export type UseMenuResult = {
 export function useMenu(
   fulfillmentType: FulfillmentType = "PICKUP",
   locationId?: string,
+  scheduledFor?: string | null,
 ): UseMenuResult {
   const id = locationId ?? DEFAULT_LOCATION_ID;
   const [menu, setMenu] = useState<MenuResponse | null>(null);
@@ -43,12 +44,14 @@ export function useMenu(
           location_id: id,
           fulfillment_type: fulfillmentType,
         });
+        if (scheduledFor) query.set("scheduled_for", scheduledFor);
 
         const envelope = await apiJson<MenuResponse>(
           `/api/v1/menu?${query.toString()}`,
           { locationId: id },
         );
-        if (!cancelled && envelope.data) {
+        if (!cancelled) {
+          if (!envelope.data) throw new Error("Menu response missing data");
           setMenu(envelope.data);
         }
       } catch (err) {
@@ -63,7 +66,7 @@ export function useMenu(
     return () => {
       cancelled = true;
     };
-  }, [id, fulfillmentType, nonce]);
+  }, [id, fulfillmentType, scheduledFor, nonce]);
 
   return { menu, loading, error, refetch };
 }

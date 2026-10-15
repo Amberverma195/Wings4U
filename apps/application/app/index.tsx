@@ -32,6 +32,7 @@ import { MenuItemBuilder } from '../src/components/menu-item-builder';
 import type { MenuCategory, MenuItem } from '../src/lib/types';
 import { filterMenuCategories } from '../src/lib/menu-search';
 import { categoryImage, categoryLabel } from '../src/lib/category-images';
+import { prepareMenuCategories, menuCardDetails, categoryNote } from '../src/lib/menu-display';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -78,37 +79,6 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/** Canonical strip order - matches the website's category ordering. */
-const MENU_CATEGORY_SLUG_ORDER: string[] = [
-  'lunch-specials',
-  'wings',
-  'wing-combos',
-  'burgers',
-  'tenders',
-  'wraps',
-  'salads',
-  'poutines-and-sides',
-  'sides',
-  'specialty-fries',
-  'appetizers',
-  'breads',
-  'specials',
-  'party-specials',
-  'drinks',
-  'dessert',
-  'dips',
-];
-
-function sortCategories(categories: MenuCategory[]): MenuCategory[] {
-  return [...categories].sort((a, b) => {
-    const ai = MENU_CATEGORY_SLUG_ORDER.indexOf(a.slug);
-    const bi = MENU_CATEGORY_SLUG_ORDER.indexOf(b.slug);
-    const aKey = ai === -1 ? 1000 + a.sort_order : ai;
-    const bKey = bi === -1 ? 1000 + b.sort_order : bi;
-    if (aKey !== bKey) return aKey - bKey;
-    return a.sort_order - b.sort_order;
-  });
-}
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -155,7 +125,7 @@ export default function Home() {
   const deliveryLabelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(fulfillmentProgress.value, [0, 1], ['#666666', '#FFFFFF']),
   }));
-  const { menu, loading, error, refetch } = useMenu(fulfillmentType);
+  const { menu, loading, error, refetch } = useMenu(fulfillmentType, cart.locationId, cart.scheduledFor);
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
@@ -182,11 +152,12 @@ export default function Home() {
 
   const sortedCategories = useMemo(() => {
     if (!menu) return [];
-    return sortCategories(menu.categories);
+    return prepareMenuCategories(menu.categories);
   }, [menu]);
 
   /* The "active" category: either user-tapped or the first one once loaded. */
-  const resolvedActiveSlug = activeCategorySlug ?? sortedCategories[0]?.slug ?? null;
+  const resolvedActiveSlug = sortedCategories.some(category => category.slug === activeCategorySlug)
+    ? activeCategorySlug : sortedCategories[0]?.slug ?? null;
 
   const activeCategory = useMemo(
     () => sortedCategories.find((c) => c.slug === resolvedActiveSlug) ?? null,
@@ -443,7 +414,7 @@ export default function Home() {
         <MenuItemBuilder
           visible={Boolean(selectedItem)}
           item={selectedItem}
-          categories={sortedCategories}
+          categories={menu?.categories ?? []}
           onClose={() => setSelectedItem(null)}
         />
 
@@ -483,7 +454,7 @@ export default function Home() {
                 </View>
                 <Text
                   style={[styles.categoryText, isActive && styles.categoryTextActive]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                   adjustsFontSizeToFit
                   minimumFontScale={0.8}
                 >
@@ -511,6 +482,9 @@ export default function Home() {
                 {activeCategory.items.length} item{activeCategory.items.length !== 1 ? 's' : ''}
               </Text>
             </View>
+            {categoryNote(activeCategory.slug) ? (
+              <Text style={styles.categoryNote}>{categoryNote(activeCategory.slug)}</Text>
+            ) : null}
 
             {activeCategory.items.length === 0 ? (
               <View style={styles.emptyCategory}>
@@ -562,6 +536,7 @@ function MenuItemCard({
   const isUnavailable = item.stock_status === 'UNAVAILABLE';
   const isLowStock = item.stock_status === 'LOW_STOCK';
   const hasImage = Boolean(item.image_url);
+  const details = useMemo(() => menuCardDetails(item, categorySlug), [item, categorySlug]);
 
   /** Derive the display price label. */
   const priceLabel = useMemo(() => {
@@ -598,7 +573,7 @@ function MenuItemCard({
       <View style={styles.itemDetails}>
         <View style={styles.itemNameRow}>
           <Text style={styles.itemName} numberOfLines={2}>
-            {item.name}
+            {details.name}
           </Text>
           {isLowStock && (
             <View style={styles.lowStockBadge}>
@@ -607,9 +582,9 @@ function MenuItemCard({
           )}
         </View>
 
-        {item.description ? (
+        {details.description ? (
           <Text style={styles.itemDesc} numberOfLines={2}>
-            {item.description}
+            {details.description}
           </Text>
         ) : null}
 
@@ -921,7 +896,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   categoryText: {
-    minHeight: 13,
+    minHeight: 26,
     lineHeight: 13,
     fontSize: 9,
     fontWeight: '600',
@@ -941,6 +916,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   categoryUnderlineActive: { backgroundColor: '#FF4D4D' },
+  categoryNote: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    color: '#777',
+    fontSize: 12,
+    lineHeight: 17,
+  },
   categorySwipeTrack: {
     width: 80,
     height: 4,

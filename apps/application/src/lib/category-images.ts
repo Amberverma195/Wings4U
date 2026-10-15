@@ -23,13 +23,6 @@ const photos: Record<string, ImageSource> = {
   sauces: require('../../assets/categories/sauces.png'),
 };
 
-const shortLabels: Record<string, string> = {
-  'wing-combos': 'Combos', 'lunch-specials': 'Lunch',
-  'poutines-and-sides': 'Sides', 'specialty-fries': 'Fries',
-  'appetizers-extras': 'Extras', 'party-specials': 'Party',
-  dips: 'Sauces',
-};
-
 export function categoryImage(category: MenuCategory): ImageSource {
   const photo = photos[category.slug];
   if (photo) return photo;
@@ -38,5 +31,5 @@ export function categoryImage(category: MenuCategory): ImageSource {
 }
 
 export function categoryLabel(category: MenuCategory): string {
-  return shortLabels[category.slug] ?? category.name;
+  return category.name;
 }
