@@ -5,10 +5,16 @@ import {
 } from "@nestjs/common";
 import {
   type OrderPaymentStatusSummary,
+  type PaymentMethod,
   type PaymentTransactionType,
   type PaymentTenderMethod,
 } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import {
+  capturedCents,
+  isAlreadyFullyCaptured,
+  netCollectedCents,
+} from "./payment-policy";
 
 interface CreatePaymentParams {
   orderId: string;
@@ -22,6 +28,13 @@ interface CreatePaymentParams {
   processorPayloadJson?: unknown;
   initiatedByUserId?: string;
   createdByUserId?: string;
+}
+
+function tenderToOrderMethod(method: PaymentTenderMethod): PaymentMethod {
+  if (method === "CASH") return "CASH";
+  if (method === "STORE_CREDIT") return "STORE_CREDIT";
+  if (method === "WAIVED") return "WAIVED";
+  return "CARD";
 }
 
 @Injectable()
@@ -38,6 +51,15 @@ export class PaymentsService {
 
     if (params.signedAmountCents <= 0 && params.transactionType !== "REFUND") {
       throw new BadRequestException("Amount must be positive for non-refund transactions");
+    }
+
+    if (params.transactionType === "CAPTURE") {
+      const existing = await this.prisma.orderPayment.findMany({
+        where: { orderId: params.orderId, transactionStatus: "SUCCESS" },
+      });
+      if (isAlreadyFullyCaptured(capturedCents(existing), order.finalPayableCents)) {
+        throw new BadRequestException("This order is already paid.");
+      }
     }
 
     const payment = await this.prisma.orderPayment.create({
@@ -58,10 +80,23 @@ export class PaymentsService {
     });
 
     const summary = await this.recalculatePaymentStatus(params.orderId);
+    const recorded = await this.prisma.orderPayment.findMany({
+      where: { orderId: params.orderId, transactionStatus: "SUCCESS" },
+    });
+    const netPaid = netCollectedCents(recorded);
 
     await this.prisma.order.update({
       where: { id: params.orderId },
-      data: { paymentStatusSummary: summary },
+      data: {
+        paymentStatusSummary: summary,
+        netPaidAmountCents: netPaid,
+        remainingRefundableCents: netPaid,
+        ...(summary === "PAID" &&
+        !order.paymentMethod &&
+        params.transactionType === "CAPTURE"
+          ? { paymentMethod: tenderToOrderMethod(params.paymentMethod) }
+          : {}),
+      },
     });
 
     return payment;

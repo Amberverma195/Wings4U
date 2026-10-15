@@ -32,6 +32,12 @@ import { useSession, withSilentRefresh } from "../src/context/session";
 import { apiFetch, apiJson, getApiErrorMessage } from "../src/lib/api";
 import { cents } from "../src/lib/format";
 import {
+  checkoutPricingBlock,
+  customerPaymentOptions,
+  defaultCollectionPreference,
+  type CustomerCollectionPreference,
+} from "../src/lib/payment-options";
+import {
   isPromoRejectedQuoteError,
   promoDiscountRows,
   quotePromoParams,
@@ -43,10 +49,11 @@ const FIXED_DELIVERY_CITY = "London";
 const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
 const STRIPE_RETURN_URL = Linking.createURL("stripe-redirect");
 
-type PaymentMethod = "PAY_AT_STORE" | "ONLINE_CARD";
+type PaymentMethod = CustomerCollectionPreference | "ONLINE_CARD";
 
 type StripeConfigResponse = {
   configured: boolean;
+  online_payments_enabled?: boolean;
   publishable_key: string;
   currency: string;
   merchant_display_name: string;
@@ -143,9 +150,11 @@ export default function CheckoutScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("PAY_AT_STORE");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    defaultCollectionPreference("PICKUP"),
+  );
+  const submittingRef = useRef(false);
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
-  const [stripeConfigLoading, setStripeConfigLoading] = useState(true);
   const [deliveryQuote, setDeliveryQuote] =
     useState<DeliveryQuoteResponse | null>(null);
   const [deliveryQuoteStatus, setDeliveryQuoteStatus] =
@@ -219,7 +228,6 @@ export default function CheckoutScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setStripeConfigLoading(true);
     void (async () => {
       try {
         const envelope = await apiJson<StripeConfigResponse>(
@@ -228,7 +236,11 @@ export default function CheckoutScreen() {
         if (cancelled) return;
         const config = envelope.data ?? null;
         setStripeConfig(config);
-        if (config?.configured && config.publishable_key) {
+        if (
+          config?.online_payments_enabled &&
+          config.configured &&
+          config.publishable_key
+        ) {
           await initStripe({
             publishableKey: config.publishable_key,
             merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
@@ -236,8 +248,6 @@ export default function CheckoutScreen() {
         }
       } catch {
         if (!cancelled) setStripeConfig(null);
-      } finally {
-        if (!cancelled) setStripeConfigLoading(false);
       }
     })();
 
@@ -419,17 +429,33 @@ export default function CheckoutScreen() {
   const discountRows = useMemo(() => promoDiscountRows(quote), [quote]);
   const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, quote);
   const payableCents = quote?.final_payable_cents ?? subtotal;
-  const stripeOnlineEnabled =
-    Boolean(stripeConfig?.configured) && payableCents > 0 && !stripeConfigLoading;
+  const onlinePaymentsEnabled = Boolean(
+    stripeConfig?.online_payments_enabled && stripeConfig.configured,
+  );
+  const pricingBlock = checkoutPricingBlock({
+    quoteLoading,
+    quote,
+    quoteError,
+    promoCode: promo.promoCode,
+    rewardBlockedReason,
+  });
+  const paymentOptions = customerPaymentOptions(cart.fulfillmentType);
 
   useEffect(() => {
-    if (paymentMethod === "ONLINE_CARD" && !stripeOnlineEnabled) {
-      setPaymentMethod("PAY_AT_STORE");
-    }
-  }, [paymentMethod, stripeOnlineEnabled]);
+    setPaymentMethod((current) => {
+      const allowed = customerPaymentOptions(cart.fulfillmentType).some(
+        (option) => option.value === current,
+      );
+      return allowed ? current : defaultCollectionPreference(cart.fulfillmentType);
+    });
+  }, [cart.fulfillmentType]);
 
   const placeOrder = useCallback(async () => {
-    if (cart.items.length === 0 || submitting) return;
+    if (cart.items.length === 0 || submittingRef.current) return;
+    if (pricingBlock) {
+      setSubmitError(pricingBlock);
+      return;
+    }
 
     if (cart.fulfillmentType === "DELIVERY") {
       if (!line1.trim() || !postalCode.trim()) {
@@ -455,6 +481,7 @@ export default function CheckoutScreen() {
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     const payload: Record<string, unknown> = {
@@ -470,7 +497,13 @@ export default function CheckoutScreen() {
       payload.address_snapshot_json = deliveryAddress;
       payload.delivery_quote_token = deliveryQuote!.delivery_quote_token;
     }
-    payload.payment_method = paymentMethod;
+    payload.payment_method =
+      onlinePaymentsEnabled && paymentMethod === "ONLINE_CARD"
+        ? "ONLINE_CARD"
+        : "PAY_AT_STORE";
+    if (paymentMethod !== "ONLINE_CARD") {
+      payload.collection_preference = paymentMethod;
+    }
     const promoParams = quotePromoParams(promo);
     if (promoParams.promo_code) payload.promo_code = promoParams.promo_code;
     if (promoParams.apply_wings_reward) payload.apply_wings_reward = true;
@@ -493,15 +526,7 @@ export default function CheckoutScreen() {
         paidIntentRef.current?.fingerprint === submissionFingerprint
           ? paidIntentRef.current.paymentIntentId
           : null;
-      if (paymentMethod === "ONLINE_CARD") {
-        if (!stripeOnlineEnabled) {
-          throw new Error(
-            stripeConfigLoading
-              ? "Stripe is still loading. Try again in a moment."
-              : "Online card payments are not configured yet.",
-          );
-        }
-
+      if (onlinePaymentsEnabled && paymentMethod === "ONLINE_CARD") {
         if (!stripePaymentIntentId) {
           const intentRes = await withSilentRefresh(
           () =>
@@ -610,6 +635,7 @@ export default function CheckoutScreen() {
     } catch (cause) {
       setSubmitError(cause instanceof Error ? cause.message : "Unable to place order");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [
@@ -623,15 +649,15 @@ export default function CheckoutScreen() {
     initPaymentSheet,
     line1,
     orderNotes,
-    paymentMethod,
     postalCode,
     presentPaymentSheet,
     promo,
     quote,
     router,
     session,
-    stripeConfigLoading,
-    stripeOnlineEnabled,
+    onlinePaymentsEnabled,
+    paymentMethod,
+    pricingBlock,
     submitting,
     tipCents,
   ]);
@@ -802,31 +828,26 @@ export default function CheckoutScreen() {
               </Section>
 
               <Section title="Payment">
-                <PaymentOption
-                  title={cart.fulfillmentType === "DELIVERY" ? "Pay on delivery" : "Pay on pickup"}
-                  detail={
-                    cart.fulfillmentType === "DELIVERY"
-                      ? "Settle when the order arrives."
-                      : "Settle with cash or card at the restaurant."
-                  }
-                  icon={<Wallet size={20} color={paymentMethod === "PAY_AT_STORE" ? "#FFF" : "#FF4D4D"} />}
-                  active={paymentMethod === "PAY_AT_STORE"}
-                  onPress={() => setPaymentMethod("PAY_AT_STORE")}
-                />
-                <PaymentOption
-                  title="Card online"
-                  detail={
-                    stripeConfigLoading
-                      ? "Checking Stripe..."
-                      : stripeOnlineEnabled
-                        ? "Secure checkout powered by Stripe."
-                        : "Add Stripe keys to enable this option."
-                  }
-                  icon={<CreditCard size={20} color={paymentMethod === "ONLINE_CARD" ? "#FFF" : "#FF4D4D"} />}
-                  active={paymentMethod === "ONLINE_CARD"}
-                  disabled={!stripeOnlineEnabled}
-                  onPress={() => setPaymentMethod("ONLINE_CARD")}
-                />
+                {paymentOptions.map((option) => {
+                  const active = paymentMethod === option.value;
+                  const iconColor = active ? "#FFF" : "#FF4D4D";
+                  return (
+                    <PaymentOption
+                      key={option.value}
+                      title={option.title}
+                      detail={option.detail}
+                      icon={
+                        option.value === "CARD_ON_DELIVERY" ? (
+                          <CreditCard size={20} color={iconColor} />
+                        ) : (
+                          <Wallet size={20} color={iconColor} />
+                        )
+                      }
+                      active={active}
+                      onPress={() => setPaymentMethod(option.value)}
+                    />
+                  );
+                })}
               </Section>
 
               <Section title="Total">
@@ -867,6 +888,11 @@ export default function CheckoutScreen() {
                 {promoNotice ? (
                   <Text style={styles.noticeText}>{promoNotice}</Text>
                 ) : null}
+                {pricingBlock &&
+                pricingBlock !== quoteError &&
+                pricingBlock !== rewardBlockedReason ? (
+                  <Text style={styles.noticeText}>{pricingBlock}</Text>
+                ) : null}
                 {quoteError ? <Text style={styles.errorText}>{quoteError}</Text> : null}
                 {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
               </Section>
@@ -875,15 +901,15 @@ export default function CheckoutScreen() {
                 style={[
                   styles.placeButton,
                   (submitting ||
-                    (cart.fulfillmentType === "DELIVERY" &&
-                      (!deliveryQuoteReady || !quote))) &&
+                    Boolean(pricingBlock) ||
+                    (cart.fulfillmentType === "DELIVERY" && !deliveryQuoteReady)) &&
                     styles.disabledButton,
                 ]}
                 onPress={placeOrder}
                 disabled={
                   submitting ||
-                  (cart.fulfillmentType === "DELIVERY" &&
-                    (!deliveryQuoteReady || !quote))
+                  Boolean(pricingBlock) ||
+                  (cart.fulfillmentType === "DELIVERY" && !deliveryQuoteReady)
                 }
               >
                 {submitting ? (

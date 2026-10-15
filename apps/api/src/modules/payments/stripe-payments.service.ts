@@ -7,6 +7,7 @@ import {
 import Stripe from "stripe";
 import { CartService } from "../cart/cart.service";
 import { buildCheckoutCartHash } from "./checkout-cart-hash";
+import { onlinePaymentsEnabled } from "./payment-policy";
 
 const STRIPE_SECRET_PLACEHOLDER = "sk_test_placeholder";
 const STRIPE_PUBLISHABLE_PLACEHOLDER = "pk_test_placeholder";
@@ -90,9 +91,13 @@ export class StripePaymentsService {
   constructor(private readonly cartService: CartService) {}
 
   getPublicConfig() {
+    const enabled = onlinePaymentsEnabled();
+    const stripeReady = isStripeConfigured();
+    const acceptingOnlinePayments = enabled && stripeReady;
     return {
-      configured: isStripeConfigured(),
-      publishable_key: getStripePublishableKey(),
+      configured: acceptingOnlinePayments,
+      online_payments_enabled: enabled,
+      publishable_key: acceptingOnlinePayments ? getStripePublishableKey() : "",
       currency: getStripeCurrency().toUpperCase(),
       merchant_display_name:
         process.env.STRIPE_MERCHANT_DISPLAY_NAME?.trim() || "Wings4U",
@@ -107,8 +112,9 @@ export class StripePaymentsService {
         payment_intent_id: null,
         client_secret: null,
         amount_cents: null,
-        message:
-          "Stripe is not configured yet. Replace STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY placeholders to enable online card payments.",
+        message: config.online_payments_enabled
+          ? "Stripe is not configured yet. Replace STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY placeholders to enable online card payments."
+          : "Online card payments are not available.",
       };
     }
 

@@ -59,6 +59,7 @@ type CheckoutRequestFingerprintInput = {
   apply_wings_reward?: boolean;
   address_snapshot_json?: Record<string, unknown>;
   payment_method?: "PAY_AT_STORE" | "ONLINE_CARD";
+  collection_preference?: string | null;
   customer_order_notes?: string;
   contactless_pref?: string;
   is_student_order?: boolean;
@@ -87,6 +88,7 @@ export function buildCheckoutRequestFingerprint(
         apply_wings_reward: input.apply_wings_reward ?? false,
         address_snapshot_json: input.address_snapshot_json ?? null,
         payment_method: input.payment_method ?? "PAY_AT_STORE",
+        collection_preference: input.collection_preference ?? null,
         customer_order_notes: input.customer_order_notes ?? null,
         contactless_pref: input.contactless_pref ?? null,
         is_student_order: input.is_student_order ?? false,

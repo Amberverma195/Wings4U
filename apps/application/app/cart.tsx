@@ -507,7 +507,11 @@ export default function CartScreen() {
                 <Text style={styles.secondaryButtonText}>Add more</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.checkoutButton}
+                style={[
+                  styles.checkoutButton,
+                  (quoteLoading || !quote || Boolean(quoteError)) && styles.checkoutButtonDisabled,
+                ]}
+                disabled={quoteLoading || !quote || Boolean(quoteError)}
                 onPress={() => router.push("/checkout")}
               >
                 <Text style={styles.checkoutButtonText}>Checkout</Text>
@@ -881,6 +885,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FF4D4D",
+  },
+  checkoutButtonDisabled: {
+    opacity: 0.55,
   },
   checkoutButtonText: {
     color: "#FFF",

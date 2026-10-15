@@ -31,6 +31,11 @@ import {
   buildCheckoutRequestFingerprint,
 } from "../payments/checkout-cart-hash";
 import {
+  onlinePaymentsEnabled,
+  resolveCollectionPreference,
+  type CollectionPreference,
+} from "../payments/payment-policy";
+import {
   RewardsService,
   STAMPS_PER_REWARD,
   summarizeWingsInCart,
@@ -98,6 +103,7 @@ type PlaceOrderParams = {
   applyWingsReward?: boolean;
   promoCode?: string;
   paymentMethod?: "PAY_AT_STORE" | "ONLINE_CARD";
+  collectionPreference?: CollectionPreference | null;
   stripePaymentIntentId?: string;
   deliveryQuoteToken?: string;
 };
@@ -157,6 +163,7 @@ function getCheckoutRequestFingerprint(params: PlaceOrderParams): string {
     apply_wings_reward: params.applyWingsReward,
     address_snapshot_json: params.addressSnapshotJson,
     payment_method: params.paymentMethod,
+    collection_preference: params.collectionPreference,
     customer_order_notes: params.specialInstructions,
     contactless_pref: params.contactlessPref,
     is_student_order: params.isStudentOrder,
@@ -211,6 +218,19 @@ function getRemovedIngredientsFromInput(params: {
     const candidate = ingredient as RemovedIngredientInput;
     return typeof candidate.id === "string" && typeof candidate.name === "string";
   });
+}
+
+function collectionPreferenceFromSnapshot(snapshot: unknown): CollectionPreference | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const value = (snapshot as { collection_preference?: unknown }).collection_preference;
+  if (
+    value === "PAY_AT_STORE" ||
+    value === "CASH_ON_DELIVERY" ||
+    value === "CARD_ON_DELIVERY"
+  ) {
+    return value;
+  }
+  return null;
 }
 
 function serializeOrder(order: Record<string, unknown>) {
@@ -302,6 +322,7 @@ function serializeOrder(order: Record<string, unknown>) {
     wallet_applied_cents: o.walletAppliedCents,
     final_payable_cents: o.finalPayableCents,
     payment_status_summary: o.paymentStatusSummary,
+    collection_preference: collectionPreferenceFromSnapshot(o.pricingSnapshotJson),
     customer_order_notes: o.customerOrderNotes,
     special_instructions: o.customerOrderNotes,
     estimated_ready_at: o.estimatedReadyAt,
@@ -329,6 +350,31 @@ export class CheckoutService {
   ) {}
 
   async placeOrder(params: PlaceOrderParams) {
+    const collection = resolveCollectionPreference(
+      params.fulfillmentType,
+      params.collectionPreference,
+    );
+    if (!collection.ok) {
+      throw new UnprocessableEntityException({
+        message: collection.message,
+        field: "collection_preference",
+      });
+    }
+    params = {
+      ...params,
+      collectionPreference: collection.preference,
+    };
+    if (
+      (params.paymentMethod ?? "PAY_AT_STORE") === "ONLINE_CARD" &&
+      !onlinePaymentsEnabled()
+    ) {
+      throw new UnprocessableEntityException({
+        message:
+          "Online card payments are not available. Pay at the store, or pay the driver on delivery.",
+        field: "payment_method",
+      });
+    }
+
     const requestFingerprint = getCheckoutRequestFingerprint(params);
     const existingKey = await this.prisma.checkoutIdempotencyKey.findUnique({
       where: { idempotencyKey: params.idempotencyKey },
@@ -1185,6 +1231,9 @@ export class CheckoutService {
         final_payable_cents: pricing.finalPayableCents,
         applied_promo_code: appliedPromoCode,
         promo_discount_cents: promoDiscountCents,
+        ...(params.collectionPreference
+          ? { collection_preference: params.collectionPreference }
+          : {}),
         ...(params.fulfillmentType === "DELIVERY"
           ? {
               delivery_pricing: {

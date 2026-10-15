@@ -1,4 +1,4 @@
-import { ConflictException } from "@nestjs/common";
+import { ConflictException, UnprocessableEntityException } from "@nestjs/common";
 import { buildCheckoutRequestFingerprint } from "../payments/checkout-cart-hash";
 import { CheckoutService } from "./checkout.service";
 
@@ -129,7 +129,34 @@ describe("CheckoutService idempotent replay", () => {
     expect(prisma.order.findUnique).not.toHaveBeenCalled();
   });
 
+  it("rejects online card checkout while online payments are disabled", async () => {
+    const previous = process.env.ONLINE_PAYMENTS_ENABLED;
+    delete process.env.ONLINE_PAYMENTS_ENABLED;
+    const service = new CheckoutService(
+      { checkoutIdempotencyKey: { findUnique: jest.fn() } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.placeOrder(
+        basePlaceOrderParams({
+          paymentMethod: "ONLINE_CARD",
+          fulfillmentType: "PICKUP",
+          addressSnapshotJson: undefined,
+          deliveryQuoteToken: undefined,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    process.env.ONLINE_PAYMENTS_ENABLED = previous;
+  });
+
   it("rejects Stripe PaymentIntent replay for another customer", async () => {
+    process.env.ONLINE_PAYMENTS_ENABLED = "true";
     const params = basePlaceOrderParams({
       paymentMethod: "ONLINE_CARD",
       stripePaymentIntentId: "pi_stolen",
@@ -171,5 +198,6 @@ describe("CheckoutService idempotent replay", () => {
     );
     expect(prisma.order.findUnique).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    delete process.env.ONLINE_PAYMENTS_ENABLED;
   });
 });

@@ -124,6 +124,9 @@ export function CheckoutClient() {
   const [deliveryQuoteRefreshNonce, setDeliveryQuoteRefreshNonce] = useState(0);
   const autoRefreshedTokenRef = useRef<string | null>(null);
   const [promoRejectionMessage, setPromoRejectionMessage] = useState<string | null>(null);
+  const [collectionPreference, setCollectionPreference] = useState<
+    "PAY_AT_STORE" | "CASH_ON_DELIVERY" | "CARD_ON_DELIVERY"
+  >("PAY_AT_STORE");
   const promoRejectionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   /**
    * Reward-redemption intent carried over from the cart page via
@@ -138,6 +141,15 @@ export function CheckoutClient() {
     const raw = window.sessionStorage.getItem(WINGS_REWARD_STORAGE_KEY);
     setApplyWingsReward(raw === "1");
   }, []);
+
+  useEffect(() => {
+    setCollectionPreference((current) => {
+      if (cart.fulfillmentType === "DELIVERY") {
+        return current === "CARD_ON_DELIVERY" ? current : "CASH_ON_DELIVERY";
+      }
+      return "PAY_AT_STORE";
+    });
+  }, [cart.fulfillmentType]);
 
   const [promoApplied, setPromoApplied] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -591,6 +603,14 @@ export function CheckoutClient() {
   }, [state]);
 
   const doSubmit = useCallback(async () => {
+    if (!quote) {
+      setState({
+        step: "error",
+        message: "Wait for the order total to be confirmed before placing your order.",
+      });
+      return;
+    }
+
     if (
       cart.fulfillmentType === "DELIVERY" &&
       (!deliveryQuoteReady || !deliveryQuote || !selectedDeliveryAddress || !quote)
@@ -633,6 +653,8 @@ export function CheckoutClient() {
     if (tipCents > 0) payload.driver_tip_cents = tipCents;
     if (applyWingsReward && !promoApplied) payload.apply_wings_reward = true;
     if (promoApplied) payload.promo_code = promoApplied;
+    payload.payment_method = "PAY_AT_STORE";
+    payload.collection_preference = collectionPreference;
 
     if (cart.fulfillmentType === "DELIVERY") {
       payload.address_snapshot_json = {
@@ -720,6 +742,7 @@ export function CheckoutClient() {
     session,
     tipCents,
     applyWingsReward,
+    collectionPreference,
     promoApplied,
     clearRejectedPromo,
     deliveryQuote,
@@ -1207,11 +1230,44 @@ export function CheckoutClient() {
         </p>
       ) : null}
 
+      <div className="checkout-section" style={{ marginTop: "1.5rem" }}>
+        <h3 style={{ margin: "0 0 0.5rem" }}>Payment</h3>
+        {(cart.fulfillmentType === "DELIVERY"
+          ? [
+              ["CASH_ON_DELIVERY", "Cash on Delivery", "Pay the driver in cash when your order arrives."],
+              ["CARD_ON_DELIVERY", "Card on Delivery", "Pay the driver on the handheld card terminal. This is not an online payment."],
+            ]
+          : [
+              ["PAY_AT_STORE", "Pay at Store", "Pay with cash or card when you pick up your order."],
+            ]
+        ).map(([value, title, detail]) => {
+          const active = collectionPreference === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              className={active ? "btn-primary" : "btn-secondary"}
+              aria-pressed={active}
+              onClick={() =>
+                setCollectionPreference(
+                  value as "PAY_AT_STORE" | "CASH_ON_DELIVERY" | "CARD_ON_DELIVERY",
+                )
+              }
+              style={{ display: "block", width: "100%", textAlign: "left", marginTop: "0.5rem" }}
+            >
+              <strong>{title}</strong>
+              <span style={{ display: "block", fontWeight: 500, marginTop: "0.2rem" }}>{detail}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <button
         type="button"
         className="cart-checkout-fire-btn"
         disabled={
           state.step === "submitting" ||
+          !quote ||
           Boolean(
             lunchScheduleConflict ||
               deliveryBlockedMessage ||
@@ -1219,7 +1275,6 @@ export function CheckoutClient() {
               (cart.fulfillmentType === "DELIVERY" &&
                 (!deliveryQuoteReady ||
                   !deliveryQuote ||
-                  !quote ||
                   quote.delivery_fee_is_estimate ||
                   deliveryQuoteError)),
           )

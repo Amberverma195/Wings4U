@@ -141,6 +141,15 @@ class PlaceOrderDto {
   @IsIn(["PAY_AT_STORE", "ONLINE_CARD"])
   payment_method?: "PAY_AT_STORE" | "ONLINE_CARD";
 
+  /**
+   * How the customer expects to pay in person. This is not a collected
+   * payment. Online card checkout stays available only when the server
+   * payment policy enables it.
+   */
+  @IsOptional()
+  @IsIn(["PAY_AT_STORE", "CASH_ON_DELIVERY", "CARD_ON_DELIVERY"])
+  collection_preference?: "PAY_AT_STORE" | "CASH_ON_DELIVERY" | "CARD_ON_DELIVERY";
+
   @IsOptional()
   @IsString()
   stripe_payment_intent_id?: string;
@@ -201,6 +210,7 @@ export class CheckoutController {
       applyWingsReward: body.apply_wings_reward,
       promoCode: body.promo_code,
       paymentMethod: body.payment_method,
+      collectionPreference: body.collection_preference,
       stripePaymentIntentId: body.stripe_payment_intent_id,
       deliveryQuoteToken: body.delivery_quote_token,
     });
