@@ -26,9 +26,17 @@ import {
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AuthSheet } from "../src/components/auth-sheet";
 import { useCart } from "../src/context/cart";
+import { usePromo } from "../src/context/promo";
+import { useAccountData } from "../src/hooks/use-account-data";
 import { useSession, withSilentRefresh } from "../src/context/session";
 import { apiFetch, apiJson, getApiErrorMessage } from "../src/lib/api";
 import { cents } from "../src/lib/format";
+import {
+  isPromoRejectedQuoteError,
+  promoDiscountRows,
+  quotePromoParams,
+  wingsRewardBlockedReason,
+} from "../src/lib/promo-selection";
 import type { CartItem, CartQuoteResponse, CheckoutResponse } from "../src/lib/types";
 
 const FIXED_DELIVERY_CITY = "London";
@@ -118,11 +126,14 @@ function getApiErrorCode(body: unknown): string | null {
 export default function CheckoutScreen() {
   const router = useRouter();
   const cart = useCart();
+  const promo = usePromo();
+  const account = useAccountData();
   const session = useSession();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [promoNotice, setPromoNotice] = useState<string | null>(null);
   const [orderNotes, setOrderNotes] = useState("");
   const [contactlessPref, setContactlessPref] = useState<
     "" | "HAND_TO_ME" | "LEAVE_AT_DOOR" | "CALL_ON_ARRIVAL" | "TEXT_ON_ARRIVAL"
@@ -192,6 +203,8 @@ export default function CheckoutScreen() {
         scheduledFor: cart.scheduledFor,
         tipCents,
         deliveryQuoteToken: deliveryQuote?.delivery_quote_token ?? null,
+        promoCode: promo.promoCode,
+        applyWingsReward: promo.applyWingsReward,
       }),
     [
       cart.fulfillmentType,
@@ -199,6 +212,8 @@ export default function CheckoutScreen() {
       cart.scheduledFor,
       deliveryQuote?.delivery_quote_token,
       tipCents,
+      promo.promoCode,
+      promo.applyWingsReward,
     ],
   );
 
@@ -361,6 +376,7 @@ export default function CheckoutScreen() {
                 cart.fulfillmentType === "DELIVERY"
                   ? deliveryAddress
                   : undefined,
+              ...quotePromoParams(promo),
             }),
           });
           if (!cancelled) {
@@ -368,8 +384,16 @@ export default function CheckoutScreen() {
           }
         } catch (cause) {
           if (!cancelled) {
-            setQuote(null);
-            setQuoteError(cause instanceof Error ? cause.message : "Unable to quote order");
+            const message =
+              cause instanceof Error ? cause.message : "Unable to quote order";
+            // Drop a server-rejected promo and re-quote without it (mirrors web).
+            if (isPromoRejectedQuoteError(message) && promo.promoCode) {
+              promo.clearPromoCode();
+              setPromoNotice(message);
+            } else {
+              setQuote(null);
+              setQuoteError(message);
+            }
           }
         } finally {
           if (!cancelled) setQuoteLoading(false);
@@ -387,10 +411,13 @@ export default function CheckoutScreen() {
     deliveryQuote?.delivery_quote_token,
     deliveryQuoteReady,
     deliveryQuoteStatus,
+    promo,
     quoteKey,
     tipCents,
   ]);
 
+  const discountRows = useMemo(() => promoDiscountRows(quote), [quote]);
+  const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, quote);
   const payableCents = quote?.final_payable_cents ?? subtotal;
   const stripeOnlineEnabled =
     Boolean(stripeConfig?.configured) && payableCents > 0 && !stripeConfigLoading;
@@ -444,6 +471,9 @@ export default function CheckoutScreen() {
       payload.delivery_quote_token = deliveryQuote!.delivery_quote_token;
     }
     payload.payment_method = paymentMethod;
+    const promoParams = quotePromoParams(promo);
+    if (promoParams.promo_code) payload.promo_code = promoParams.promo_code;
+    if (promoParams.apply_wings_reward) payload.apply_wings_reward = true;
 
     const logicalPayload = { ...payload };
     delete logicalPayload.delivery_quote_token;
@@ -490,6 +520,7 @@ export default function CheckoutScreen() {
                   cart.fulfillmentType === "DELIVERY"
                     ? deliveryAddress
                     : undefined,
+                ...quotePromoParams(promo),
               }),
             }),
           session.refresh,
@@ -570,6 +601,10 @@ export default function CheckoutScreen() {
       const order = body.data;
       checkoutAttemptRef.current = null;
       paidIntentRef.current = null;
+      // Clear the applied promo/reward and refresh rewards + wallet so the
+      // redeemed stamps / credit reflect immediately.
+      promo.clearAll();
+      void account.refresh("refresh");
       cart.clear();
       router.replace(`/orders/${order.id}`);
     } catch (cause) {
@@ -578,6 +613,7 @@ export default function CheckoutScreen() {
       setSubmitting(false);
     }
   }, [
+    account,
     cart,
     contactlessPref,
     deliveryAddress,
@@ -590,6 +626,7 @@ export default function CheckoutScreen() {
     paymentMethod,
     postalCode,
     presentPaymentSheet,
+    promo,
     quote,
     router,
     session,
@@ -794,6 +831,14 @@ export default function CheckoutScreen() {
 
               <Section title="Total">
                 <SummaryRow label="Subtotal" value={cents(quote?.item_subtotal_cents ?? subtotal)} />
+                {discountRows.map((row) => (
+                  <SummaryRow
+                    key={row.key}
+                    label={row.label}
+                    value={`-${cents(row.amountCents)}`}
+                    discount
+                  />
+                ))}
                 <SummaryRow label="Tax" value={quoteLoading ? "..." : cents(quote?.tax_cents ?? 0)} />
                 {cart.fulfillmentType === "DELIVERY" ? (
                   <>
@@ -816,6 +861,12 @@ export default function CheckoutScreen() {
                   value={quoteLoading ? "..." : cents(quote?.final_payable_cents ?? subtotal)}
                   total
                 />
+                {rewardBlockedReason ? (
+                  <Text style={styles.noticeText}>{rewardBlockedReason}</Text>
+                ) : null}
+                {promoNotice ? (
+                  <Text style={styles.noticeText}>{promoNotice}</Text>
+                ) : null}
                 {quoteError ? <Text style={styles.errorText}>{quoteError}</Text> : null}
                 {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
               </Section>
@@ -912,15 +963,25 @@ function SummaryRow({
   label,
   value,
   total,
+  discount,
 }: {
   label: string;
   value: string;
   total?: boolean;
+  discount?: boolean;
 }) {
   return (
     <View style={styles.summaryRow}>
       <Text style={[styles.summaryLabel, total && styles.totalLabel]}>{label}</Text>
-      <Text style={[styles.summaryValue, total && styles.totalValue]}>{value}</Text>
+      <Text
+        style={[
+          styles.summaryValue,
+          total && styles.totalValue,
+          discount && styles.discountValue,
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -1206,6 +1267,20 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: "800",
     marginTop: 8,
+  },
+  noticeText: {
+    color: "#B45309",
+    backgroundColor: "rgba(245,158,11,0.1)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+    marginTop: 8,
+  },
+  discountValue: {
+    color: "#16A34A",
   },
   primaryButton: {
     backgroundColor: "#FF4D4D",

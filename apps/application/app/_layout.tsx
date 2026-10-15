@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { CartProvider } from "../src/context/cart";
+import { PromoProvider } from "../src/context/promo";
 import { SessionProvider } from "../src/context/session";
 import { STRIPE_PUBLISHABLE_KEY } from "../src/lib/env";
 import { AccountDataProvider } from "../src/hooks/use-account-data";
@@ -16,6 +17,7 @@ export default function RootLayout() {
         <SessionProvider>
           <CartProvider>
             <AccountDataProvider>
+            <PromoProvider>
             <Stack
               screenOptions={{
                 headerStyle: {
@@ -61,6 +63,7 @@ export default function RootLayout() {
               />
             </Stack>
             <StatusBar style="auto" />
+            </PromoProvider>
             </AccountDataProvider>
           </CartProvider>
         </SessionProvider>

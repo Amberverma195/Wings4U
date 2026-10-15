@@ -9,9 +9,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { AuthSheet } from '../../src/components/auth-sheet';
 import { SectionSwitch } from '../../src/components/section-switch';
 import { TabHeader } from '../../src/components/tab-header';
+import { usePromo } from '../../src/context/promo';
 import { useSession } from '../../src/context/session';
 import { useAccountData, type WingsStampEntry } from '../../src/hooks/use-account-data';
 import {
@@ -85,6 +87,8 @@ function RewardHistory({ entries }: { entries: WingsStampEntry[] }) {
 
 function RewardsSection() {
   const account = useAccountData();
+  const promo = usePromo();
+  const router = useRouter();
   const progress = rewardProgress(account.data.wingsRewards);
   const state = sectionContentState(account.sectionErrors.rewards, progress ? 1 : 0);
 
@@ -105,9 +109,23 @@ function RewardsSection() {
       </Text>
       <Text style={styles.eligibility}>
         {progress.eligible
-          ? 'Free 1lb wings reward is ready. Redeem it at checkout.'
+          ? 'Free 1lb wings reward is ready. Apply it to your cart.'
           : `${progress.stampsToNext} more stamp${progress.stampsToNext === 1 ? '' : 's'} to unlock 1lb of wings free.`}
       </Text>
+      {progress.eligible ? (
+        <TouchableOpacity
+          style={[styles.applyButton, promo.applyWingsReward && styles.applyButtonDone]}
+          onPress={() => {
+            promo.redeemWingsReward();
+            router.push('/cart');
+          }}
+          accessibilityRole="button"
+        >
+          <Text style={styles.applyButtonText}>
+            {promo.applyWingsReward ? 'Reward applied · View cart' : 'Apply free wings reward'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.dots}>
         {Array.from({ length: progress.stampsPerReward }).map((_, index) => {
           const filled = index < progress.availableStamps;
@@ -129,10 +147,13 @@ function RewardsSection() {
 }
 
 function CouponCard({ promo }: { promo: ActivePromo }) {
+  const promoSelection = usePromo();
+  const router = useRouter();
   const bxgy = promo.discountType === 'BXGY' ? formatBxgyDetails(promo) : null;
   const fulfillment = promoFulfillmentLabel(promo.eligibleFulfillmentType);
   const starts = formatWhen(promo.startsAt);
   const ends = formatWhen(promo.endsAt);
+  const applied = promoSelection.promoCode === promo.code;
   return (
     <View style={styles.coupon}>
       <Text style={styles.code}>{promo.code}</Text>
@@ -146,7 +167,22 @@ function CouponCard({ promo }: { promo: ActivePromo }) {
       {promo.isOneTimePerCustomer ? <Text style={styles.rowMeta}>One time per customer</Text> : null}
       {fulfillment ? <Text style={styles.rowMeta}>{fulfillment}</Text> : null}
       {bxgy ? <Text style={styles.rowMeta}>{bxgy}</Text> : null}
-      {promo.autoApply ? <Text style={styles.rowMeta}>Applies automatically at checkout</Text> : null}
+      {promo.autoApply ? (
+        <Text style={styles.rowMeta}>Applies automatically at checkout</Text>
+      ) : (
+        <TouchableOpacity
+          style={[styles.applyButton, applied && styles.applyButtonDone]}
+          onPress={() => {
+            promoSelection.applyPromoCode(promo.code);
+            router.push('/cart');
+          }}
+          accessibilityRole="button"
+        >
+          <Text style={styles.applyButtonText}>
+            {applied ? 'Applied · View cart' : 'Apply to cart'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -242,6 +278,9 @@ const styles = StyleSheet.create({
   coupon: { paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#F1F1F1' },
   code: { color: '#FF4D4D', fontSize: 16, fontWeight: '800' },
   benefit: { color: '#1A1A1A', fontSize: 14, fontWeight: '700', marginTop: 6 },
+  applyButton: { marginTop: 12, backgroundColor: '#FF4D4D', borderRadius: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  applyButtonDone: { backgroundColor: '#16A34A' },
+  applyButtonText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
   empty: { color: '#777777', fontSize: 14, lineHeight: 20, paddingVertical: 24, textAlign: 'center' },
   error: { color: '#B91C1C', fontSize: 14, lineHeight: 20, paddingVertical: 24, textAlign: 'center' },
 });
