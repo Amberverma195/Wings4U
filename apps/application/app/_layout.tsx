@@ -5,6 +5,9 @@ import { StripeProvider } from "@stripe/stripe-react-native";
 import { CartProvider } from "../src/context/cart";
 import { SessionProvider } from "../src/context/session";
 import { STRIPE_PUBLISHABLE_KEY } from "../src/lib/env";
+import { AccountDataProvider } from "../src/hooks/use-account-data";
+
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 export default function RootLayout() {
   return (
@@ -12,6 +15,7 @@ export default function RootLayout() {
       <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
         <SessionProvider>
           <CartProvider>
+            <AccountDataProvider>
             <Stack
               screenOptions={{
                 headerStyle: {
@@ -25,7 +29,7 @@ export default function RootLayout() {
               }}
             >
               <Stack.Screen
-                name="index"
+                name="(tabs)"
                 options={{
                   title: "Wings4U",
                   headerShown: false,
@@ -57,6 +61,7 @@ export default function RootLayout() {
               />
             </Stack>
             <StatusBar style="auto" />
+            </AccountDataProvider>
           </CartProvider>
         </SessionProvider>
       </StripeProvider>

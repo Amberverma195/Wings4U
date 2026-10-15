@@ -47,3 +47,25 @@ export function categoryNote(slug: string): string | null {
   if (slug === 'wing-combos') return 'Side options for combos: Fries, Onion Rings, Wedges or Coleslaw';
   return null;
 }
+
+/**
+ * Resolve a requested category slug (e.g. from a promo banner deep-link)
+ * against the already-prepared categories.
+ *
+ * Handles the specialty-fries <-> sides merge performed by
+ * `combineSideCategories`: depending on how the menu is seeded/imported, the
+ * specialty fries may live under their own `specialty-fries` slug or be folded
+ * into the combined `sides` category. Returns `null` when the target isn't
+ * available so callers can ignore unknown categories gracefully.
+ */
+export function resolveCategorySlug(requested: string, categories: MenuCategory[]): string | null {
+  if (!requested || categories.length === 0) return null;
+  if (categories.some(category => category.slug === requested)) return requested;
+  if (requested === 'specialty-fries' && categories.some(category => category.slug === 'sides')) {
+    return 'sides';
+  }
+  if (requested === 'sides' && categories.some(category => category.slug === 'specialty-fries')) {
+    return 'specialty-fries';
+  }
+  return null;
+}

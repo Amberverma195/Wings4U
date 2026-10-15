@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { apiFetch, getApiErrorMessage } from "../lib/api";
 import { DEFAULT_LOCATION_ID } from "../lib/env";
@@ -152,12 +152,18 @@ function fulfilled<T>(result: PromiseSettledResult<T>, fallback: T): T {
   return result.status === "fulfilled" ? result.value : fallback;
 }
 
-export function useAccountData() {
+function useAccountDataState() {
   const session = useSession();
+  const userKey = session.authenticated ? session.user?.id ?? 'customer' : null;
+  const generation = useRef(0);
+  const inFlight = useRef<{ userKey: string | null; promise: Promise<void> } | null>(null);
+  const pageBusy = useRef(false);
   const [data, setData] = useState<AccountData>(EMPTY_ACCOUNT_DATA);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<Partial<Record<'orders' | 'rewards' | 'promos' | 'wallet', string>>>({});
+  const [loadingMoreOrders, setLoadingMoreOrders] = useState(false);
 
   const authedFetch = useCallback(
     async (path: string, init?: RequestInit & { locationId?: string }) =>
@@ -166,14 +172,14 @@ export function useAccountData() {
         session.refresh,
         session.clear,
       ),
-    [session],
+    [session.refresh, session.clear],
   );
 
   const authedJson = useCallback(
     async <T,>(path: string, init?: RequestInit & { locationId?: string }): Promise<T> => {
       const res = await authedFetch(path, init);
       const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
-      if (!res.ok || !body) {
+      if (!res.ok || !body || body.data == null) {
         throw new Error(getApiErrorMessage(body, res.statusText || "Request failed"));
       }
       return body.data as T;
@@ -181,12 +187,16 @@ export function useAccountData() {
     [authedFetch],
   );
 
-  const load = useCallback(
+  const performLoad = useCallback(
     async (mode: "initial" | "refresh" = "refresh") => {
+      const request = ++generation.current;
+      if (!session.loaded) return;
       if (!session.authenticated) {
         setData(EMPTY_ACCOUNT_DATA);
         setLoading(false);
         setRefreshing(false);
+        setError(null);
+        setSectionErrors({});
         return;
       }
 
@@ -213,6 +223,9 @@ export function useAccountData() {
           locationId: DEFAULT_LOCATION_ID,
         }),
       ]);
+
+      // A response from a previous customer must never repopulate shared state.
+      if (request !== generation.current) return;
 
       const [
         walletResult,
@@ -260,15 +273,61 @@ export function useAccountData() {
         .filter((result): result is PromiseRejectedResult => result.status === "rejected")
         .map((result) => errorMessage(result.reason));
       setError(failures.length > 0 ? failures[0] : null);
+      const errors: typeof sectionErrors = {};
+      if (ordersResult.status === 'rejected') errors.orders = errorMessage(ordersResult.reason);
+      if (rewardsResult.status === 'rejected') errors.rewards = errorMessage(rewardsResult.reason);
+      if (wingsLedgerResult.status === 'rejected') errors.rewards ??= errorMessage(wingsLedgerResult.reason);
+      if (promosResult.status === 'rejected') errors.promos = errorMessage(promosResult.reason);
+      if (walletResult.status === 'rejected') errors.wallet = errorMessage(walletResult.reason);
+      setSectionErrors(errors);
       setLoading(false);
       setRefreshing(false);
     },
-    [authedJson, session.authenticated],
+    [authedJson, session.loaded, session.authenticated, userKey],
   );
 
+  const load = useCallback((mode: 'initial' | 'refresh' = 'refresh') => {
+    if (inFlight.current?.userKey === userKey) return inFlight.current.promise;
+    const promise = performLoad(mode).finally(() => {
+      if (inFlight.current?.promise === promise) inFlight.current = null;
+    });
+    inFlight.current = { userKey, promise };
+    return promise;
+  }, [performLoad, userKey]);
+
   useEffect(() => {
+    setData(EMPTY_ACCOUNT_DATA);
+    setLoading(true);
+    setLoadingMoreOrders(false);
+    pageBusy.current = false;
+    inFlight.current = null;
     void load("initial");
+    return () => { generation.current++; };
   }, [load]);
+
+  const loadMoreOrders = useCallback(async () => {
+    const cursor = data.ordersNextCursor;
+    if (!session.authenticated || !cursor || loading || refreshing || pageBusy.current) return;
+    const request = generation.current;
+    pageBusy.current = true;
+    setLoadingMoreOrders(true);
+    try {
+      const page = await authedJson<OrdersPage>(`/api/v1/orders/customer?limit=20&cursor=${encodeURIComponent(cursor)}`, {
+        locationId: DEFAULT_LOCATION_ID,
+      });
+      if (request !== generation.current) return;
+      setData(previous => ({ ...previous,
+        orders: [...new Map([...previous.orders, ...page.orders].map(order => [order.id, order])).values()],
+        ordersNextCursor: page.next_cursor,
+      }));
+      setSectionErrors(previous => ({ ...previous, orders: undefined }));
+    } catch (error) {
+      if (request === generation.current) setSectionErrors(previous => ({ ...previous, orders: errorMessage(error) }));
+    } finally {
+      pageBusy.current = false;
+      setLoadingMoreOrders(false);
+    }
+  }, [authedJson, data.ordersNextCursor, session.authenticated, loading, refreshing]);
 
   const saveAddress = useCallback(
     async (input: AddressInput, id?: string) => {
@@ -323,13 +382,30 @@ export function useAccountData() {
   );
 
   return {
-    data,
+    data: session.authenticated ? data : EMPTY_ACCOUNT_DATA,
     loading,
     refreshing,
     error,
+    sectionErrors,
+    loadingMoreOrders,
+    loadMoreOrders,
     refresh: load,
     saveAddress,
     deleteAddress,
     createTicket,
   };
+}
+
+const AccountDataContext = createContext<ReturnType<typeof useAccountDataState> | null>(null);
+
+/** Profile, Deals and Orders consume a single authenticated account store. */
+export function AccountDataProvider({ children }: { children: ReactNode }) {
+  const value = useAccountDataState();
+  return createElement(AccountDataContext.Provider, { value }, children);
+}
+
+export function useAccountData() {
+  const account = useContext(AccountDataContext);
+  if (!account) throw new Error('useAccountData must be used within AccountDataProvider');
+  return account;
 }

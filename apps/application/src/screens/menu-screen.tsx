@@ -1,5 +1,5 @@
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,7 +14,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
   Easing,
   interpolateColor,
@@ -23,16 +23,17 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { ShoppingBag, Clock, AlertCircle, User, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
-import { useMenu } from '../src/hooks/use-menu';
-import { useSession } from '../src/context/session';
-import { useCart } from '../src/context/cart';
-import { AuthSheet } from '../src/components/auth-sheet';
-import { MenuItemBuilder } from '../src/components/menu-item-builder';
-import type { MenuCategory, MenuItem } from '../src/lib/types';
-import { filterMenuCategories } from '../src/lib/menu-search';
-import { categoryImage, categoryLabel } from '../src/lib/category-images';
-import { prepareMenuCategories, menuCardDetails, categoryNote } from '../src/lib/menu-display';
+import { Clock, AlertCircle, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
+import { useMenu } from '../hooks/use-menu';
+import { useCart } from '../context/cart';
+import { HeaderActions, TabHeader } from '../components/tab-header';
+import { MenuItemBuilder } from '../components/menu-item-builder';
+import { PromotionalCarousel } from '../components/promotional-carousel';
+import type { MenuItem } from '../lib/types';
+import { filterMenuCategories } from '../lib/menu-search';
+import { categoryImage, categoryLabel } from '../lib/category-images';
+import { prepareMenuCategories, menuCardDetails, categoryNote, resolveCategorySlug } from '../lib/menu-display';
+import { PROMOTIONAL_BANNERS, type PromotionalBanner } from '../lib/promotional-banners';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -84,7 +85,13 @@ function formatPrice(cents: number): string {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function Home() {
+export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
+  const focused = useIsFocused();
+  const router = useRouter();
+  // Deep-link params set by the Home promo carousel (e.g. ?category=wings&ts=...).
+  const params = useLocalSearchParams<{ category?: string; ts?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const productSectionY = useRef(0);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compactHeader = width < 380;
@@ -128,7 +135,6 @@ export default function Home() {
   const { menu, loading, error, refetch } = useMenu(fulfillmentType, cart.locationId, cart.scheduledFor);
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [authVisible, setAuthVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -147,8 +153,6 @@ export default function Home() {
     const progress = Math.max(0, Math.min(1, categoryScrollX.value / scrollRange));
     return { transform: [{ translateX: progress * (80 - swipeThumbWidth) }] };
   });
-  const session = useSession();
-  const router = useRouter();
 
   const sortedCategories = useMemo(() => {
     if (!menu) return [];
@@ -181,6 +185,35 @@ export default function Home() {
     setSearchQuery('');
   }, []);
 
+  /* Promo banner tap -> open the Menu tab deep-linked to its category. The
+     changing `ts` guarantees re-selection even if the Menu tab is already
+     mounted on the same category. */
+  const handleBannerPress = useCallback((banner: PromotionalBanner) => {
+    router.navigate({
+      pathname: '/(tabs)/menu',
+      params: { category: banner.categorySlug, ts: String(Date.now()) },
+    });
+  }, [router]);
+
+  /* Apply an incoming category deep-link once the menu has loaded. Depending
+     on `sortedCategories` means a param set before the menu is ready is
+     retried automatically once data arrives (no race condition). Unknown
+     categories resolve to null and are ignored. */
+  const categoryParam = typeof params.category === 'string' ? params.category : undefined;
+  const categoryParamTs = typeof params.ts === 'string' ? params.ts : undefined;
+  useEffect(() => {
+    if (!categoryParam || sortedCategories.length === 0) return;
+    const resolved = resolveCategorySlug(categoryParam, sortedCategories);
+    if (!resolved) return;
+    setActiveCategorySlug(resolved);
+    setSearchQuery('');
+    requestAnimationFrame(() => {
+      if (productSectionY.current > 0) {
+        scrollRef.current?.scrollTo({ y: productSectionY.current, animated: true });
+      }
+    });
+  }, [categoryParam, categoryParamTs, sortedCategories]);
+
   const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {
     if (type === fulfillmentType) return;
     cart.setFulfillmentType(type);
@@ -195,8 +228,8 @@ export default function Home() {
   /* ---------------------------------------------------------------- */
   if (loading && !menu) {
     return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="dark" />
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        <TabHeader title={cinematic ? 'Wings4U' : 'Menu'} />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#FF4D4D" />
           <Text style={styles.loadingText}>Loading menu...</Text>
@@ -210,8 +243,8 @@ export default function Home() {
   /* ---------------------------------------------------------------- */
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="dark" />
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        <TabHeader title={cinematic ? 'Wings4U' : 'Menu'} />
         <View style={styles.errorWrap}>
           <AlertCircle size={48} color="#FF4D4D" />
           <Text style={styles.errorTitle}>Couldn't load menu</Text>
@@ -228,15 +261,17 @@ export default function Home() {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <StatusBar style={headerScrolledAway ? 'dark' : 'light'} />
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      {focused && <StatusBar style={cinematic && !headerScrolledAway ? 'light' : 'dark'} />}
+      {!cinematic && <TabHeader title="Menu" />}
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentInsetAdjustmentBehavior="never"
         onScroll={({ nativeEvent }) => {
-          setHeaderScrolledAway(nativeEvent.contentOffset.y >= measuredHeaderHeight - insets.top);
+          if (cinematic) setHeaderScrolledAway(nativeEvent.contentOffset.y >= measuredHeaderHeight - insets.top);
         }}
         scrollEventThrottle={16}
         refreshControl={
@@ -244,9 +279,9 @@ export default function Home() {
         }
       >
         {/* Header Section */}
-        <View style={[styles.header, { minHeight: headerHeight }]}
+        <View style={[styles.header, !cinematic && styles.compactHeader, cinematic && { minHeight: headerHeight }]}
           onLayout={({ nativeEvent }) => setMeasuredHeaderHeight(nativeEvent.layout.height)}>
-          <View
+          {cinematic && <View
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
             accessible={false}
@@ -254,7 +289,7 @@ export default function Home() {
             importantForAccessibility="no-hide-descendants"
           >
             <Image
-              source={require('../assets/head-banner.png')}
+              source={require('../../assets/head-banner.png')}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
               contentPosition="right center"
@@ -270,16 +305,16 @@ export default function Home() {
               </Defs>
               <Rect width="100%" height="100%" fill="url(#headerShade)" />
             </Svg>
-          </View>
+          </View>}
           <View style={[
             styles.headerContent,
             {
-              paddingTop: insets.top + 12,
+              paddingTop: cinematic ? insets.top + 12 : 12,
               paddingLeft: Math.max(compactHeader ? 16 : 20, insets.left),
               paddingRight: Math.max(compactHeader ? 16 : 20, insets.right),
             },
           ]}>
-            <View style={styles.headerRow}>
+            {cinematic && <View style={styles.headerRow}>
               <View style={styles.branding}>
                 <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1} accessibilityRole="header">
                   Wings<Text style={styles.titleAccent}>4U</Text>
@@ -288,33 +323,8 @@ export default function Home() {
                   WINGS · BURGERS · TENDERS · MORE
                 </Text>
               </View>
-              <View style={styles.headerActions}>
-                {/* Auth button */}
-                {session.authenticated ? (
-                  <TouchableOpacity style={[styles.authAvatarBtn, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/profile')}
-                    accessibilityRole="button" accessibilityLabel="Open profile" hitSlop={4}>
-                    <User size={18} color="#1A1A1A" />
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity style={[styles.authGuestBtn, compactHeader && styles.headerIconCompact]} onPress={() => setAuthVisible(true)}
-                    accessibilityRole="button" accessibilityLabel="Sign in" hitSlop={4}>
-                    <User size={20} color="#1A1A1A" />
-                  </TouchableOpacity>
-                )}
-                {/* Cart button */}
-                <TouchableOpacity style={[styles.cartButton, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/cart')}
-                  accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.itemCount} items`} hitSlop={4}>
-                  <ShoppingBag size={22} color="#1A1A1A" />
-                  {cart.itemCount > 0 ? (
-                    <View style={styles.cartBadge}>
-                      <Text style={styles.cartBadgeText}>
-                        {cart.itemCount > 9 ? '9+' : cart.itemCount}
-                      </Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-              </View>
-            </View>
+              <HeaderActions />
+            </View>}
             <View
               style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
               accessibilityRole="radiogroup"
@@ -394,7 +404,7 @@ export default function Home() {
               </TouchableOpacity>
             </View>
             {filtersVisible && <View style={styles.filtersPanel}>
-              <Text style={styles.filterLabel}>Show</Text>
+              <Text style={[styles.filterLabel, !cinematic && styles.filterLabelDark]}>Show</Text>
               <TouchableOpacity
                 style={[styles.filterChip, availableOnly && styles.filterChipActive]}
                 onPress={() => setAvailableOnly(value => !value)}
@@ -409,8 +419,6 @@ export default function Home() {
           </View>
         </View>
 
-        {/* Auth Sheet Modal */}
-        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} />
         <MenuItemBuilder
           visible={Boolean(selectedItem)}
           item={selectedItem}
@@ -419,7 +427,10 @@ export default function Home() {
         />
 
         {/* Categories Strip */}
-        <View style={styles.sectionHeader}>
+        <View
+          style={styles.sectionHeader}
+          onLayout={(event) => { productSectionY.current = event.nativeEvent.layout.y; }}
+        >
           <Text style={styles.sectionTitle}>Menu</Text>
         </View>
 
@@ -471,6 +482,11 @@ export default function Home() {
               style={[styles.categorySwipeThumb, { width: swipeThumbWidth }, swipeThumbStyle]}
             />
           </View>
+        ) : null}
+
+        {/* Promotional banner carousel (Home only) */}
+        {cinematic ? (
+          <PromotionalCarousel banners={PROMOTIONAL_BANNERS} onPressBanner={handleBannerPress} />
         ) : null}
 
         {/* Active Category Items */}
@@ -665,6 +681,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#120A08',
     overflow: 'hidden',
   },
+  compactHeader: { backgroundColor: '#FAFAFA' },
+  filterLabelDark: { color: '#666' },
   headerContent: {
     flex: 1,
     paddingBottom: 16,
