@@ -31,6 +31,7 @@ import { AuthSheet } from '../src/components/auth-sheet';
 import { MenuItemBuilder } from '../src/components/menu-item-builder';
 import type { MenuCategory, MenuItem } from '../src/lib/types';
 import { filterMenuCategories } from '../src/lib/menu-search';
+import { categoryImage, categoryLabel } from '../src/lib/category-images';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -117,6 +118,7 @@ export default function Home() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compactHeader = width < 380;
+  const categoryTileSize = Math.max(44, Math.min(56, (width - 32) / 7 - 4));
   const headerHeight = Math.max(192, Math.min(width * 0.48, 240)) + insets.top;
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(headerHeight);
   const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
@@ -127,13 +129,25 @@ export default function Home() {
 
   useEffect(() => {
     fulfillmentProgress.value = withTiming(fulfillmentType === 'DELIVERY' ? 1 : 0, {
-      duration: 280,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      duration: 460,
+      easing: Easing.inOut(Easing.cubic),
     });
   }, [fulfillmentType, fulfillmentProgress]);
 
-  const fulfillmentPillStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: fulfillmentProgress.value * fulfillmentOptionWidth }],
+  const fulfillmentPillStyle = useAnimatedStyle(() => {
+    const lift = Math.sin(fulfillmentProgress.value * Math.PI);
+    return {
+      transform: [
+        { translateX: fulfillmentProgress.value * fulfillmentOptionWidth },
+        { translateY: -2 * lift },
+        { rotate: `${-4 * lift}deg` },
+        { scaleX: 1 - 0.05 * lift },
+        { scaleY: 1 + 0.05 * lift },
+      ],
+    };
+  });
+  const fulfillmentIconStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${fulfillmentProgress.value * 360}deg` }],
   }));
   const pickupLabelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(fulfillmentProgress.value, [0, 1], ['#FFFFFF', '#666666']),
@@ -356,11 +370,11 @@ export default function Home() {
                     accessibilityState={{ checked: selected }}
                     accessibilityLabel={type === 'PICKUP' ? 'Pickup' : 'Delivery'}
                   >
-                    <View pointerEvents="none" accessible={false}
+                    <Animated.View style={fulfillmentIconStyle} pointerEvents="none" accessible={false}
                       accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                       <FulfillmentIcon size={14}
                         color={selected ? '#FFF' : '#666'} strokeWidth={2} />
-                    </View>
+                    </Animated.View>
                     <Animated.Text
                       style={[
                         styles.fulfillmentLabel,
@@ -453,21 +467,29 @@ export default function Home() {
             return (
               <TouchableOpacity
                 key={cat.id}
-                style={styles.categoryCard}
+                style={[styles.categoryCard, { width: categoryTileSize }]}
                 onPress={() => handleCategoryPress(cat.slug)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
                 accessibilityLabel={cat.name}
               >
-                <View style={[styles.categoryIcon, isActive && styles.categoryIconActive]}>
-                  <Text style={styles.categoryEmoji}>{emojiForCategorySlug(cat.slug)}</Text>
+                <View style={[
+                  styles.categoryIcon,
+                  { width: categoryTileSize, height: categoryTileSize },
+                  isActive && styles.categoryIconActive,
+                ]}>
+                  <Image source={categoryImage(cat)} style={styles.categoryPhoto}
+                    contentFit="contain" accessible={false} />
                 </View>
                 <Text
                   style={[styles.categoryText, isActive && styles.categoryTextActive]}
-                  numberOfLines={2}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
                 >
-                  {cat.name}
+                  {categoryLabel(cat)}
                 </Text>
+                <View style={[styles.categoryUnderline, isActive && styles.categoryUnderlineActive]} />
               </TouchableOpacity>
             );
           })}
@@ -873,49 +895,52 @@ const styles = StyleSheet.create({
 
   /* Categories strip */
   categoriesScroll: {
-    paddingLeft: 20,
+    paddingLeft: 16,
     marginBottom: 10,
   },
   categoriesContent: {
-    paddingRight: 20,
+    paddingRight: 12,
   },
   categoryCard: {
-    width: 76,
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 4,
   },
   categoryIcon: {
-    width: 64,
-    height: 64,
-    backgroundColor: '#FFF',
-    borderRadius: 32,
-    marginBottom: 8,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 14,
+    marginBottom: 5,
+    padding: 3,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
   },
   categoryIconActive: {
     backgroundColor: '#FF4D4D',
   },
-  categoryEmoji: {
-    fontSize: 24,
+  categoryPhoto: {
+    width: '100%',
+    height: '100%',
   },
   categoryText: {
-    minHeight: 30,
-    fontSize: 11,
+    minHeight: 13,
+    lineHeight: 13,
+    fontSize: 9,
     fontWeight: '600',
     color: '#666',
     textAlign: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 1,
   },
   categoryTextActive: {
     color: '#FF4D4D',
     fontWeight: '700',
   },
+  categoryUnderline: {
+    width: 20,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'transparent',
+    marginTop: 4,
+  },
+  categoryUnderlineActive: { backgroundColor: '#FF4D4D' },
   categorySwipeTrack: {
     width: 80,
     height: 4,
