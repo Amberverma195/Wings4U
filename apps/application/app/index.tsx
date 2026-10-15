@@ -1,4 +1,4 @@
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import Animated, {
   Easing,
@@ -21,7 +22,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { ShoppingBag, Clock, AlertCircle, User } from 'lucide-react-native';
+import { ShoppingBag, Clock, AlertCircle, User, CarFront, Bike } from 'lucide-react-native';
 import { useMenu } from '../src/hooks/use-menu';
 import { useSession } from '../src/context/session';
 import { useCart } from '../src/context/cart';
@@ -112,7 +113,10 @@ function sortCategories(categories: MenuCategory[]): MenuCategory[] {
 
 export default function Home() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const compactHeader = width < 380;
+  const headerHeight = Math.max(180, Math.min(width / 2, 260)) + insets.top;
+  const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
   const cart = useCart();
   const fulfillmentType = cart.fulfillmentType;
   const fulfillmentProgress = useSharedValue(fulfillmentType === 'DELIVERY' ? 1 : 0);
@@ -235,83 +239,131 @@ export default function Home() {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar style={headerScrolledAway ? 'dark' : 'light'} />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="never"
+        onScroll={({ nativeEvent }) => {
+          setHeaderScrolledAway(nativeEvent.contentOffset.y >= headerHeight - insets.top);
+        }}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF4D4D" />
         }
       >
         {/* Header Section */}
-        <View style={[styles.header, compactHeader && styles.headerCompact]}>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <View style={styles.headerRow}>
-            <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1}>
-              Wings4U
-            </Text>
-            <View
-              style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Order type"
-            >
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.fulfillmentPill,
-                  { width: fulfillmentOptionWidth },
-                  fulfillmentPillStyle,
-                ]}
-              />
-              {(['PICKUP', 'DELIVERY'] as const).map((type) => {
-                const selected = fulfillmentType === type;
-                return (
-                  <TouchableOpacity
-                    key={type}
-                    style={styles.fulfillmentOption}
-                    activeOpacity={1}
-                    onPress={() => selectFulfillment(type)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: selected }}
-                    accessibilityLabel={type === 'PICKUP' ? 'Pickup' : 'Delivery'}
-                  >
-                    <Animated.Text
-                      style={[
-                        styles.fulfillmentLabel,
-                        compactHeader && styles.fulfillmentLabelCompact,
-                        type === 'PICKUP' ? pickupLabelStyle : deliveryLabelStyle,
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
+        <View style={[styles.header, { minHeight: headerHeight }]}>
+          <View
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Image
+              source={require('../assets/head-banner.png')}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              contentPosition="right center"
+              accessible={false}
+            />
+            <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <LinearGradient id="headerShade" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <Stop offset="0%" stopColor="#000" stopOpacity={0.55} />
+                  <Stop offset="55%" stopColor="#000" stopOpacity={0.3} />
+                  <Stop offset="100%" stopColor="#000" stopOpacity={0.12} />
+                </LinearGradient>
+              </Defs>
+              <Rect width="100%" height="100%" fill="url(#headerShade)" />
+            </Svg>
+          </View>
+          <View style={[
+            styles.headerContent,
+            {
+              paddingTop: insets.top + 18,
+              paddingLeft: Math.max(compactHeader ? 16 : 20, insets.left),
+              paddingRight: Math.max(compactHeader ? 16 : 20, insets.right),
+            },
+          ]}>
+            <Text style={styles.greeting}>{greeting}</Text>
+            <View style={styles.headerRow}>
+              <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1}>
+                Wings4U
+              </Text>
+              <View
+                style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
+                accessibilityRole="radiogroup"
+                accessibilityLabel="Order type"
+              >
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.fulfillmentPill,
+                    { width: fulfillmentOptionWidth },
+                    fulfillmentPillStyle,
+                  ]}
+                />
+                {(['PICKUP', 'DELIVERY'] as const).map((type) => {
+                  const selected = fulfillmentType === type;
+                  const FulfillmentIcon = type === 'PICKUP' ? CarFront : Bike;
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      style={styles.fulfillmentOption}
+                      activeOpacity={1}
+                      onPress={() => selectFulfillment(type)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      accessibilityLabel={type === 'PICKUP' ? 'Pickup' : 'Delivery'}
                     >
-                      {type === 'PICKUP' ? 'Pickup' : 'Delivery'}
-                    </Animated.Text>
+                      <View pointerEvents="none" accessible={false}
+                        accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                        <FulfillmentIcon size={compactHeader ? 10 : 12}
+                          color={selected ? '#FFF' : '#666'} strokeWidth={2} />
+                      </View>
+                      <Animated.Text
+                        style={[
+                          styles.fulfillmentLabel,
+                          compactHeader && styles.fulfillmentLabelCompact,
+                          type === 'PICKUP' ? pickupLabelStyle : deliveryLabelStyle,
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                      >
+                        {type === 'PICKUP' ? 'Pickup' : 'Delivery'}
+                      </Animated.Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.headerActions}>
+                {/* Auth button */}
+                {session.authenticated ? (
+                  <TouchableOpacity style={[styles.authAvatarBtn, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/profile')}
+                    accessibilityRole="button" accessibilityLabel="Open profile" hitSlop={4}>
+                    <User size={18} color="#FFF" />
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.headerActions}>
-              {/* Auth button */}
-              {session.authenticated ? (
-                <TouchableOpacity style={[styles.authAvatarBtn, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/profile')}>
-                  <User size={18} color="#FFF" />
+                ) : (
+                  <TouchableOpacity style={[styles.authGuestBtn, compactHeader && styles.headerIconCompact]} onPress={() => setAuthVisible(true)}
+                    accessibilityRole="button" accessibilityLabel="Sign in" hitSlop={4}>
+                    <User size={20} color="#FFF" />
+                  </TouchableOpacity>
+                )}
+                {/* Cart button */}
+                <TouchableOpacity style={[styles.cartButton, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/cart')}
+                  accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.itemCount} items`} hitSlop={4}>
+                  <ShoppingBag size={24} color="#FFF" />
+                  {cart.itemCount > 0 ? (
+                    <View style={styles.cartBadge}>
+                      <Text style={styles.cartBadgeText}>
+                        {cart.itemCount > 9 ? '9+' : cart.itemCount}
+                      </Text>
+                    </View>
+                  ) : null}
                 </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={[styles.authGuestBtn, compactHeader && styles.headerIconCompact]} onPress={() => setAuthVisible(true)}>
-                  <User size={20} color="#FF4D4D" />
-                </TouchableOpacity>
-              )}
-              {/* Cart button */}
-              <TouchableOpacity style={[styles.cartButton, compactHeader && styles.headerIconCompact]} onPress={() => router.push('/cart')}>
-                <ShoppingBag size={24} color="#000" />
-                {cart.itemCount > 0 ? (
-                  <View style={styles.cartBadge}>
-                    <Text style={styles.cartBadgeText}>
-                      {cart.itemCount > 9 ? '9+' : cart.itemCount}
-                    </Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -552,12 +604,15 @@ const styles = StyleSheet.create({
 
   /* Header */
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    gap: 6,
+    backgroundColor: '#120A08',
+    overflow: 'hidden',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  headerCompact: {
-    paddingHorizontal: 16,
+  headerContent: {
+    flex: 1,
+    paddingBottom: 24,
+    gap: 8,
   },
   headerRow: {
     flexDirection: 'row',
@@ -567,13 +622,13 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 14,
-    color: '#666',
+    color: '#E6D5CF',
     fontWeight: '500',
   },
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#1A1A1A',
+    color: '#FFF',
     flexShrink: 1,
   },
   titleCompact: {
@@ -591,11 +646,13 @@ const styles = StyleSheet.create({
   },
   fulfillmentOption: {
     flex: 1,
+    flexDirection: 'row',
+    gap: 3,
     minHeight: 38,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 19,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   fulfillmentPill: {
     position: 'absolute',
@@ -606,6 +663,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF4D4D',
   },
   fulfillmentLabel: {
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: '700',
     color: '#666',
@@ -621,7 +679,9 @@ const styles = StyleSheet.create({
   cartButton: {
     width: 48,
     height: 48,
-    backgroundColor: '#FFF',
+    backgroundColor: 'rgba(15, 10, 10, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.32)',
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
@@ -640,7 +700,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF4D4D',
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#FFF',
+    borderColor: '#24120F',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 3,
@@ -673,7 +733,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFF',
+    backgroundColor: 'rgba(15, 10, 10, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
