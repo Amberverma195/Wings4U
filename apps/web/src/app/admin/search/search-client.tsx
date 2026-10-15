@@ -2,9 +2,11 @@
 
 import { adminApiFetch } from "../admin-api";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import { formatCents, formatDateTime } from "../admin-api";
+import { AdminOrderDetailModal } from "../admin-order-detail-modal";
+import { useAdminOrderDetails } from "../use-admin-order-details";
 
 type SearchResponse = {
   query: string;
@@ -36,6 +38,13 @@ export function GlobalSearchClient() {
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const orderTrigger = useRef<HTMLButtonElement | null>(null);
+  const details = useAdminOrderDetails(selectedOrderId);
+  const closeDetails = useCallback(() => {
+    details.cancel();
+    setSelectedOrderId(null);
+  }, [details.cancel]);
 
   const run = useCallback(
     async (q: string) => {
@@ -112,6 +121,11 @@ export function GlobalSearchClient() {
       </section>
 
       {error && <p className="surface-error">{error}</p>}
+      {details.loadingId !== null && <p className="surface-muted" role="status">Loading order details...</p>}
+      {details.error && <div role="alert">
+        <p className="surface-error">{details.error}</p>
+        <button type="button" className="btn-secondary" onClick={closeDetails}>Dismiss</button>
+      </div>}
 
       {data && (
         <>
@@ -135,12 +149,19 @@ export function GlobalSearchClient() {
                     }}
                   >
                     <div>
-                      <Link
-                        href={`/admin/orders?orderId=${encodeURIComponent(o.id)}`}
-                        style={{ fontWeight: 600 }}
+                      <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-label={`View order #${o.order_number}`}
+                        onClick={(event) => {
+                          orderTrigger.current = event.currentTarget;
+                          setSelectedOrderId(o.id);
+                        }}
+                        style={{ font: "inherit", fontWeight: 600, color: "inherit", padding: 0,
+                          border: 0, background: "transparent", cursor: "pointer" }}
                       >
                         Order #{o.order_number}
-                      </Link>
+                      </button>
                       <div className="surface-muted" style={{ fontSize: "0.8rem" }}>
                         {o.customer_name_snapshot ?? "Guest"} ·{" "}
                         {formatDateTime(o.placed_at)}
@@ -219,6 +240,12 @@ export function GlobalSearchClient() {
           </section>
         </>
       )}
+      {details.order && <AdminOrderDetailModal
+        order={details.order}
+        onClose={closeDetails}
+        onPaymentRecorded={details.refresh}
+        returnFocusTo={orderTrigger.current}
+      />}
     </>
   );
 }

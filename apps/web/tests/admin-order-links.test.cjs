@@ -56,7 +56,8 @@ const OTHER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const response = (data, status = 200) => ({ ok: status < 400, status, json: async () => ({ data }) });
 const order = (id = ORDER_ID) => ({
   id, order_number: id === ORDER_ID ? 1042 : 1043, status: 'DELIVERED', fulfillment_type: 'DELIVERY',
-  customer_name_snapshot: 'Test Customer', customer_phone_snapshot: '5195551234',
+  customer_name_snapshot: 'Brown', customer_phone_snapshot: '5195551234', customer_email_snapshot: 'brown@example.com',
+  location_id: 'restaurant-location', payment_status_summary: 'PAID',
   placed_at: '2026-10-01T17:00:00Z', estimated_ready_at: null,
   address_snapshot_json: { line1: 'Test street', city: 'London', postalCode: 'N6A 1A1' },
   customer_order_notes: 'Test order notes', item_subtotal_cents: 1299,
@@ -64,7 +65,8 @@ const order = (id = ORDER_ID) => ({
   tax_cents: 169, driver_tip_cents: 0, wallet_applied_cents: 0, final_payable_cents: 1768,
   items: [{ id: 'item', quantity: 1, product_name_snapshot: 'Wings', line_total_cents: 1299,
     flavours: [{ flavour_name_snapshot: 'Honey Garlic', heat_level_snapshot: null, placement: 'ON_SIDE' }],
-    modifiers: [{ modifier_kind: 'ADD', modifier_name_snapshot: 'Ranch dip', quantity: 1 }],
+    modifiers: [{ modifier_kind: 'ADD', modifier_name_snapshot: 'Ranch dip', quantity: 1 },
+      { modifier_kind: 'REMOVE_INGREDIENT', modifier_name_snapshot: 'Onions', quantity: 1 }],
     special_instructions: 'Sauce on the side' }],
 });
 let renderer;
@@ -87,27 +89,135 @@ beforeEach(() => {
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 
-test('Global Search customer → order link → existing modal with items and complete details', async () => {
-  apiFetch.mockImplementation(async path => {
-    if (path.startsWith('/api/v1/admin/search?')) return response({ orders: [order()], tickets: [], customers: [] });
-    if (path.startsWith('/api/v1/orders?')) return response({ orders: [], next_cursor: 'page-2' });
-    return response(order());
-  });
+const searchForCustomer = async () => {
+  mockUrl = new URL('http://localhost/admin/search');
+  apiFetch.mockImplementation(async path => path.startsWith('/api/v1/admin/search?')
+    ? response({ orders: [order(), order(OTHER_ID)], tickets: [], customers: [{ id: 'customer', display_name: 'Brown' }] })
+    : response(order(path.split('/').pop())));
   await mount(GlobalSearchClient);
-  await act(async () => renderer.root.findByType('input').props.onChange({ target: { value: 'Test Customer' } }));
+  await act(async () => renderer.root.findByProps({ type: 'search' }).props.onChange({ target: { value: 'Brown' } }));
   await act(async () => renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }));
-  expect(apiFetch.mock.calls[0][0]).toBe('/api/v1/admin/search?q=Test%20Customer');
-  const link = renderer.root.findByType('a');
-  expect(link.props.href).toBe(`/admin/orders?orderId=${ORDER_ID}`);
-  await act(async () => { link.props.onClick(); renderer.update(React.createElement(OrdersListClient)); });
+};
+const openSearchOrder = async (number = 1042) => act(async () =>
+  renderer.root.findByProps({ 'aria-label': `View order #${number}` }).props.onClick({ currentTarget: null }));
+const searchCalls = () => apiFetch.mock.calls.filter(([path]) => path.startsWith('/api/v1/admin/search?'));
+
+test('Global Search opens the shared modal on the same page and closing preserves all search results', async () => {
+  await searchForCustomer();
+  const results = JSON.stringify(renderer.toJSON().slice(1));
+  await openSearchOrder();
+  expect(mockUrl.pathname).toBe('/admin/search');
+  expect(mockUrl.search).toBe('');
+  expect(mockRouter.push).not.toHaveBeenCalled();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+  expect(renderer.root.findByProps({ type: 'search' }).props.value).toBe('Brown');
+  expect(JSON.stringify(renderer.toJSON().slice(1, -1))).toBe(results);
   expect(dialogs()).toHaveLength(1);
-  for (const value of ['Wings', 'Honey Garlic', 'Ranch dip', 'Sauce on the side',
-    'Customer notes:', 'Delivery address:', 'Pricing Summary', 'Total']) expect(text()).toContain(value);
+  for (const value of ['Wings', 'Honey Garlic', 'Ranch dip', 'NO Onions', 'Sauce on the side',
+    'Test order notes', 'Test street', 'brown@example.com', 'Pricing Summary', '$17.68']) expect(text()).toContain(value);
   expect(renderer.root.findByProps({ 'data-chat-order': ORDER_ID })).toBeDefined();
   expect(renderer.root.findByProps({ 'data-payments-path': `/api/v1/orders/${ORDER_ID}/payments` })).toBeDefined();
-  expect(detailCalls()).toHaveLength(1);
+  const { PaymentCollectionPanel } = require('@/components/payment-collection');
+  const { adminApiFetch } = require('../src/app/admin/admin-api');
+  expect(renderer.root.findByType(PaymentCollectionPanel).props).toEqual(expect.objectContaining({
+    locationId: 'restaurant-location', fetcher: adminApiFetch, onRecorded: expect.any(Function),
+  }));
   expect(detailCalls()[0][1]).toEqual(expect.objectContaining({ locationId: 'restaurant-location', signal: expect.any(AbortSignal) }));
   expect(withSilentRefresh).toHaveBeenCalledWith(expect.any(Function), mockSession.refresh, mockSession.clear);
+  await tap('Close');
+  expect(dialogs()).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON().slice(1))).toBe(results);
+  expect(searchCalls()).toHaveLength(1);
+  expect(apiFetch.mock.calls.some(([path]) => path.startsWith('/api/v1/orders?'))).toBe(false);
+});
+
+test('multiple Global Search orders can open and close without navigation or another search', async () => {
+  await searchForCustomer();
+  await openSearchOrder();
+  await tap('Close');
+  await openSearchOrder(1043);
+  expect(renderer.root.findByProps({ 'data-chat-order': OTHER_ID })).toBeDefined();
+  expect(detailCalls().map(([path]) => path)).toEqual([`/api/v1/orders/${ORDER_ID}`, `/api/v1/orders/${OTHER_ID}`]);
+  await tap('Close');
+  expect(searchCalls()).toHaveLength(1);
+  expect(renderer.root.findByProps({ type: 'search' }).props.value).toBe('Brown');
+  expect(mockUrl.href).toBe('http://localhost/admin/search');
+  expect(mockRouter.push).not.toHaveBeenCalled();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+test('slow Global Search order responses cannot replace the second selected order', async () => {
+  await searchForCustomer();
+  const slow = deferred();
+  apiFetch.mockImplementation(async path => {
+    if (path === `/api/v1/orders/${ORDER_ID}`) return slow.promise;
+    return response(order(OTHER_ID));
+  });
+  await openSearchOrder();
+  expect(renderer.root.findByProps({ role: 'status' })).toBeDefined();
+  const firstSignal = detailCalls()[0][1].signal;
+  await openSearchOrder(1043);
+  await act(async () => slow.resolve(response(order())));
+  expect(firstSignal.aborted).toBe(true);
+  expect(dialogs()).toHaveLength(1);
+  expect(renderer.root.findByProps({ 'data-chat-order': OTHER_ID })).toBeDefined();
+});
+
+test.each([[401, 'session has expired'], [403, 'do not have access'], [404, 'could not be found'], [500, 'Unable to load order details']])(
+  'Global Search handles HTTP %s without losing the search or opening an unauthorized order', async (status, message) => {
+    await searchForCustomer();
+    apiFetch.mockResolvedValue(response(null, status));
+    await openSearchOrder();
+    expect(dialogs()).toHaveLength(0);
+    expect(renderer.root.findByProps({ role: 'alert' })).toBeDefined();
+    expect(text()).toContain(message);
+    expect(renderer.root.findByProps({ type: 'search' }).props.value).toBe('Brown');
+    await tap('Dismiss');
+    apiFetch.mockResolvedValue(response(order(OTHER_ID)));
+    await openSearchOrder(1043);
+    expect(renderer.root.findByProps({ 'data-chat-order': OTHER_ID })).toBeDefined();
+    expect(searchCalls()).toHaveLength(1);
+    expect(mockUrl.pathname).toBe('/admin/search');
+  },
+);
+
+test('closing a Global Search modal aborts an in-progress refresh and prevents it reopening', async () => {
+  await searchForCustomer();
+  await openSearchOrder();
+  const slow = deferred();
+  apiFetch.mockReturnValue(slow.promise);
+  const { AdminOrderDetailModal } = require('../src/app/admin/admin-order-detail-modal');
+  await act(async () => renderer.root.findByType(AdminOrderDetailModal).props.onPaymentRecorded());
+  const signal = detailCalls().at(-1)[1].signal;
+  await tap('Close');
+  await act(async () => slow.resolve(response(order())));
+  expect(signal.aborted).toBe(true);
+  expect(dialogs()).toHaveLength(0);
+  expect(searchCalls()).toHaveLength(1);
+});
+
+test('Global Search preserves all existing discount, tax, fee, tip, wallet and total details', async () => {
+  await searchForCustomer();
+  const detail = { ...order(), item_subtotal_cents: 2000, item_discount_total_cents: 200,
+    order_discount_total_cents: 100, delivery_fee_cents: 300, tax_cents: 260, driver_tip_cents: 100,
+    wallet_applied_cents: 50, final_payable_cents: 2310 };
+  apiFetch.mockResolvedValue(response(detail));
+  await openSearchOrder();
+  // Includes coupon/reward savings through the API's existing aggregate discount amounts.
+  for (const value of ['Subtotal', 'Discounts', 'Delivery Fee', 'Tax', 'Tip', 'Wallet Credit']) expect(text()).toContain(value);
+  for (const value of ['$20.00', '-$3.00', '$2.60', '$1.00', '-$0.50', '$23.10']) expect(text()).toContain(value);
+});
+
+test('an unauthorized refresh clears previously loaded details and leaves the current search intact', async () => {
+  await searchForCustomer();
+  await openSearchOrder();
+  apiFetch.mockResolvedValue(response(null, 403));
+  const { AdminOrderDetailModal } = require('../src/app/admin/admin-order-detail-modal');
+  await act(async () => renderer.root.findByType(AdminOrderDetailModal).props.onPaymentRecorded());
+  expect(dialogs()).toHaveLength(0);
+  expect(text()).toContain('do not have access');
+  expect(renderer.root.findByProps({ type: 'search' }).props.value).toBe('Brown');
+  expect(searchCalls()).toHaveLength(1);
 });
 
 test('a selected order loads independently of current filters and pagination', async () => {
