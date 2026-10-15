@@ -290,7 +290,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
           {ticket.order_id && (
             <>
               {" "}·{" "}
-              <Link href={`/admin/orders/${ticket.order_id}`}>related order</Link>
+              <Link href={`/admin/orders?orderId=${encodeURIComponent(ticket.order_id)}`}>related order</Link>
             </>
           )}
         </p>

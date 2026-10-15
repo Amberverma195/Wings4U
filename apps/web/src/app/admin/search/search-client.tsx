@@ -136,7 +136,7 @@ export function GlobalSearchClient() {
                   >
                     <div>
                       <Link
-                        href={`/admin/orders/${o.id}`}
+                        href={`/admin/orders?orderId=${encodeURIComponent(o.id)}`}
                         style={{ fontWeight: 600 }}
                       >
                         Order #{o.order_number}

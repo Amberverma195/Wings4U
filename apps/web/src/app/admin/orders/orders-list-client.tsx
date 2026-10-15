@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderDetail, OrderItem } from "@/lib/types";
 import { OrderChat } from "@/components/order-chat";
@@ -106,6 +107,11 @@ function getItemDetails(item: OrderItem): string[] {
 
 export function OrdersListClient() {
   const session = useSession();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedOrderId = searchParams.get("orderId");
+  const detailRequest = useRef<AbortController | null>(null);
   const [status, setStatus] = useState("");
   const [placedOn, setPlacedOn] = useState("");
   const [items, setItems] = useState<OrderSummary[]>([]);
@@ -164,30 +170,75 @@ export function OrdersListClient() {
   );
 
   const openOrderDetails = useCallback(
-    async (orderId: string) => {
+    async (orderId: string, signal: AbortSignal) => {
       setDetailLoadingId(orderId);
+      setDetailOrder(null);
       setDetailError(null);
       try {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+          throw new Error("Invalid order link. Please select the order again from Global Search.");
+        }
         const res = await withSilentRefresh(
-          () => adminApiFetch(`/api/v1/orders/${orderId}`),
+          () => adminApiFetch(`/api/v1/orders/${encodeURIComponent(orderId)}`, { signal }),
           session.refresh,
           session.clear,
         );
-        const json = await res.json();
+        const json = await res.json().catch(() => null);
         if (!res.ok) {
           throw new Error(
-            json?.errors?.[0]?.message ?? `Load failed (${res.status})`,
+            res.status === 404
+              ? "This order could not be found or is not available for this restaurant."
+              : res.status === 403
+                ? "You do not have access to this order for the current restaurant."
+                : json?.errors?.[0]?.message ?? `Unable to load order details (${res.status}).`,
           );
         }
-        setDetailOrder(json.data as OrderDetail);
+        if (!json?.data) throw new Error("Order details are unavailable. Please try again.");
+        if (!signal.aborted) setDetailOrder(json.data as OrderDetail);
       } catch (e) {
-        setDetailError(e instanceof Error ? e.message : "Load failed");
+        if (!signal.aborted) {
+          setDetailError(e instanceof Error ? e.message : "Unable to load order details. Please try again.");
+        }
       } finally {
-        setDetailLoadingId(null);
+        if (!signal.aborted) setDetailLoadingId(null);
       }
     },
-    [session],
+    [session.refresh, session.clear],
   );
+
+  // Fetch the selected order directly; it need not exist in the current list page.
+  useEffect(() => {
+    if (selectedOrderId === null) {
+      setDetailOrder(null);
+      setDetailError(null);
+      setDetailLoadingId(null);
+      return;
+    }
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    void openOrderDetails(selectedOrderId, controller.signal);
+    return () => {
+      controller.abort();
+      if (detailRequest.current === controller) detailRequest.current = null;
+    };
+  }, [selectedOrderId, openOrderDetails]);
+
+  const selectOrder = (orderId: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("orderId", orderId);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const closeOrderDetails = () => {
+    detailRequest.current?.abort();
+    setDetailOrder(null);
+    setDetailError(null);
+    setDetailLoadingId(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("orderId");
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  };
 
   useEffect(() => {
     void load({
@@ -254,7 +305,13 @@ export function OrdersListClient() {
       </section>
 
       {error && <p className="surface-error">{error}</p>}
-      {detailError && <p className="surface-error">{detailError}</p>}
+      {detailLoadingId !== null && <p className="surface-muted" role="status">Loading order details...</p>}
+      {detailError && (
+        <div role="alert">
+          <p className="surface-error">{detailError}</p>
+          <button type="button" className="btn-secondary" onClick={closeOrderDetails}>Dismiss</button>
+        </div>
+      )}
 
       <section className="surface-card" style={{ padding: "1rem" }}>
         {items.length === 0 && !loading ? (
@@ -326,7 +383,7 @@ export function OrdersListClient() {
                           color: "var(--accent-strong)",
                           cursor: "pointer",
                         }}
-                        onClick={() => void openOrderDetails(row.id)}
+                        onClick={() => selectOrder(row.id)}
                         disabled={detailLoadingId === row.id}
                       >
                         {detailLoadingId === row.id ? "Loading..." : "View"}
@@ -365,10 +422,10 @@ export function OrdersListClient() {
         )}
       </section>
 
-      {detailOrder ? (
+      {detailOrder && detailOrder.id === selectedOrderId ? (
         <AdminOrderDetailModal
           order={detailOrder}
-          onClose={() => setDetailOrder(null)}
+          onClose={closeOrderDetails}
           onPaymentRecorded={() =>
             void load({
               append: false,

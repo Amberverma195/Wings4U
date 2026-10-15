@@ -105,7 +105,7 @@ function CancellationCard({
         <div>
           <h3 style={{ margin: 0 }}>
             {request.order ? (
-              <Link href={`/admin/orders/${request.order.id}`}>
+              <Link href={`/admin/orders?orderId=${encodeURIComponent(request.order.id)}`}>
                 Order #{request.order.order_number}
               </Link>
             ) : (
@@ -246,7 +246,7 @@ function RefundCard({
         <div>
           <h3 style={{ margin: 0 }}>
             {request.order ? (
-              <Link href={`/admin/orders/${request.order.id}`}>
+              <Link href={`/admin/orders?orderId=${encodeURIComponent(request.order.id)}`}>
                 Order #{request.order.order_number}
               </Link>
             ) : (
