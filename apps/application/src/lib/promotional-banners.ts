@@ -1,4 +1,4 @@
-import type { ImageSource } from 'expo-image';
+import type { ImageContentFit, ImageSource } from 'expo-image';
 
 /**
  * A single promotional banner shown in the Home carousel.
@@ -16,6 +16,8 @@ export type PromotionalBanner = {
   source: ImageSource;
   /** Canonical menu category slug this banner opens. */
   categorySlug: string;
+  /** Optional override when a banner needs different scaling in the carousel frame. */
+  contentFit?: ImageContentFit;
 };
 
 /**

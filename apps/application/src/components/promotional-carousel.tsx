@@ -178,7 +178,7 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
         <Image
           source={item.source}
           style={styles.image}
-          contentFit="cover"
+          contentFit={item.contentFit ?? 'cover'}
           contentPosition="center"
           transition={200}
           accessible={false}
