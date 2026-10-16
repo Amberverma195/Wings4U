@@ -7,6 +7,7 @@ import { useSession, withSilentRefresh } from "@/lib/session";
 import { formatCents, formatDateTime } from "../admin-api";
 import { AdminOrderDetailModal } from "../admin-order-detail-modal";
 import { useAdminOrderDetails } from "../use-admin-order-details";
+import { AdminCustomerModal } from "./admin-customer-modal";
 
 type SearchResponse = {
   query: string;
@@ -39,6 +40,8 @@ export function GlobalSearchClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const customerTrigger = useRef<HTMLButtonElement | null>(null);
   const orderTrigger = useRef<HTMLButtonElement | null>(null);
   const details = useAdminOrderDetails(selectedOrderId);
   const closeDetails = useCallback(() => {
@@ -121,8 +124,8 @@ export function GlobalSearchClient() {
       </section>
 
       {error && <p className="surface-error">{error}</p>}
-      {details.loadingId !== null && <p className="surface-muted" role="status">Loading order details...</p>}
-      {details.error && <div role="alert">
+      {!selectedCustomerId && details.loadingId !== null && <p className="surface-muted" role="status">Loading order details...</p>}
+      {!selectedCustomerId && details.error && <div role="alert">
         <p className="surface-error">{details.error}</p>
         <button type="button" className="btn-secondary" onClick={closeDetails}>Dismiss</button>
       </div>}
@@ -217,9 +220,9 @@ export function GlobalSearchClient() {
               <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
                 {data.customers.map((c) => {
                   const name =
-                    c.display_name ??
-                    [c.first_name, c.last_name].filter(Boolean).join(" ") ??
-                    "Unnamed";
+                    c.display_name?.trim() ||
+                    [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+                    "Customer";
                   return (
                     <li
                       key={c.id}
@@ -228,10 +231,13 @@ export function GlobalSearchClient() {
                         borderTop: "1px solid rgba(0,0,0,0.06)",
                       }}
                     >
-                      <span style={{ fontWeight: 600 }}>{name}</span>{" "}
-                      <span className="surface-muted" style={{ fontSize: "0.8rem" }}>
-                        {c.id}
-                      </span>
+                      <button type="button" aria-haspopup="dialog" aria-label={`View customer ${name}`}
+                        style={{ font: "inherit", fontWeight: 600, color: "inherit", padding: 0,
+                          border: 0, background: "transparent", cursor: "pointer" }}
+                        onClick={event => {
+                          customerTrigger.current = event.currentTarget;
+                          setSelectedCustomerId(c.id);
+                        }}>{name}</button>
                     </li>
                   );
                 })}
@@ -240,6 +246,11 @@ export function GlobalSearchClient() {
           </section>
         </>
       )}
+      {selectedCustomerId && <AdminCustomerModal key={selectedCustomerId} customerId={selectedCustomerId}
+        suspended={Boolean(details.order)} returnFocusTo={customerTrigger.current}
+        onClose={() => { closeDetails(); setSelectedCustomerId(null); }}
+        onOpenOrder={(id, trigger) => { orderTrigger.current = trigger; setSelectedOrderId(id); }}
+        orderLoading={details.loadingId !== null} orderError={details.error} onDismissOrder={closeDetails} />}
       {details.order && <AdminOrderDetailModal
         order={details.order}
         onClose={closeDetails}

@@ -9,13 +9,26 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { IsEnum, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from "class-validator";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AdminService } from "./admin.service";
 import { SupportService } from "../support/support.service";
+import { AdminCustomersService } from "./admin-customers.service";
+
+class CustomerHistoryQueryDto {
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
 
 class DecideCancellationDto {
   @IsEnum(["APPROVE", "DENY"])
@@ -89,6 +102,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly supportService: SupportService,
+    private readonly customersService: AdminCustomersService,
   ) {}
 
   @Post("cancellation-requests/:id/decide")
@@ -177,10 +191,28 @@ export class AdminController {
     @Query("q") query: string,
     @Req() req: Request,
   ) {
+    query = query?.trim();
     if (!query || query.length < 2) {
       return { query, orders: [], tickets: [], customers: [] };
     }
     return this.adminService.globalSearch(req.locationId!, query);
+  }
+
+  @Get("customers/:customerId")
+  getCustomer(@Param("customerId", ParseUUIDPipe) customerId: string, @Req() req: Request) {
+    return this.customersService.getCustomer(customerId, req.locationId!);
+  }
+
+  @Get("customers/:customerId/orders")
+  getCustomerOrders(@Param("customerId", ParseUUIDPipe) customerId: string,
+    @Query() query: CustomerHistoryQueryDto, @Req() req: Request) {
+    return this.customersService.getOrders(customerId, req.locationId!, query.cursor, query.limit);
+  }
+
+  @Get("customers/:customerId/stamps")
+  getCustomerStamps(@Param("customerId", ParseUUIDPipe) customerId: string,
+    @Query() query: CustomerHistoryQueryDto, @Req() req: Request) {
+    return this.customersService.getStamps(customerId, req.locationId!, query.cursor, query.limit);
   }
 
   // PRD §12.3 / §12.6: Admin needs to discover pending cancellation requests

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useAdminDialog } from "./use-admin-dialog";
 import type { OrderDetail, OrderItem } from "@/lib/types";
 import { OrderChat } from "@/components/order-chat";
 import { PaymentCollectionPanel } from "@/components/payment-collection";
@@ -84,48 +85,7 @@ export function AdminOrderDetailModal({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const previousFocus = returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
-      'a[href], button, input:not([type="hidden"]), select, textarea, [tabindex]',
-    )).filter(element => element.tabIndex >= 0 && !element.matches(':disabled, [hidden]') &&
-      !element.closest('[inert], [aria-hidden="true"]') && element.getClientRects().length > 0);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onCloseRef.current();
-      } else if (event.key === "Tab") {
-        const elements = focusable();
-        const first = elements[0] ?? dialog;
-        const last = elements[elements.length - 1] ?? dialog;
-        if (!dialog.contains(document.activeElement) ||
-          (event.shiftKey && document.activeElement === first) ||
-          (!event.shiftKey && document.activeElement === last)) {
-          event.preventDefault();
-          (event.shiftKey ? last : first).focus();
-        }
-      }
-    };
-    const onFocusIn = (event: FocusEvent) => {
-      if (!dialog.contains(event.target as Node)) (focusable()[0] ?? dialog).focus();
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    document.addEventListener("focusin", onFocusIn);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-      document.removeEventListener("focusin", onFocusIn);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [returnFocusTo]);
+  useAdminDialog({ dialogRef, initialFocusRef: closeRef, onClose, returnFocusTo });
   const isTerminal = TERMINAL_STATUSES.has(order.status);
   const address = formatAddress(order.address_snapshot_json);
 

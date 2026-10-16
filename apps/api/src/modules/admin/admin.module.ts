@@ -13,6 +13,7 @@ import { AdminStaffController } from "./admin-staff.controller";
 import { AdminStaffService } from "./admin-staff.service";
 import { AdminPromosController } from "./admin-promos.controller";
 import { AdminPromosService } from "./admin-promos.service";
+import { AdminCustomersService } from "./admin-customers.service";
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { AdminPromosService } from "./admin-promos.service";
     NotificationsModule,
   ],
   controllers: [AdminController, AdminMenuController, AdminStaffController, AdminPromosController],
-  providers: [AdminService, AdminMenuService, AdminStaffService, AdminPromosService],
+  providers: [AdminService, AdminMenuService, AdminStaffService, AdminPromosService, AdminCustomersService],
   exports: [AdminService],
 })
 export class AdminModule {}

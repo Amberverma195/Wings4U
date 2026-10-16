@@ -10,6 +10,7 @@ import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { WalletsService } from "../wallets/wallets.service";
 import { RefundService } from "../refunds/refund.service";
 import { OrderStatusEmailService } from "../notifications/order-status-email.service";
+import { customerAccountWhere } from "./admin-customers.service";
 
 const TERMINAL_ORDER_STATUSES = new Set([
   "CANCELLED",
@@ -650,7 +651,8 @@ export class AdminService {
   }
 
   async globalSearch(locationId: string, query: string) {
-    const qStr = `%${query}%`;
+    query = query.trim();
+    const phoneDigits = query.replace(/\D/g, "");
     const qNum = parseInt(query, 10);
     
     const [orders, tickets, customers] = await Promise.all([
@@ -682,16 +684,24 @@ export class AdminService {
       }),
       this.prisma.user.findMany({
         where: {
-          identities: {
+          ...customerAccountWhere(),
+          OR: [
+            { displayName: { contains: query, mode: "insensitive" } },
+            { firstName: { contains: query, mode: "insensitive" } },
+            { lastName: { contains: query, mode: "insensitive" } },
+            { identities: {
             some: {
               OR: [
                 { emailNormalized: { contains: query, mode: "insensitive" } },
-                { phoneE164: { contains: query, mode: "insensitive" } } // This is simple, doesn't handle all +1 formats without normalization, but okay for global search
+                { phoneE164: { contains: query } },
+                ...(phoneDigits.length >= 2 ? [{ phoneE164: { contains: phoneDigits } }] : []),
               ]
             }
-          }
+          } },
+          ],
         },
         take: 10,
+        orderBy: [{ displayName: "asc" }, { id: "asc" }],
         select: { id: true, displayName: true, firstName: true, lastName: true }
       })
     ]);
