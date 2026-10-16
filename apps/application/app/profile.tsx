@@ -14,9 +14,12 @@ import {
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  Check,
   CheckCircle2,
+  Copy,
   CreditCard,
   Home,
   LifeBuoy,
@@ -167,17 +170,24 @@ function promoFulfillment(promo: ActivePromo): string | null {
   return null;
 }
 
+function isProfileTab(value: string | undefined): value is TabKey {
+  return value === 'overview' || value === 'profile' || value === 'orders' || value === 'addresses' || value === 'support';
+}
+
 function formatTicketType(type: string): string {
   return titleCase(type);
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ section?: string | string[] }>();
+  const requestedTab = Array.isArray(params.section) ? params.section[0] : params.section;
+  const appliedTabParam = useRef<string | undefined>(undefined);
   const session = useSession();
   const account = useAccountData();
   const { updateProfile, requestPhoneChange, verifyPhoneChange, logout, loading: authLoading, error: authError, clearError } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [activeTab, setActiveTab] = useState<TabKey>(isProfileTab(requestedTab) ? requestedTab : 'overview');
   const [orderFilter, setOrderFilter] = useState<OrderFilter>('active');
   const [email, setEmail] = useState('');
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -213,6 +223,13 @@ export default function ProfileScreen() {
   const rewardReady = availableStamps >= stampsPerReward;
   const lifetimeStamps = account.data.wingsRewards?.lifetime_stamps ?? 0;
   const lifetimeRedemptions = account.data.wingsRewards?.lifetime_redemptions ?? 0;
+
+  useEffect(() => {
+    if (!isProfileTab(requestedTab)) return;
+    if (appliedTabParam.current === requestedTab) return;
+    appliedTabParam.current = requestedTab;
+    setActiveTab(requestedTab);
+  }, [requestedTab]);
 
   useEffect(() => {
     if (!session.loaded) return;
@@ -596,6 +613,15 @@ function RewardsHub({
 }) {
   const [hubTab, setHubTab] = useState<'rewards' | 'coupons'>('rewards');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [copiedPromoId, setCopiedPromoId] = useState<string | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function copyPromoCode(promo: ActivePromo) {
+    await Clipboard.setStringAsync(promo.code);
+    setCopiedPromoId(promo.id);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopiedPromoId(null), 1600);
+  }
 
   return (
     <View style={styles.hubCard}>
@@ -693,7 +719,22 @@ function RewardsHub({
                 ) : null}
                 {fulfillment ? <Text style={styles.couponMeta}>{fulfillment}</Text> : null}
               </View>
-              <Text style={styles.couponBenefit}>{promoBenefit(promo)}</Text>
+              <View style={styles.couponOffer}>
+                <Text style={styles.couponBenefit}>{promoBenefit(promo)}</Text>
+                <TouchableOpacity
+                  style={styles.couponCopy}
+                  onPress={() => { void copyPromoCode(promo); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Copy code ${promo.code}`}
+                  hitSlop={8}
+                >
+                  {copiedPromoId === promo.id ? (
+                    <Check size={15} color="#10B981" />
+                  ) : (
+                    <Copy size={15} color="#6B7280" />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           );
         })
@@ -1013,11 +1054,7 @@ function ProfileTab({
             />
           </InputRow>
         </>
-      ) : (
-        <Text style={styles.helperText}>
-          Email changes are made on the website. Tap the pencil to edit your name or phone number.
-        </Text>
-      )}
+      ) : null}
       <TouchableOpacity
         style={[styles.primaryBtn, !canSave && styles.disabledBtn]}
         onPress={() => {
@@ -1804,8 +1841,22 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontSize: 12,
     fontWeight: '800',
-    maxWidth: 88,
     textAlign: 'right',
+    flexShrink: 1,
+  },
+  couponOffer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 132,
+  },
+  couponCopy: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOverlay: {
     flex: 1,

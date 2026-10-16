@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { AuthSheet } from '../../src/components/auth-sheet';
 import { OrderHistory } from '../../src/components/order-history';
 import { TabHeader } from '../../src/components/tab-header';
@@ -31,6 +32,7 @@ function GuestOrders() {
 }
 
 export default function OrdersTab() {
+  const router = useRouter();
   const session = useSession();
   const account = useAccountData();
   const gate = accountTabGate({
@@ -38,6 +40,16 @@ export default function OrdersTab() {
     authenticated: session.authenticated,
     loading: account.loading,
   });
+
+  useFocusEffect(useCallback(() => {
+    if (!session.loaded || !session.authenticated) return;
+    router.push('/profile?section=orders');
+  }, [router, session.authenticated, session.loaded]));
+
+  if (session.loaded && session.authenticated) {
+    return <SafeAreaView style={styles.screen} edges={['left', 'right']} />;
+  }
+
   const orders = account.data.orders;
   const ordersError = account.sectionErrors.orders;
 
