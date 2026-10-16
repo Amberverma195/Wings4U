@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from "class-validator";
 import type { Request } from "express";
+import { TicketStatus } from "@prisma/client";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
@@ -93,6 +94,17 @@ class PendingQueueQueryDto {
   @IsOptional()
   @IsString()
   limit?: string;
+}
+
+class LinkTicketOrderDto {
+  @IsUUID()
+  order_id!: string;
+}
+
+class SupportQueueQueryDto extends CustomerHistoryQueryDto {
+  @IsOptional()
+  @IsEnum(TicketStatus)
+  status?: TicketStatus;
 }
 
 @Controller("admin")
@@ -250,5 +262,29 @@ export class AdminController {
     @Req() req: Request,
   ) {
     return this.supportService.getTicketOrderDetails(id, req.locationId!);
+  }
+
+  @Get("support-tickets")
+  listSupportTickets(@Query() query: SupportQueueQueryDto, @Req() req: Request) {
+    return this.supportService.listTickets({ locationId: req.locationId!, status: query.status,
+      cursor: query.cursor, limit: query.limit, adminContext: true });
+  }
+
+  @Get("support-tickets/:id")
+  getSupportTicket(@Param("id", ParseUUIDPipe) id: string, @Req() req: Request,
+    @CurrentUser() user: NonNullable<Request["user"]>) {
+    return this.supportService.getTicket(id, "ADMIN", user.userId, req.locationId!);
+  }
+
+  @Get("support-tickets/:id/eligible-orders")
+  getEligibleTicketOrders(@Param("id", ParseUUIDPipe) id: string, @Req() req: Request,
+    @Query() query: CustomerHistoryQueryDto) {
+    return this.supportService.getEligibleOrders(id, req.locationId!, query.cursor);
+  }
+
+  @Post("support-tickets/:id/link-order")
+  linkTicketOrder(@Param("id", ParseUUIDPipe) id: string, @Body() body: LinkTicketOrderDto,
+    @Req() req: Request, @CurrentUser() user: NonNullable<Request["user"]>) {
+    return this.supportService.linkOrder(id, body.order_id, user.userId, req.locationId!);
   }
 }

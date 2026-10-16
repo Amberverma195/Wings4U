@@ -4,8 +4,12 @@ import { adminApiFetch, formatCents, formatDateTime } from "../../admin-api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
+import { readable, type SupportActor, type TicketSummary } from "../support-types";
+import { LinkOrder } from "../link-order";
+import styles from "../support.module.css";
 
 type Message = {
+  author?: SupportActor;
   id: string;
   author_user_id: string;
   message_body: string;
@@ -14,6 +18,7 @@ type Message = {
 };
 
 type Event = {
+  performed_by?: SupportActor;
   id: string;
   event_type: string;
   from_value: string | null;
@@ -32,20 +37,8 @@ type Resolution = {
   created_at: string;
 };
 
-type TicketDetail = {
-  id: string;
-  subject: string;
-  description: string;
-  status: string;
-  priority: string;
-  ticket_type: string;
-  order_id: string | null;
-  customer_user_id: string;
-  resolution_type: string | null;
-  resolved_by_user_id: string | null;
-  resolved_at: string | null;
-  created_at: string;
-  updated_at: string;
+type TicketDetail = TicketSummary & {
+  created_by: SupportActor | null;
   messages: Message[];
   events: Event[];
   resolutions: Resolution[];
@@ -108,7 +101,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
     setError(null);
     try {
       const res = await withSilentRefresh(
-        () => adminApiFetch(`/api/v1/support/tickets/${ticketId}`),
+        () => adminApiFetch(`/api/v1/admin/support-tickets/${ticketId}`),
         session.refresh,
         session.clear,
       );
@@ -265,37 +258,60 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
     <>
       <Link href="/admin/support">← Back to support queue</Link>
 
-      <section className="surface-card" style={{ marginTop: "0.75rem", marginBottom: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
-          <div>
-            <p className="surface-eyebrow" style={{ margin: 0 }}>
-              {ticket.ticket_type} · {ticket.priority}
+      <div className={styles.contextGrid}>
+        <section className={`surface-card ${styles.panel}`} aria-label="Ticket information">
+          <p className="surface-eyebrow">Ticket information</p>
+          <h1 style={{ margin: ".3rem 0", fontSize: "1.6rem" }}>{ticket.subject}</h1>
+          <dl className={styles.facts}>
+            <div><dt>Category / Priority</dt><dd>{readable(ticket.ticket_type)} / {readable(ticket.priority)}</dd></div>
+            <div><dt>Status</dt><dd><strong>{readable(ticket.status)}</strong></dd></div>
+            <div><dt>Created</dt><dd>{formatDateTime(ticket.created_at)}</dd></div>
+            <div><dt>Last updated</dt><dd>{formatDateTime(ticket.updated_at)}</dd></div>
+            <div><dt>Ticket reference</dt><dd>{ticket.id}</dd></div>
+            <div><dt>Creation source</dt><dd>{readable(ticket.created_source)}</dd></div>
+            <div><dt>Original creator</dt><dd>{ticket.created_by?.display_name ?? "Creator not recorded"}
+              {ticket.created_by?.role ? ` (${readable(ticket.created_by.role)})` : ""}</dd></div>
+            <div><dt>Assigned to</dt><dd>{ticket.assigned_admin?.display_name ?? "Unassigned"}</dd></div>
+          </dl>
+          <h2>Complaint description</h2>
+          <p className={styles.description}>{ticket.description || "No description provided."}</p>
+        </section>
+        <section className={`surface-card ${styles.panel}`} aria-label="Customer information">
+          <h2>Customer information</h2>
+          <strong>{ticket.customer?.account_available ? ticket.customer.display_name : "Customer account unavailable"}</strong>
+          <p className="surface-muted" style={{ fontSize: ".8rem" }}>Current account contact information</p>
+          <dl className={styles.facts}>
+            <div><dt>Email</dt><dd>{ticket.customer?.primary_email
+              ? <a href={`mailto:${ticket.customer.primary_email}`}>{ticket.customer.primary_email}</a> : "No email on file"}</dd></div>
+            <div><dt>Phone</dt><dd>{ticket.customer?.primary_phone
+              ? <a href={`tel:${ticket.customer.primary_phone}`}>{ticket.customer.primary_phone}</a> : "No phone on file"}</dd></div>
+            {ticket.customer_user_id && <div><dt>Account ID</dt><dd>{ticket.customer_user_id}</dd></div>}
+          </dl>
+        </section>
+        <section className={`surface-card ${styles.panel}`} aria-label="Related order">
+          <h2>Related order</h2>
+          {ticket.order ? <>
+            <strong style={{ fontSize: "1.3rem" }}>Order #{ticket.order.order_number}</strong>
+            <dl className={styles.facts}>
+              <div><dt>Status</dt><dd>{readable(ticket.order.status)}</dd></div>
+              <div><dt>Placed</dt><dd>{formatDateTime(ticket.order.placed_at)}</dd></div>
+              <div><dt>Fulfillment</dt><dd>{readable(ticket.order.fulfillment_type)}</dd></div>
+              <div><dt>Order total</dt><dd>{formatCents(ticket.order.final_payable_cents)}</dd></div>
+            </dl>
+            <button type="button" className="btn-secondary" onClick={() => void openOrderDetails()}>View Order Details</button>
+            <p><Link href={`/admin/orders?orderId=${encodeURIComponent(ticket.order.id)}`}>Open in Orders</Link></p>
+            <h3 style={{ fontSize: ".9rem" }}>Contact recorded on this order</h3>
+            <p className="surface-muted" style={{ fontSize: ".85rem", lineHeight: 1.6 }}>
+              {ticket.order.customer_name_snapshot || "Name not recorded"}<br />
+              {ticket.order.customer_phone_snapshot || "Phone not recorded"}<br />
+              {ticket.order.customer_email_snapshot || "Email not recorded"}
             </p>
-            <h1 style={{ margin: "0.2rem 0 0" }}>{ticket.subject}</h1>
-          </div>
-          {ticket.order_id && (
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ width: "auto", whiteSpace: "nowrap", flexShrink: 0 }}
-              onClick={() => void openOrderDetails()}
-            >
-              📦 Order Details
-            </button>
-          )}
-        </div>
-        <p className="surface-muted" style={{ margin: "0.4rem 0 0", fontSize: "0.85rem" }}>
-          Status <strong>{ticket.status}</strong> · created{" "}
-          {formatDateTime(ticket.created_at)}
-          {ticket.order_id && (
-            <>
-              {" "}·{" "}
-              <Link href={`/admin/orders?orderId=${encodeURIComponent(ticket.order_id)}`}>related order</Link>
-            </>
-          )}
-        </p>
-        <p style={{ marginTop: "0.75rem" }}>{ticket.description}</p>
-      </section>
+          </> : <>
+            <p className="surface-muted">{ticket.order_id ? "Linked order is unavailable for this ticket." : "No order linked to this ticket."}</p>
+            {!ticket.order_id && ticket.customer?.account_available && <LinkOrder ticketId={ticketId} onLinked={load} />}
+          </>}
+        </section>
+      </div>
 
       {error && <p className="surface-error">{error}</p>}
 
@@ -325,7 +341,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
                   style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}
                 >
                   {m.is_internal_note ? "Internal note · " : ""}
-                  {m.author_user_id.slice(0, 8)}… · {formatDateTime(m.created_at)}
+                  {m.author?.display_name ?? "Author unavailable"}{m.author?.role ? ` (${readable(m.author.role)})` : ""} · {formatDateTime(m.created_at)}
                 </div>
                 <div style={{ whiteSpace: "pre-wrap" }}>{m.message_body}</div>
               </li>
@@ -423,7 +439,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
             gap: "0.5rem",
             alignItems: "center",
           }}
@@ -475,7 +491,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
           <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.85rem" }}>
             {ticket.events.map((e) => (
               <li key={e.id}>
-                <strong>{e.event_type}</strong> · {formatDateTime(e.created_at)}
+                <strong>{readable(e.event_type)}</strong>{e.performed_by?.user_id ? ` by ${e.performed_by.display_name}` : ""} · {formatDateTime(e.created_at)}
                 {e.from_value && e.to_value && (
                   <>
                     {" "}
@@ -496,6 +512,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
           onMouseDown={() => { setOrderModal(false); setOrderDetails(null); }}
         >
           <div
+            role="dialog" aria-modal="true" aria-label="Order details"
             style={{ width: "min(680px,100%)", maxHeight: "90vh", overflowY: "auto", background: "white", borderRadius: "20px", padding: "2rem", boxShadow: "0 32px 64px -16px rgba(0,0,0,0.25)" }}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -518,7 +535,7 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
               <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                 {/* Customer */}
                 <div style={{ padding: "1rem", background: "#fafafa", borderRadius: 14, border: "1px solid #f3f4f6" }}>
-                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af" }}>Customer</h3>
+                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ca3af" }}>Contact recorded on this order</h3>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem 1rem", fontSize: "0.9rem" }}>
                     <div><strong>Name:</strong> {orderDetails.customer.name}</div>
                     <div><strong>Phone:</strong> {orderDetails.customer.phone}</div>
@@ -543,6 +560,11 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
                     <div><div style={{ fontWeight: 800 }}>{formatCents(orderDetails.order.tax_cents)}</div><div style={{ color: "#9ca3af", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>Tax</div></div>
                     <div><div style={{ fontWeight: 800, color: "#059669" }}>{formatCents(orderDetails.order.final_payable_cents)}</div><div style={{ color: "#9ca3af", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase" }}>Total</div></div>
                   </div>
+                  <dl className={styles.facts}>
+                    <div><dt>Discounts</dt><dd>{formatCents(orderDetails.order.discount_total_cents)}</dd></div>
+                    <div><dt>Delivery fee</dt><dd>{formatCents(orderDetails.order.delivery_fee_cents)}</dd></div>
+                    <div><dt>Driver tip</dt><dd>{formatCents(orderDetails.order.driver_tip_cents)}</dd></div>
+                  </dl>
                   {orderDetails.order.customer_order_notes && (
                     <div style={{ marginTop: "0.75rem", padding: "0.6rem 0.8rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, fontSize: "0.85rem" }}>
                       <strong>Notes:</strong> {orderDetails.order.customer_order_notes}
@@ -578,14 +600,17 @@ export function SupportDetailClient({ ticketId }: { ticketId: string }) {
                         <span><strong>{item.quantity}×</strong> {item.product_name}</span>
                         <span style={{ fontWeight: 700 }}>{formatCents(item.line_total_cents)}</span>
                       </div>
+                      <div className="surface-muted" style={{ fontSize: ".8rem" }}>
+                        {item.category_name} · Unit price {formatCents(item.unit_price_cents)}
+                      </div>
                       {item.modifiers.length > 0 && (
                         <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.2rem" }}>
-                          {item.modifiers.map((m, i) => <span key={i}>{i > 0 ? ", " : ""}{m.name}</span>)}
+                          {item.modifiers.map((m, i) => <span key={i}>{i > 0 ? ", " : ""}{m.group_name}: {m.quantity} × {m.name} ({formatCents(m.price_delta_cents)})</span>)}
                         </div>
                       )}
                       {item.flavours.length > 0 && (
                         <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.15rem" }}>
-                          🌶️ {item.flavours.map((f) => f.name).join(", ")}
+                          🌶️ {item.flavours.map((f) => [f.name, f.heat_level, f.placement && readable(f.placement)].filter(Boolean).join(" / ")).join(", ")}
                         </div>
                       )}
                       {item.special_instructions && (

@@ -33,6 +33,7 @@ jest.mock('@/lib/session', () => ({
 }));
 jest.mock('@/lib/api', () => ({ apiFetch: jest.fn() }));
 jest.mock('@/lib/env', () => ({ DEFAULT_LOCATION_ID: 'restaurant-location' }));
+jest.mock('../src/app/admin/support/support.module.css', () => new Proxy({}, { get: (_, key) => key }));
 jest.mock('@/components/order-chat', () => ({ OrderChat: props => {
   const React = require('react');
   return React.createElement('div', { 'data-chat-order': props.orderId });
@@ -325,6 +326,7 @@ test('both approval lists link to the existing orders page without changing appr
 
 test('support related-order link uses the same modal deep link', async () => {
   apiFetch.mockResolvedValue(response({ id: 'ticket', order_id: ORDER_ID, subject: 'Test ticket',
+    order: order(), ticket_type: 'OTHER', priority: 'NORMAL', created_source: 'CUSTOMER_APP',
     status: 'OPEN', messages: [], events: [], resolutions: [], created_at: order().placed_at }));
   await mount(() => React.createElement(SupportDetailClient, { ticketId: 'ticket' }));
   expect(renderer.root.findAllByType('a').some(link => link.props.href === `/admin/orders?orderId=${ORDER_ID}`)).toBe(true);

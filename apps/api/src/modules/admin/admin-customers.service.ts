@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { AdminCustomerDetail, AdminCustomerOrdersPage, AdminCustomerStampsPage } from "./admin-customers.dto";
 import { PrismaService } from "../../database/prisma.service";
 import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
+import { primaryContacts, primaryIdentityOrder } from "../../common/utils/primary-identity";
 
 /** Customer accounts are global; this guard never substitutes snapshot names for account ownership. */
 export function customerAccountWhere(id?: string): Prisma.UserWhereInput {
@@ -24,7 +25,7 @@ export class AdminCustomersService {
     const customer = await this.prisma.user.findFirst({
       where: customerAccountWhere(customerId),
       select: { id: true, displayName: true, firstName: true, lastName: true, createdAt: true,
-        identities: { orderBy: [{ isPrimary: "desc" }, { isVerified: "desc" }, { createdAt: "asc" }, { id: "asc" }],
+        identities: { orderBy: primaryIdentityOrder,
           select: { emailNormalized: true, phoneE164: true } },
         customerAddresses: { orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
           select: { id: true, label: true, line1: true, city: true, postalCode: true, isDefault: true } },
@@ -37,8 +38,7 @@ export class AdminCustomersService {
     }));
     return {
       id: customer.id, display_name: customer.displayName, first_name: customer.firstName, last_name: customer.lastName,
-      primary_phone: customer.identities.find(identity => identity.phoneE164)?.phoneE164 ?? null,
-      primary_email: customer.identities.find(identity => identity.emailNormalized)?.emailNormalized ?? null,
+      ...primaryContacts(customer.identities),
       created_at: customer.createdAt.toISOString(), saved_addresses: addresses,
       default_address: addresses.find(address => address.is_default) ?? null,
     };

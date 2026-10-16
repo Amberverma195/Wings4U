@@ -5,20 +5,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import { formatDateTime } from "../admin-api";
-
-type TicketSummary = {
-  id: string;
-  subject: string;
-  status: string;
-  priority: string;
-  ticket_type: string;
-  order_id: string | null;
-  customer_user_id: string;
-  resolution_type: string | null;
-  resolved_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
+import { readable, type TicketSummary } from "./support-types";
+import styles from "./support.module.css";
 
 type ListResponse = {
   tickets: TicketSummary[];
@@ -52,7 +40,7 @@ function StatusBadge({ status }: { status: string }) {
         fontWeight: 600,
       }}
     >
-      {status}
+      {readable(status)}
     </span>
   );
 }
@@ -74,7 +62,7 @@ export function SupportListClient() {
         if (statusFilter) qs.set("status", statusFilter);
         if (append && nextCursor) qs.set("cursor", nextCursor);
         const res = await withSilentRefresh(
-          () => adminApiFetch(`/api/v1/support/tickets?${qs.toString()}`),
+          () => adminApiFetch(`/api/v1/admin/support-tickets?${qs.toString()}`),
           session.refresh,
           session.clear,
         );
@@ -141,34 +129,24 @@ export function SupportListClient() {
               >
                 <Link
                   href={`/admin/support/${t.id}`}
-                  style={{
-                    display: "block",
-                    padding: "0.85rem 1rem",
-                    color: "inherit",
-                    textDecoration: "none",
-                  }}
+                  className={styles.queueCard}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "0.75rem",
-                      alignItems: "baseline",
-                    }}
-                  >
-                    <span style={{ fontWeight: 600 }}>{t.subject}</span>
+                  <div className={styles.queueTop}>
+                    <div>
+                      <p style={{ margin: "0 0 .3rem", color: "var(--accent-strong)", fontWeight: 700 }}>
+                        {t.customer?.account_available ? t.customer.display_name : "Customer account unavailable"}
+                      </p>
+                      <strong style={{ fontSize: "1.05rem" }}>{t.subject}</strong>
+                    </div>
                     <StatusBadge status={t.status} />
                   </div>
-                  <div
-                    className="surface-muted"
-                    style={{ fontSize: "0.8rem", marginTop: "0.2rem" }}
-                  >
-                    {t.ticket_type} · {t.priority} · created{" "}
-                    {formatDateTime(t.created_at)}
-                    {t.order_id && (
-                      <> · order {t.order_id.slice(0, 8)}…</>
-                    )}
+                  <div className={styles.queueMeta}>
+                    <span>{readable(t.ticket_type)}</span>
+                    <span>Priority: {readable(t.priority)}</span>
+                    <span>{t.order ? `Order #${t.order.order_number}` : "No order linked"}</span>
+                    <time dateTime={t.created_at}>{formatDateTime(t.created_at)}</time>
                   </div>
+                  <p className={styles.preview}>{t.description || "No description provided."}</p>
                 </Link>
               </li>
             ))}
@@ -176,6 +154,7 @@ export function SupportListClient() {
         </section>
       )}
 
+      {loading && <p className="surface-muted" role="status">Loading tickets...</p>}
       {cursor && (
         <div style={{ textAlign: "center", marginTop: "1rem" }}>
           <button

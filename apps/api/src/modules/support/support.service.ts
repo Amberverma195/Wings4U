@@ -3,9 +3,12 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from "@nestjs/common";
 import type { Prisma, TicketResolutionType, TicketStatus } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { adminContextSelect, type AdminTicketContext, actorSelect, eventSelect, messageSelect, resolutionSelect,
+  ticketSelect, orderContextSelect, serializeActor, serializeAdminContext, serializeOrderContext, serializeCreator } from "./support.selects";
 
 function serializeTicketSummary(t: Record<string, unknown>) {
   return {
@@ -88,6 +91,7 @@ export class SupportService {
     createdSource: string;
     orderId?: string;
     priority?: string;
+    createdByUserId?: string | null;
   }) {
     const priority = params.priority ?? "NORMAL";
 
@@ -127,7 +131,8 @@ export class SupportService {
       await tx.supportTicketEvent.create({
         data: {
           ticketId: created.id,
-          performedByUserId: params.customerUserId,
+          performedByUserId: params.createdByUserId !== undefined ? params.createdByUserId
+            : params.createdSource === "CUSTOMER_APP" ? params.customerUserId : null,
           eventType: "CREATED",
           toValue: "OPEN",
           payloadJson: { priority, created_source: params.createdSource },
@@ -146,12 +151,19 @@ export class SupportService {
     viewerUserId?: string,
     locationId?: string,
   ) {
+    const expanded = viewerRole === "ADMIN" && Boolean(locationId);
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
-      include: {
-        messages: { orderBy: { createdAt: "asc" } },
-        events: { orderBy: { createdAt: "asc" } },
-        resolutions: { orderBy: { createdAt: "asc" } },
+      select: {
+        ...ticketSelect,
+        ...(expanded ? adminContextSelect : {}),
+        messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: {
+          ...messageSelect, ...(expanded ? { author: { select: actorSelect } } : {}),
+        } },
+        events: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: {
+          ...eventSelect, ...(expanded ? { performedBy: { select: actorSelect } } : {}),
+        } },
+        resolutions: { orderBy: { createdAt: "asc" }, select: resolutionSelect },
       },
     });
 
@@ -166,8 +178,7 @@ export class SupportService {
     // Customer ownership check: customers can only view their own tickets
     if (
       viewerRole === "CUSTOMER" &&
-      viewerUserId &&
-      ticket.customerUserId !== viewerUserId
+      (!viewerUserId || ticket.customerUserId !== viewerUserId)
     ) {
       throw new ForbiddenException("You do not have access to this ticket");
     }
@@ -179,20 +190,32 @@ export class SupportService {
     const isStaffOrAdmin = viewerRole === "STAFF" || viewerRole === "ADMIN";
     const messages = ticket.messages
       .filter((m) => isStaffOrAdmin || !m.isInternalNote)
-      .map((m) => serializeMessage(m as unknown as Record<string, unknown>));
+      .map((m) => ({ ...serializeMessage(m as unknown as Record<string, unknown>),
+        ...(expanded ? { author: serializeActor(m.author, m.authorUserId) } : {}),
+      }));
 
     const events = ticket.events
       .filter((e) => {
         if (isStaffOrAdmin) return true;
+        if (e.eventType === "ORDER_LINKED") return false;
         if (e.eventType === "MESSAGE_ADDED" && (e.payloadJson as Record<string, unknown>)?.is_internal_note === true) {
           return false;
         }
         return true;
       })
-      .map((e) => serializeEvent(e as unknown as Record<string, unknown>));
+      .map((e) => ({ ...serializeEvent(e as unknown as Record<string, unknown>),
+        ...(expanded ? { performed_by: serializeActor(e.performedBy, e.performedByUserId) } : {}),
+      }));
+
+    const created = ticket.events.find(e => e.eventType === "CREATED");
 
     return {
       ...base,
+      ...(expanded ? {
+        // Prisma cannot infer nested payloads from a conditional relation select.
+        ...serializeAdminContext(ticket as unknown as AdminTicketContext),
+        created_by: serializeCreator(created, ticket.createdSource),
+      } : {}),
       description: ticket.description,
       messages,
       events,
@@ -208,24 +231,38 @@ export class SupportService {
     status?: string;
     cursor?: string;
     limit?: number;
+    adminContext?: boolean;
   }) {
-    const take = Math.min(params.limit ?? 20, 50);
+    if (params.adminContext && !params.locationId) throw new ForbiddenException("An authorized restaurant location is required");
+    const take = Math.max(1, Math.min(params.limit ?? 20, 50));
     const where: Prisma.SupportTicketWhereInput = {};
 
     if (params.locationId) where.locationId = params.locationId;
     if (params.customerUserId) where.customerUserId = params.customerUserId;
     if (params.status) where.status = params.status as TicketStatus;
 
+    if (params.cursor) {
+      const anchor = await this.prisma.supportTicket.findFirst({ where: { ...where, id: params.cursor }, select: { id: true } });
+      if (!anchor) throw new BadRequestException("Invalid ticket cursor for this customer and restaurant");
+    }
+
     const tickets = await this.prisma.supportTicket.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: take + 1,
       ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
-      include: {
+      select: {
+        ...ticketSelect,
+        ...(params.adminContext ? adminContextSelect : {}),
+        ...(params.adminContext ? { events: { where: { eventType: "CREATED" },
+          orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }], take: 1,
+          select: { performedByUserId: true, performedBy: { select: actorSelect } },
+        } } : {}),
         messages: {
           where: { isInternalNote: false },
           orderBy: { createdAt: "desc" },
           take: 1,
+          select: messageSelect,
         },
       },
     });
@@ -240,6 +277,9 @@ export class SupportService {
         const latestMsg = t.messages[0];
         return {
           ...base,
+          ...(params.adminContext ? { ...serializeAdminContext(t as unknown as AdminTicketContext),
+            created_by: serializeCreator(t.events[0], t.createdSource),
+          } : {}),
           latest_public_message: latestMsg
             ? {
                 message_body:
@@ -264,6 +304,9 @@ export class SupportService {
     senderRole?: string,
     locationId?: string,
   ) {
+    if (isInternalNote && senderRole !== "ADMIN" && senderRole !== "STAFF") {
+      throw new ForbiddenException("Only staff can add internal notes");
+    }
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
@@ -413,6 +456,49 @@ export class SupportService {
     return serializeTicketSummary(updated as unknown as Record<string, unknown>);
   }
 
+  private async ticketForOrderLink(ticketId: string, locationId: string) {
+    if (!locationId) throw new ForbiddenException("An authorized restaurant location is required");
+    const ticket = await this.prisma.supportTicket.findUnique({ where: { id: ticketId }, select: ticketSelect });
+    if (!ticket) throw new NotFoundException("Support ticket not found");
+    assertTicketLocationScope(ticket, locationId);
+    if (ticket.orderId) throw new ConflictException("This ticket already has a linked order");
+    if (!ticket.customerUserId) throw new ConflictException("A customer account is required to link an order");
+    return ticket;
+  }
+
+  async getEligibleOrders(ticketId: string, locationId: string, cursor?: string) {
+    const ticket = await this.ticketForOrderLink(ticketId, locationId);
+    const where = { locationId, customerUserId: ticket.customerUserId };
+    if (cursor && !await this.prisma.order.findFirst({ where: { ...where, id: cursor }, select: { id: true } })) {
+      throw new BadRequestException("Invalid eligible-order cursor");
+    }
+    const rows = await this.prisma.order.findMany({ where, select: orderContextSelect,
+      orderBy: [{ placedAt: "desc" }, { id: "desc" }], take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    return { orders: rows.slice(0, 20).map(serializeOrderContext), next_cursor: rows.length > 20 ? rows[19].id : null };
+  }
+
+  async linkOrder(ticketId: string, orderId: string, actorUserId: string, locationId: string) {
+    const ticket = await this.ticketForOrderLink(ticketId, locationId);
+    return this.prisma.$transaction(async tx => {
+      const order = await tx.order.findFirst({ where: { id: orderId, locationId, customerUserId: ticket.customerUserId },
+        select: orderContextSelect });
+      if (!order) throw new ForbiddenException("Choose an order belonging to this customer and restaurant");
+      // Conditional write prevents two admins from overwriting an association concurrently.
+      const updated = await tx.supportTicket.updateMany({
+        where: { id: ticketId, locationId, customerUserId: ticket.customerUserId, orderId: null },
+        data: { orderId, updatedAt: new Date() },
+      });
+      if (updated.count !== 1) throw new ConflictException("Ticket changed; reload before linking an order");
+      await tx.supportTicketEvent.create({ data: { ticketId, performedByUserId: actorUserId,
+        eventType: "ORDER_LINKED", toValue: orderId, note: `Linked order #${order.orderNumber}`,
+        payloadJson: { order_id: orderId, order_number: order.orderNumber.toString() },
+      } });
+      return { order: serializeOrderContext(order) };
+    });
+  }
+
   /**
    * Fetch linked order details for a support ticket.
    * Used by the admin "Order Details" modal.
@@ -440,25 +526,33 @@ export class SupportService {
       throw new NotFoundException("This ticket has no linked order");
     }
 
-    if (!ticket.customerUserId) {
-      throw new ForbiddenException("Ticket is not linked to a customer");
-    }
-
     const order = await this.prisma.order.findFirst({
       where: {
         id: ticket.orderId,
         locationId,
         customerUserId: ticket.customerUserId,
       },
-      include: {
+      select: {
+        ...orderContextSelect,
+        acceptedAt: true, readyAt: true, completedAt: true, cancelledAt: true, paymentStatusSummary: true,
+        itemSubtotalCents: true, itemDiscountTotalCents: true, orderDiscountTotalCents: true,
+        taxCents: true, deliveryFeeCents: true, driverTipCents: true, customerOrderNotes: true, addressSnapshotJson: true,
         orderItems: {
           orderBy: { lineNo: "asc" },
-          include: {
-            modifiers: { orderBy: { sortOrder: "asc" } },
-            flavours: { orderBy: { sortOrder: "asc" } },
+          select: {
+            id: true, productNameSnapshot: true, categoryNameSnapshot: true, quantity: true,
+            unitPriceCents: true, lineTotalCents: true, specialInstructions: true,
+            modifiers: { orderBy: { sortOrder: "asc" }, select: {
+              modifierNameSnapshot: true, modifierGroupNameSnapshot: true, quantity: true, priceDeltaCents: true,
+            } },
+            flavours: { orderBy: { sortOrder: "asc" }, select: {
+              flavourNameSnapshot: true, heatLevelSnapshot: true, placement: true,
+            } },
           },
         },
-        payments: { orderBy: { createdAt: "asc" } },
+        payments: { orderBy: { createdAt: "asc" }, select: {
+          id: true, paymentMethod: true, transactionStatus: true, signedAmountCents: true, createdAt: true,
+        } },
       },
     });
 

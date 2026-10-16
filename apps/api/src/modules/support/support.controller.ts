@@ -97,6 +97,7 @@ export class SupportController {
     return this.supportService.createTicket({
       locationId: req.locationId!,
       customerUserId: user.userId,
+      createdByUserId: user.userId,
       ticketType: body.ticket_type,
       subject: body.subject,
       description: body.description,
