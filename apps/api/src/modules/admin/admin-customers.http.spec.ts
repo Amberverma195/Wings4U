@@ -22,7 +22,7 @@ describe("Admin customer endpoints (isolated HTTP)", () => {
   let app: INestApplication;
   const prisma = {
     user: { findFirst: jest.fn(async ({ where }: { where: { id: string } }) => where.id === NONCUSTOMER ? null : ({ id: CUSTOMER,
-      displayName: "Brown", firstName: null, lastName: null, createdAt: new Date("2026-01-01T00:00:00Z"), identities: [], customerAddresses: [] })) },
+      displayName: "Brown", firstName: null, lastName: null, createdAt: new Date("2026-01-01T00:00:00Z"), identities: [], customerAddresses: [], _count: { ordersAsCustomer: 0 } })) },
     order: { findMany: jest.fn(async () => []), findFirst: jest.fn(async () => null) },
     customerWingsRewards: { findUnique: jest.fn(async () => null) },
     customerWingsStampLedger: { findMany: jest.fn(async () => []), findFirst: jest.fn(async () => null) },

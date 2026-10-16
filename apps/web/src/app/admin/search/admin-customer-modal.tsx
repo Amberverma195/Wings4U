@@ -72,7 +72,8 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
           {customer && <>
             <p><strong>Phone: </strong>{customer.primary_phone ?? "No phone number."}</p>
             <p><strong>Email: </strong>{customer.primary_email ?? "No email address."}</p>
-            <p className="surface-muted">Account created <ExactTime value={customer.created_at} /></p>
+            <p className="admin-customer-account-info">Account created <ExactTime value={customer.created_at} /></p>
+            <p className="admin-customer-account-info">Total orders: <strong>{customer.total_order_count}</strong> <span>(this restaurant)</span></p>
           </>}
         </div>
         <button ref={element => { if (!lastOrder.current || (lastOrder.current === "grant" && grantDisabled)) orderFocus.current = element; }}

@@ -16,6 +16,7 @@ export interface AdminCustomerDetail {
   primary_phone: string | null;
   primary_email: string | null;
   created_at: string;
+  total_order_count: number;
   saved_addresses: AdminCustomerAddress[];
   default_address: AdminCustomerAddress | null;
 }

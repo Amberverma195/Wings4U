@@ -13,6 +13,7 @@ const mockPrisma = () => ({
   customerWingsStampLedger: { findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
 });
 const profile = () => ({ id: CUSTOMER, displayName: "Brown", firstName: "Alex", lastName: "Brown", createdAt: DATE,
+  _count: { ordersAsCustomer: 42 },
   identities: [{ phoneE164: "+15195551234", emailNormalized: null }, { phoneE164: null, emailNormalized: "brown@example.com" }],
   customerAddresses: [{ id: "address", label: "Home", line1: "123 Main St", city: "London", postalCode: "N6A 1A1", isDefault: true }],
 });
@@ -36,13 +37,20 @@ describe("Read-only Admin customer data", () => {
     expect(result.primary_email).toBe("brown@example.com");
     expect(result.default_address).toEqual({ id: "address", label: "Home", line1: "123 Main St", city: "London", postal_code: "N6A 1A1", is_default: true });
     expect(result.created_at).toBe(DATE.toISOString());
+    expect(result.total_order_count).toBe(42);
     const query = prisma.user.findFirst.mock.calls[0][0];
     expect(query.where).toEqual({ id: CUSTOMER, role: "CUSTOMER", archivedAt: null });
     expect(query.select.identities.orderBy.slice(0, 2)).toEqual([{ isPrimary: "desc" }, { isVerified: "desc" }]);
     expect(query.select.identities.select).toEqual({ emailNormalized: true, phoneE164: true });
     expect(query.select.passwordHash).toBeUndefined();
     expect(query.select.customerAddresses.orderBy[0]).toEqual({ isDefault: "desc" });
-    expect(Object.keys(result).sort()).toEqual(['id','display_name','first_name','last_name','primary_phone','primary_email','created_at','saved_addresses','default_address'].sort());
+    expect(query.select._count).toEqual({ select: { ordersAsCustomer: { where: { locationId: LOCATION } } } });
+    expect(Object.keys(result).sort()).toEqual(['id','display_name','first_name','last_name','primary_phone','primary_email','created_at','total_order_count','saved_addresses','default_address'].sort());
+  });
+
+  it("returns zero orders for customers with no orders at this restaurant", async () => {
+    prisma.user.findFirst.mockResolvedValue({ ...profile(), _count: { ordersAsCustomer: 0 } });
+    expect((await service.getCustomer(CUSTOMER, LOCATION)).total_order_count).toBe(0);
   });
 
   it("handles email-only customers with no saved/default address", async () => {

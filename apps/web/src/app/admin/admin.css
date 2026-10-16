@@ -89,6 +89,12 @@
   margin: 0.4rem 0;
 }
 
+.admin-customer-modal .admin-customer-account-info {
+  color: #49362c;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
 .admin-customer-modal .surface-muted {
   color: #675e56;
   font-size: 0.85rem;

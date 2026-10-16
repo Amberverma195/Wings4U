@@ -25,6 +25,7 @@ export class AdminCustomersService {
     const customer = await this.prisma.user.findFirst({
       where: customerAccountWhere(customerId),
       select: { id: true, displayName: true, firstName: true, lastName: true, createdAt: true,
+        _count: { select: { ordersAsCustomer: { where: { locationId } } } },
         identities: { orderBy: primaryIdentityOrder,
           select: { emailNormalized: true, phoneE164: true } },
         customerAddresses: { orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
@@ -40,6 +41,7 @@ export class AdminCustomersService {
       id: customer.id, display_name: customer.displayName, first_name: customer.firstName, last_name: customer.lastName,
       ...primaryContacts(customer.identities),
       created_at: customer.createdAt.toISOString(), saved_addresses: addresses,
+      total_order_count: customer._count.ordersAsCustomer,
       default_address: addresses.find(address => address.is_default) ?? null,
     };
   }

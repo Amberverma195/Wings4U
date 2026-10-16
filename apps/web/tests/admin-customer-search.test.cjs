@@ -21,6 +21,7 @@ const DATE = '2026-10-15T12:34:56.789Z';
 const base = id => `/api/v1/admin/customers/${id}`;
 const response = (data, status = 200) => ({ ok: status < 400, status, json: async () => ({ data }) });
 const profile = (id = CUSTOMER) => ({ id, display_name: id === CUSTOMER ? 'Brown' : 'Smith', first_name: null, last_name: null,
+  total_order_count: id === CUSTOMER ? 42 : 0,
   primary_phone: id === CUSTOMER ? '+15195551234' : null, primary_email: id === CUSTOMER ? 'brown@example.com' : 'smith@example.com', created_at: DATE,
   saved_addresses: id === CUSTOMER ? [
     { id: 'home', label: 'Home', line1: '123 Main St', city: 'London', postal_code: 'N6A 1A1', is_default: true },
@@ -83,6 +84,10 @@ test('customer buttons open contact/address/reward details on the search page an
   expect(customerDialog().findAllByType('address')[0].children[0].children).toContain('Home');
   expect(renderer.root.findByType('progress').props).toEqual(expect.objectContaining({ max: 8, value: 5 }));
   const paragraphs = customerDialog().findAllByType('p').map(textOf);
+  expect(paragraphs).toContain('Total orders: 42 (this restaurant)');
+  const accountInfo = customerDialog().findAllByProps({ className: 'admin-customer-account-info' });
+  expect(accountInfo.map(textOf)[0]).toContain('Account created');
+  expect(accountInfo.map(textOf)[1]).toBe('Total orders: 42 (this restaurant)');
   expect(paragraphs).toContain('Lifetime stamps earned: 21');
   expect(paragraphs).toContain('Lifetime rewards redeemed: 2');
   expect(renderer.root.findByProps({ 'aria-controls': 'admin-customer-orders' }).props['aria-expanded']).toBe(false);
