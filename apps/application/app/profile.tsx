@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,13 +12,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import {
-  AlertCircle,
   CheckCircle2,
   CreditCard,
-  Gift,
   Home,
   LifeBuoy,
   LogOut,
@@ -25,12 +25,10 @@ import {
   MapPin,
   Phone,
   Plus,
-  ReceiptText,
   Save,
   Ticket,
   Trash2,
   User,
-  Wallet,
 } from 'lucide-react-native';
 import { useAuth } from '../src/hooks/use-auth';
 import {
@@ -38,12 +36,14 @@ import {
   type CustomerAddress,
   type SupportTicketSummary,
   type TicketInput,
+  type WingsStampEntry,
   useAccountData,
 } from '../src/hooks/use-account-data';
 import { useSession } from '../src/context/session';
 import {
   ACTIVE_STATUSES,
   SUPPORT_TICKET_TYPES,
+  type ActivePromo,
   type OrderSummary,
   type SupportTicketType,
 } from '../src/lib/types';
@@ -144,8 +144,19 @@ function initialsFor(name?: string | null): string {
     .join('') || 'W4';
 }
 
-function promoLine(name: string, code: string): string {
-  return code ? `${name} (${code})` : name;
+function promoBenefit(promo: ActivePromo): string {
+  if (promo.benefitSummary) return promo.benefitSummary;
+  if (promo.discountType === 'PERCENT') return `${promo.discountValue}% OFF`;
+  if (promo.discountType === 'FIXED_AMOUNT') return `$${(promo.discountValue / 100).toFixed(2)} OFF`;
+  if (promo.discountType === 'FREE_DELIVERY') return 'FREE DELIVERY';
+  if (promo.discountType === 'BXGY') return 'BOGO';
+  return titleCase(promo.discountType);
+}
+
+function promoFulfillment(promo: ActivePromo): string | null {
+  if (promo.eligibleFulfillmentType === 'PICKUP') return 'Pickup only';
+  if (promo.eligibleFulfillmentType === 'DELIVERY') return 'Delivery only';
+  return null;
 }
 
 function formatTicketType(type: string): string {
@@ -192,6 +203,8 @@ export default function ProfileScreen() {
   const availableStamps = Math.min(account.data.wingsRewards?.available_stamps ?? 0, stampsPerReward);
   const stampsToNext = Math.max(0, stampsPerReward - availableStamps);
   const rewardReady = availableStamps >= stampsPerReward;
+  const lifetimeStamps = account.data.wingsRewards?.lifetime_stamps ?? 0;
+  const lifetimeRedemptions = account.data.wingsRewards?.lifetime_redemptions ?? 0;
 
   useEffect(() => {
     if (!session.loaded) return;
@@ -348,16 +361,6 @@ export default function ProfileScreen() {
           <View style={styles.headerText}>
             <Text style={styles.name} numberOfLines={1}>{shownName}</Text>
             <Text style={styles.phone}>{phoneLabel}</Text>
-            <View style={[styles.statusPill, session.profileComplete ? styles.statusComplete : styles.statusIncomplete]}>
-              {session.profileComplete ? (
-                <CheckCircle2 size={14} color="#15803D" />
-              ) : (
-                <AlertCircle size={14} color="#B45309" />
-              )}
-              <Text style={[styles.statusText, session.profileComplete ? styles.statusTextComplete : styles.statusTextIncomplete]}>
-                {session.profileComplete ? 'Profile complete' : 'Complete profile'}
-              </Text>
-            </View>
           </View>
         </View>
 
@@ -385,15 +388,15 @@ export default function ProfileScreen() {
         <View style={styles.content}>
           {activeTab === 'overview' && (
             <OverviewTab
-              walletBalance={account.data.wallet?.balance_cents ?? 0}
               availableStamps={availableStamps}
               stampsPerReward={stampsPerReward}
               stampsToNext={stampsToNext}
               rewardReady={rewardReady}
+              lifetimeStamps={lifetimeStamps}
+              lifetimeRedemptions={lifetimeRedemptions}
+              ledger={account.data.wingsLedger}
               orders={account.data.orders}
-              tickets={account.data.tickets}
               promos={account.data.promos}
-              walletLedger={account.data.walletLedger}
               onOpenTab={setActiveTab}
             />
           )}
@@ -481,64 +484,40 @@ export default function ProfileScreen() {
 }
 
 function OverviewTab({
-  walletBalance,
   availableStamps,
   stampsPerReward,
   stampsToNext,
   rewardReady,
+  lifetimeStamps,
+  lifetimeRedemptions,
+  ledger,
   orders,
-  tickets,
   promos,
-  walletLedger,
   onOpenTab,
 }: {
-  walletBalance: number;
   availableStamps: number;
   stampsPerReward: number;
   stampsToNext: number;
   rewardReady: boolean;
+  lifetimeStamps: number;
+  lifetimeRedemptions: number;
+  ledger: WingsStampEntry[];
   orders: OrderSummary[];
-  tickets: SupportTicketSummary[];
-  promos: Array<{
-    id: string;
-    name: string;
-    code: string;
-    discountType: string;
-    benefitSummary?: string;
-  }>;
-  walletLedger: Array<{ id: string; amount_cents: number; reason_text: string; created_at: string }>;
+  promos: ActivePromo[];
   onOpenTab: (tab: TabKey) => void;
 }) {
   return (
     <>
-      <View style={styles.statGrid}>
-        <StatCard icon={<Wallet size={20} color="#FF4D4D" />} label="Wallet" value={cents(walletBalance)} />
-        <StatCard icon={<Gift size={20} color="#FF4D4D" />} label="Stamps" value={`${availableStamps}/${stampsPerReward}`} />
-        <StatCard icon={<ReceiptText size={20} color="#FF4D4D" />} label="Orders" value={String(orders.length)} />
-        <StatCard icon={<Ticket size={20} color="#FF4D4D" />} label="Tickets" value={String(tickets.length)} />
-      </View>
-
-      <SectionCard
-        title={rewardReady ? 'Free wings ready' : 'Wings rewards'}
-      >
-        <Text style={styles.sectionBody}>
-          {rewardReady
-            ? 'You have enough stamps for a free 1lb wings reward.'
-            : `${stampsToNext} stamp${stampsToNext === 1 ? '' : 's'} until your next 1lb wings reward.`}
-        </Text>
-        <View style={styles.stampGrid}>
-          {Array.from({ length: stampsPerReward }).map((_, index) => (
-            <View
-              key={index}
-              style={[styles.stampDot, index < availableStamps && styles.stampDotFilled]}
-            >
-              <Text style={[styles.stampDotText, index < availableStamps && styles.stampDotTextFilled]}>
-                {index + 1}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </SectionCard>
+      <RewardsHub
+        availableStamps={availableStamps}
+        stampsPerReward={stampsPerReward}
+        stampsToNext={stampsToNext}
+        rewardReady={rewardReady}
+        lifetimeStamps={lifetimeStamps}
+        lifetimeRedemptions={lifetimeRedemptions}
+        ledger={ledger}
+        promos={promos}
+      />
 
       <SectionCard title="Recent orders" actionLabel="View all" onAction={() => onOpenTab('orders')}>
         {orders.slice(0, 3).length === 0 ? (
@@ -547,48 +526,304 @@ function OverviewTab({
           orders.slice(0, 3).map((order) => <OrderRow key={order.id} order={order} />)
         )}
       </SectionCard>
+    </>
+  );
+}
 
-      <SectionCard title="Support tickets" actionLabel="View all" onAction={() => onOpenTab('support')}>
-        {tickets.slice(0, 3).length === 0 ? (
-          <EmptyLine text="No tickets yet" />
-        ) : (
-          tickets.slice(0, 3).map((ticket) => <TicketRow key={ticket.id} ticket={ticket} />)
-        )}
-      </SectionCard>
+function RewardsHub({
+  availableStamps,
+  stampsPerReward,
+  stampsToNext,
+  rewardReady,
+  lifetimeStamps,
+  lifetimeRedemptions,
+  ledger,
+  promos,
+}: {
+  availableStamps: number;
+  stampsPerReward: number;
+  stampsToNext: number;
+  rewardReady: boolean;
+  lifetimeStamps: number;
+  lifetimeRedemptions: number;
+  ledger: WingsStampEntry[];
+  promos: ActivePromo[];
+}) {
+  const [hubTab, setHubTab] = useState<'rewards' | 'coupons'>('rewards');
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-      <SectionCard title="Promotions">
-        {promos.slice(0, 3).length === 0 ? (
-          <EmptyLine text="No active offers right now" />
-        ) : (
-          promos.slice(0, 3).map((promo) => (
-            <View key={promo.id} style={styles.simpleRow}>
-              <View>
-                <Text style={styles.rowTitle}>{promoLine(promo.name, promo.code)}</Text>
-                <Text style={styles.rowMeta}>{promo.benefitSummary ?? titleCase(promo.discountType)}</Text>
-              </View>
-            </View>
-          ))
-        )}
-      </SectionCard>
+  return (
+    <View style={styles.hubCard}>
+      <View style={styles.hubTabs}>
+        <TouchableOpacity onPress={() => setHubTab('rewards')} hitSlop={8}>
+          <Text style={[styles.hubTab, hubTab === 'rewards' && styles.hubTabActive]}>Rewards hub</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.hubTabCoupons} onPress={() => setHubTab('coupons')} hitSlop={8}>
+          <Text style={[styles.hubTab, hubTab === 'coupons' && styles.hubTabActive]}>Coupons</Text>
+          <View style={[styles.hubCount, hubTab === 'coupons' && styles.hubCountActive]}>
+            <Text style={[styles.hubCountText, hubTab === 'coupons' && styles.hubCountTextActive]}>
+              {promos.length}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
 
-      <SectionCard title="Wallet activity">
-        {walletLedger.slice(0, 3).length === 0 ? (
-          <EmptyLine text="No wallet activity yet" />
-        ) : (
-          walletLedger.slice(0, 3).map((entry) => (
-            <View key={entry.id} style={styles.simpleRow}>
-              <View style={styles.rowMain}>
-                <Text style={styles.rowTitle}>{entry.reason_text}</Text>
-                <Text style={styles.rowMeta}>{shortDate(entry.created_at)}</Text>
-              </View>
-              <Text style={[styles.amount, entry.amount_cents >= 0 ? styles.amountPositive : styles.amountNegative]}>
-                {entry.amount_cents >= 0 ? '+' : ''}{cents(entry.amount_cents)}
+      <Text style={styles.hubTitle}>
+        {hubTab === 'rewards'
+          ? (rewardReady ? 'Your free wings are ready' : 'Free wings stamp card')
+          : 'Available coupons'}
+      </Text>
+      <Text style={styles.hubDesc}>
+        {hubTab === 'rewards'
+          ? (rewardReady
+            ? "You've collected all 8 stamps. Redeem at checkout for 1lb of wings, on us."
+            : `Earn 1 stamp for every pound of wings you order. Collect ${stampsPerReward} stamps to unlock 1lb of wings free.`)
+          : 'Active promotions and special offers currently available for your account.'}
+      </Text>
+
+      {hubTab === 'rewards' ? (
+        <>
+          <View style={styles.rewardsPanel}>
+            <View style={styles.pointsCol}>
+              <Text style={styles.pointsNum}>
+                {availableStamps}
+                <Text style={styles.pointsDenom}>/{stampsPerReward}</Text>
+              </Text>
+              <Text style={styles.pointsLabel}>Stamps collected</Text>
+              <Text style={styles.pointsCredit}>
+                {rewardReady ? 'Ready to redeem' : `${stampsToNext} more to go`}
               </Text>
             </View>
-          ))
-        )}
-      </SectionCard>
-    </>
+            <StampRing available={availableStamps} total={stampsPerReward} ready={rewardReady} />
+            <View style={styles.pointsCol}>
+              <Text style={styles.pointsNumMuted}>{lifetimeRedemptions}</Text>
+              <Text style={styles.pointsLabel}>Free pounds unlocked</Text>
+              <Text style={styles.pointsCredit}>
+                {lifetimeStamps} stamps earned all-time
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.stampRow}>
+            {Array.from({ length: stampsPerReward }).map((_, index) => {
+              const filled = index < availableStamps;
+              return (
+                <View key={index} style={[styles.stampSlot, filled && styles.stampSlotFilled]}>
+                  <Text style={[styles.stampSlotText, filled && styles.stampSlotTextFilled]}>
+                    {filled ? '🍗' : index + 1}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity style={styles.historyLink} onPress={() => setHistoryOpen(true)}>
+            <Text style={styles.historyLinkText}>View history  →</Text>
+          </TouchableOpacity>
+        </>
+      ) : promos.length === 0 ? (
+        <View style={styles.couponEmpty}>
+          <Text style={styles.couponEmptyIcon}>🏷️</Text>
+          <Text style={styles.couponEmptyTitle}>No coupons yet</Text>
+          <Text style={styles.couponEmptyDesc}>Check back later for special offers and discounts.</Text>
+        </View>
+      ) : (
+        promos.map((promo) => {
+          const fulfillment = promoFulfillment(promo);
+          return (
+            <View key={promo.id} style={styles.couponRow}>
+              <View style={styles.couponIcon}>
+                <Text style={styles.couponIconText}>🏷️</Text>
+              </View>
+              <View style={styles.couponBody}>
+                <Text style={styles.couponCode}>{promo.code}</Text>
+                <Text style={styles.couponName}>{promo.name}</Text>
+                {promo.minSubtotalCents > 0 ? (
+                  <Text style={styles.couponMeta}>Min order: {cents(promo.minSubtotalCents)}</Text>
+                ) : null}
+                {promo.endsAt ? (
+                  <Text style={styles.couponEnds}>
+                    Ends: {new Date(promo.endsAt).toLocaleDateString()}
+                  </Text>
+                ) : null}
+                {fulfillment ? <Text style={styles.couponMeta}>{fulfillment}</Text> : null}
+              </View>
+              <Text style={styles.couponBenefit}>{promoBenefit(promo)}</Text>
+            </View>
+          );
+        })
+      )}
+
+      <StampHistoryModal
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        availableStamps={availableStamps}
+        stampsPerReward={stampsPerReward}
+        lifetimeStamps={lifetimeStamps}
+        lifetimeRedemptions={lifetimeRedemptions}
+        ledger={ledger}
+      />
+    </View>
+  );
+}
+
+function StampRing({ available, total, ready }: { available: number; total: number; ready: boolean }) {
+  const size = 96;
+  const stroke = 8;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? Math.min(available / total, 1) : 0;
+  const dash = progress * circumference;
+  const center = size / 2;
+
+  return (
+    <View style={styles.ringWrap}>
+      <Svg width={size} height={size} style={styles.ringSvg}>
+        <Defs>
+          <LinearGradient id="stampRing" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#f97316" />
+            <Stop offset="1" stopColor="#fb923c" />
+          </LinearGradient>
+        </Defs>
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius}
+          stroke="#f3f4f6"
+          strokeWidth={stroke}
+          fill="none"
+        />
+        {dash > 0 ? (
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke="url(#stampRing)"
+            strokeWidth={stroke + 1}
+            fill="none"
+            strokeDasharray={`${dash} ${circumference}`}
+            strokeLinecap="round"
+          />
+        ) : null}
+      </Svg>
+      {dash === 0 ? <View style={styles.ringStartDot} /> : null}
+      <View style={styles.ringCenter} pointerEvents="none">
+        <Text style={styles.ringEmoji}>{ready ? '🎁' : '🍗'}</Text>
+        <Text style={styles.ringFraction}>{available}/{total}</Text>
+      </View>
+    </View>
+  );
+}
+
+function StampHistoryModal({
+  visible,
+  onClose,
+  availableStamps,
+  stampsPerReward,
+  lifetimeStamps,
+  lifetimeRedemptions,
+  ledger,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  availableStamps: number;
+  stampsPerReward: number;
+  lifetimeStamps: number;
+  lifetimeRedemptions: number;
+  ledger: WingsStampEntry[];
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeading}>
+              <Text style={styles.modalEyebrow}>Rewards hub</Text>
+              <Text style={styles.modalTitle}>Your wings stamp card</Text>
+            </View>
+            <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+              <Text style={styles.modalCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalStats}>
+              <View style={styles.modalStat}>
+                <Text style={styles.modalStatValue}>{availableStamps}/{stampsPerReward}</Text>
+                <Text style={styles.modalStatLabel}>Stamps collected</Text>
+              </View>
+              <View style={styles.modalStat}>
+                <Text style={styles.modalStatValue}>{lifetimeStamps}</Text>
+                <Text style={styles.modalStatLabel}>Lifetime stamps</Text>
+              </View>
+              <View style={styles.modalStat}>
+                <Text style={styles.modalStatValue}>{lifetimeRedemptions}</Text>
+                <Text style={styles.modalStatLabel}>Free pounds redeemed</Text>
+              </View>
+            </View>
+
+            <View style={styles.stampRow}>
+              {Array.from({ length: stampsPerReward }).map((_, index) => {
+                const filled = index < availableStamps;
+                return (
+                  <View key={index} style={[styles.stampSlot, filled && styles.stampSlotFilled]}>
+                    <Text style={[styles.stampSlotText, filled && styles.stampSlotTextFilled]}>
+                      {filled ? '🍗' : index + 1}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            <Text style={styles.historyTitle}>Stamp history</Text>
+            {ledger.length === 0 ? (
+              <View style={styles.couponEmpty}>
+                <Text style={styles.couponEmptyIcon}>🍗</Text>
+                <Text style={styles.couponEmptyTitle}>No stamps yet</Text>
+                <Text style={styles.couponEmptyDesc}>
+                  Order a pound of wings on pickup or delivery — your first stamp lands here the moment the order wraps up.
+                </Text>
+              </View>
+            ) : (
+              ledger.map((entry) => {
+                const isGift = entry.entry_type === 'ADMIN_GRANTED';
+                const isEarn = entry.entry_type === 'EARNED' || isGift;
+                const orderLabel = entry.order_number ? `Order #${entry.order_number}` : null;
+                return (
+                  <View key={entry.id} style={styles.historyRow}>
+                    <View style={[styles.historyIcon, isEarn ? styles.historyIconEarn : styles.historyIconRedeem]}>
+                      <Text style={styles.historyIconText}>{isEarn ? '🍗' : '🎁'}</Text>
+                    </View>
+                    <View style={styles.historyBody}>
+                      <Text style={styles.historyName}>
+                        {isGift
+                          ? 'Gifted by Wings 4 U'
+                          : isEarn
+                            ? `Earned ${Math.abs(entry.delta_stamps)} stamp${Math.abs(entry.delta_stamps) === 1 ? '' : 's'}`
+                            : 'Redeemed 1lb of wings free'}
+                      </Text>
+                      <Text style={styles.historyMeta}>
+                        {new Date(entry.created_at).toLocaleDateString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                        {orderLabel ? `   ${orderLabel}` : ''}
+                      </Text>
+                      {entry.reason_text ? <Text style={styles.historyReason}>{entry.reason_text}</Text> : null}
+                    </View>
+                    <Text style={[styles.historyDelta, isEarn ? styles.historyDeltaEarn : styles.historyDeltaRedeem]}>
+                      {isEarn ? '+' : ''}{entry.delta_stamps}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -966,16 +1201,6 @@ function SectionCard({
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      {icon}
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function OrderRow({ order }: { order: OrderSummary }) {
   const router = useRouter();
   return (
@@ -1082,32 +1307,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 3,
   },
-  statusPill: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 10,
-  },
-  statusComplete: {
-    backgroundColor: '#DCFCE7',
-  },
-  statusIncomplete: {
-    backgroundColor: '#FEF3C7',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  statusTextComplete: {
-    color: '#15803D',
-  },
-  statusTextIncomplete: {
-    color: '#B45309',
-  },
   errorBanner: {
     backgroundColor: 'rgba(255,77,77,0.1)',
     borderRadius: 12,
@@ -1151,35 +1350,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 12,
-  },
-  statCard: {
-    width: '48%',
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    padding: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 7,
-    elevation: 1,
-  },
-  statValue: {
-    color: '#1A1A1A',
-    fontSize: 19,
-    fontWeight: '800',
-    marginTop: 9,
-  },
-  statLabel: {
-    color: '#777',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 2,
-  },
   sectionCard: {
     backgroundColor: '#FFF',
     borderRadius: 14,
@@ -1213,36 +1383,409 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
-  sectionBody: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
+  hubCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 16,
+    marginBottom: 12,
   },
-  stampGrid: {
+  hubTabs: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
-  },
-  stampDot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F5F5F5',
+    gap: 18,
+    marginBottom: 10,
   },
-  stampDotFilled: {
-    backgroundColor: '#FF4D4D',
-  },
-  stampDotText: {
-    color: '#999',
+  hubTab: {
+    color: '#9CA3AF',
     fontSize: 12,
     fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
-  stampDotTextFilled: {
+  hubTabActive: {
+    color: '#F97316',
+  },
+  hubTabCoupons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hubCount: {
+    minWidth: 22,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hubCountActive: {
+    backgroundColor: '#F97316',
+  },
+  hubCountText: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  hubCountTextActive: {
     color: '#FFF',
+  },
+  hubTitle: {
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  hubDesc: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  rewardsPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FAFAFA',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    marginTop: 14,
+  },
+  pointsCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pointsNum: {
+    color: '#F97316',
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 30,
+  },
+  pointsDenom: {
+    color: '#9CA3AF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  pointsNumMuted: {
+    color: '#6B7280',
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 28,
+  },
+  pointsLabel: {
+    color: '#9CA3AF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  pointsCredit: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  ringWrap: {
+    width: 96,
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringSvg: {
+    transform: [{ rotate: '-90deg' }],
+  },
+  ringStartDot: {
+    position: 'absolute',
+    top: 1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F97316',
+  },
+  ringCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  ringEmoji: {
+    fontSize: 22,
+  },
+  ringFraction: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  stampRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+  },
+  stampSlot: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stampSlotFilled: {
+    backgroundColor: '#FFF7ED',
+    borderStyle: 'solid',
+    borderColor: '#FB923C',
+  },
+  stampSlotText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  stampSlotTextFilled: {
+    fontSize: 15,
+  },
+  historyLink: {
+    alignSelf: 'flex-end',
+    marginTop: 12,
+    paddingVertical: 4,
+  },
+  historyLinkText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  couponEmpty: {
+    alignItems: 'center',
+    paddingVertical: 22,
+    paddingHorizontal: 8,
+  },
+  couponEmptyIcon: {
+    fontSize: 28,
+    width: 64,
+    height: 64,
+    lineHeight: 64,
+    textAlign: 'center',
+    borderRadius: 32,
+    backgroundColor: '#F3F4F6',
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  couponEmptyTitle: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  couponEmptyDesc: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  couponRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 10,
+  },
+  couponIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  couponIconText: {
+    fontSize: 18,
+  },
+  couponBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  couponCode: {
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  couponName: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  couponMeta: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  couponEnds: {
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  couponBenefit: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '800',
+    maxWidth: 88,
+    textAlign: 'right',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17,24,39,0.55)',
+  },
+  modalCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 24,
+    padding: 18,
+    maxHeight: '88%',
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+  },
+  modalHeading: {
+    flex: 1,
+  },
+  modalEyebrow: {
+    color: '#F97316',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  modalTitle: {
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalStats: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  modalStat: {
+    flex: 1,
+  },
+  modalStatValue: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  modalStatLabel: {
+    color: '#9CA3AF',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginTop: 3,
+  },
+  historyTitle: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 8,
+  },
+  historyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyIconEarn: {
+    backgroundColor: '#FFF7ED',
+  },
+  historyIconRedeem: {
+    backgroundColor: '#ECFDF5',
+  },
+  historyIconText: {
+    fontSize: 18,
+  },
+  historyBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  historyName: {
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  historyMeta: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  historyReason: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  historyDelta: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  historyDeltaEarn: {
+    color: '#10B981',
+  },
+  historyDeltaRedeem: {
+    color: '#EF4444',
   },
   simpleRow: {
     flexDirection: 'row',
@@ -1297,12 +1840,6 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     fontSize: 14,
     fontWeight: '800',
-  },
-  amountPositive: {
-    color: '#15803D',
-  },
-  amountNegative: {
-    color: '#FF4D4D',
   },
   emptyLine: {
     paddingVertical: 16,
