@@ -52,8 +52,8 @@ export function GlobalSearchClient() {
   const run = useCallback(
     async (q: string) => {
       const trimmed = q.trim();
-      if (trimmed.length < 2) {
-        setError("Enter at least 2 characters.");
+      if (trimmed.length < 1) {
+        setError("Enter at least 1 character.");
         setData(null);
         return;
       }
@@ -115,7 +115,7 @@ export function GlobalSearchClient() {
           <button
             type="submit"
             className="btn-primary"
-            disabled={loading || query.trim().length < 2}
+            disabled={loading || query.trim().length < 1}
             style={{ width: "auto" }}
           >
             {loading ? "Searching…" : "Search"}

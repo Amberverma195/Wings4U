@@ -192,7 +192,7 @@ export class AdminController {
     @Req() req: Request,
   ) {
     query = query?.trim();
-    if (!query || query.length < 2) {
+    if (!query || query.length < 1) {
       return { query, orders: [], tickets: [], customers: [] };
     }
     return this.adminService.globalSearch(req.locationId!, query);
