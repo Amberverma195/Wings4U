@@ -16,6 +16,8 @@ export type PromotionalBanner = {
   source: ImageSource;
   /** Canonical menu category slug this banner opens. */
   categorySlug: string;
+  /** Optional live-catalog item to open in the existing customization flow. */
+  itemSlug?: string;
   /** Optional override when a banner needs different scaling in the carousel frame. */
   contentFit?: ImageContentFit;
 };

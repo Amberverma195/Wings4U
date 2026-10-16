@@ -18,18 +18,22 @@ export type UseMenuResult = {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  /** Identifies which navigation refresh produced the current menu. */
+  loadedReloadKey: string | null | undefined;
 };
 
 export function useMenu(
   fulfillmentType: FulfillmentType = "PICKUP",
   locationId?: string,
   scheduledFor?: string | null,
+  reloadKey?: string,
 ): UseMenuResult {
   const id = locationId ?? DEFAULT_LOCATION_ID;
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [loadedReloadKey, setLoadedReloadKey] = useState<string | null | undefined>(null);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -53,6 +57,7 @@ export function useMenu(
         if (!cancelled) {
           if (!envelope.data) throw new Error("Menu response missing data");
           setMenu(envelope.data);
+          setLoadedReloadKey(reloadKey);
         }
       } catch (err) {
         if (!cancelled) {
@@ -66,7 +71,7 @@ export function useMenu(
     return () => {
       cancelled = true;
     };
-  }, [id, fulfillmentType, scheduledFor, nonce]);
+  }, [id, fulfillmentType, scheduledFor, reloadKey, nonce]);
 
-  return { menu, loading, error, refetch };
+  return { menu, loading, error, refetch, loadedReloadKey };
 }

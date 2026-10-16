@@ -7,8 +7,8 @@ const { apiJson } = require('../src/lib/api');
 const { useMenu } = require('../src/hooks/use-menu');
 let result;
 let renderer;
-function Probe({ method = 'PICKUP', location = 'store', scheduledFor = null }) {
-  result = useMenu(method, location, scheduledFor);
+function Probe({ method = 'PICKUP', location = 'store', scheduledFor = null, reloadKey }) {
+  result = useMenu(method, location, scheduledFor, reloadKey);
   return null;
 }
 const render = async (props = {}) => act(async () => {
@@ -42,4 +42,20 @@ test('surfaces missing menu data instead of silently leaving the menu empty', as
   await render();
   expect(result.loading).toBe(false);
   expect(result.error).toBe('Menu response missing data');
+});
+
+test('a promotion refresh key reloads the menu and identifies the response without changing order context', async () => {
+  await render({ method: 'DELIVERY', location: 'store', scheduledFor: '2026-10-16T16:00:00Z' });
+  let resolve;
+  apiJson.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  await act(async () => renderer.update(React.createElement(Probe, {
+    method: 'DELIVERY', location: 'store', scheduledFor: '2026-10-16T16:00:00Z', reloadKey: 'footer-2',
+  })));
+  expect(result.loading).toBe(true);
+  expect(result.loadedReloadKey).not.toBe('footer-2');
+  expect(apiJson.mock.calls[1][0]).toContain('fulfillment_type=DELIVERY');
+  expect(apiJson.mock.calls[1][0]).toContain('scheduled_for=');
+  await act(async () => resolve({ data: { categories: [] } }));
+  expect(result.loadedReloadKey).toBe('footer-2');
+  expect(result.loading).toBe(false);
 });

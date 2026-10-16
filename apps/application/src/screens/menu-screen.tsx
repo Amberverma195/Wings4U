@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
@@ -34,6 +35,7 @@ import { filterMenuCategories } from '../lib/menu-search';
 import { categoryImage, categoryLabel } from '../lib/category-images';
 import { prepareMenuCategories, menuCardDetails, categoryNote, resolveCategorySlug } from '../lib/menu-display';
 import { PROMOTIONAL_BANNERS, type PromotionalBanner } from '../lib/promotional-banners';
+import { FOOTER_PROMOTIONAL_BANNERS, resolveFooterPromotion } from '../lib/footer-promotional-banners';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -89,7 +91,10 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const focused = useIsFocused();
   const router = useRouter();
   // Deep-link params set by the Home promo carousel (e.g. ?category=wings&ts=...).
-  const params = useLocalSearchParams<{ category?: string; ts?: string }>();
+  const params = useLocalSearchParams<{ category?: string; ts?: string; itemSlug?: string; promotion?: string }>();
+  const footerReloadKey = !cinematic && params.promotion === 'footer' && typeof params.ts === 'string' ? params.ts : undefined;
+  const handledFooterRequest = useRef<string | null>(null);
+  const footerNavigationNonce = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const productSectionY = useRef(0);
   const { width } = useWindowDimensions();
@@ -132,7 +137,9 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const deliveryLabelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(fulfillmentProgress.value, [0, 1], ['#666666', '#FFFFFF']),
   }));
-  const { menu, loading, error, refetch } = useMenu(fulfillmentType, cart.locationId, cart.scheduledFor);
+  const { menu, loading, error, refetch, loadedReloadKey } = useMenu(
+    fulfillmentType, cart.locationId, cart.scheduledFor, footerReloadKey,
+  );
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -191,8 +198,15 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const handleBannerPress = useCallback((banner: PromotionalBanner) => {
     router.navigate({
       pathname: '/(tabs)/menu',
-      params: { category: banner.categorySlug, ts: String(Date.now()) },
+      params: { category: banner.categorySlug, ts: String(Date.now()), promotion: 'category', itemSlug: '' },
     });
+  }, [router]);
+
+  const handleFooterBannerPress = useCallback((banner: PromotionalBanner) => {
+    router.navigate({ pathname: '/(tabs)/menu', params: {
+      category: banner.categorySlug, itemSlug: banner.itemSlug ?? '',
+      promotion: 'footer', ts: `${Date.now()}-${++footerNavigationNonce.current}`,
+    } });
   }, [router]);
 
   /* Apply an incoming category deep-link once the menu has loaded. Depending
@@ -202,6 +216,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const categoryParam = typeof params.category === 'string' ? params.category : undefined;
   const categoryParamTs = typeof params.ts === 'string' ? params.ts : undefined;
   useEffect(() => {
+    if (params.promotion === 'footer') return;
     if (!categoryParam || sortedCategories.length === 0) return;
     const resolved = resolveCategorySlug(categoryParam, sortedCategories);
     if (!resolved) return;
@@ -212,7 +227,29 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         scrollRef.current?.scrollTo({ y: productSectionY.current, animated: true });
       }
     });
-  }, [categoryParam, categoryParamTs, sortedCategories]);
+  }, [categoryParam, categoryParamTs, sortedCategories, params.promotion]);
+
+  useEffect(() => {
+    if (cinematic || !focused || !footerReloadKey || loading || error || !menu ||
+      loadedReloadKey !== footerReloadKey || handledFooterRequest.current === footerReloadKey) return;
+    handledFooterRequest.current = footerReloadKey;
+    setSelectedItem(null);
+    const target = resolveFooterPromotion(menu.categories, categoryParam ?? '',
+      typeof params.itemSlug === 'string' ? params.itemSlug : undefined, fulfillmentType);
+    if (!target) {
+      Alert.alert('Promotion unavailable', 'This special is not available for your selected order time or order type. Please check the menu for current availability.');
+      return;
+    }
+    setActiveCategorySlug(target.category.slug);
+    setSearchQuery('');
+    setAvailableOnly(false);
+    if (target.item) setSelectedItem(target.item);
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: productSectionY.current, animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [cinematic, focused, footerReloadKey, loading, error, menu, loadedReloadKey,
+    categoryParam, params.itemSlug, fulfillmentType]);
 
   const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {
     if (type === fulfillmentType) return;
@@ -529,6 +566,10 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           </View>
         ) : null}
 
+        {/* Final scroll section: separate instance, Home only, above the fixed tab bar. */}
+        {cinematic ? <PromotionalCarousel banners={FOOTER_PROMOTIONAL_BANNERS}
+          onPressBanner={handleFooterBannerPress} imageBackgroundColor="#FFFFFF"
+          paginationLabel="Lunch and Party Specials" /> : null}
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>

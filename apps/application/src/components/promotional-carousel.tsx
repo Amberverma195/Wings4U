@@ -30,6 +30,8 @@ type Props = {
   onPressBanner: (banner: PromotionalBanner) => void;
   /** Auto-advance cadence in ms (default 3000). */
   intervalMs?: number;
+  imageBackgroundColor?: string;
+  paginationLabel?: string;
 };
 
 /**
@@ -44,7 +46,8 @@ type Props = {
  * - Recomputes slide width from the live window width so it stays correct on
  *   any device size or orientation change.
  */
-export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_ADVANCE_MS }: Props) {
+export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_ADVANCE_MS,
+  imageBackgroundColor = '#120A08', paginationLabel = 'Promotions' }: Props) {
   const { width } = useWindowDimensions();
   const isFocused = useIsFocused();
   const listRef = useRef<FlatList<PromotionalBanner>>(null);
@@ -52,11 +55,12 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
   const indexRef = useRef(0); // raw index into `loopData` (0 .. count)
   const draggingRef = useRef(false);
   const [activeIndex, setActiveIndex] = useState(0); // 0 .. count-1 (for dots)
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [viewportWidth, setViewportWidth] = useState(0);
 
   const count = banners.length;
-  const slideWidth = width; // full-width paging; the image gets inner margins
+  const slideWidth = viewportWidth || width; // account for the parent's safe-area width
 
   // Append a clone of the first banner so a forward advance past the last
   // slide lands on an identical frame, which we then silently reset to 0.
@@ -65,15 +69,19 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
     [banners, count],
   );
 
-  const canAutoPlay = count > 1 && isFocused && appActive && !reduceMotion;
+  const canAutoPlay = count > 1 && isFocused && appActive && reduceMotion === false;
 
   /* --- Respect the OS reduce-motion preference ------------------------ */
   useEffect(() => {
     let mounted = true;
+    let preferenceChanged = false;
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduceMotion(value);
+      if (mounted && !preferenceChanged) setReduceMotion(value);
+    }).catch(() => { if (mounted) setReduceMotion(true); });
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => {
+      preferenceChanged = true;
+      setReduceMotion(value);
     });
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => {
       mounted = false;
       sub.remove();
@@ -89,7 +97,7 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
   }, []);
 
   const stopTimer = useCallback(() => {
-    if (timer.current) {
+    if (timer.current !== null) {
       clearInterval(timer.current);
       timer.current = null;
     }
@@ -108,9 +116,13 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
     if (!canAutoPlay) return;
     timer.current = setInterval(() => {
       if (draggingRef.current) return;
+      // Some platforms omit momentum-end after a programmatic scroll. Never
+      // advance beyond the clone even if its settle callback was skipped.
+      if (indexRef.current >= count) goTo(0, false);
       goTo(indexRef.current + 1, true); // may land on the clone (index === count)
+      setActiveIndex(indexRef.current % count);
     }, intervalMs);
-  }, [stopTimer, canAutoPlay, goTo, intervalMs]);
+  }, [stopTimer, canAutoPlay, goTo, intervalMs, count]);
 
   /* --- Start/stop auto-advance as conditions change ------------------- */
   useEffect(() => {
@@ -126,7 +138,7 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
   const settle = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = event.nativeEvent.contentOffset.x;
-      let raw = Math.round(offsetX / slideWidth);
+      let raw = Math.max(0, Math.min(count, Math.round(offsetX / slideWidth)));
       if (count > 1 && raw >= count) {
         // Landed on the appended clone of slide 0 -> jump back silently.
         raw = 0;
@@ -144,14 +156,20 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
     stopTimer();
   }, [stopTimer]);
 
-  const onScrollEndDrag = useCallback(() => {
+  const onScrollEndDrag = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     draggingRef.current = false;
+    settle(event);
     startTimer(); // reset the interval after a completed manual swipe
-  }, [startTimer]);
+  }, [startTimer, settle]);
+
+  const onMomentumScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    settle(event);
+    startTimer();
+  }, [settle, startTimer]);
 
   const handleDotPress = useCallback(
     (dotIndex: number) => {
-      goTo(dotIndex, !reduceMotion);
+      goTo(dotIndex, reduceMotion === false);
       setActiveIndex(dotIndex);
       startTimer();
     },
@@ -177,21 +195,21 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
       >
         <Image
           source={item.source}
-          style={styles.image}
+          style={[styles.image, { backgroundColor: imageBackgroundColor }]}
           contentFit={item.contentFit ?? 'cover'}
           contentPosition="center"
-          transition={200}
+          transition={reduceMotion === false ? 200 : 0}
           accessible={false}
         />
       </Pressable>
     ),
-    [slideWidth, onPressBanner],
+    [slideWidth, onPressBanner, imageBackgroundColor, reduceMotion],
   );
 
   if (count === 0) return null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} onLayout={event => setViewportWidth(event.nativeEvent.layout.width)}>
       <FlatList
         ref={listRef}
         data={loopData}
@@ -203,14 +221,14 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
         getItemLayout={getItemLayout}
         initialScrollIndex={0}
         onScrollToIndexFailed={() => undefined}
-        onMomentumScrollEnd={settle}
+        onMomentumScrollEnd={onMomentumScrollEnd}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
         decelerationRate="fast"
         bounces={false}
       />
       {count > 1 ? (
-        <View style={styles.dots} accessibilityRole="tablist" accessibilityLabel="Promotions">
+        <View style={styles.dots} accessibilityRole="tablist" accessibilityLabel={paginationLabel}>
           {banners.map((banner, index) => {
             const active = index === activeIndex;
             return (
@@ -249,7 +267,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 12,
   },
-  dotHit: { padding: 4 },
+  dotHit: { padding: 4, minWidth: 28, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
   dot: { height: 8, borderRadius: 4 },
   dotActive: { width: 22, backgroundColor: '#FF4D4D' },
   dotInactive: { width: 8, backgroundColor: '#D9D9D9' },
