@@ -171,6 +171,15 @@ export default async function globalSetup(): Promise<void> {
     );
   }
 
+  const { requireSafeDestructiveTarget } = require(
+    resolve(DATABASE_PKG, "production-database-guard.cjs"),
+  ) as { requireSafeDestructiveTarget(purpose: string, urls?: Array<string | undefined>): void };
+  requireSafeDestructiveTarget("the e2e setup (it truncates and reseeds the database)", [
+    connectionString,
+    process.env.DATABASE_URL,
+    process.env.DIRECT_URL,
+  ]);
+
   try {
     await ensureDatabaseExists(connectionString);
   } catch (error) {

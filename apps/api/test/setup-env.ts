@@ -34,3 +34,8 @@ const rootEnvPath = resolve(__dirname, "../../../.env");
 
 loadEnvFile(testEnvPath, true);
 loadEnvFile(rootEnvPath, false);
+
+const { requireSafeDestructiveTarget } = require(
+  resolve(__dirname, "../../../packages/database/production-database-guard.cjs"),
+) as { requireSafeDestructiveTarget(purpose: string): void };
+requireSafeDestructiveTarget("e2e tests");
