@@ -31,6 +31,7 @@ import { useAccountData } from "../src/hooks/use-account-data";
 import { useSession, withSilentRefresh } from "../src/context/session";
 import { apiFetch, apiJson, getApiErrorMessage } from "../src/lib/api";
 import { cents } from "../src/lib/format";
+import { normalizeCanadianPostalCode, normalizeAddressText } from "../src/lib/delivery-address";
 import {
   checkoutPricingBlock,
   customerPaymentOptions,
@@ -216,9 +217,9 @@ export default function CheckoutScreen() {
 
   const deliveryAddress = useMemo(
     () => ({
-      line1: line1.trim(),
+      line1: normalizeAddressText(line1),
       city: FIXED_DELIVERY_CITY,
-      postal_code: postalCode.trim().toUpperCase(),
+      postal_code: normalizeCanadianPostalCode(postalCode),
     }),
     [line1, postalCode],
   );

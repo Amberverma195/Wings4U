@@ -31,6 +31,7 @@ describe("delivery address and fee rules", () => {
   it.each([
     ["N5W 3C1", true],
     ["N5W3C1", true],
+    [" n5w   3c1 ", true],
     ["D5W 3C1", false],
     ["N5W 3C", false],
     ["90210", false],

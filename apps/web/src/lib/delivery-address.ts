@@ -13,7 +13,16 @@ export type DeliveryAddressDraft = {
 export const FIXED_DELIVERY_CITY = "London";
 
 export function normalizeDeliveryPostalCode(value: string): string {
-  return value.toUpperCase().replace(/\s+/g, " ").trim();
+  const compact = value.normalize("NFKC").replace(/\s/g, "").toUpperCase();
+  return compact.length === 6 ? `${compact.slice(0, 3)} ${compact.slice(3)}` : compact;
+}
+
+function normalizeAddressText(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/g, " ");
+}
+function normalizeAddressDraft(draft: DeliveryAddressDraft): DeliveryAddressDraft {
+  return { line1: normalizeAddressText(draft.line1), city: normalizeAddressText(draft.city),
+    postalCode: normalizeDeliveryPostalCode(draft.postalCode) };
 }
 
 export function hasCompleteDeliveryAddress(
@@ -64,7 +73,8 @@ function isSavedDeliveryAddress(value: unknown): value is SavedDeliveryAddress {
 }
 
 export function deliveryAddressDedupeKey(d: DeliveryAddressDraft): string {
-  return `${d.line1.trim().toLowerCase()}|${normalizeDeliveryPostalCode(d.postalCode).toLowerCase()}`;
+  return JSON.stringify([normalizeAddressText(d.line1).toLowerCase(), normalizeAddressText(d.city).toLowerCase(),
+    normalizeDeliveryPostalCode(d.postalCode).replace(/\s/g, "").toLowerCase()]);
 }
 
 function loadSavedAddressesRaw(): SavedDeliveryAddress[] {
@@ -94,8 +104,8 @@ function saveSavedAddressesList(addresses: SavedDeliveryAddress[]): void {
  *
  * Guests still use the sessionStorage list above so the picker works before
  * login. When the user is signed in, the same list is a short-lived cache
- * for /api/v1/customer/addresses; writes go to the server first (optimistic
- * local update for UI snappiness) and then we re-hydrate so server-issued
+ * for /api/v1/customer/addresses; writes go to the server first
+ * and then we re-hydrate so server-issued
  * UUIDs replace any temp ones. On logout the cache is cleared — another
  * user shouldn't inherit the previous one's addresses.
  */
@@ -111,6 +121,9 @@ type CustomerAddressApiRow = {
 };
 
 let isAuthenticatedForAddresses = false;
+let addressAccountId: string | null = null;
+let addressSessionVersion = 0;
+let addressWriteVersion = 0;
 let pendingGuestAddressMigration: Promise<boolean> | null = null;
 
 /**
@@ -118,11 +131,16 @@ let pendingGuestAddressMigration: Promise<boolean> | null = null;
  * Returns true iff the state actually changed (callers can use that to
  * decide whether to trigger a hydrate).
  */
-export function setDeliveryAddressAuthState(authed: boolean): boolean {
-  if (isAuthenticatedForAddresses === authed) return false;
+export function setDeliveryAddressAuthState(authed: boolean, userId?: string): boolean {
+  const nextAccount = authed ? userId ?? "authenticated" : null;
+  if (isAuthenticatedForAddresses === authed && addressAccountId === nextAccount) return false;
+  const switchedAccount = authed && isAuthenticatedForAddresses && addressAccountId !== nextAccount;
   isAuthenticatedForAddresses = authed;
+  addressAccountId = nextAccount;
+  addressSessionVersion += 1;
+  pendingGuestAddressMigration = null;
 
-  if (!authed && typeof window !== "undefined") {
+  if ((!authed || switchedAccount) && typeof window !== "undefined") {
     window.sessionStorage.removeItem(DELIVERY_ADDRESSES_LIST_KEY);
     window.sessionStorage.removeItem(DELIVERY_ADDRESS_STORAGE_KEY);
     window.sessionStorage.removeItem(PENDING_GUEST_DELIVERY_ADDRESS_KEY);
@@ -170,6 +188,7 @@ export async function persistPendingGuestDeliveryAddress(
   const pending = loadPendingGuestDeliveryAddress();
   if (!pending || !hasCompleteDeliveryAddress(pending)) return false;
 
+  const sessionVersion = addressSessionVersion;
   const request = (async () => {
     try {
       const fetchCall = () =>
@@ -193,6 +212,10 @@ export async function persistPendingGuestDeliveryAddress(
         return false;
       }
 
+      const body = await res.json() as ApiEnvelope<CustomerAddressApiRow>;
+      if (sessionVersion !== addressSessionVersion) return false;
+      if (!body.data) return false;
+      cacheServerAddress(body.data);
       const currentPending = loadPendingGuestDeliveryAddress();
       if (
         currentPending &&
@@ -234,6 +257,8 @@ export async function syncSavedAddressesFromServer(
 ): Promise<void> {
   if (!isAuthenticatedForAddresses || typeof window === "undefined") return;
 
+  const sessionVersion = addressSessionVersion;
+  const writeVersion = addressWriteVersion;
   try {
     const fetchCall = () => apiFetch("/api/v1/customer/addresses");
     const res =
@@ -250,72 +275,37 @@ export async function syncSavedAddressesFromServer(
       items: CustomerAddressApiRow[];
     }>;
     const items = body.data?.items ?? [];
-    saveSavedAddressesList(items.map(toSavedAddress));
+    if (sessionVersion === addressSessionVersion && writeVersion === addressWriteVersion) saveSavedAddressesList(items.map(toSavedAddress));
   } catch (err) {
     console.error("[Addresses] Sync error:", err);
     // Offline/network — keep whatever's in the local cache for now.
   }
 }
 
-async function createAddressOnServer(
-  draft: DeliveryAddressDraft,
-  refresh?: () => Promise<void | boolean>,
-  clear?: () => void,
-): Promise<void> {
-  try {
-    const fetchCall = () =>
-      apiFetch("/api/v1/customer/addresses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          line1: draft.line1.trim(),
-          city: draft.city.trim(),
-          postal_code: normalizeDeliveryPostalCode(draft.postalCode),
-        }),
-      });
-
-    const res =
-      refresh && clear
-        ? await withSilentRefresh(fetchCall, refresh, clear)
-        : await fetchCall();
-
-    if (!res.ok) {
-      console.warn(`[Addresses] Create failed: ${res.status} ${res.statusText}`);
-    }
-  } finally {
-    await syncSavedAddressesFromServer(refresh, clear);
-  }
+function cacheServerAddress(row: CustomerAddressApiRow): void {
+  addressWriteVersion += 1;
+  const saved = toSavedAddress(row);
+  const key = deliveryAddressDedupeKey(saved);
+  const list = loadSavedAddressesRaw().filter(address => address.id !== saved.id && deliveryAddressDedupeKey(address) !== key);
+  saveSavedAddressesList([...list, saved]);
 }
 
-async function updateAddressOnServer(
-  id: string,
-  draft: DeliveryAddressDraft,
-  refresh?: () => Promise<void | boolean>,
-  clear?: () => void,
+async function persistAddressOnServer(
+  draft: DeliveryAddressDraft, id?: string,
+  refresh?: () => Promise<void | boolean>, clear?: () => void,
 ): Promise<void> {
-  try {
-    const fetchCall = () =>
-      apiFetch(`/api/v1/customer/addresses/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          line1: draft.line1.trim(),
-          city: draft.city.trim(),
-          postal_code: normalizeDeliveryPostalCode(draft.postalCode),
-        }),
-      });
-
-    const res =
-      refresh && clear
-        ? await withSilentRefresh(fetchCall, refresh, clear)
-        : await fetchCall();
-
-    if (!res.ok) {
-      console.warn(`[Addresses] Update failed: ${res.status} ${res.statusText}`);
-    }
-  } finally {
-    await syncSavedAddressesFromServer(refresh, clear);
-  }
+  const sessionVersion = addressSessionVersion;
+  const fetchCall = () => apiFetch(id ? `/api/v1/customer/addresses/${id}` : "/api/v1/customer/addresses", {
+    method: id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ line1: draft.line1, city: draft.city, postal_code: draft.postalCode }),
+  });
+  const res = refresh && clear ? await withSilentRefresh(fetchCall, refresh, clear) : await fetchCall();
+  const body = await res.json() as ApiEnvelope<CustomerAddressApiRow>;
+  if (!res.ok) throw new Error((body as { errors?: Array<{ message?: string }> }).errors?.[0]?.message ?? "Unable to save this address. Please try again.");
+  if (sessionVersion !== addressSessionVersion) throw new Error("Your account changed. Please save the address again.");
+  if (!body.data) throw new Error("The saved address could not be confirmed. Please try again.");
+  cacheServerAddress(body.data);
+  await syncSavedAddressesFromServer(refresh, clear);
 }
 
 async function deleteAddressOnServer(
@@ -373,86 +363,45 @@ export function loadSavedAddresses(): SavedDeliveryAddress[] {
   return list;
 }
 
-/** Add or replace by street + postal code; keeps one row per logical address. */
-export function upsertSavedAddressFromDraft(draft: DeliveryAddressDraft): void {
+/** Signed-in saves wait for the server and cache only its real address ID. */
+export async function upsertSavedAddressFromDraft(
+  draft: DeliveryAddressDraft, refresh?: () => Promise<void | boolean>, clear?: () => void,
+): Promise<void> {
   if (typeof window === "undefined") return;
-
-  const list = loadSavedAddresses();
-  const key = deliveryAddressDedupeKey(draft);
-  const idx = list.findIndex((a) => deliveryAddressDedupeKey(a) === key);
-  if (idx >= 0) {
-    const next = [...list];
-    next[idx] = { ...next[idx], ...draft };
-    saveSavedAddressesList(next);
-    // The server-side upsert also dedupes on normalized line1+postal, so a
-    // matching local row means we want to touch the server row (city/label).
-    if (isAuthenticatedForAddresses) void updateAddressOnServer(next[idx].id, draft);
+  const normalized = normalizeAddressDraft(draft);
+  if (isAuthenticatedForAddresses) {
+    await persistAddressOnServer(normalized, undefined, refresh, clear);
     return;
   }
-  // Optimistic insert with a temp id; `syncSavedAddressesFromServer` will
-  // replace it with the server-issued UUID once the POST lands.
-  saveSavedAddressesList([...list, { id: crypto.randomUUID(), ...draft }]);
-  if (isAuthenticatedForAddresses) void createAddressOnServer(draft);
+  const list = loadSavedAddresses();
+  const key = deliveryAddressDedupeKey(normalized);
+  const existing = list.find(address => deliveryAddressDedupeKey(address) === key);
+  saveSavedAddressesList([...list.filter(address => deliveryAddressDedupeKey(address) !== key),
+    { id: existing?.id ?? crypto.randomUUID(), ...normalized }]);
 }
-
-/** Add or replace by street + postal code; keeps one row per logical address. (Sync version) */
 export function upsertSavedAddressFromDraftSync(
-  draft: DeliveryAddressDraft,
-  refresh: () => Promise<void | boolean>,
-  clear: () => void,
-): void {
-  if (typeof window === "undefined") return;
+  draft: DeliveryAddressDraft, refresh: () => Promise<void | boolean>, clear: () => void,
+): Promise<void> { return upsertSavedAddressFromDraft(draft, refresh, clear); }
 
-  const list = loadSavedAddresses();
-  const key = deliveryAddressDedupeKey(draft);
-  const idx = list.findIndex((a) => deliveryAddressDedupeKey(a) === key);
-  if (idx >= 0) {
-    const next = [...list];
-    next[idx] = { ...next[idx], ...draft };
-    saveSavedAddressesList(next);
-    if (isAuthenticatedForAddresses) void updateAddressOnServer(next[idx].id, draft, refresh, clear);
+/** Failed edits preserve both the original cache and the active checkout draft. */
+export async function replaceSavedAddressById(
+  id: string, draft: DeliveryAddressDraft, refresh?: () => Promise<void | boolean>, clear?: () => void,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeAddressDraft(draft);
+  if (isAuthenticatedForAddresses) {
+    await persistAddressOnServer(normalized, id, refresh, clear);
     return;
   }
-  saveSavedAddressesList([...list, { id: crypto.randomUUID(), ...draft }]);
-  if (isAuthenticatedForAddresses) void createAddressOnServer(draft, refresh, clear);
-}
-
-/** Update a saved row by id (used when editing an existing card). */
-export function replaceSavedAddressById(id: string, draft: DeliveryAddressDraft): void {
-  if (typeof window === "undefined") return;
-
   const list = loadSavedAddresses();
-  const idx = list.findIndex((a) => a.id === id);
-  if (idx < 0) {
-    upsertSavedAddressFromDraft(draft);
-    return;
-  }
-  const next = [...list];
-  next[idx] = { id, ...draft };
-  saveSavedAddressesList(next);
-  if (isAuthenticatedForAddresses) void updateAddressOnServer(id, draft);
+  const key = deliveryAddressDedupeKey(normalized);
+  if (list.some(address => address.id !== id && deliveryAddressDedupeKey(address) === key)) throw new Error("This address is already saved.");
+  if (!list.some(address => address.id === id)) throw new Error("Address not found. Please reopen the address list.");
+  saveSavedAddressesList(list.map(address => address.id === id ? { id, ...normalized } : address));
 }
-
-/** Update a saved row by id (used when editing an existing card). (Sync version) */
 export function replaceSavedAddressByIdSync(
-  id: string,
-  draft: DeliveryAddressDraft,
-  refresh: () => Promise<void | boolean>,
-  clear: () => void,
-): void {
-  if (typeof window === "undefined") return;
-
-  const list = loadSavedAddresses();
-  const idx = list.findIndex((a) => a.id === id);
-  if (idx < 0) {
-    upsertSavedAddressFromDraftSync(draft, refresh, clear);
-    return;
-  }
-  const next = [...list];
-  next[idx] = { id, ...draft };
-  saveSavedAddressesList(next);
-  if (isAuthenticatedForAddresses) void updateAddressOnServer(id, draft, refresh, clear);
-}
+  id: string, draft: DeliveryAddressDraft, refresh: () => Promise<void | boolean>, clear: () => void,
+): Promise<void> { return replaceSavedAddressById(id, draft, refresh, clear); }
 
 /** Remove one saved address. If the active checkout draft matched it, switch or clear. */
 export function removeSavedAddressById(id: string): void {
@@ -461,6 +410,7 @@ export function removeSavedAddressById(id: string): void {
   const list = loadSavedAddresses();
   const removed = list.find((a) => a.id === id);
   if (!removed) return;
+  addressWriteVersion += 1;
 
   const next = list.filter((a) => a.id !== id);
   const cur = loadDeliveryAddressDraft();
@@ -501,6 +451,7 @@ export function removeSavedAddressByIdSync(
   const list = loadSavedAddresses();
   const removed = list.find((a) => a.id === id);
   if (!removed) return;
+  addressWriteVersion += 1;
 
   const next = list.filter((a) => a.id !== id);
   const cur = loadDeliveryAddressDraft();
@@ -530,12 +481,12 @@ export function saveDeliveryAddressDraft(address: DeliveryAddressDraft): void {
 
   window.sessionStorage.setItem(
     DELIVERY_ADDRESS_STORAGE_KEY,
-    JSON.stringify(address),
+    JSON.stringify(normalizeAddressDraft(address)),
   );
   if (!isAuthenticatedForAddresses) {
     window.sessionStorage.setItem(
       PENDING_GUEST_DELIVERY_ADDRESS_KEY,
-      JSON.stringify(address),
+      JSON.stringify(normalizeAddressDraft(address)),
     );
   }
   window.dispatchEvent(new Event(DELIVERY_ADDRESS_UPDATED_EVENT));

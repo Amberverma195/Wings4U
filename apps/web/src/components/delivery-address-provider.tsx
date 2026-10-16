@@ -72,7 +72,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (!session.loaded) return;
-    const changed = setDeliveryAddressAuthState(session.authenticated);
+    const changed = setDeliveryAddressAuthState(session.authenticated, session.user?.id);
     if (session.authenticated) {
       void (async () => {
         await persistPendingGuestDeliveryAddress(

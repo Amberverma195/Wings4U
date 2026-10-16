@@ -71,13 +71,13 @@ function AddressesContent() {
 
   useEffect(() => {
     if (session.loaded) {
-      setDeliveryAddressAuthState(session.authenticated);
+      setDeliveryAddressAuthState(session.authenticated, session.user?.id);
       void syncSavedAddressesFromServer(session.refresh, session.clear).then(() => {
         setAddresses(loadSavedAddresses());
         setLoading(false);
       });
     }
-  }, [session.loaded, session.authenticated, session.refresh, session.clear]);
+  }, [session.loaded, session.authenticated, session.user?.id, session.refresh, session.clear]);
 
   useEffect(() => {
     function handleSavedAddressesUpdated() {

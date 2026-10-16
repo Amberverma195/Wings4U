@@ -29,7 +29,7 @@ export function normalizeCanadianPostalCode(value: string): string {
 }
 
 export function isValidCanadianPostalCode(value: string): boolean {
-  return CANADIAN_POSTAL_CODE_RE.test(collapseWhitespace(value));
+  return CANADIAN_POSTAL_CODE_RE.test(normalizeCanadianPostalCode(value));
 }
 
 export function normalizeDeliveryAddress(value: unknown): NormalizedDeliveryAddress {
@@ -71,7 +71,7 @@ export function normalizeDeliveryAddress(value: unknown): NormalizedDeliveryAddr
   }
   if (
     !rawPostal ||
-    collapseWhitespace(rawPostal).length > 7 ||
+    normalizeCanadianPostalCode(rawPostal).length > 7 ||
     !isValidCanadianPostalCode(rawPostal)
   ) {
     throw new UnprocessableEntityException({

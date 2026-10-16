@@ -114,6 +114,9 @@ export function OrderMethodModal({
   const [addressLine1, setAddressLine1] = useState("");
   const [addressPostal, setAddressPostal] = useState("");
   const [addressError, setAddressError] = useState<string | null>(null);
+  const [savingAddress, setSavingAddress] = useState(false);
+  const savingAddressRef = useRef(false);
+  const addressEditorGeneration = useRef(0);
   /** Bumps on each failed submit so the error line can replay its enter animation. */
   const [addressErrorAnimKey, setAddressErrorAnimKey] = useState(0);
   const [scheduleDateKey, setScheduleDateKey] = useState(() =>
@@ -147,6 +150,12 @@ export function OrderMethodModal({
     el.style.removeProperty("--rim-x");
     el.style.removeProperty("--rim-y");
   }, []);
+
+  useEffect(() => {
+    addressEditorGeneration.current += 1;
+    savingAddressRef.current = false;
+    setSavingAddress(false);
+  }, [open, editingSavedAddressId]);
 
   useEffect(() => {
     if (!open) return;
@@ -333,15 +342,16 @@ export function OrderMethodModal({
     return "CONTINUE TO SCHEDULE ->";
   }, [addressEditMode, method, step]);
 
-  const continueDisabled =
+  const continueDisabled = savingAddress || (
     step === "schedule" &&
     (scheduleLoading ||
       scheduleDateOptions.length === 0 ||
-      scheduleTimeOptions.length === 0);
+      scheduleTimeOptions.length === 0));
 
   if (!open) return null;
 
-  function handleContinue() {
+  async function handleContinue() {
+    if (savingAddressRef.current) return;
     if (step === "method") {
       setAddressError(null);
       setStep("schedule");
@@ -374,20 +384,26 @@ export function OrderMethodModal({
       return;
     }
 
-    saveDeliveryAddressDraft(normalizedAddress);
+    savingAddressRef.current = true;
+    const editorGeneration = addressEditorGeneration.current;
+    setSavingAddress(true);
+    setAddressError(null);
+    try {
     if (editingSavedAddressId) {
       if (refresh && clear) {
-        replaceSavedAddressByIdSync(editingSavedAddressId, normalizedAddress, refresh, clear);
+        await replaceSavedAddressByIdSync(editingSavedAddressId, normalizedAddress, refresh, clear);
       } else {
-        replaceSavedAddressById(editingSavedAddressId, normalizedAddress);
+        await replaceSavedAddressById(editingSavedAddressId, normalizedAddress);
       }
     } else {
       if (refresh && clear) {
-        upsertSavedAddressFromDraftSync(normalizedAddress, refresh, clear);
+        await upsertSavedAddressFromDraftSync(normalizedAddress, refresh, clear);
       } else {
-        upsertSavedAddressFromDraft(normalizedAddress);
+        await upsertSavedAddressFromDraft(normalizedAddress);
       }
     }
+    if (editorGeneration !== addressEditorGeneration.current) return;
+    saveDeliveryAddressDraft(normalizedAddress);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event(DELIVERY_ADDRESS_SAVED_EVENT));
     }
@@ -395,6 +411,16 @@ export function OrderMethodModal({
       fulfillment_type: "DELIVERY",
       scheduled_for: committedScheduledFor,
     });
+    } catch (error) {
+      if (editorGeneration !== addressEditorGeneration.current) return;
+      setAddressError(error instanceof Error ? error.message : "Unable to save this address. Please try again.");
+      setAddressErrorAnimKey(key => key + 1);
+    } finally {
+      if (editorGeneration === addressEditorGeneration.current) {
+        savingAddressRef.current = false;
+        setSavingAddress(false);
+      }
+    }
   }
 
   return (
@@ -636,7 +662,7 @@ export function OrderMethodModal({
             onClick={handleContinue}
             disabled={continueDisabled}
           >
-            <span className="wk-method-continue-label">{continueLabel}</span>
+            <span className="wk-method-continue-label">{savingAddress ? "SAVING ADDRESS..." : continueLabel}</span>
           </button>
         </div>
       </div>

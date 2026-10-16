@@ -4,6 +4,7 @@ import { apiFetch, getApiErrorMessage } from "../lib/api";
 import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { ActivePromo, OrderSummary, SupportTicketType } from "../lib/types";
 import { useSession, withSilentRefresh } from "../context/session";
+import { normalizeCanadianPostalCode, normalizeAddressText } from "../lib/delivery-address";
 
 export type WalletSummary = {
   customer_user_id: string;
@@ -140,9 +141,6 @@ const EMPTY_ACCOUNT_DATA: AccountData = {
   ticketsNextCursor: null,
 };
 
-function normalizePostalCode(value: string): string {
-  return value.toUpperCase().replace(/\s+/g, " ").trim();
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -333,9 +331,9 @@ function useAccountDataState() {
     async (input: AddressInput, id?: string) => {
       const payload = {
         label: input.label?.trim() || null,
-        line1: input.line1.trim(),
-        city: input.city.trim(),
-        postal_code: normalizePostalCode(input.postal_code),
+        line1: normalizeAddressText(input.line1),
+        city: normalizeAddressText(input.city),
+        postal_code: normalizeCanadianPostalCode(input.postal_code),
         is_default: input.is_default === true,
       };
 
