@@ -67,7 +67,7 @@ For a later approved reconciliation:
 3. Retain the selected ID, preserve the approved label/default, and remove only explicitly approved redundant address rows in one transaction. Do not modify accounts, orders, wallet/reward records or order snapshots. Existing client caches need an authoritative refresh when a redundant address ID is retired.
 4. Save before/after records and the approved ID mapping in a durable audit report, verify only the reviewed rows changed, then commit. Roll back on unexpected differences or dependencies. Rerun the read-only preview afterward.
 
-An executable cleanup utility was not added: automatic approval review rejected it because it could permanently delete customer address records. The delivered planner and preview cannot perform cleanup. Executable cleanup and live deletion require separate explicit approval; no deletion has been attempted.
+The initial delivery included only the read-only planner/preview after automatic approval review rejected an executable cleanup utility. The user subsequently approved implementing that utility **for code review only**. It is now implemented and documented in `ADDRESS_CLEANUP_REVIEW.md`; its CLI has not been executed and live deletion is still not authorized. The original planner/preview remain read-only.
 
 ## Exact files changed or added
 
@@ -119,4 +119,4 @@ The pre-existing mobile menu-screen edits, other migration edits/directories and
 4. Deploy API, then web. Existing mobile clients remain API-compatible; release the mobile normalization change through the normal app release process. No API field is removed and no new runtime environment variable is required.
 5. Run the read-only preview against the explicitly chosen database, review the output, and obtain approval for any legacy cleanup. Existing duplicates will continue to be displayed until that step is completed. No historical order snapshot needs rewriting.
 
-Remaining limits: live cleanup has not been authorized or implemented, and a multi-connection PostgreSQL stress test/native mobile release build/browser visual check was not run. Address equivalence intentionally does not merge abbreviations, punctuation changes or different unit representations beyond case/whitespace/NFKC normalization.
+Remaining limits: live cleanup has not been authorized or run. A subsequent review-only executable implementation is documented in `ADDRESS_CLEANUP_REVIEW.md`. A multi-connection PostgreSQL stress test/native mobile release build/browser visual check was not run. Address equivalence intentionally does not merge abbreviations, punctuation changes or different unit representations beyond case/whitespace/NFKC normalization.
