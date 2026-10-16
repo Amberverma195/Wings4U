@@ -149,11 +149,34 @@ export function useAuth() {
     return result;
   }), [run, session]);
 
+  const requestPhoneChange = useCallback((phone: string) => run(async () => {
+    const normalizedPhone = normalizeLoginIdentifier(phone);
+    if (!normalizedPhone.startsWith('+1')) throw new Error('Please enter a valid 10 digit phone number');
+    const res = await withSilentRefresh(() => apiFetch('/api/v1/auth/profile/contact-change/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: normalizedPhone }),
+    }), session.refresh, session.clear);
+    return readResponse<{ otpSent: boolean; deliveryTarget: string }>(res, 'Could not start the phone number change');
+  }), [run, session]);
+
+  const verifyPhoneChange = useCallback((code: string) => run(async () => {
+    validateOtp(code);
+    const res = await withSilentRefresh(() => apiFetch('/api/v1/auth/profile/contact-change/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ change_type: 'phone', otp_code: code }),
+    }), session.refresh, session.clear);
+    const result = await readResponse<{ phone?: string }>(res, 'Verification failed');
+    if (!(await session.refresh())) throw new Error('Your session could not be confirmed. Please sign in again.');
+    return result;
+  }), [run, session]);
+
   const logout = useCallback(() => run(async () => {
     try { await apiFetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {}); }
     finally { await clearAllTokens(); session.clear(); }
   }), [run, session]);
 
   return { login, verifyEmail, resendVerification, requestPasswordReset, confirmPasswordReset,
-    signup, updateProfile, logout, loading, error, clearError };
+    signup, updateProfile, requestPhoneChange, verifyPhoneChange, logout, loading, error, clearError };
 }

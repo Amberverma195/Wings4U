@@ -1,5 +1,5 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,12 +23,14 @@ import {
   LogOut,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   Plus,
   Save,
   Ticket,
   Trash2,
   User,
+  X,
 } from 'lucide-react-native';
 import { useAuth } from '../src/hooks/use-auth';
 import {
@@ -60,7 +62,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'orders', label: 'Orders' },
   { key: 'addresses', label: 'Addresses' },
   { key: 'support', label: 'Support' },
-  { key: 'cards', label: 'Cards' },
+  // { key: 'cards', label: 'Cards' },
 ];
 
 const EMPTY_ADDRESS_FORM: AddressForm = {
@@ -153,6 +155,12 @@ function promoBenefit(promo: ActivePromo): string {
   return titleCase(promo.discountType);
 }
 
+function phoneDigits(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  return digits;
+}
+
 function promoFulfillment(promo: ActivePromo): string | null {
   if (promo.eligibleFulfillmentType === 'PICKUP') return 'Pickup only';
   if (promo.eligibleFulfillmentType === 'DELIVERY') return 'Delivery only';
@@ -167,14 +175,14 @@ export default function ProfileScreen() {
   const router = useRouter();
   const session = useSession();
   const account = useAccountData();
-  const { updateProfile, logout, loading: authLoading, error: authError, clearError } = useAuth();
+  const { updateProfile, requestPhoneChange, verifyPhoneChange, logout, loading: authLoading, error: authError, clearError } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [orderFilter, setOrderFilter] = useState<OrderFilter>('active');
-  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [phoneCodeTarget, setPhoneCodeTarget] = useState<string | null>(null);
   const [addressForm, setAddressForm] = useState<AddressForm>(EMPTY_ADDRESS_FORM);
   const [addressFormOpen, setAddressFormOpen] = useState(false);
   const [addressBusy, setAddressBusy] = useState(false);
@@ -215,7 +223,6 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user) return;
-    setFullName(isPhoneDisplayName(user.displayName) ? '' : user.displayName);
     setEmail(user.email ?? '');
   }, [user]);
 
@@ -225,24 +232,62 @@ export default function ProfileScreen() {
     }
   }, [session.needsProfileCompletion]);
 
-  async function handleSaveProfile() {
+  const savedName = isPhoneDisplayName(user?.displayName) ? '' : (user?.displayName ?? '');
+  const savedPhone = user?.phone ? formatPhoneForDisplay(user.phone) : '';
+
+  async function handleSaveProfile(nextName: string, nextPhone: string) {
     clearError();
     setProfileError(null);
     setProfileSaved(false);
 
-    const trimmedName = fullName.trim();
-    if (trimmedName.length < 4) {
+    const trimmedName = nextName.trim();
+    const nameChanged = trimmedName !== savedName.trim();
+    const phoneChanged = phoneDigits(nextPhone) !== phoneDigits(savedPhone);
+    if (!nameChanged && !phoneChanged) return;
+
+    if (nameChanged && trimmedName.length < 4) {
       setProfileError('Name must be at least 4 characters');
+      return;
+    }
+    if (phoneChanged && phoneDigits(nextPhone).length !== 10) {
+      setProfileError('Please enter a valid 10 digit phone number');
       return;
     }
 
     try {
-      await updateProfile(trimmedName);
+      if (nameChanged) {
+        await updateProfile(trimmedName);
+      }
+      if (phoneChanged) {
+        const result = await requestPhoneChange(nextPhone);
+        setPhoneCodeTarget(result.deliveryTarget);
+        return;
+      }
       await account.refresh('refresh');
       setProfileSaved(true);
     } catch {
       // useAuth owns the network error message
     }
+  }
+
+  async function handleVerifyPhone(code: string) {
+    clearError();
+    setProfileError(null);
+    try {
+      await verifyPhoneChange(code);
+      await account.refresh('refresh');
+      setPhoneCodeTarget(null);
+      setProfileSaved(true);
+    } catch {
+      // useAuth owns the network error message
+    }
+  }
+
+  function cancelProfileEdit() {
+    clearError();
+    setProfileError(null);
+    setProfileSaved(false);
+    setPhoneCodeTarget(null);
   }
 
   async function handleLogout() {
@@ -345,6 +390,7 @@ export default function ProfileScreen() {
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
       <StatusBar style="dark" />
       <ScrollView
+        style={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -403,19 +449,16 @@ export default function ProfileScreen() {
 
           {activeTab === 'profile' && (
             <ProfileTab
-              fullName={fullName}
+              savedName={savedName}
+              savedPhone={savedPhone}
               email={email}
-              phoneLabel={phoneLabel}
               loading={authLoading}
               error={profileDisplayError}
               saved={profileSaved}
-              onNameChange={(value) => {
-                setFullName(value);
-                setProfileSaved(false);
-                setProfileError(null);
-                clearError();
-              }}
+              phoneCodeTarget={phoneCodeTarget}
               onSave={handleSaveProfile}
+              onVerifyPhone={handleVerifyPhone}
+              onCancelEdit={cancelProfileEdit}
             />
           )}
 
@@ -471,14 +514,16 @@ export default function ProfileScreen() {
             />
           )}
 
-          {activeTab === 'cards' && <CardsTab orders={account.data.orders} />}
+          {/* {activeTab === 'cards' && <CardsTab orders={account.data.orders} />} */}
         </View>
+      </ScrollView>
 
+      <View style={styles.logoutBar}>
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} disabled={authLoading}>
           <LogOut size={18} color="#FF4D4D" />
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -828,40 +873,108 @@ function StampHistoryModal({
 }
 
 function ProfileTab({
-  fullName,
+  savedName,
+  savedPhone,
   email,
-  phoneLabel,
   loading,
   error,
   saved,
-  onNameChange,
+  phoneCodeTarget,
   onSave,
+  onVerifyPhone,
+  onCancelEdit,
 }: {
-  fullName: string;
+  savedName: string;
+  savedPhone: string;
   email: string;
-  phoneLabel: string;
   loading: boolean;
   error: string | null;
   saved: boolean;
-  onNameChange: (value: string) => void;
-  onSave: () => void;
+  phoneCodeTarget: string | null;
+  onSave: (name: string, phone: string) => void;
+  onVerifyPhone: (code: string) => void;
+  onCancelEdit: () => void;
 }) {
+  const nameRef = useRef<TextInput>(null);
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState(savedName);
+  const [phone, setPhone] = useState(savedPhone);
+  const [otp, setOtp] = useState('');
+  const verifyingPhone = phoneCodeTarget !== null;
+  const fieldsLocked = !editing || verifyingPhone;
+  const nameChanged = fullName.trim() !== savedName.trim();
+  const phoneChanged = phoneDigits(phone) !== phoneDigits(savedPhone);
+  const canSave = verifyingPhone
+    ? otp.trim().length === 6 && !loading
+    : editing && (nameChanged || phoneChanged) && !loading;
+
+  useEffect(() => {
+    if (editing || verifyingPhone) return;
+    setFullName(savedName);
+    setPhone(savedPhone);
+  }, [editing, verifyingPhone, savedName, savedPhone]);
+
+  useEffect(() => {
+    if (!saved) return;
+    setEditing(false);
+    setOtp('');
+  }, [saved]);
+
+  useEffect(() => {
+    if (!editing || verifyingPhone) return;
+    const frame = requestAnimationFrame(() => nameRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [editing, verifyingPhone]);
+
+  function beginEdit() {
+    onCancelEdit();
+    setFullName(savedName);
+    setPhone(savedPhone);
+    setOtp('');
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setFullName(savedName);
+    setPhone(savedPhone);
+    setOtp('');
+    onCancelEdit();
+  }
+
   return (
-    <SectionCard title="Account settings">
+    <SectionCard
+      title="Account settings"
+      headerAction={(
+        <TouchableOpacity
+          style={styles.editBtn}
+          onPress={editing || verifyingPhone ? cancelEdit : beginEdit}
+          accessibilityLabel={editing || verifyingPhone ? 'Cancel editing' : 'Edit account'}
+        >
+          {editing || verifyingPhone ? (
+            <X size={16} color="#374151" />
+          ) : (
+            <Pencil size={16} color="#374151" />
+          )}
+        </TouchableOpacity>
+      )}
+    >
       {error ? <Banner kind="error" text={error} /> : null}
       {saved ? <Banner kind="success" text="Profile updated" /> : null}
-      <InputRow icon={<User size={20} color="#FF4D4D" />}>
+      <InputRow icon={<User size={20} color={fieldsLocked ? '#777' : '#FF4D4D'} />}>
         <TextInput
-          style={styles.input}
+          ref={nameRef}
+          style={[styles.input, fieldsLocked && styles.inputReadonly]}
           placeholder="Full Name"
           placeholderTextColor="#AAA"
           value={fullName}
-          onChangeText={onNameChange}
+          onChangeText={setFullName}
           autoCapitalize="words"
           returnKeyType="next"
+          editable={!fieldsLocked}
         />
       </InputRow>
-      <InputRow icon={<Mail size={20} color="#FF4D4D" />}>
+      <InputRow icon={<Mail size={20} color="#777" />}>
         <TextInput
           style={[styles.input, styles.inputReadonly]}
           placeholder="Email"
@@ -872,19 +985,52 @@ function ProfileTab({
           keyboardType="email-address"
         />
       </InputRow>
-      <Text style={styles.helperText}>
-        Email and phone changes require verification from account settings on the website.
-      </Text>
-      <View style={styles.readonlyRow}>
-        <Phone size={19} color="#777" />
-        <View>
-          <Text style={styles.detailLabel}>Verified phone</Text>
-          <Text style={styles.detailValue}>{phoneLabel}</Text>
-        </View>
-      </View>
-      <TouchableOpacity style={[styles.primaryBtn, loading && styles.disabledBtn]} onPress={onSave} disabled={loading}>
+      <InputRow icon={<Phone size={20} color={fieldsLocked ? '#777' : '#FF4D4D'} />}>
+        <TextInput
+          style={[styles.input, fieldsLocked && styles.inputReadonly]}
+          placeholder="Phone number"
+          placeholderTextColor="#AAA"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+          editable={!fieldsLocked}
+        />
+      </InputRow>
+      {verifyingPhone ? (
+        <>
+          <Text style={styles.helperText}>
+            Enter the code sent to {phoneCodeTarget} to confirm the new phone number.
+          </Text>
+          <InputRow icon={<Mail size={20} color="#FF4D4D" />}>
+            <TextInput
+              style={styles.input}
+              placeholder="6-digit code"
+              placeholderTextColor="#AAA"
+              value={otp}
+              onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              maxLength={6}
+            />
+          </InputRow>
+        </>
+      ) : (
+        <Text style={styles.helperText}>
+          Email changes are made on the website. Tap the pencil to edit your name or phone number.
+        </Text>
+      )}
+      <TouchableOpacity
+        style={[styles.primaryBtn, !canSave && styles.disabledBtn]}
+        onPress={() => {
+          if (!canSave) return;
+          if (verifyingPhone) onVerifyPhone(otp.trim());
+          else onSave(fullName, phone);
+        }}
+        disabled={!canSave}
+      >
         {loading ? <ActivityIndicator color="#FFF" size="small" /> : <Save size={18} color="#FFF" />}
-        <Text style={styles.primaryBtnText}>{loading ? 'Saving...' : 'Save Changes'}</Text>
+        <Text style={styles.primaryBtnText}>
+          {loading ? 'Saving...' : verifyingPhone ? 'Confirm code' : 'Save Changes'}
+        </Text>
       </TouchableOpacity>
     </SectionCard>
   );
@@ -1179,17 +1325,20 @@ function SectionCard({
   title,
   actionLabel,
   onAction,
+  headerAction,
   children,
 }: {
   title: string;
   actionLabel?: string;
   onAction?: () => void;
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <View style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
+        {headerAction}
         {actionLabel && onAction ? (
           <TouchableOpacity style={styles.sectionAction} onPress={onAction}>
             <Text style={styles.sectionActionText}>{actionLabel}</Text>
@@ -1261,6 +1410,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
+  },
+  scroll: {
+    flex: 1,
   },
   loadingWrap: {
     flex: 1,
@@ -1368,9 +1520,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
+    flex: 1,
     color: '#1A1A1A',
     fontSize: 17,
     fontWeight: '800',
+  },
+  editBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionAction: {
     backgroundColor: 'rgba(255,77,77,0.1)',
@@ -1877,26 +2038,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 12,
   },
-  readonlyRow: {
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-    marginBottom: 12,
-  },
-  detailLabel: {
-    color: '#777',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  detailValue: {
-    color: '#1A1A1A',
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 2,
-  },
   primaryBtn: {
     backgroundColor: '#FF4D4D',
     minHeight: 52,
@@ -2098,6 +2239,14 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
+  logoutBar: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: '#FAFAFA',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F1F1',
+  },
   logoutBtn: {
     height: 52,
     borderRadius: 14,
@@ -2108,9 +2257,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 30,
-    marginTop: 2,
   },
   logoutText: {
     color: '#FF4D4D',
