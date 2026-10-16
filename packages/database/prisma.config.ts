@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { defineConfig } from "prisma/config";
+import { requireSafeDestructiveTarget } from "./production-database-guard.cjs";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRootEnvPath = path.resolve(configDir, "../../.env");
@@ -12,6 +13,15 @@ loadEnv({ path: packageEnvPath, override: false, quiet: true });
 
 if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
   process.env.DIRECT_URL = process.env.DATABASE_URL;
+}
+
+const cliArgs = process.argv.slice(2);
+const wipesOrSeeds =
+  (cliArgs.includes("migrate") && cliArgs.includes("reset")) ||
+  (cliArgs.includes("db") && cliArgs.includes("push") && cliArgs.includes("--force-reset")) ||
+  (cliArgs.includes("db") && cliArgs.includes("seed"));
+if (wipesOrSeeds) {
+  requireSafeDestructiveTarget(`prisma ${cliArgs.filter((arg) => /^[a-z]+$/.test(arg)).join(" ")}`);
 }
 
 // `prisma generate` does not connect to the database, but Prisma still

@@ -3,11 +3,14 @@ import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { requireSafeDestructiveTarget } from "../production-database-guard.cjs";
 
 const seedDir = path.dirname(fileURLToPath(import.meta.url));
 
 loadEnv({ path: path.resolve(seedDir, "../../../.env"), quiet: true });
 loadEnv({ path: path.resolve(seedDir, "../.env"), override: false, quiet: true });
+
+requireSafeDestructiveTarget("the Prisma seed");
 
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
