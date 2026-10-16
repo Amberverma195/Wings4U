@@ -134,6 +134,41 @@ export function GlobalSearchClient() {
         <>
           <section className="surface-card" style={{ marginBottom: "1rem", padding: "1rem" }}>
             <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
+              Customers ({data.customers.length})
+            </h2>
+            {data.customers.length === 0 ? (
+              <p className="surface-muted">No matching customers.</p>
+            ) : (
+              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {data.customers.map((c) => {
+                  const name =
+                    c.display_name?.trim() ||
+                    [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+                    "Customer";
+                  return (
+                    <li
+                      key={c.id}
+                      style={{
+                        padding: "0.5rem 0",
+                        borderTop: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <button type="button" aria-haspopup="dialog" aria-label={`View customer ${name}`}
+                        style={{ font: "inherit", fontWeight: 600, color: "inherit", padding: 0,
+                          border: 0, background: "transparent", cursor: "pointer" }}
+                        onClick={event => {
+                          customerTrigger.current = event.currentTarget;
+                          setSelectedCustomerId(c.id);
+                        }}>{name}</button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section className="surface-card" style={{ marginBottom: "1rem", padding: "1rem" }}>
+            <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
               Orders ({data.orders.length})
             </h2>
             {data.orders.length === 0 ? (
@@ -182,7 +217,7 @@ export function GlobalSearchClient() {
             )}
           </section>
 
-          <section className="surface-card" style={{ marginBottom: "1rem", padding: "1rem" }}>
+          <section className="surface-card" style={{ padding: "1rem" }}>
             <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
               Support tickets ({data.tickets.length})
             </h2>
@@ -210,40 +245,6 @@ export function GlobalSearchClient() {
             )}
           </section>
 
-          <section className="surface-card" style={{ padding: "1rem" }}>
-            <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>
-              Customers ({data.customers.length})
-            </h2>
-            {data.customers.length === 0 ? (
-              <p className="surface-muted">No matching customers.</p>
-            ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                {data.customers.map((c) => {
-                  const name =
-                    c.display_name?.trim() ||
-                    [c.first_name, c.last_name].filter(Boolean).join(" ") ||
-                    "Customer";
-                  return (
-                    <li
-                      key={c.id}
-                      style={{
-                        padding: "0.5rem 0",
-                        borderTop: "1px solid rgba(0,0,0,0.06)",
-                      }}
-                    >
-                      <button type="button" aria-haspopup="dialog" aria-label={`View customer ${name}`}
-                        style={{ font: "inherit", fontWeight: 600, color: "inherit", padding: 0,
-                          border: 0, background: "transparent", cursor: "pointer" }}
-                        onClick={event => {
-                          customerTrigger.current = event.currentTarget;
-                          setSelectedCustomerId(c.id);
-                        }}>{name}</button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
         </>
       )}
       {selectedCustomerId && <AdminCustomerModal key={selectedCustomerId} customerId={selectedCustomerId}
