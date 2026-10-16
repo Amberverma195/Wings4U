@@ -464,17 +464,13 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         />
 
         {/* Categories Strip */}
-        <View
-          style={styles.sectionHeader}
-          onLayout={(event) => { productSectionY.current = event.nativeEvent.layout.y; }}
-        >
-          <Text style={styles.sectionTitle}>Menu</Text>
-        </View>
-
         <Animated.ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          onLayout={(event) => setCategoryViewportWidth(event.nativeEvent.layout.width)}
+          onLayout={(event) => {
+            productSectionY.current = event.nativeEvent.layout.y;
+            setCategoryViewportWidth(event.nativeEvent.layout.width);
+          }}
           onContentSizeChange={(contentWidth) => setCategoryContentWidth(contentWidth)}
           onScroll={categoryScrollHandler}
           scrollEventThrottle={16}
@@ -930,6 +926,7 @@ const styles = StyleSheet.create({
   /* Categories strip */
   categoriesScroll: {
     paddingLeft: 16,
+    marginTop: 10,
     marginBottom: 10,
   },
   categoriesContent: {
