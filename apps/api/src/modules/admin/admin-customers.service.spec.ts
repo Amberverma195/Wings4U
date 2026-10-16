@@ -1,5 +1,6 @@
 import { AdminCustomersService } from "./admin-customers.service";
 import { AdminService } from "./admin.service";
+import { RewardsController } from "../rewards/rewards.controller";
 
 const CUSTOMER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const LOCATION = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -91,6 +92,18 @@ describe("Read-only Admin customer data", () => {
     expect(result.entries).toEqual([]);
     expect(prisma.customerWingsRewards.upsert).not.toHaveBeenCalled();
     expect(prisma.customerWingsStampLedger.create).not.toHaveBeenCalled();
+  });
+  it("preserves ADMIN_GRANTED in admin and customer ledgers without a fake order or private notes", async () => {
+    const grant = entry("grant", { customerUserId: CUSTOMER, entryType: "ADMIN_GRANTED", orderId: null, order: null,
+      poundsAwarded: null, reasonText: "Gifted by Wings 4 U — courtesy stamps added." });
+    prisma.customerWingsStampLedger.findMany.mockResolvedValue([grant]);
+    expect((await service.getStamps(CUSTOMER, LOCATION)).entries[0]).toEqual(expect.objectContaining({
+      entry_type: "ADMIN_GRANTED", delta_stamps: 2, pounds_awarded: null, order_id: null, order_number: null,
+      reason_text: "Gifted by Wings 4 U — courtesy stamps added.",
+    }));
+    const rewards = new RewardsController({ getLedger: async () => ({ entries: [grant], next_cursor: null }) } as any);
+    const mine = await rewards.getMyLedger({ userId: CUSTOMER, role: "CUSTOMER" } as any);
+    expect(mine.entries[0]).toEqual(expect.objectContaining({ entry_type: "ADMIN_GRANTED", delta_stamps: 2, order_id: null, pounds_awarded: null }));
   });
   it("keeps lifetime totals and historical redemptions when available stamps are zero", async () => {
     prisma.customerWingsRewards.findUnique.mockResolvedValue({ availableStamps: 0, lifetimeStamps: 40, lifetimeRedemptions: 5 });

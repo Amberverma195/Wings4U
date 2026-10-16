@@ -58,3 +58,24 @@ export interface AdminCustomerStampsPage {
   entries: AdminCustomerStampEntry[];
   next_cursor: string | null;
 }
+
+export type StampGrantReason = "WRONG_ORDER" | "MISSING_ITEMS" | "SERVICE_RECOVERY" | "OTHER";
+export interface AdminStampGrantInput {
+  stamps: number;
+  reason: StampGrantReason;
+  note?: string;
+  request_id: string;
+}
+export interface StampGrantEmailResult {
+  status: "PENDING" | "SENT" | "FAILED" | "SKIPPED" | "UNKNOWN";
+  message: string;
+  retryable: boolean;
+}
+export interface AdminStampGrantResult {
+  grant_id: string;
+  stamps_granted: number;
+  replayed: boolean;
+  summary: AdminCustomerStampSummary;
+  entry: AdminCustomerStampEntry;
+  email: StampGrantEmailResult;
+}

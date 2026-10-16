@@ -60,13 +60,14 @@ function RewardHistory({ entries }: { entries: WingsStampEntry[] }) {
   return (
     <View>
       {entries.map(entry => {
-        const earned = entry.entry_type === 'EARNED';
+        const gifted = entry.entry_type === 'ADMIN_GRANTED';
+        const earned = entry.entry_type === 'EARNED' || gifted;
         const when = formatWhen(entry.created_at);
         return (
           <View key={entry.id} style={styles.row}>
             <View style={styles.rowMain}>
               <Text style={styles.rowTitle}>
-                {earned
+                {gifted ? 'Gifted by Wings 4 U' : earned
                   ? `Earned ${Math.abs(entry.delta_stamps)} stamp${Math.abs(entry.delta_stamps) === 1 ? '' : 's'}`
                   : 'Redeemed 1lb of wings free'}
               </Text>

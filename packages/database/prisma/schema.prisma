@@ -1157,7 +1157,7 @@ model CustomerWingsStampLedger {
   id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerUserId     String   @map("customer_user_id") @db.Uuid
   orderId            String?  @map("order_id") @db.Uuid
-  /// `EARNED` (positive delta) or `REDEEMED` (negative delta).
+  /// `EARNED`, `REDEEMED`, or `ADMIN_GRANTED` (goodwill stamps, no order).
   entryType          String   @map("entry_type")
   /// Signed stamp change — +1..+8 for earn (floored pounds of wings on
   /// the awarding order) or -8 for a single redemption.
@@ -1172,10 +1172,29 @@ model CustomerWingsStampLedger {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   customer           User     @relation(fields: [customerUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   order              Order?   @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  grantEmail         WingsStampGrantEmail?
 
   @@unique([orderId, entryType], map: "uq_customer_wings_stamp_ledger_order_entry_type")
   @@index([customerUserId, createdAt(sort: Desc)], map: "idx_customer_wings_stamps_customer")
   @@map("customer_wings_stamp_ledger")
+}
+
+/// Durable, separately retryable delivery state. The grant ledger remains immutable.
+model WingsStampGrantEmail {
+  grantId         String   @id @map("grant_id") @db.Uuid
+  status          String   @default("PENDING")
+  payloadJson     Json?    @map("payload_json")
+  firstAttemptAt  DateTime? @map("first_attempt_at") @db.Timestamptz(6)
+  leaseUntil      DateTime? @map("lease_until") @db.Timestamptz(6)
+  attemptToken    String?  @map("attempt_token") @db.Uuid
+  sentAt          DateTime? @map("sent_at") @db.Timestamptz(6)
+  providerEmailId String?  @map("provider_email_id")
+  lastError       String?  @map("last_error")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  grant           CustomerWingsStampLedger @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@map("wings_stamp_grant_emails")
 }
 
 model OrderConversation {

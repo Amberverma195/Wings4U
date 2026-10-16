@@ -229,6 +229,57 @@
   background: #eae5dd;
 }
 
+.admin-customer-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-customer-heading-row h3 { margin: 0; }
+.admin-customer-heading-row .btn-primary { width: auto; }
+
+.admin-customer-grant-result {
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+  background: #e1f2e8;
+  color: #15563d;
+  border: 1px solid #b8d9c6;
+  border-radius: 10px;
+}
+
+.admin-stamp-grant-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #0009;
+  backdrop-filter: blur(4px);
+}
+
+.admin-stamp-grant-modal { width: min(520px, 96vw); }
+.admin-stamp-grant-form { display: grid; gap: 0.65rem; }
+.admin-stamp-grant-form label { font-weight: 650; color: #71391f; }
+.admin-stamp-grant-form :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #b9a997;
+  border-radius: 8px;
+  background: #fffdfa;
+  color: #332a24;
+  font: inherit;
+}
+.admin-stamp-grant-form textarea { min-height: 5rem; resize: vertical; }
+.admin-stamp-grant-form :is(input, select, textarea):focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
 /* Main column only - sidebar keeps default card padding */
 .admin-content .surface-card {
   border-radius: 16px;

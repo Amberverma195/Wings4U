@@ -238,6 +238,198 @@ test('an inaccessible order leaves the customer dialog active and usable', async
   expect(text()).not.toContain('do not have access');
 });
 
+const grantDialog = () => renderer.root.findByProps({ 'aria-labelledby': 'admin-stamp-grant-title' });
+const setGrantField = async (id, value) => act(async () => grantDialog().findByProps({ id }).props.onChange({ target: { value } }));
+const fillGrant = async (amount = '2', reason = 'SERVICE_RECOVERY', note = '') => {
+  await setGrantField('admin-stamp-count', amount); await setGrantField('admin-stamp-reason', reason);
+  await setGrantField('admin-stamp-note', note);
+};
+const submitGrant = async () => act(async () => grantDialog().findByType('form').props.onSubmit({ preventDefault() {} }));
+const grantEntry = { id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', entry_type: 'ADMIN_GRANTED', delta_stamps: 2,
+  balance_after_stamps: 7, pounds_awarded: null, reason_text: 'Gifted by Wings 4 U — courtesy stamps added.',
+  created_at: DATE, order_id: null, order_number: null, order_accessible: false };
+const granted = { grant_id: grantEntry.id, stamps_granted: 2, replayed: false, entry: grantEntry,
+  summary: { ...summary, available_stamps: 7, lifetime_stamps: 23 },
+  email: { status: 'SENT', message: 'Notification email accepted by the email provider.', retryable: false } };
+const grantCalls = () => apiFetch.mock.calls.filter(([path]) => path.endsWith('/stamps/grant'));
+
+test('grant cancellation returns to expanded history without requesting a mutation or rerunning search', async () => {
+  await mount(); await openCustomer(); await expand(); await expandStamps();
+  await tap('Load more orders'); await tap('Load more history');
+  await tap('Give Stamps');
+  expect(dialogs()).toHaveLength(1); expect(grantDialog()).toBeDefined();
+  expect(text()).toContain('Remaining capacity:');
+  await tap('Cancel');
+  expect(customerDialog()).toBeDefined(); expect(grantCalls()).toHaveLength(0);
+  expect(renderer.root.findByProps({ 'aria-controls': 'admin-customer-orders' }).props['aria-expanded']).toBe(true);
+  expect(renderer.root.findByProps({ 'aria-controls': 'admin-customer-stamps' }).props['aria-expanded']).toBe(true);
+  expect(text()).toContain('REDEEMED'); expect(searchCalls()).toHaveLength(1);
+});
+
+test.each(['', '0', '-1', '1.5', 'NaN', '4'])('invalid grant amount %s disables submission', async amount => {
+  await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(amount);
+  expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
+  await submitGrant(); expect(grantCalls()).toHaveLength(0);
+});
+
+test('grant validation requires a reason and an explanation for Other, using the backend capacity', async () => {
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 6 }, entries: [], next_cursor: null })) : defaultFetch(path));
+  await mount(); await openCustomer(); await tap('Give Stamps');
+  expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(2);
+  await fillGrant('2', ''); expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
+  await fillGrant('2', 'OTHER', '  '); expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
+  await fillGrant('2', 'OTHER', 'Missing sauce'); expect(button('Give Stamps', grantDialog()).props.disabled).toBe(false);
+  await fillGrant('5'); expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
+});
+
+test('Give Stamps is disabled for a full card and unavailable stamp data', async () => {
+  let resolve;
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? new Promise(done => { resolve = done; }) : defaultFetch(path));
+  await mount(); await openCustomer();
+  expect(button('Give Stamps').props.disabled).toBe(true);
+  await act(async () => resolve(response({ summary: { ...summary, available_stamps: 8 }, entries: [], next_cursor: null })));
+  expect(button('Give Stamps').props.disabled).toBe(true);
+  expect(button('Give Stamps').parent.props.title).toContain('redeem');
+});
+
+test('successful grant updates summary and history while preserving loaded orders, stamp pages and search', async () => {
+  let complete = false;
+  apiFetch.mockImplementation((path, options) => {
+    if (path.endsWith('/stamps/grant')) { complete = true; return Promise.resolve(response(granted)); }
+    if (path.includes('/stamps?') && complete) return Promise.resolve(response({ summary: granted.summary, entries: [grantEntry, stamp()], next_cursor: 'stamps-page-2' }));
+    return defaultFetch(path, options);
+  });
+  await mount(); await openCustomer(); await expand(); await expandStamps();
+  await tap('Load more orders'); await tap('Load more history');
+  const orderReads = apiFetch.mock.calls.filter(([path]) => path.includes('/orders?')).length;
+  await tap('Give Stamps'); await fillGrant(); await submitGrant();
+  expect(dialogs()).toHaveLength(1); expect(customerDialog()).toBeDefined();
+  expect(renderer.root.findByType('progress').props.value).toBe(7);
+  expect(text()).toContain('Gifted by Wings 4 U'); expect(text()).toContain('REDEEMED');
+  expect(customerDialog().findAllByType('p').map(textOf)).toContain('Lifetime stamps earned: 23');
+  expect(textOf(customerDialog())).toContain("2 stamps added to Brown's account.");
+  expect(renderer.root.findByProps({ 'aria-controls': 'admin-customer-orders' }).props['aria-expanded']).toBe(true);
+  expect(renderer.root.findByProps({ 'aria-controls': 'admin-customer-stamps' }).props['aria-expanded']).toBe(true);
+  expect(customerDialog().findAllByProps({ 'aria-label': 'View order #1043' })).toHaveLength(1);
+  expect(apiFetch.mock.calls.filter(([path]) => path.includes('/orders?'))).toHaveLength(orderReads);
+  expect(searchCalls()).toHaveLength(1); expect(mockNavigate).not.toHaveBeenCalled();
+  const request = grantCalls()[0][1];
+  expect(request.method).toBe('POST'); expect(request.locationId).toBe('restaurant-location');
+  expect(JSON.parse(request.body)).toEqual({ stamps: 2, reason: 'SERVICE_RECOVERY', request_id: expect.stringMatching(/^[a-f0-9-]{36}$/) });
+});
+
+test('provider failure is separate from grant success, and notification retry cannot regrant stamps', async () => {
+  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve(response({ ...granted, email: { status: 'FAILED', message: 'Email provider unavailable.', retryable: true } }))
+    : path.endsWith('/email/retry') ? Promise.resolve(response(granted.email)) : defaultFetch(path));
+  await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(); await submitGrant();
+  expect(text()).toContain('Stamps were added successfully'); expect(text()).toContain('Email provider unavailable.');
+  await tap('Retry notification email');
+  expect(text()).toContain('accepted by the email provider'); expect(grantCalls()).toHaveLength(1);
+  expect(apiFetch.mock.calls.some(([path]) => path.endsWith(`/${granted.grant_id}/email/retry`))).toBe(true);
+});
+
+test('uncertain grant retry retains its UUID and prevents double submission, including after cancel/reopen', async () => {
+  let resolve;
+  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? new Promise(done => { resolve = done; }) : defaultFetch(path));
+  await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant();
+  await submitGrant(); await submitGrant();
+  expect(grantCalls()).toHaveLength(1); expect(button('Adding stamps...').props.disabled).toBe(true);
+  await act(async () => resolve(response(null, 503)));
+  expect(button('Retry same grant').props.disabled).toBe(false);
+  expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.disabled).toBe(true);
+  const original = JSON.parse(grantCalls()[0][1].body);
+  await tap('Cancel'); await tap('Give Stamps');
+  await submitGrant(); expect(JSON.parse(grantCalls()[1][1].body)).toEqual(original);
+  await act(async () => resolve(response(granted)));
+});
+
+test('an unresolved grant survives closing the customer profile and reuses its UUID after reopening', async () => {
+  const originalStorage = global.sessionStorage;
+  const values = new Map();
+  global.sessionStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  let failed = false;
+  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve(failed ? response(granted) : (failed = true, response(null, 503))) : defaultFetch(path));
+  try {
+    await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(); await submitGrant();
+    const original = JSON.parse(grantCalls()[0][1].body);
+    expect(values.size).toBe(1);
+    await tap('Cancel'); await tap('Close customer');
+    await openCustomer(); await tap('Give Stamps');
+    expect(button('Retry same grant').props.disabled).toBe(false);
+    expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.value).toBe('2');
+    await submitGrant();
+    expect(JSON.parse(grantCalls()[1][1].body)).toEqual(original); expect(values.size).toBe(0);
+    expect(searchCalls()).toHaveLength(1);
+  } finally { global.sessionStorage = originalStorage; }
+});
+
+test('the grant form derives its maximum from the returned threshold instead of a frontend constant', async () => {
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 8, stamps_per_reward: 10 }, entries: [], next_cursor: null })) : defaultFetch(path));
+  await mount(); await openCustomer(); expect(button('Give Stamps').props.disabled).toBe(false);
+  await tap('Give Stamps'); expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(2);
+});
+
+test('changed server balance is shown without optimistic credit and can be refreshed', async () => {
+  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve({ ok: false, status: 409, json: async () => ({ errors: [
+    { code: 'STAMP_CAP_CHANGED', message: 'Stamp balance is now 7/8. You can add at most 1 stamps. Refresh the rewards and try again.' },
+  ] }) }) : defaultFetch(path));
+  await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(); await submitGrant();
+  expect(text()).toContain('at most 1 stamps'); expect(grantDialog()).toBeDefined();
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 7 }, entries: [stamp()], next_cursor: null })) : defaultFetch(path));
+  await tap('Refresh rewards');
+  expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(1);
+  expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
+  expect(searchCalls()).toHaveLength(1);
+});
+
+test('grant dialog has one focus trap, wraps Tab, closes on Escape and restores Give Stamps focus', async () => {
+  const originalDocument = global.document;
+  const originalElement = global.HTMLElement;
+  const listeners = new Map(); const nodes = [];
+  class Element {
+    constructor(group, label) { this.group = group; this.label = label; this.tabIndex = 0; this.isConnected = true; nodes.push(this); }
+    focus() { document.activeElement = this; }
+    matches() { return false; }
+    closest() { return null; }
+    getClientRects() { return [{}]; }
+  }
+  global.HTMLElement = Element;
+  const trigger = new Element('search', 'customer-trigger');
+  global.document = { activeElement: trigger, body: { style: { overflow: 'auto' } },
+    addEventListener: (name, fn) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
+    removeEventListener: (name, fn) => listeners.get(name)?.delete(fn) };
+  try {
+    await mount({ createNodeMock: element => {
+      if (element.props.role === 'dialog') {
+        const group = element.props['aria-labelledby'] === 'admin-stamp-grant-title' ? 'grant' : 'customer';
+        nodes.filter(node => node.group !== group && node.group !== 'search').forEach(node => { node.isConnected = false; });
+        const dialog = new Element(group, 'dialog');
+        dialog.contains = node => node?.isConnected && node.group === group;
+        dialog.querySelectorAll = () => nodes.filter(node => node.isConnected && node.group === group && node.label !== 'dialog');
+        return dialog;
+      }
+      if (element.type === 'input' && element.props.id === 'admin-stamp-count') return new Element('grant', 'stamp-count');
+      if (element.type === 'button') return new Element(element.props.type === 'submit' || element.props.children === 'Cancel' ? 'grant' : 'customer', element.props.children);
+      return null;
+    } });
+    await openCustomer('Brown', trigger); await tap('Give Stamps');
+    expect(dialogs()).toHaveLength(1); expect(listeners.get('keydown').size).toBe(1);
+    expect(document.activeElement.label).toBe('stamp-count');
+    const active = nodes.filter(node => node.isConnected && node.group === 'grant' && node.label !== 'dialog');
+    active[active.length - 1].focus();
+    const preventDefault = jest.fn();
+    await act(async () => Array.from(listeners.get('keydown')).forEach(fn => fn({ key: 'Tab', shiftKey: false, preventDefault })));
+    expect(preventDefault).toHaveBeenCalled(); expect(document.activeElement).toBe(active[0]);
+    await act(async () => Array.from(listeners.get('keydown')).forEach(fn => fn({ key: 'Escape', preventDefault() {}, stopPropagation() {} })));
+    expect(dialogs()).toHaveLength(1); expect(customerDialog()).toBeDefined(); expect(listeners.get('keydown').size).toBe(1);
+    expect(document.activeElement.label).toBe('Give Stamps'); expect(grantCalls()).toHaveLength(0);
+    await tap('Close customer'); expect(listeners.get('keydown').size).toBe(0); expect(document.activeElement).toBe(trigger);
+  } finally {
+    if (renderer) await act(async () => renderer.unmount()); renderer = null;
+    global.document = originalDocument; global.HTMLElement = originalElement;
+  }
+});
+
 test('customer/order transitions keep one keyboard trap and restore customer-row then search-trigger focus', async () => {
   const originalDocument = global.document;
   const originalElement = global.HTMLElement;

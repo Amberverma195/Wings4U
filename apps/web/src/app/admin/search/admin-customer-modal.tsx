@@ -4,6 +4,10 @@ import { useRef, useState } from "react";
 import { formatCents, formatDateTime } from "../admin-api";
 import { useAdminDialog } from "../use-admin-dialog";
 import { useAdminCustomer } from "./use-admin-customer";
+import { AdminStampGrantDialog } from "./admin-stamp-grant-dialog";
+import { adminApiFetch } from "../admin-api";
+import { useSession, withSilentRefresh } from "@/lib/session";
+import type { AdminStampGrantResult } from "../../../../../api/src/modules/admin/admin-customers.dto";
 
 export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended, returnFocusTo, orderLoading, orderError, onDismissOrder }: {
   customerId: string;
@@ -17,12 +21,17 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
 }) {
   const [ordersExpanded, setOrdersExpanded] = useState(false);
   const [stampsExpanded, setStampsExpanded] = useState(false);
-  const { profile, orders, stamps } = useAdminCustomer(customerId, ordersExpanded);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [grantResult, setGrantResult] = useState<AdminStampGrantResult | null>(null);
+  const [emailRetrying, setEmailRetrying] = useState(false);
+  const emailInFlight = useRef(false);
+  const session = useSession();
+  const { profile, orders, stamps, applyGrant, refreshStamps } = useAdminCustomer(customerId, ordersExpanded);
   const dialogRef = useRef<HTMLDivElement>(null);
   const orderFocus = useRef<HTMLButtonElement | null>(null);
   const lastOrder = useRef<string | null>(null);
   useAdminDialog({ dialogRef, initialFocusRef: orderFocus,
-    onClose, returnFocusTo, active: !suspended });
+    onClose, returnFocusTo, active: !suspended && !grantOpen });
   const openOrder = (id: string, trigger: HTMLButtonElement, focusKey: string) => {
     lastOrder.current = focusKey;
     orderFocus.current = trigger;
@@ -30,9 +39,29 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
   };
   const customer = profile.data;
   const name = customer?.display_name?.trim() || [customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || "Customer profile";
-  if (suspended) return null; // Keep data/expansion mounted, with no second active dialog or focus trap.
+  const summary = stamps.data?.summary;
+  const fullCard = !!summary && summary.available_stamps >= summary.stamps_per_reward;
+  const grantDisabled = stamps.loading || !summary || fullCard || orderLoading || emailRetrying;
+  const retryEmail = async () => {
+    if (!grantResult || emailInFlight.current) return;
+    emailInFlight.current = true; setEmailRetrying(true);
+    try {
+      const res = await withSilentRefresh(() => adminApiFetch(`/api/v1/admin/customers/${customerId}/stamps/${grantResult.grant_id}/email/retry`, { method: "POST" }), session.refresh, session.clear);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.data) throw new Error(body?.errors?.[0]?.message ?? "Unable to check the notification email. Please try again.");
+      setGrantResult(previous => previous && { ...previous, email: body.data });
+    } catch (error) {
+      setGrantResult(previous => previous && { ...previous, email: { status: "UNKNOWN", retryable: true,
+        message: error instanceof Error ? error.message : "Unable to check the notification email." } });
+    } finally { emailInFlight.current = false; setEmailRetrying(false); }
+  };
 
-  return <div role="presentation" onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000,
+  return <>
+    <AdminStampGrantDialog open={grantOpen && !suspended} customerId={customerId} name={name}
+      balance={summary?.available_stamps ?? 0} threshold={summary?.stamps_per_reward ?? 0}
+      onClose={() => setGrantOpen(false)} onRefresh={refreshStamps}
+      onSuccess={grant => { setGrantResult(grant); applyGrant(grant); setGrantOpen(false); }} />
+    {!suspended && !grantOpen && <div role="presentation" onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000,
     display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="admin-customer-title" tabIndex={-1}
       className="admin-customer-modal" onMouseDown={event => event.stopPropagation()}>
@@ -46,7 +75,7 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
             <p className="surface-muted">Account created <ExactTime value={customer.created_at} /></p>
           </>}
         </div>
-        <button ref={element => { if (!lastOrder.current) orderFocus.current = element; }}
+        <button ref={element => { if (!lastOrder.current || (lastOrder.current === "grant" && grantDisabled)) orderFocus.current = element; }}
           type="button" className="btn-secondary" onClick={onClose}>Close customer</button>
       </header>
       <div className="admin-customer-body">
@@ -80,8 +109,22 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
             </div>
           </section>
           <section className="admin-customer-section">
-            <h3>Wings Rewards</h3>
+            <div className="admin-customer-heading-row"><h3>Wings Rewards</h3>
+              <span title={fullCard ? "Stamp card is full. Customer must redeem their reward first." : undefined}>
+                <button type="button" className="btn-secondary" aria-haspopup="dialog"
+                  disabled={grantDisabled}
+                  ref={element => { if (lastOrder.current === "grant" && !grantDisabled) orderFocus.current = element; }}
+                  onClick={() => { lastOrder.current = "grant"; setGrantOpen(true); }}>Give Stamps</button>
+              </span>
+            </div>
             <p className="surface-muted">Balances and stamp history apply to the customer&apos;s whole account.</p>
+            {grantResult && <div role="status" className="admin-customer-grant-result">
+              <p><strong>{grantResult.stamps_granted} {grantResult.stamps_granted === 1 ? "stamp" : "stamps"} added to {name}&apos;s account.</strong></p>
+              {grantResult.email.status !== "SENT" && <p>Stamps were added successfully, but the notification email has not been confirmed.</p>}
+              <p>{grantResult.email.message}</p>
+              {grantResult.email.retryable && <button type="button" className="btn-secondary" disabled={emailRetrying} onClick={() => void retryEmail()}>
+                {emailRetrying ? "Checking notification..." : "Retry notification email"}</button>}
+            </div>}
             {stamps.loading && !stamps.data && <p role="status">Loading Wings rewards...</p>}
             <ResourceError error={stamps.error} retry={stamps.retry} />
             {stamps.data && <>
@@ -100,7 +143,7 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
               {stamps.data.entries.length === 0 && <p className="surface-muted">No stamp history yet.</p>}
               {stamps.data.entries.map(entry => <div key={entry.id} className="admin-customer-history-row">
                 <strong className={`admin-customer-badge admin-customer-badge--${entry.delta_stamps > 0 ? "positive" : entry.delta_stamps < 0 ? "negative" : "neutral"}`}>
-                  {entry.entry_type} · {entry.delta_stamps >= 0 ? "+" : ""}{entry.delta_stamps} stamps</strong>
+                  {entry.entry_type === "ADMIN_GRANTED" ? "Gifted by Wings 4 U" : entry.entry_type} · {entry.delta_stamps >= 0 ? "+" : ""}{entry.delta_stamps} stamps</strong>
                 <p className="surface-muted"><ExactTime value={entry.created_at} /></p>
                 <p>{entry.reason_text}</p>
                 <p>Balance after event: <strong>{entry.balance_after_stamps}</strong></p>
@@ -121,7 +164,8 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
           <button type="button" className="btn-secondary" onClick={onDismissOrder}>Dismiss order error</button></div>}
       </div>
     </div>
-  </div>;
+  </div>}
+  </>;
 }
 
 function ExactTime({ value }: { value: string }) {

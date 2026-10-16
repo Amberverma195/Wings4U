@@ -681,7 +681,8 @@ export default function ProfilePage() {
               ) : (
                 <ul className={styles.stampHistoryList}>
                   {wingsLedger.map((entry) => {
-                    const isEarn = entry.entry_type === "EARNED";
+                    const isGift = entry.entry_type === "ADMIN_GRANTED";
+                    const isEarn = entry.entry_type === "EARNED" || isGift;
                     const icon = isEarn ? "🍗" : "🎁";
                     const accent = isEarn
                       ? styles.stampHistoryIconEarn
@@ -699,7 +700,7 @@ export default function ProfilePage() {
                         </div>
                         <div className={styles.stampHistoryBody}>
                           <strong className={styles.stampHistoryBodyTitle}>
-                            {isEarn
+                            {isGift ? "Gifted by Wings 4 U" : isEarn
                               ? `Earned ${Math.abs(entry.delta_stamps)} stamp${
                                   Math.abs(entry.delta_stamps) === 1 ? "" : "s"
                                 }`

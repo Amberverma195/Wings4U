@@ -14,6 +14,9 @@ import { AdminStaffService } from "./admin-staff.service";
 import { AdminPromosController } from "./admin-promos.controller";
 import { AdminPromosService } from "./admin-promos.service";
 import { AdminCustomersService } from "./admin-customers.service";
+import { AdminAuditModule } from "../admin-audit/admin-audit.module";
+import { AdminStampGrantsController } from "./admin-stamp-grants.controller";
+import { AdminStampGrantsService } from "./admin-stamp-grants.service";
 
 @Module({
   imports: [
@@ -23,9 +26,10 @@ import { AdminCustomersService } from "./admin-customers.service";
     SupportModule,
     CatalogModule,
     NotificationsModule,
+    AdminAuditModule,
   ],
-  controllers: [AdminController, AdminMenuController, AdminStaffController, AdminPromosController],
-  providers: [AdminService, AdminMenuService, AdminStaffService, AdminPromosService, AdminCustomersService],
+  controllers: [AdminController, AdminMenuController, AdminStaffController, AdminPromosController, AdminStampGrantsController],
+  providers: [AdminService, AdminMenuService, AdminStaffService, AdminPromosService, AdminCustomersService, AdminStampGrantsService],
   exports: [AdminService],
 })
 export class AdminModule {}

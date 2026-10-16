@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AdminCustomerDetail, AdminCustomerOrdersPage, AdminCustomerStampsPage } from "../../../../../api/src/modules/admin/admin-customers.dto";
+import type { AdminCustomerDetail, AdminCustomerOrdersPage, AdminCustomerStampsPage, AdminStampGrantResult } from "../../../../../api/src/modules/admin/admin-customers.dto";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import { adminApiFetch } from "../admin-api";
 
@@ -14,7 +14,7 @@ function useCustomerResource<T>(path: string, enabled: boolean, merge?: (previou
   const loaded = useRef(false);
   const request = useRef<AbortController | null>(null);
 
-  const load = useCallback(async (cursor?: string | null) => {
+  const load = useCallback(async (cursor?: string | null, refreshMerge?: (previous: T, next: T) => T) => {
     if (request.current) return;
     const controller = new AbortController();
     request.current = controller;
@@ -29,7 +29,7 @@ function useCustomerResource<T>(path: string, enabled: boolean, merge?: (previou
       if (!body?.data) throw new Error("Customer information is unavailable. Please try again.");
       if (controller.signal.aborted) return;
       const next = body.data as T;
-      setData(previous => cursor && previous && merge ? merge(previous, next) : next);
+      setData(previous => previous && (cursor ? merge : refreshMerge) ? (cursor ? merge! : refreshMerge!)(previous, next) : next);
       loaded.current = true;
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -47,7 +47,8 @@ function useCustomerResource<T>(path: string, enabled: boolean, merge?: (previou
     if (enabled && !loaded.current) void load();
   }, [enabled, load]);
   useEffect(() => () => { request.current?.abort(); request.current = null; }, [path]);
-  return { data, loading, error, retry: () => load(), loadMore: (cursor: string) => load(cursor) };
+  return { data, loading, error, retry: () => load(), loadMore: (cursor: string) => load(cursor),
+    refresh: (mergeRefresh?: (previous: T, next: T) => T) => load(undefined, mergeRefresh), setData };
 }
 
 const appendOrders = (previous: AdminCustomerOrdersPage, next: AdminCustomerOrdersPage): AdminCustomerOrdersPage => ({
@@ -62,5 +63,14 @@ export function useAdminCustomer(customerId: string, ordersExpanded: boolean) {
   const profile = useCustomerResource<AdminCustomerDetail>(base, true);
   const orders = useCustomerResource<AdminCustomerOrdersPage>(`${base}/orders?limit=20`, ordersExpanded, appendOrders);
   const stamps = useCustomerResource<AdminCustomerStampsPage>(`${base}/stamps?limit=20`, true, appendStamps);
-  return { profile, orders, stamps };
+  const refreshStamps = () => stamps.refresh((previous, next) => ({ ...next,
+    entries: [...new Map([...next.entries, ...previous.entries].map(entry => [entry.id, entry])).values()],
+    next_cursor: previous.next_cursor,
+  }));
+  const applyGrant = (grant: AdminStampGrantResult) => {
+    stamps.setData(previous => previous ? { ...previous, summary: grant.summary,
+      entries: [grant.entry, ...previous.entries.filter(entry => entry.id !== grant.entry.id)] } : null);
+    void refreshStamps();
+  };
+  return { profile, orders, stamps, applyGrant, refreshStamps };
 }

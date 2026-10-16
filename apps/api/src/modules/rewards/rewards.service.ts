@@ -366,7 +366,9 @@ export class RewardsService {
 
     const summary = await tx.customerWingsRewards.upsert({
       where: { customerUserId },
-      update: {},
+      // Take the row lock BEFORE calculating room. Concurrent manual grants,
+      // redemptions and order accrual must all observe the committed balance.
+      update: { availableStamps: { increment: 0 } },
       create: { customerUserId },
     });
 
