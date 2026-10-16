@@ -64,6 +64,7 @@ const tap = async label => act(async () => button(label).props.onClick());
 const openCustomer = async (name = 'Brown', currentTarget = null) => act(async () =>
   renderer.root.findByProps({ 'aria-label': `View customer ${name}` }).props.onClick({ currentTarget }));
 const expand = async () => act(async () => renderer.root.findByProps({ 'aria-controls': 'admin-customer-orders' }).props.onClick());
+const expandStamps = async () => act(async () => renderer.root.findByProps({ 'aria-controls': 'admin-customer-stamps' }).props.onClick());
 const searchCalls = () => apiFetch.mock.calls.filter(([path]) => path.startsWith('/api/v1/admin/search?'));
 const mount = async options => {
   await act(async () => { renderer = create(React.createElement(GlobalSearchClient), options); });
@@ -95,7 +96,7 @@ test('customer buttons open contact/address/reward details on the search page an
 });
 
 test('orders and stamps paginate independently; existing order details return to the same expanded profile and loaded pages', async () => {
-  await mount(); await openCustomer(); await expand();
+  await mount(); await openCustomer(); await expand(); await expandStamps();
   await tap('Load more orders'); await tap('Load more history');
   expect(customerDialog().findAllByProps({ 'aria-label': 'View order #1043' })).toHaveLength(1);
   expect(text()).toContain('REDEEMED');
@@ -121,17 +122,47 @@ test('orders and stamps paginate independently; existing order details return to
   expect(apiFetch.mock.calls.some(([path]) => path.includes('/stamps?limit=20&cursor=stamps-page-2'))).toBe(true);
 });
 
+test('stamp history starts collapsed, retains loaded pages on toggle and stays expanded after viewing a linked order', async () => {
+  await mount(); await openCustomer();
+  const disclosure = () => renderer.root.findByProps({ 'aria-controls': 'admin-customer-stamps' });
+  const history = () => renderer.root.findByProps({ id: 'admin-customer-stamps' });
+  expect(disclosure().props['aria-expanded']).toBe(false);
+  expect(history().props.hidden).toBe(true);
+  expect(renderer.root.findByType('progress').props.value).toBe(5);
+  await expandStamps();
+  expect(disclosure().props['aria-expanded']).toBe(true);
+  expect(history().props.hidden).toBe(false);
+  await tap('Load more history');
+  const callsBeforeToggle = apiFetch.mock.calls.length;
+  await expandStamps();
+  expect(history().props.hidden).toBe(true);
+  await expandStamps();
+  expect(history().props.hidden).toBe(false);
+  expect(textOf(history())).toContain('REDEEMED · -8 stamps');
+  expect(apiFetch.mock.calls).toHaveLength(callsBeforeToggle);
+  expect(renderer.root.findByProps({ 'aria-controls': 'admin-customer-orders' }).props['aria-expanded']).toBe(false);
+  await act(async () => button('Order #1043', history()).props.onClick({ currentTarget: null }));
+  expect(dialogs()[0].props['aria-labelledby']).toBe('admin-order-detail-title');
+  await tap('Close');
+  expect(disclosure().props['aria-expanded']).toBe(true);
+  expect(history().props.hidden).toBe(false);
+  expect(textOf(history())).toContain('REDEEMED · -8 stamps');
+  expect(renderer.root.findByProps({ type: 'search' }).props.value).toBe('Brown');
+  expect(searchCalls()).toHaveLength(1);
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
 test('phone/address omissions, empty orders and empty stamp history render safely', async () => {
   apiFetch.mockImplementation(path => path.startsWith(`${base(OTHER_CUSTOMER)}/orders?`) ? Promise.resolve(response({ orders: [], next_cursor: null }))
     : path.startsWith(`${base(OTHER_CUSTOMER)}/stamps?`) ? Promise.resolve(response({ summary: { ...summary, available_stamps: 0, lifetime_stamps: 0, lifetime_redemptions: 0 }, entries: [], next_cursor: null })) : defaultFetch(path));
-  await mount(); await openCustomer('Smith'); await expand();
+  await mount(); await openCustomer('Smith'); await expand(); await expandStamps();
   for (const value of ['No phone number.','No saved addresses.','No orders at this restaurant.','No stamp history yet.']) expect(text()).toContain(value);
 });
 
 test('earn/redemption timestamps and signed deltas remain exact even with zero available stamps', async () => {
   apiFetch.mockImplementation(path => path.startsWith(`${base(CUSTOMER)}/stamps?`)
     ? Promise.resolve(response({ summary: { ...summary, available_stamps: 0 }, entries: [stamp(), stamp(true)], next_cursor: null })) : defaultFetch(path));
-  await mount(); await openCustomer();
+  await mount(); await openCustomer(); await expandStamps();
   const events = customerDialog().findAllByType('strong').map(textOf);
   expect(events).toContain('EARNED · +2 stamps');
   expect(events).toContain('REDEEMED · -8 stamps');
@@ -154,7 +185,7 @@ test('restricted stamp entries contain no clickable external order metadata', as
   apiFetch.mockImplementation(path => path.startsWith(`${base(CUSTOMER)}/stamps?`) ? Promise.resolve(response({ summary, entries: [{
     ...stamp(), order_id: null, order_number: null, order_accessible: false, pounds_awarded: null, reason_text: 'Stamps earned at another restaurant.',
   }], next_cursor: null })) : defaultFetch(path));
-  await mount(); await openCustomer();
+  await mount(); await openCustomer(); await expandStamps();
   expect(customerDialog().findAllByType('button').some(node => textOf(node).startsWith('Order #'))).toBe(false);
   expect(text()).toContain('Stamps earned at another restaurant.');
 });

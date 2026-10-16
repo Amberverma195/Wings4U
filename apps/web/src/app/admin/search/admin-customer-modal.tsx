@@ -1,14 +1,9 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useRef, useState } from "react";
 import { formatCents, formatDateTime } from "../admin-api";
 import { useAdminDialog } from "../use-admin-dialog";
 import { useAdminCustomer } from "./use-admin-customer";
-
-const sectionStyle: CSSProperties = { borderTop: "1px solid var(--border)", paddingTop: "1rem", marginTop: "1rem" };
-const rowStyle: CSSProperties = { borderTop: "1px solid var(--border)", padding: "0.75rem 0" };
-const linkStyle: CSSProperties = { font: "inherit", fontWeight: 600, color: "var(--accent-strong)",
-  padding: 0, border: 0, background: "transparent", cursor: "pointer", textAlign: "left" };
 
 export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended, returnFocusTo, orderLoading, orderError, onDismissOrder }: {
   customerId: string;
@@ -21,6 +16,7 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
   onDismissOrder: () => void;
 }) {
   const [ordersExpanded, setOrdersExpanded] = useState(false);
+  const [stampsExpanded, setStampsExpanded] = useState(false);
   const { profile, orders, stamps } = useAdminCustomer(customerId, ordersExpanded);
   const dialogRef = useRef<HTMLDivElement>(null);
   const orderFocus = useRef<HTMLButtonElement | null>(null);
@@ -39,77 +35,84 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
   return <div role="presentation" onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000,
     display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="admin-customer-title" tabIndex={-1}
-      onMouseDown={event => event.stopPropagation()} style={{ width: "min(920px, 96vw)", maxHeight: "90dvh",
-        display: "flex", flexDirection: "column", background: "white", color: "#17120d", borderRadius: 24, padding: "1.5rem" }}>
-      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
+      className="admin-customer-modal" onMouseDown={event => event.stopPropagation()}>
+      <header className="admin-customer-header">
         <div>
-          <h2 id="admin-customer-title" style={{ margin: "0 0 0.35rem" }}>{name}</h2>
+          <p className="admin-customer-eyebrow">Customer profile</p>
+          <h2 id="admin-customer-title">{name}</h2>
           {customer && <>
-            <p style={{ margin: 0 }}>{customer.primary_phone ?? "No phone number."}</p>
-            <p style={{ margin: "0.25rem 0" }}>{customer.primary_email ?? "No email address."}</p>
-            <p className="surface-muted" style={{ margin: 0 }}>Account created <ExactTime value={customer.created_at} /></p>
+            <p><strong>Phone: </strong>{customer.primary_phone ?? "No phone number."}</p>
+            <p><strong>Email: </strong>{customer.primary_email ?? "No email address."}</p>
+            <p className="surface-muted">Account created <ExactTime value={customer.created_at} /></p>
           </>}
         </div>
         <button ref={element => { if (!lastOrder.current) orderFocus.current = element; }}
           type="button" className="btn-secondary" onClick={onClose}>Close customer</button>
       </header>
-      <div style={{ overflowY: "auto", minHeight: 0 }}>
+      <div className="admin-customer-body">
         {profile.loading && <p role="status">Loading customer profile...</p>}
         <ResourceError error={profile.error} retry={profile.retry} />
         {customer && <>
-          <section style={sectionStyle}>
+          <section className="admin-customer-section">
             <h3>Addresses</h3>
             {customer.saved_addresses.length === 0 ? <p className="surface-muted">No saved addresses.</p> :
-              customer.saved_addresses.map(address => <address key={address.id} style={{ ...rowStyle, fontStyle: "normal" }}>
-                {address.label && <strong>{address.label} </strong>}{address.is_default && <strong>(Default)</strong>}
+              customer.saved_addresses.map(address => <address key={address.id} className="admin-customer-history-row">
+                {address.label && <strong>{address.label} </strong>}{address.is_default && <strong className="admin-customer-badge">(Default)</strong>}
                 <div>{address.line1}</div><div>{address.city} {address.postal_code}</div>
               </address>)}
           </section>
-          <section style={sectionStyle}>
-            <h3><button type="button" style={linkStyle} aria-expanded={ordersExpanded} aria-controls="admin-customer-orders"
-              onClick={() => setOrdersExpanded(expanded => !expanded)}>Order History {ordersExpanded ? "−" : "+"}</button></h3>
+          <section className="admin-customer-section">
+            <h3><button type="button" className="admin-customer-disclosure" aria-expanded={ordersExpanded} aria-controls="admin-customer-orders"
+              onClick={() => setOrdersExpanded(expanded => !expanded)}>Order History <span aria-hidden="true">{ordersExpanded ? "−" : "+"}</span></button></h3>
             <div id="admin-customer-orders" hidden={!ordersExpanded}>
               {orders.loading && <p role="status">Loading order history...</p>}
               <ResourceError error={orders.error} retry={orders.retry} />
               {orders.data?.orders.length === 0 && <p className="surface-muted">No orders at this restaurant.</p>}
-              {orders.data?.orders.map(order => <div key={order.id} style={rowStyle}>
-                <button type="button" style={linkStyle} aria-haspopup="dialog" aria-label={`View order #${order.order_number}`}
+              {orders.data?.orders.map(order => <div key={order.id} className="admin-customer-history-row">
+                <button type="button" className="admin-customer-link" aria-haspopup="dialog" aria-label={`View order #${order.order_number}`}
                   ref={element => { if (lastOrder.current === `order:${order.id}`) orderFocus.current = element; }}
                   onClick={event => openOrder(order.id, event.currentTarget, `order:${order.id}`)}>Order #{order.order_number}</button>
-                <p style={{ margin: "0.3rem 0" }}><ExactTime value={order.placed_at} /> · {order.status} · {order.fulfillment_type}</p>
-                <strong>{formatCents(order.final_payable_cents)}</strong>
+                <p className="surface-muted"><ExactTime value={order.placed_at} /> · {order.status} · {order.fulfillment_type}</p>
+                <strong className="admin-customer-total">{formatCents(order.final_payable_cents)}</strong>
               </div>)}
               {orders.data?.next_cursor && <button type="button" className="btn-secondary" disabled={orders.loading}
                 onClick={() => void orders.loadMore(orders.data!.next_cursor!)}>Load more orders</button>}
             </div>
           </section>
-          <section style={sectionStyle}>
+          <section className="admin-customer-section">
             <h3>Wings Rewards</h3>
             <p className="surface-muted">Balances and stamp history apply to the customer&apos;s whole account.</p>
             {stamps.loading && !stamps.data && <p role="status">Loading Wings rewards...</p>}
             <ResourceError error={stamps.error} retry={stamps.retry} />
             {stamps.data && <>
-              <p><strong>{stamps.data.summary.available_stamps} / {stamps.data.summary.stamps_per_reward}</strong> available stamps</p>
+              <p className="admin-customer-stamp-balance"><strong>{stamps.data.summary.available_stamps} / {stamps.data.summary.stamps_per_reward}</strong> available stamps</p>
               <progress aria-label="Wings stamp progress" value={Math.min(stamps.data.summary.available_stamps, stamps.data.summary.stamps_per_reward)}
-                max={stamps.data.summary.stamps_per_reward} style={{ width: "100%", accentColor: "#FF4D4D" }} />
-              <p>Lifetime stamps earned: {stamps.data.summary.lifetime_stamps}</p>
-              <p>Lifetime rewards redeemed: {stamps.data.summary.lifetime_redemptions}</p>
-              <p>{stamps.data.summary.reward_available ? "Free 1lb Wings reward available." : "Free 1lb Wings reward not yet available."}</p>
-              <h3>Stamp History</h3>
+                max={stamps.data.summary.stamps_per_reward} />
+              <div className="admin-customer-stats">
+                <p>Lifetime stamps earned: <strong>{stamps.data.summary.lifetime_stamps}</strong></p>
+                <p>Lifetime rewards redeemed: <strong>{stamps.data.summary.lifetime_redemptions}</strong></p>
+              </div>
+              <p className={`admin-customer-reward ${stamps.data.summary.reward_available ? "admin-customer-reward--available" : ""}`}>
+                {stamps.data.summary.reward_available ? "Free 1lb Wings reward available." : "Free 1lb Wings reward not yet available."}</p>
+              <h3><button type="button" className="admin-customer-disclosure" aria-expanded={stampsExpanded} aria-controls="admin-customer-stamps"
+                onClick={() => setStampsExpanded(expanded => !expanded)}>Stamp History <span aria-hidden="true">{stampsExpanded ? "−" : "+"}</span></button></h3>
+              <div id="admin-customer-stamps" hidden={!stampsExpanded}>
               {stamps.data.entries.length === 0 && <p className="surface-muted">No stamp history yet.</p>}
-              {stamps.data.entries.map(entry => <div key={entry.id} style={rowStyle}>
-                <strong>{entry.entry_type} · {entry.delta_stamps >= 0 ? "+" : ""}{entry.delta_stamps} stamps</strong>
-                <p style={{ margin: "0.3rem 0" }}><ExactTime value={entry.created_at} /></p>
+              {stamps.data.entries.map(entry => <div key={entry.id} className="admin-customer-history-row">
+                <strong className={`admin-customer-badge admin-customer-badge--${entry.delta_stamps > 0 ? "positive" : entry.delta_stamps < 0 ? "negative" : "neutral"}`}>
+                  {entry.entry_type} · {entry.delta_stamps >= 0 ? "+" : ""}{entry.delta_stamps} stamps</strong>
+                <p className="surface-muted"><ExactTime value={entry.created_at} /></p>
                 <p>{entry.reason_text}</p>
-                <p>Balance after event: {entry.balance_after_stamps}</p>
-                {entry.pounds_awarded !== null && <p>Pounds awarded: {entry.pounds_awarded}</p>}
-                {entry.order_accessible && entry.order_id && <button type="button" style={linkStyle} aria-haspopup="dialog"
+                <p>Balance after event: <strong>{entry.balance_after_stamps}</strong></p>
+                {entry.pounds_awarded !== null && <p>Pounds awarded: <strong>{entry.pounds_awarded}</strong></p>}
+                {entry.order_accessible && entry.order_id && <button type="button" className="admin-customer-link" aria-haspopup="dialog"
                   ref={element => { if (lastOrder.current === `stamp:${entry.id}`) orderFocus.current = element; }}
                   onClick={event => openOrder(entry.order_id!, event.currentTarget, `stamp:${entry.id}`)}>Order #{entry.order_number}</button>}
               </div>)}
               {stamps.loading && <p role="status">Loading stamp history...</p>}
               {stamps.data.next_cursor && <button type="button" className="btn-secondary" disabled={stamps.loading}
                 onClick={() => void stamps.loadMore(stamps.data!.next_cursor!)}>Load more history</button>}
+              </div>
             </>}
           </section>
         </>}
