@@ -20,7 +20,7 @@ Existing unrelated local changes remain untouched. There are no schema/migration
 
 The CLI requires an explicit `ADDRESS_RECONCILIATION_DATABASE_URL`. It does not load `.env`, use `DATABASE_URL`, or fall back to a database. Importing its module does not start the CLI or create a connection.
 
-With no `--apply`, it only accepts dry-run arguments. It requests `default_transaction_read_only=on` at connection setup and uses `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`. It selects the fixed `public.customer_addresses` table, sets UTC for exact timestamp comparison, and collects:
+With no `--apply`, it only accepts dry-run arguments. It requests `default_transaction_read_only=on` at connection setup, sets it again with an explicit session `SET` (Supabase's Supavisor pooler silently drops the startup `options` parameter; verified read-only against production on October 16, 2026), and uses `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`. It selects the fixed `public.customer_addresses` table, sets UTC for exact timestamp comparison, and collects:
 
 - Database name, server address/port and table OID to bind review to the inspected target.
 - Columns/types/nullability, incoming foreign keys, user triggers and their function definitions, indexes, table/RLS flags, rewrite rules and the canonical identity-function definition.
@@ -97,6 +97,7 @@ All inspected schema/function definitions and the target must still match the re
 ## Transaction and failure handling
 
 - One transaction covers the complete explicitly selected batch.
+- The connected database identity is compared with the reviewed target before any lock is requested, so a plan reviewed against another database cannot stall that database's address writers.
 - Customer advisory locks are acquired in sorted order using the same hash/seed as address saving.
 - A `SHARE ROW EXCLUSIVE` lock on the address table holds writers and relevant DDL while allowing ordinary readers. This briefly affects all saved-address writers, so a future execution needs an appropriate maintenance window/batch size.
 - Affected address books are reread with row locks; their full snapshot hashes and selected duplicate groups must match the reviewed report before any mutation.
@@ -115,7 +116,7 @@ Credentials and connection strings are not placed in reports/audits or console e
 
 ## Verification actually performed
 
-**55 database-free tests passed, 0 failed.**
+**56 database-free tests passed, 0 failed.**
 
 Command executed:
 
@@ -129,4 +130,16 @@ Coverage includes read-only defaults, deterministic planning, units/customer sep
 
 All three new executable modules passed `node --check`; `git diff --check` passed. No dependency was added and no API/web/mobile production behavior was changed by this follow-up, so application builds were not rerun.
 
-**Remaining verification limits:** SQL/catalog behavior, real transaction concurrency, actual filesystem durability and live server permissions were not integration-tested under this review-only authorization. A separately authorized disposable PostgreSQL integration run and review of the function/schema snapshots are required before considering future live execution. No live cleanup report or approval artifact was generated in this task.
+## Disposable PostgreSQL integration run (October 16, 2026)
+
+Run against a throwaway local PostgreSQL 17.10 cluster (UTF-8, ICU `en-US`), never against a shared or production database. All 44 repository migrations were replayed; 18 legacy address rows were seeded **before** `20261016120000_customer_address_identity`, matching the real rollout order. **23 scenarios passed, 0 failed**, using the real CLI process where noted:
+
+- The identity migration applies over legacy duplicates, leaves them unchanged with NULL keys, and rejects new duplicates.
+- CLI dry run: exact expected groups (postal spacing, case, whitespace and full-width/NFKC variants), blocked conflicting-label and blank-street groups, labels differing only by whitespace not treated as conflicts, other units/cities/customers never grouped, and zero row changes. Works with a SELECT-only role. A read-only session rejects writes. Checksums are reproducible.
+- CLI apply: deletes exactly the authorized IDs; retained IDs keep street/unit, postal text, `created_at` and default; unambiguous labels transfer; `updated_at` is unchanged when metadata is unchanged; the canonical key is backfilled; customer accounts and all unselected rows are byte-identical; the audit hash chain verifies. Subset authorization leaves other groups untouched.
+- Rejections with no row changes: other-database target (now before any lock), tampered plan, wrong checksum/count, blocked/partial/substituted groups, expired or malformed authorization, stale address books (edits/new rows), and post-preview index/trigger/foreign-key changes.
+- Rollback: an audit failure in the middle of a batch restores already-deleted groups; authorization expiry mid-transaction rolls back.
+- Concurrency: affected and unaffected address writers wait while readers continue; a concurrent same-customer duplicate is rejected after commit; an open address transaction makes cleanup fail at `lock_timeout` with no changes; two simultaneous runs of one authorization commit once (the other is `STALE_PLAN`); a cross-customer lock-order deadlock is detected by PostgreSQL with no partial changes.
+- The CLI entry guard runs on Windows; no `DATABASE_URL` fallback; real connection errors are sanitized.
+
+**Remaining limits:** live filesystem durability guarantees and production role permissions for apply were not exercised. Before any future execution, `20261016120000_customer_address_identity` must be applied in production. A read-only check on October 16, 2026 found it **not applied**; the tool correctly reports schema blockers until then. No live cleanup report or approval artifact has been generated.

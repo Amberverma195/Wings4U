@@ -185,6 +185,9 @@ export async function applyCleanup({ client, plan, authorization, confirmHash, c
     await client.query("SET LOCAL lock_timeout='5s'");
     await client.query("SET LOCAL statement_timeout='15s'");
     await client.query("SET LOCAL idle_in_transaction_session_timeout='30s'");
+    if (!same((await client.query(inspectionSql.target)).rows[0],plan.target)) {
+      fail('TARGET_MISMATCH','The connected database is not the reviewed target. No locks were taken; generate a plan for this database.');
+    }
     for (const user of users) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text,84542))',[user]);
     // Readers continue; writers/DDL are held during the short audited transaction.
     await client.query('LOCK TABLE public.customer_addresses IN SHARE ROW EXCLUSIVE MODE');

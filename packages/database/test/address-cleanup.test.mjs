@@ -155,7 +155,7 @@ test('authorized mock transaction retains canonical ID, default, label and times
 for(const [name,options,expected] of [
   ['changed timestamp',{rows:initialRows().map(row=>row.id===B?{...row,updated_at:'changed'}:row)},'STALE_PLAN'],
   ['new address in affected account',{rows:[...initialRows(),address('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',{identity:'new',line1:'New destination'})]},'STALE_PLAN'],
-  ['changed target',{target:{...target,database:'other'}},'SCHEMA_CHANGED'],
+  ['changed target',{target:{...target,database:'other'}},'TARGET_MISMATCH'],
   ['new foreign key',{schema:{...schema,references:[{name:'new_fk'}]}},'SCHEMA_CHANGED'],
   ['unexpected delete count',{badDelete:true},'DELETE_MISMATCH'],
   ['unexpected trigger mutation',{tamperKeep:true},'METADATA_MISMATCH'],
@@ -164,6 +164,12 @@ for(const [name,options,expected] of [
   await assert.rejects(applyFixture({client,audit}),code(expected));
   assert.deepEqual(client.rows(),before);assert.ok(client.calls.some(call=>call.sql==='ROLLBACK'));
   assert.equal(client.calls.some(call=>call.sql==='COMMIT'),false);
+});
+test('a different connected target is rejected before any advisory or table lock',async()=>{
+  const client=fakeClient({target:{...target,server_address:'10.0.0.9'}});
+  await assert.rejects(applyFixture({client}),code('TARGET_MISMATCH'));
+  assert.equal(client.calls.some(call=>/pg_advisory_xact_lock|LOCK TABLE/.test(call.sql)),false);
+  assert.ok(client.calls.some(call=>call.sql==='ROLLBACK'));
 });
 test('lock timeouts abort before mutation and are never retried',async()=>{
   const client=fakeClient({failSql:'LOCK TABLE'});
@@ -222,6 +228,7 @@ test('CLI dry run enables server read-only mode, returns report and never logs c
   await runCleanupCli({args:['--out','plan.json'],env:{ADDRESS_RECONCILIATION_DATABASE_URL:'postgresql://tester:secret@example.invalid/fixture'},
     createClient:config=>{configs.push(config);return client;},writeReport:async(...args)=>outputs.push(args),log:value=>logs.push(value),clock:()=>NOW});
   assert.equal(configs[0].options,'-c default_transaction_read_only=on');assert.equal(client.ended,true);
+  assert.equal(client.calls[0].sql,'SET SESSION default_transaction_read_only=on');assert.match(client.calls[1].sql,/^BEGIN .*READ ONLY/);
   assert.equal(writeCalls(client).length,0);assert.equal(outputs[0][1].mode,'DRY_RUN');assert.ok(logs.every(line=>!line.includes('secret')));
 });
 test('CLI apply preflight rejects invalid authorization before connecting or opening an audit',async()=>{

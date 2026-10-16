@@ -70,6 +70,8 @@ export async function runCleanupCli({ args, env, createClient, readReviewFile=re
       ...(options.mode==='dry-run'?{options:'-c default_transaction_read_only=on'}:{})});
     await client.connect();
     if (options.mode==='dry-run') {
+      // Connection poolers such as Supabase Supavisor drop the startup `options` parameter.
+      await client.query('SET SESSION default_transaction_read_only=on');
       const report=await previewCleanup(client,clock()); await writeReport(options.out,report);
       log(`Read-only preview: ${report.counts.duplicate_groups} duplicate groups; ${report.counts.blocked_groups} blocked groups; ${report.blockers.length} schema/reference blockers. Report saved. No records changed.`);
       return {status:'dry-run',report};
