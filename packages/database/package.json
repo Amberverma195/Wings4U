@@ -6,6 +6,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "test:addresses": "node --test test/customer-address-identity.test.mjs",
+    "test:address-cleanup-review": "node --test test/address-cleanup.test.mjs",
     "build": "tsc -p tsconfig.json",
     "prisma:pull": "prisma db pull --schema prisma/schema.prisma",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
