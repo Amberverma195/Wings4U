@@ -4,14 +4,18 @@
 // Production database guard
 //
 // Blocks destructive operations (e2e test setup, prisma reset, seed) from
-// running against the production database.  Three layers of defence:
+// running against the production database.  Four layers of defence:
 //
 //   1. Known project reference — catches the exact Supabase project that
 //      hosts production.
 //   2. Hosted-database hostname patterns — catches Supabase and Railway
 //      URLs even if the project ref changes or is obfuscated.
-//   3. Fail-closed opt-in — destructive callers must set
-//      DATABASE_ALLOW_DESTRUCTIVE=true *and* pass layers 1+2 to proceed.
+//   3. Positive local-host verification — every URL must resolve to a
+//      known-safe local hostname (localhost, 127.0.0.1, ::1, 0.0.0.0).
+//      Remote databases on custom domains are refused even if they don't
+//      match a known hosted pattern.
+//   4. Fail-closed opt-in — destructive callers must set
+//      DATABASE_ALLOW_DESTRUCTIVE=true *and* pass layers 1–3 to proceed.
 //
 // Non-destructive flows (local API dev, prisma generate, migrate deploy,
 // production deployment) never call into the strict path and are unaffected.
@@ -31,9 +35,8 @@ const HOSTED_DB_PATTERNS = [
   /\.railway\.app\b/i,
 ];
 
-// Hostnames that are known-safe local targets.  URLs pointing here are
-// never flagged by the hosted-pattern check even if they happen to match a
-// pattern above (they shouldn't, but this makes the intent explicit).
+// Hostnames that are known-safe local targets.  Only URLs pointing at one
+// of these are accepted by the strict destructive-operation guard.
 const SAFE_LOCAL_HOSTS = new Set([
   'localhost',
   '127.0.0.1',
@@ -66,6 +69,20 @@ function isHostedDatabaseUrl(url) {
   let decoded = url;
   try { decoded = decodeURIComponent(url); } catch { /* raw is fine */ }
   return [url, decoded].some((v) => HOSTED_DB_PATTERNS.some((p) => p.test(v)));
+}
+
+/**
+ * Return true when the URL's hostname is a known-safe local address.
+ * Returns false for non-parseable URLs, empty strings, or any remote host.
+ */
+function isLocalDatabaseUrl(url) {
+  if (typeof url !== 'string' || url === '') return false;
+  try {
+    const parsed = new URL(url);
+    return SAFE_LOCAL_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -118,11 +135,13 @@ function refuseProductionDatabase(purpose, urls) {
  *   1. At least one database URL must be provided.
  *   2. No URL may match the production project reference.
  *   3. No URL may point at a hosted database service.
- *   4. DATABASE_ALLOW_DESTRUCTIVE must be explicitly set to "true".
+ *   4. Every URL must resolve to a known-safe local hostname
+ *      (localhost, 127.0.0.1, ::1, or 0.0.0.0).
+ *   5. DATABASE_ALLOW_DESTRUCTIVE must be explicitly set to "true".
  *
- * If ANY check fails, the operation is refused.  This ensures that even if
- * a new URL format bypasses the pattern checks, the explicit opt-in still
- * catches it.
+ * If ANY check fails, the operation is refused.  This ensures destructive
+ * commands can only ever target explicitly verified local disposable
+ * databases, regardless of URL format or hosting provider.
  */
 function requireSafeDestructiveTarget(purpose, urls) {
   const candidates = Array.isArray(urls)
@@ -134,7 +153,7 @@ function requireSafeDestructiveTarget(purpose, urls) {
   if (definedUrls.length === 0) {
     throw new Error(
       `[production-guard] Refusing to run ${purpose}: no database URL is configured. ` +
-      'Configure a dedicated test database before running destructive operations.',
+      'Configure a dedicated local test database before running destructive operations.',
     );
   }
 
@@ -142,7 +161,7 @@ function requireSafeDestructiveTarget(purpose, urls) {
   if (definedUrls.some(containsProductionProjectRef)) {
     throw new Error(
       `[production-guard] Refusing to run ${purpose} against the production database. ` +
-      'Point DATABASE_URL / DIRECT_URL at a dedicated, disposable test database.',
+      'Point DATABASE_URL / DIRECT_URL at a dedicated, disposable local test database.',
     );
   }
 
@@ -150,17 +169,29 @@ function requireSafeDestructiveTarget(purpose, urls) {
   if (definedUrls.some(isHostedDatabaseUrl)) {
     throw new Error(
       `[production-guard] Refusing to run ${purpose}: the database URL points at a ` +
-      'hosted database service. Destructive operations require a local or dedicated ' +
+      'hosted database service. Destructive operations require a local disposable ' +
       'test database.',
     );
   }
 
-  // 4. Fail closed: require explicit opt-in.
+  // 4. Positive verification: every URL must target a known-safe local host.
+  //    This catches remote databases on custom domains that don't match any
+  //    hosted pattern above — only localhost/127.0.0.1/::1/0.0.0.0 pass.
+  const nonLocalUrls = definedUrls.filter((u) => !isLocalDatabaseUrl(u));
+  if (nonLocalUrls.length > 0) {
+    throw new Error(
+      `[production-guard] Refusing to run ${purpose}: one or more database URLs do not ` +
+      'point at a local host. Destructive operations are only allowed against local ' +
+      'databases (localhost, 127.0.0.1, ::1, or 0.0.0.0).',
+    );
+  }
+
+  // 5. Fail closed: require explicit opt-in.
   if (process.env.DATABASE_ALLOW_DESTRUCTIVE !== 'true') {
     throw new Error(
       `[production-guard] Refusing to run ${purpose}: DATABASE_ALLOW_DESTRUCTIVE is not ` +
       '"true". Set DATABASE_ALLOW_DESTRUCTIVE=true in your test environment to confirm ' +
-      'the target is a disposable database.',
+      'the target is a disposable local database.',
     );
   }
 }
@@ -173,6 +204,7 @@ module.exports = {
   looksLikeProductionUrl,
   containsProductionProjectRef,
   isHostedDatabaseUrl,
+  isLocalDatabaseUrl,
   refuseProductionDatabase,
   requireSafeDestructiveTarget,
 };

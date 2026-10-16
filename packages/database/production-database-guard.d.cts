@@ -4,6 +4,9 @@ export declare function containsProductionProjectRef(url: string | undefined): b
 /** Return true if the URL points at a hosted database service (Supabase, Railway, etc.). */
 export declare function isHostedDatabaseUrl(url: string | undefined): boolean;
 
+/** Return true if the URL's hostname is a known-safe local address (localhost, 127.0.0.1, ::1, 0.0.0.0). */
+export declare function isLocalDatabaseUrl(url: string | undefined): boolean;
+
 /** Return true if the URL matches any production detection signal. */
 export declare function looksLikeProductionUrl(url: string | undefined): boolean;
 
@@ -18,6 +21,7 @@ export declare function refuseProductionDatabase(purpose: string, urls?: Array<s
 
 /**
  * Strict, fail-closed guard for destructive operations.
- * Requires: valid URLs, no production signals, and DATABASE_ALLOW_DESTRUCTIVE=true.
+ * Requires: valid URLs, no production signals, all URLs must target local hosts,
+ * and DATABASE_ALLOW_DESTRUCTIVE=true.
  */
 export declare function requireSafeDestructiveTarget(purpose: string, urls?: Array<string | undefined>): void;
