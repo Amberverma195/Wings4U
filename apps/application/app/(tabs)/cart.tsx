@@ -25,6 +25,7 @@ import {
   quotePromoParams,
   wingsRewardBlockedReason,
 } from "../../src/lib/promo-selection";
+import { getBuilderPriceDelta } from "../../src/lib/wing-builder-logic";
 import type {
   ActivePromo,
   CartBuilderPayload,
@@ -41,7 +42,8 @@ function lineSubtotal(item: CartItem): number {
     (sum, selection) => sum + selection.price_delta_cents,
     0,
   );
-  return (item.base_price_cents + modifiers) * item.quantity;
+  const builderDelta = getBuilderPriceDelta(item.builder_payload);
+  return (item.base_price_cents + modifiers + builderDelta) * item.quantity;
 }
 
 function driverTipCents(cart: CartContextValue): number {

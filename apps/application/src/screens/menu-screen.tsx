@@ -488,6 +488,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
             visible={Boolean(selectedItem)}
             item={selectedItem}
             editingLine={editingCartItem}
+            saladMenuItems={menu?.categories?.find((c) => c.slug === 'salads')?.items ?? []}
             onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
           />
         ) : selectedItem && isComboBuilderItem(selectedItem) ? (

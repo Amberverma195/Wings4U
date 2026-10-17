@@ -22,7 +22,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCart } from '../context/cart';
 import type {
   BuilderMenuOption,
@@ -40,7 +40,9 @@ import {
   countEffectiveSaucedFlavours,
   defaultSaucingMethodForCount,
   extractWeightLb,
+  formatCents,
   isFlavourWithoutSauce,
+  isItemAvailableForOrder,
   isSaucingMethodValidForCount,
   methodRequiresSideFlavourPick,
   normalizeInitialPreparation,
@@ -168,8 +170,8 @@ export function ComboBuilderMobile({
   onClose,
   editingLine,
 }: Props) {
-  const { addItem, replaceItem } = useCart();
-  const { flavours, loading, error } = useWingFlavours(item);
+  const { addItem, replaceItem, fulfillmentType } = useCart();
+  const { flavours, loading, error, retry } = useWingFlavours(item);
 
   const editingPayload =
     editingLine?.builder_payload?.builder_type === 'WING_COMBO'
@@ -281,25 +283,40 @@ export function ComboBuilderMobile({
     }
   }, [comboOptions, selectedComboId]);
 
-  /* Resize flavour slots when required count changes */
+  /* Resize and prune flavour slots when required count changes or combo changes */
   useEffect(() => {
     setFlavourSelections((prev) =>
-      Array.from({ length: requiredFlavourCount }, (_, index) => prev[index] ?? ''),
+      Array.from({ length: requiredFlavourCount }, (_, index) => {
+        const id = prev[index] ?? '';
+        if (id && flavours.length > 0 && !flavours.some((f) => f.id === id)) return '';
+        return id;
+      }),
     );
-  }, [requiredFlavourCount]);
+  }, [requiredFlavourCount, flavours, selectedComboId]);
 
-  /* Resize side & drink selections when group counts change */
+  /* Revalidate side selections when sideGroups change (e.g. combo size change) */
   useEffect(() => {
     setSideSelections((prev) =>
-      Array.from({ length: sideGroups.length }, (_, index) => prev[index] ?? ''),
+      sideGroups.map((group, index) => {
+        const current = prev[index];
+        if (!current) return '';
+        const isValid = group.options.some((opt) => opt.id === current);
+        return isValid ? current : '';
+      }),
     );
-  }, [sideGroups.length]);
+  }, [sideGroups]);
 
+  /* Revalidate drink selections when drinkGroups change (e.g. combo size change) */
   useEffect(() => {
     setDrinkSelections((prev) =>
-      Array.from({ length: drinkGroups.length }, (_, index) => prev[index] ?? ''),
+      drinkGroups.map((group, index) => {
+        const current = prev[index];
+        if (!current) return '';
+        const isValid = group.options.some((opt) => opt.id === current);
+        return isValid ? current : '';
+      }),
     );
-  }, [drinkGroups.length]);
+  }, [drinkGroups]);
 
   const flavourMap = useMemo(
     () => new Map(flavours.map((flavour) => [flavour.id, flavour])),
@@ -370,18 +387,42 @@ export function ComboBuilderMobile({
     }
   }, [effectiveSaucedCount, saucingMethod, sideFlavourOptions]);
 
-  /* Pricing */
+  /* Pricing — includes base price, boneless upcharge, and all paid side & drink modifiers */
+  const modifierSelectionsTotalCents = useMemo(() => {
+    let delta = 0;
+    sideGroups.forEach((group, index) => {
+      const optionId = sideSelections[index];
+      const option = group.options.find((candidate) => candidate.id === optionId);
+      if (option) delta += option.price_delta_cents;
+    });
+    drinkGroups.forEach((group, index) => {
+      const optionId = drinkSelections[index];
+      const option = group.options.find((candidate) => candidate.id === optionId);
+      if (option) delta += option.price_delta_cents;
+    });
+    return delta;
+  }, [drinkGroups, drinkSelections, sideGroups, sideSelections]);
+
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
-    (wingType === 'BONELESS' ? BONELESS_WINGS_UPCHARGE_CENTS : 0);
+    (wingType === 'BONELESS' ? BONELESS_WINGS_UPCHARGE_CENTS : 0) +
+    modifierSelectionsTotalCents;
 
   const showsSaucingStep = requiredFlavourCount >= 1 && !allMainFlavoursPlain;
 
+  const availability = useMemo(
+    () => isItemAvailableForOrder(item, fulfillmentType),
+    [item, fulfillmentType],
+  );
+
   /* Validation */
   const validate = useCallback((): string | null => {
+    if (!availability.available) return 'availability';
     if (!selectedOption) return 'combo-size';
     if (!wingType || !preparation) return 'preparation';
-    if (flavourSelections.some((selection) => !selection)) return 'flavours';
+    if (flavourSelections.some((selection) => !selection) || (requiredFlavourCount > 0 && flavours.length === 0)) {
+      return 'flavours';
+    }
     if (!allMainFlavoursPlain) {
       if (
         !isSaucingMethodValidForCount(
@@ -408,24 +449,44 @@ export function ComboBuilderMobile({
     ) {
       return 'instructions';
     }
-    if (sideSelections.some((selection) => !selection)) return 'sides';
-    if (drinkSelections.some((selection) => !selection)) return 'drinks';
+    if (
+      sideSelections.length !== sideGroups.length ||
+      sideSelections.some(
+        (selection, idx) =>
+          !selection || !sideGroups[idx]?.options.some((o) => o.id === selection),
+      )
+    ) {
+      return 'sides';
+    }
+    if (
+      drinkSelections.length !== drinkGroups.length ||
+      drinkSelections.some(
+        (selection, idx) =>
+          !selection || !drinkGroups[idx]?.options.some((o) => o.id === selection),
+      )
+    ) {
+      return 'drinks';
+    }
     return null;
   }, [
-    selectedOption,
-    wingType,
-    preparation,
-    flavourSelections,
     allMainFlavoursPlain,
-    effectiveSaucedCount,
-    saucingMethod,
-    requiredFlavourCount,
-    threeFlavourTellUsHow,
-    hasValidSideFlavourSlot,
-    tellUsHowSaucing,
-    instructions,
-    sideSelections,
+    availability.available,
+    drinkGroups,
     drinkSelections,
+    effectiveSaucedCount,
+    flavourSelections,
+    flavours.length,
+    hasValidSideFlavourSlot,
+    instructions,
+    preparation,
+    requiredFlavourCount,
+    saucingMethod,
+    selectedOption,
+    sideGroups,
+    sideSelections,
+    tellUsHowSaucing,
+    threeFlavourTellUsHow,
+    wingType,
   ]);
 
   const validationError = useMemo(() => validate(), [validate]);
@@ -605,6 +666,11 @@ export function ComboBuilderMobile({
       submitDisabled={!isReadyToSubmit}
       onSubmit={handleAdd}
     >
+      {!availability.available ? (
+        <View style={styles.unavailableBanner} accessibilityRole="alert">
+          <Text style={styles.unavailableBannerText}>{availability.reason}</Text>
+        </View>
+      ) : null}
       {/* ---- Combo size ---- */}
       {showComboSizeStep ? (
         <StepCard
@@ -673,8 +739,13 @@ export function ComboBuilderMobile({
       >
         {loading ? (
           <Text style={styles.inlineCopy}>Loading wing flavours...</Text>
-        ) : error && flavours.length === 0 ? (
-          <Text style={[styles.inlineCopy, styles.errorCopy]}>{error}</Text>
+        ) : error ? (
+          <View style={styles.errorBanner} accessibilityRole="alert">
+            <Text style={[styles.inlineCopy, styles.errorCopy]}>{error}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={retry} accessibilityRole="button">
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={{ gap: 14 }}>
             {flavourSelections.map((selection, index) => (
@@ -791,6 +862,10 @@ export function ComboBuilderMobile({
                   options={group.options.map((opt) => ({
                     value: opt.id,
                     label: opt.name,
+                    priceNote:
+                      opt.price_delta_cents > 0
+                        ? `+$${(opt.price_delta_cents / 100).toFixed(2)}`
+                        : undefined,
                   }))}
                   value={drinkSelections[index] ?? null}
                   onChange={(optId) =>
@@ -848,5 +923,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: P.text,
+  },
+  errorBanner: {
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  retryBtn: {
+    backgroundColor: P.peach,
+    borderWidth: 1,
+    borderColor: P.peachBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  retryBtnText: {
+    color: P.red,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  unavailableBanner: {
+    backgroundColor: 'rgba(229,60,60,0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(229,60,60,0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  unavailableBannerText: {
+    color: P.red,
+    fontWeight: '700',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

@@ -11,7 +11,13 @@
  * All names and semantics match the website implementation 1:1.
  */
 
-import type { MenuItem, ModifierGroup, WingFlavour } from "./types";
+import type {
+  CartBuilderPayload,
+  FulfillmentType,
+  MenuItem,
+  ModifierGroup,
+  WingFlavour,
+} from "./types";
 
 /* ------------------------------------------------------------------ */
 /*  Price constants (mirrored from web's cart-item-utils.ts)           */
@@ -377,6 +383,43 @@ export function isComboBuilderItem(item: MenuItem): boolean {
   return item.builder_type === "WING_COMBO";
 }
 
+export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
+  if (!payload) return 0;
+  if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
+    return (
+      (payload.extra_flavour ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
+      (payload.wing_type === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0)
+    );
+  }
+  return 0;
+}
+
+export function isItemAvailableForOrder(
+  item: MenuItem | null | undefined,
+  fulfillmentType: FulfillmentType,
+): { available: boolean; reason?: string } {
+  if (!item) return { available: false, reason: "Item not found" };
+  if (!item.is_available || item.stock_status === "UNAVAILABLE") {
+    return { available: false, reason: "This item is currently unavailable." };
+  }
+  if (
+    item.allowed_fulfillment_type &&
+    item.allowed_fulfillment_type !== "BOTH" &&
+    item.allowed_fulfillment_type !== fulfillmentType
+  ) {
+    return {
+      available: false,
+      reason: `This item is only available for ${item.allowed_fulfillment_type.toLowerCase()}.`,
+    };
+  }
+  return { available: true };
+}
+
+/**
+ * Safe flavour extractor that only returns flavours if linked_flavour_id is present
+ * and metadata is known. Never synthesizes unknown hot or dry rub flavours as MILD.
+ * For true authoritative flavours, the API GET /api/v1/menu/wing-flavours must be used.
+ */
 export function extractFlavoursFromItem(item?: MenuItem | null): WingFlavour[] {
   if (!item) return [];
   const map = new Map<string, WingFlavour>();
@@ -385,12 +428,8 @@ export function extractFlavoursFromItem(item?: MenuItem | null): WingFlavour[] {
     if (!groups) return;
     for (const group of groups) {
       for (const opt of group.options) {
-        if (
-          opt.linked_flavour_id ||
-          /flavour/i.test(group.name) ||
-          /flavour/i.test(group.display_label)
-        ) {
-          const id = opt.linked_flavour_id || opt.id;
+        if (opt.linked_flavour_id) {
+          const id = opt.linked_flavour_id;
           if (!map.has(id)) {
             const isPlain = /plain/i.test(opt.name);
             map.set(id, {

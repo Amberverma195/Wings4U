@@ -29,7 +29,6 @@ import {
   resolveInitialHeatTab,
   getSaucingOptions,
   formatCents,
-  extractFlavoursFromItem,
 } from '../lib/wing-builder-logic';
 
 /* =========================================================================
@@ -148,13 +147,15 @@ export function MobileBuilderShell({
             <TouchableOpacity
               style={[sh.addBtn, submitDisabled && sh.addBtnDisabled]}
               onPress={onSubmit}
+              disabled={Boolean(submitDisabled)}
               activeOpacity={submitDisabled ? 1 : 0.82}
               accessibilityRole="button"
+              accessibilityState={{ disabled: Boolean(submitDisabled) }}
               accessibilityLabel={submitLabel}
             >
               <Text style={sh.addBtnText}>{submitLabel}</Text>
               <View style={sh.addBtnSep} />
-              <Text style={sh.addBtnPrice}>{formatCents(totalCents * quantity)}</Text>
+              <Text style={sh.addBtnPrice}>{formatCents(totalCents)}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -344,23 +345,44 @@ type OptionPill = { value: string; label: string; priceNote?: string };
 
 type OptionPillsProps = {
   options: OptionPill[];
-  value: string | null;
-  onChange: (value: string) => void;
+  value?: string | null;
+  values?: string[];
+  multi?: boolean;
+  onChange?: (value: string) => void;
+  onToggle?: (value: string) => void;
   disabled?: boolean;
 };
 
-export function OptionPills({ options, value, onChange, disabled }: OptionPillsProps) {
+export function OptionPills({
+  options,
+  value = null,
+  values,
+  multi = false,
+  onChange,
+  onToggle,
+  disabled,
+}: OptionPillsProps) {
   return (
     <View style={op.row}>
       {options.map((opt) => {
-        const active = opt.value === value;
+        const active = multi ? Boolean(values?.includes(opt.value)) : opt.value === value;
+        const handlePress = () => {
+          if (disabled) return;
+          if (multi) {
+            if (onToggle) onToggle(opt.value);
+            else if (onChange) onChange(opt.value);
+          } else {
+            onChange?.(opt.value);
+          }
+        };
+
         return (
           <TouchableOpacity
             key={opt.value}
             style={[op.pill, active && op.pillActive, disabled && op.pillDisabled]}
-            onPress={() => !disabled && onChange(opt.value)}
+            onPress={handlePress}
             activeOpacity={disabled ? 1 : 0.75}
-            accessibilityRole="radio"
+            accessibilityRole={multi ? 'checkbox' : 'radio'}
             accessibilityState={{ checked: active, disabled: Boolean(disabled) }}
           >
             <Text style={[op.label, active && op.labelActive, disabled && op.labelDisabled]}>
@@ -679,47 +701,38 @@ export function SaucingMethodPicker({
 /* =========================================================================
    useWingFlavours hook (mobile version — uses /api/v1/menu/wing-flavours)
    ========================================================================= */
-export function useWingFlavours(fallbackItem?: MenuItem | null) {
+export function useWingFlavours(_fallbackItem?: MenuItem | null) {
   const { locationId } = useCart();
   const effectiveLocationId = locationId || DEFAULT_LOCATION_ID;
   const [flavours, setFlavours] = useState<WingFlavour[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadFlavours() {
-      setLoading(true);
-      setError(null);
-      try {
-        const env = await apiJson<WingFlavour[]>(
-          `/api/v1/menu/wing-flavours?location_id=${effectiveLocationId}`,
-          { locationId: effectiveLocationId },
-        );
-        if (!cancelled) setFlavours(env.data ?? []);
-      } catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : 'Failed to load wing flavours');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  const loadFlavours = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const env = await apiJson<WingFlavour[]>(
+        `/api/v1/menu/wing-flavours?location_id=${effectiveLocationId}`,
+        { locationId: effectiveLocationId },
+      );
+      setFlavours(env.data ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to load wing flavours');
+    } finally {
+      setLoading(false);
     }
-
-    void loadFlavours();
-    return () => { cancelled = true; };
   }, [effectiveLocationId]);
 
-  const resolvedFlavours = useMemo(() => {
-    if (flavours.length > 0) return flavours;
-    return extractFlavoursFromItem(fallbackItem);
-  }, [flavours, fallbackItem]);
+  useEffect(() => {
+    void loadFlavours();
+  }, [loadFlavours]);
 
   return {
-    flavours: resolvedFlavours,
-    loading: loading && resolvedFlavours.length === 0,
-    error: resolvedFlavours.length > 0 ? null : error,
+    flavours,
+    loading,
+    error,
+    retry: loadFlavours,
   };
 }
 

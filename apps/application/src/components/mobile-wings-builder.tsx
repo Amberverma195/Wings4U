@@ -52,6 +52,7 @@ import {
   extractWeightLb,
   formatCents,
   isFlavourWithoutSauce,
+  isItemAvailableForOrder,
   isSaucingMethodValidForCount,
   methodRequiresSideFlavourPick,
   normalizeInitialPreparation,
@@ -60,6 +61,15 @@ import {
   type Preparation,
   type WingType,
 } from '../lib/wing-builder-logic';
+import {
+  WINGS_SPECIAL_SALAD_SIZE_LABEL,
+  findSaladMenuItemForSelection,
+  inferOptionSizeScope,
+  normalizeIngredientText,
+  normalizeSaladAddonDisplayLabel,
+  saladItemSupportsSize,
+  shouldRenderAddonOption,
+} from '../lib/salad-catalog';
 import {
   BUILDER_VALIDATION_MESSAGE,
   ExtraFlavourPicker,
@@ -182,15 +192,22 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   editingLine?: CartItem | null;
+  saladMenuItems?: MenuItem[];
 };
 
 /* ================================================================== */
 /*  WingsBuilderMobile                                                 */
 /* ================================================================== */
 
-export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Props) {
-  const { addItem, replaceItem } = useCart();
-  const { flavours, loading, error } = useWingFlavours(item);
+export function WingsBuilderMobile({
+  item,
+  visible,
+  onClose,
+  editingLine,
+  saladMenuItems = [],
+}: Props) {
+  const { addItem, replaceItem, fulfillmentType } = useCart();
+  const { flavours, loading, error, retry } = useWingFlavours(item);
 
   const editingPayload =
     editingLine?.builder_payload?.builder_type === 'WINGS'
@@ -254,9 +271,18 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
   const [removedIngredientIds, setRemovedIngredientIds] = useState<Set<string>>(
     new Set(editingLine?.removed_ingredients?.map((r) => r.id) ?? []),
   );
+  const editingSaladCustomization = editingPayload?.salad_customization;
+  const [saladRemovedIngredientIds, setSaladRemovedIngredientIds] = useState<Set<string>>(
+    () =>
+      new Set(
+        editingSaladCustomization?.removed_ingredients.map((ingredient) => ingredient.id) ?? [],
+      ),
+  );
   const [quantity, setQuantity] = useState(editingLine?.quantity ?? 1);
   const [extraGroupSelections, setExtraGroupSelections] = useState<Record<string, string[]>>({});
+  const [saladModifierSelections, setSaladModifierSelections] = useState<Record<string, string[]>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const previousSaladItemIdRef = useRef<string | null>(null);
 
   /* Reset on open */
   const prevVisible = useRef(false);
@@ -275,9 +301,12 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
         setExtraPlacement('ON_WINGS');
         setInstructions('');
         setRemovedIngredientIds(new Set());
+        setSaladRemovedIngredientIds(new Set());
         setQuantity(1);
         setExtraGroupSelections({});
+        setSaladModifierSelections({});
         setSubmitAttempted(false);
+        previousSaladItemIdRef.current = null;
       }
     }
     prevVisible.current = visible;
@@ -296,6 +325,118 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
     if (!selectedOption) return [];
     return getExtraModifierGroups(selectedOption, partyFiveSpecial, wingsByThePoundFlow, usesChildSaladCustomization);
   }, [selectedOption, partyFiveSpecial, wingsByThePoundFlow, usesChildSaladCustomization]);
+
+  /** Wings-4-U Special: drink/pop slots render after salad selection and extras */
+  const extraGroupsMinusSalad = useMemo(
+    () =>
+      usesChildSaladCustomization
+        ? extraGroups.filter((group) => group.context_key !== 'salad')
+        : extraGroups,
+    [extraGroups, usesChildSaladCustomization],
+  );
+
+  const selectedSaladGroup = useMemo(() => {
+    const group = extraGroups.find((candidate) => candidate.context_key === 'salad') ?? null;
+    if (!group || !usesChildSaladCustomization) return group;
+
+    return {
+      ...group,
+      options: group.options.filter((option) => {
+        const saladItem = findSaladMenuItemForSelection(saladMenuItems, option.name);
+        return saladItem ? saladItemSupportsSize(saladItem, WINGS_SPECIAL_SALAD_SIZE_LABEL) : false;
+      }),
+    };
+  }, [extraGroups, saladMenuItems, usesChildSaladCustomization]);
+
+  const saladPickerPicks = useMemo(
+    () => (selectedSaladGroup ? extraGroupSelections[selectedSaladGroup.id] ?? [] : []),
+    [extraGroupSelections, selectedSaladGroup],
+  );
+
+  const selectedSaladOption = useMemo(() => {
+    if (!selectedSaladGroup) return null;
+    const selectedId = extraGroupSelections[selectedSaladGroup.id]?.[0];
+    return selectedSaladGroup.options.find((option) => option.id === selectedId) ?? null;
+  }, [extraGroupSelections, selectedSaladGroup]);
+
+  const resolvedSaladItem = useMemo(() => {
+    if (!usesChildSaladCustomization) return null;
+    if (selectedSaladOption) {
+      return findSaladMenuItemForSelection(saladMenuItems, selectedSaladOption.name);
+    }
+    if (!editingSaladCustomization) return null;
+    const editingSaladItem =
+      saladMenuItems.find((saladItem) => saladItem.id === editingSaladCustomization.salad_menu_item_id) ??
+      null;
+    return editingSaladItem && saladItemSupportsSize(editingSaladItem, WINGS_SPECIAL_SALAD_SIZE_LABEL)
+      ? editingSaladItem
+      : null;
+  }, [editingSaladCustomization, saladMenuItems, selectedSaladOption, usesChildSaladCustomization]);
+
+  const activeRemovableIngredients = useMemo(
+    () =>
+      usesChildSaladCustomization
+        ? resolvedSaladItem?.removable_ingredients ?? []
+        : item.removable_ingredients,
+    [item.removable_ingredients, resolvedSaladItem, usesChildSaladCustomization],
+  );
+
+  const normalizedSaladIngredientNames = useMemo(
+    () =>
+      resolvedSaladItem?.removable_ingredients
+        .map((ingredient) => normalizeIngredientText(ingredient.name))
+        .filter(Boolean) ?? [],
+    [resolvedSaladItem],
+  );
+
+  const normalizedSaladSizeNames = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          resolvedSaladItem?.modifier_groups
+            .filter((group) => group.context_key === 'size')
+            .flatMap((group) => group.options)
+            .map((option) => normalizeIngredientText(option.name))
+            .filter(Boolean) ?? [],
+        ),
+      ),
+    [resolvedSaladItem],
+  );
+
+  const selectedSaladSizeNames = useMemo(
+    () =>
+      normalizedSaladSizeNames.length > 0
+        ? [normalizeIngredientText(WINGS_SPECIAL_SALAD_SIZE_LABEL)]
+        : [],
+    [normalizedSaladSizeNames],
+  );
+
+  const saladAddonGroups = useMemo(() => {
+    if (!resolvedSaladItem) return [];
+
+    return resolvedSaladItem.modifier_groups
+      .filter((group) => group.context_key === 'addon')
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((option) =>
+          shouldRenderAddonOption({
+            optionName: option.name,
+            addonMatchNormalized: option.addon_match_normalized,
+            normalizedIngredientNames: normalizedSaladIngredientNames,
+            isSelected: saladModifierSelections[group.id]?.includes(option.id) ?? false,
+            normalizedSizeNames: normalizedSaladSizeNames,
+            selectedSizeNames: selectedSaladSizeNames,
+          }),
+        ),
+      }))
+      .filter((group) => group.options.length > 0);
+  }, [
+    normalizedSaladIngredientNames,
+    normalizedSaladSizeNames,
+    resolvedSaladItem,
+    saladModifierSelections,
+    selectedSaladSizeNames,
+  ]);
 
   /* Auto-select single weight option */
   useEffect(() => {
@@ -383,6 +524,96 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
     if (picked?.is_plain) setExtraFlavourId('');
   }, [extraFlavourEnabled, extraFlavourId, flavours]);
 
+  /* Salad edit hydration & change detection */
+  useEffect(() => {
+    if (!usesChildSaladCustomization) return;
+
+    const nextSaladItemId = resolvedSaladItem?.id ?? null;
+    if (!nextSaladItemId) {
+      previousSaladItemIdRef.current = null;
+      setSaladRemovedIngredientIds(new Set());
+      setSaladModifierSelections({});
+      return;
+    }
+
+    if (
+      editingLine &&
+      editingSaladCustomization &&
+      previousSaladItemIdRef.current === null &&
+      nextSaladItemId === editingSaladCustomization.salad_menu_item_id
+    ) {
+      const nextSelections: Record<string, string[]> = {};
+      for (const group of resolvedSaladItem?.modifier_groups ?? []) {
+        const picks = editingSaladCustomization.modifier_selections
+          .filter((selection) =>
+            group.options.some((option) => option.id === selection.modifier_option_id),
+          )
+          .map((selection) => selection.modifier_option_id);
+        if (picks.length > 0) {
+          nextSelections[group.id] = picks;
+        }
+      }
+      setSaladRemovedIngredientIds(
+        new Set(editingSaladCustomization.removed_ingredients.map((ing) => ing.id)),
+      );
+      setSaladModifierSelections(nextSelections);
+      previousSaladItemIdRef.current = nextSaladItemId;
+      return;
+    }
+
+    if (previousSaladItemIdRef.current !== nextSaladItemId) {
+      setSaladRemovedIngredientIds(new Set());
+      setSaladModifierSelections({});
+      previousSaladItemIdRef.current = nextSaladItemId;
+    }
+  }, [editingLine, editingSaladCustomization, resolvedSaladItem, usesChildSaladCustomization]);
+
+  /* Filter invalid options for selectedSaladGroup */
+  useEffect(() => {
+    if (!selectedSaladGroup) return;
+
+    const validOptionIds = new Set(selectedSaladGroup.options.map((option) => option.id));
+    setExtraGroupSelections((prev) => {
+      const current = prev[selectedSaladGroup.id];
+      if (!current?.length) return prev;
+
+      const filtered = current.filter((optionId) => validOptionIds.has(optionId));
+      if (filtered.length === current.length) return prev;
+
+      return {
+        ...prev,
+        [selectedSaladGroup.id]: filtered,
+      };
+    });
+  }, [selectedSaladGroup]);
+
+  /* Scope salad add-on selections to active size */
+  useEffect(() => {
+    if (!resolvedSaladItem || selectedSaladSizeNames.length === 0) return;
+
+    setSaladModifierSelections((prev) => {
+      let changed = false;
+      const next: Record<string, string[]> = { ...prev };
+
+      for (const group of resolvedSaladItem.modifier_groups) {
+        if (group.context_key !== 'addon') continue;
+        const picks = prev[group.id] ?? [];
+        const filtered = picks.filter((optionId) => {
+          const option = group.options.find((candidate) => candidate.id === optionId);
+          if (!option) return false;
+          const sizeScope = inferOptionSizeScope(option.name, normalizedSaladSizeNames);
+          return !sizeScope || selectedSaladSizeNames.includes(sizeScope);
+        });
+        if (filtered.length !== picks.length) {
+          next[group.id] = filtered;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [normalizedSaladSizeNames, resolvedSaladItem, selectedSaladSizeNames]);
+
   /* Hydrate extra group selections when editing */
   useEffect(() => {
     if (!editingLine || extraGroups.length === 0) return;
@@ -413,17 +644,42 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
     return total;
   }, [extraGroups, extraGroupSelections]);
 
+  const saladAddonsTotalDelta = useMemo(() => {
+    if (!resolvedSaladItem) return 0;
+    let total = 0;
+    for (const group of resolvedSaladItem.modifier_groups) {
+      if (group.context_key !== 'addon') continue;
+      const picks = saladModifierSelections[group.id] ?? [];
+      for (const optionId of picks) {
+        const option = group.options.find((candidate) => candidate.id === optionId);
+        if (option) {
+          total += option.price_delta_cents;
+        }
+      }
+    }
+    return total;
+  }, [resolvedSaladItem, saladModifierSelections]);
+
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
     (extraFlavourEnabled ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
     (wingType === 'BONELESS' ? BONELESS_WINGS_UPCHARGE_CENTS : 0) +
-    extraGroupsTotalDelta;
+    extraGroupsTotalDelta +
+    saladAddonsTotalDelta;
+
+  const availability = useMemo(
+    () => isItemAvailableForOrder(item, fulfillmentType),
+    [item, fulfillmentType],
+  );
 
   /* Validation */
   const validate = useCallback((): string | null => {
+    if (!availability.available) return 'availability';
     if (!selectedOption) return 'quantity';
     if (!wingType || !preparation) return 'preparation';
-    if (flavourSelections.some((s) => !s)) return 'flavours';
+    if (flavourSelections.some((s) => !s) || (requiredFlavourCount > 0 && flavours.length === 0)) {
+      return 'flavours';
+    }
     if (!allMainFlavoursPlain) {
       if (
         !isSaucingMethodValidForCount(
@@ -444,7 +700,18 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
       return 'instructions';
     }
     if (extraFlavourEnabled && !extraFlavourId) return 'extra-flavour';
-    for (const group of extraGroups) {
+
+    if (usesChildSaladCustomization && selectedSaladGroup) {
+      const saladPicks = extraGroupSelections[selectedSaladGroup.id] ?? [];
+      if (saladPicks.length === 0) return 'salad';
+      for (const group of saladAddonGroups) {
+        const picks = saladModifierSelections[group.id] ?? [];
+        const min = group.is_required ? Math.max(group.min_select, 1) : group.min_select;
+        if (picks.length < min) return `salad-addon-${group.id}`;
+      }
+    }
+
+    for (const group of extraGroupsMinusSalad) {
       const picks = extraGroupSelections[group.id] ?? [];
       const min = group.is_required ? Math.max(group.min_select, 1) : group.min_select;
       if (picks.length < min) return `extra-${group.id}`;
@@ -452,21 +719,27 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
     return null;
   }, [
     allMainFlavoursPlain,
+    availability.available,
     effectiveSaucedCount,
     extraFlavourEnabled,
     extraFlavourId,
-    extraGroups,
     extraGroupSelections,
+    extraGroupsMinusSalad,
     flavourSelections,
+    flavours.length,
     hasValidSideFlavourSlot,
     instructions,
     partyFiveSpecial,
     preparation,
     requiredFlavourCount,
+    saladAddonGroups,
+    saladModifierSelections,
     saucingMethod,
     selectedOption,
+    selectedSaladGroup,
     tellUsHowSaucing,
     threeFlavourTellUsHow,
+    usesChildSaladCustomization,
     wingType,
   ]);
 
@@ -520,6 +793,33 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
       }
     }
 
+    const saladModifierSelectionsList: Array<{
+      modifier_option_id: string;
+      name: string;
+      price_delta_cents: number;
+    }> = [];
+    if (resolvedSaladItem) {
+      for (const group of resolvedSaladItem.modifier_groups) {
+        if (group.context_key !== 'addon') continue;
+        const picks = saladModifierSelections[group.id] ?? [];
+        for (const optionId of picks) {
+          const option = group.options.find((candidate) => candidate.id === optionId);
+          if (!option) continue;
+          saladModifierSelectionsList.push({
+            modifier_option_id: option.id,
+            name: option.name,
+            price_delta_cents: option.price_delta_cents,
+          });
+          modifierSelections.push({
+            modifier_option_id: option.id,
+            group_name: group.name,
+            option_name: option.name,
+            price_delta_cents: option.price_delta_cents,
+          });
+        }
+      }
+    }
+
     const placements = resolveSaucingPlacements({
       flavourIds: flavourSelections,
       flavourMap,
@@ -562,11 +862,24 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
             placement: extraPlacement,
           }
         : undefined,
+      salad_customization: resolvedSaladItem
+        ? {
+            salad_menu_item_id: resolvedSaladItem.id,
+            salad_name: resolvedSaladItem.name,
+            salad_slug: resolvedSaladItem.slug,
+            removed_ingredients: resolvedSaladItem.removable_ingredients
+              .filter((ingredient) => saladRemovedIngredientIds.has(ingredient.id))
+              .map((ingredient) => ({ id: ingredient.id, name: ingredient.name })),
+            modifier_selections: saladModifierSelectionsList,
+          }
+        : undefined,
     };
 
-    const removedIngredients: RemovedIngredientSelection[] = item.removable_ingredients
-      .filter((ing) => removedIngredientIds.has(ing.id))
-      .map((ing) => ({ id: ing.id, name: ing.name }));
+    const removedIngredients: RemovedIngredientSelection[] = usesChildSaladCustomization
+      ? []
+      : item.removable_ingredients
+          .filter((ing) => removedIngredientIds.has(ing.id))
+          .map((ing) => ({ id: ing.id, name: ing.name }));
 
     const incoming = {
       menu_item_id: selectedOption.menu_item_id,
@@ -609,6 +922,10 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
     item.removable_ingredients,
     item.image_url,
     removedIngredientIds,
+    saladRemovedIngredientIds,
+    saladModifierSelections,
+    resolvedSaladItem,
+    usesChildSaladCustomization,
     quantity,
     editingLine,
     addItem,
@@ -619,9 +936,33 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
   const toggleExtraOption = useCallback((group: ModifierGroup, optionId: string) => {
     setExtraGroupSelections((prev) => {
       const current = prev[group.id] ?? [];
-      if (group.selection_mode === 'SINGLE') return { ...prev, [group.id]: [optionId] };
+      if (group.selection_mode === 'SINGLE') {
+        if (current.includes(optionId) && !group.is_required) {
+          return { ...prev, [group.id]: [] };
+        }
+        return { ...prev, [group.id]: [optionId] };
+      }
       if (current.includes(optionId)) return { ...prev, [group.id]: current.filter((id) => id !== optionId) };
       if (group.max_select && current.length >= group.max_select) return { ...prev, [group.id]: [...current.slice(1), optionId] };
+      return { ...prev, [group.id]: [...current, optionId] };
+    });
+  }, []);
+
+  const toggleSaladAddonOption = useCallback((group: ModifierGroup, optionId: string) => {
+    setSaladModifierSelections((prev) => {
+      const current = prev[group.id] ?? [];
+      if (group.selection_mode === 'SINGLE') {
+        if (current.includes(optionId) && !group.is_required) {
+          return { ...prev, [group.id]: [] };
+        }
+        return { ...prev, [group.id]: [optionId] };
+      }
+      if (current.includes(optionId)) {
+        return { ...prev, [group.id]: current.filter((id) => id !== optionId) };
+      }
+      if (group.max_select && current.length >= group.max_select) {
+        return { ...prev, [group.id]: [...current.slice(1), optionId] };
+      }
       return { ...prev, [group.id]: [...current, optionId] };
     });
   }, []);
@@ -646,6 +987,11 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
       submitDisabled={!isReadyToSubmit}
       onSubmit={handleAdd}
     >
+      {!availability.available ? (
+        <View style={styles.unavailableBanner} accessibilityRole="alert">
+          <Text style={styles.unavailableBannerText}>{availability.reason}</Text>
+        </View>
+      ) : null}
       {/* ---- Pound size ---- */}
       {showWeightStep ? (
         <StepCard
@@ -701,7 +1047,12 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
         {loading ? (
           <Text style={styles.inlineCopy}>Loading wing flavours…</Text>
         ) : error ? (
-          <Text style={[styles.inlineCopy, styles.errorCopy]}>{error}</Text>
+          <View style={styles.errorBanner} accessibilityRole="alert">
+            <Text style={[styles.inlineCopy, styles.errorCopy]}>{error}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={retry} accessibilityRole="button">
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={{ gap: 20 }}>
             {flavourSelections.map((selection, index) => (
@@ -799,8 +1150,86 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
         </StepCard>
       ) : null}
 
-      {/* ---- Extra modifier groups (pop slot, etc.) ---- */}
-      {extraGroups.map((group) => {
+      {/* ---- Wings-4-U Special: Salad selection ---- */}
+      {usesChildSaladCustomization && selectedSaladGroup ? (
+        <StepCard
+          title="Salad selection"
+          subtitle="Choose a salad included with your special."
+          invalid={submitAttempted && validationError === 'salad'}
+          inlineError={submitAttempted && validationError === 'salad' ? BUILDER_VALIDATION_MESSAGE : null}
+        >
+          <OptionPills
+            options={selectedSaladGroup.options.map((opt) => ({
+              value: opt.id,
+              label: opt.name,
+              priceNote: opt.price_delta_cents > 0 ? `+${formatCents(opt.price_delta_cents)}` : undefined,
+            }))}
+            value={saladPickerPicks[0] ?? null}
+            onChange={(optId) => toggleExtraOption(selectedSaladGroup, optId)}
+          />
+        </StepCard>
+      ) : null}
+
+      {/* ---- Wings-4-U Special: Salad ingredient removals ---- */}
+      {usesChildSaladCustomization && activeRemovableIngredients.length > 0 ? (
+        <StepCard title="Salad ingredient removals" subtitle="Tap items to leave off your salad.">
+          <View style={styles.pillWrap}>
+            {activeRemovableIngredients.map((ing) => {
+              const active = saladRemovedIngredientIds.has(ing.id);
+              return (
+                <TouchableOpacity
+                  key={ing.id}
+                  style={[styles.removePill, active && styles.removePillActive]}
+                  onPress={() =>
+                    setSaladRemovedIngredientIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(ing.id)) next.delete(ing.id);
+                      else next.add(ing.id);
+                      return next;
+                    })
+                  }
+                >
+                  <Text style={[styles.removePillText, active && styles.removePillTextActive]}>
+                    {active ? '✕ ' : ''}{ing.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </StepCard>
+      ) : null}
+
+      {/* ---- Wings-4-U Special: Salad add-ons ---- */}
+      {usesChildSaladCustomization &&
+        saladAddonGroups.map((group) => {
+          const stepKey = `salad-addon-${group.id}`;
+          const picks = saladModifierSelections[group.id] ?? [];
+          return (
+            <StepCard
+              key={`salad-addon-${group.id}`}
+              title={normalizeSaladAddonDisplayLabel(group.display_label, group.name)}
+              subtitle={group.selection_mode === 'MULTI' ? 'Pick any.' : 'Pick one if you want.'}
+              invalid={submitAttempted && validationError === stepKey}
+              inlineError={submitAttempted && validationError === stepKey ? BUILDER_VALIDATION_MESSAGE : null}
+            >
+              <OptionPills
+                options={group.options.map((opt) => ({
+                  value: opt.id,
+                  label: opt.name,
+                  priceNote: opt.price_delta_cents > 0 ? `+${formatCents(opt.price_delta_cents)}` : undefined,
+                }))}
+                multi={group.selection_mode === 'MULTI'}
+                value={group.selection_mode === 'SINGLE' ? (picks[0] ?? null) : null}
+                values={group.selection_mode === 'MULTI' ? picks : undefined}
+                onChange={(optId) => toggleSaladAddonOption(group, optId)}
+                onToggle={(optId) => toggleSaladAddonOption(group, optId)}
+              />
+            </StepCard>
+          );
+        })}
+
+      {/* ---- Extra modifier groups (pop slot, dip, etc.) ---- */}
+      {extraGroupsMinusSalad.map((group) => {
         const stepKey = `extra-${group.id}`;
         const picks = extraGroupSelections[group.id] ?? [];
         const subtitle =
@@ -825,8 +1254,11 @@ export function WingsBuilderMobile({ item, visible, onClose, editingLine }: Prop
                 label: opt.name,
                 priceNote: opt.price_delta_cents > 0 ? `+${formatCents(opt.price_delta_cents)}` : undefined,
               }))}
+              multi={group.selection_mode === 'MULTI'}
               value={group.selection_mode === 'SINGLE' ? (picks[0] ?? null) : null}
+              values={group.selection_mode === 'MULTI' ? picks : undefined}
               onChange={(optId) => toggleExtraOption(group, optId)}
+              onToggle={(optId) => toggleExtraOption(group, optId)}
             />
           </StepCard>
         );
@@ -935,5 +1367,37 @@ const styles = StyleSheet.create({
   removePillTextActive: {
     color: P.red,
     textDecorationLine: 'line-through',
+  },
+  errorBanner: {
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  retryBtn: {
+    backgroundColor: P.peach,
+    borderWidth: 1,
+    borderColor: P.peachBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  retryBtnText: {
+    color: P.red,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  unavailableBanner: {
+    backgroundColor: 'rgba(229,60,60,0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(229,60,60,0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  unavailableBannerText: {
+    color: P.red,
+    fontWeight: '700',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
