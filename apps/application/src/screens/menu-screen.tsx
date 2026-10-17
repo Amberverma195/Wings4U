@@ -26,6 +26,8 @@ import Animated, {
 import { Clock, AlertCircle, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
 import { useMenu } from '../hooks/use-menu';
 import { useCart } from '../context/cart';
+import { useOrderSetup } from '../context/order-setup';
+import { OrderSetupSummary } from '../components/order-setup-summary';
 import { TabHeader } from '../components/tab-header';
 import { MenuItemBuilder } from '../components/menu-item-builder';
 import { PromotionalCarousel } from '../components/promotional-carousel';
@@ -107,6 +109,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(headerHeight);
   const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
   const cart = useCart();
+  const orderSetup = useOrderSetup();
   const fulfillmentType = cart.fulfillmentType;
   const fulfillmentProgress = useSharedValue(fulfillmentType === 'DELIVERY' ? 1 : 0);
   const fulfillmentOptionWidth = ((compactHeader ? 172 : 184) - 6) / 2;
@@ -240,13 +243,8 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     categoryParam, params.itemSlug, fulfillmentType]);
 
   const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {
-    if (type === fulfillmentType) return;
-    cart.setFulfillmentType(type);
-    if (type === 'PICKUP') {
-      cart.setDriverTipPercent('none');
-    }
-    setActiveCategorySlug(null);
-  }, [cart, fulfillmentType]);
+    orderSetup.openOrderSetup(type);
+  }, [orderSetup.openOrderSetup]);
 
   /* ---------------------------------------------------------------- */
   /*  Loading state                                                    */
@@ -403,6 +401,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
               })}
             </View>
             </View>
+            <OrderSetupSummary light={cinematic} />
           </View>
           {/* Search and menu filters */}
           <View style={styles.searchSection}>
@@ -708,7 +707,7 @@ const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
     paddingBottom: 10,
-    gap: 12,
+    gap: 4,
   },
   headerRow: {
     flexDirection: 'row',

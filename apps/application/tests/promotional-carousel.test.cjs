@@ -40,7 +40,6 @@ const list = () => renderer.root.findByType('FlatList');
 const event = index => ({ nativeEvent: { contentOffset: { x: index * 390 } } });
 const advance = async ms => act(async () => jest.advanceTimersByTime(ms));
 const dots = () => renderer.root.findAllByProps({ accessibilityRole: 'tab' });
-const selected = () => dots().findIndex(dot => dot.props.accessibilityState.selected);
 
 beforeEach(() => {
   jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
@@ -50,10 +49,10 @@ beforeEach(() => {
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 
-test('renders seven posters in order, a loop clone, contain scaling and seven tappable indicators', async () => {
+test('renders seven posters in order, a loop clone and contain scaling without pagination indicators', async () => {
   await mount();
   expect(list().props.data.map(banner => banner.key)).toEqual([...banners.map(banner => banner.key), banners[0].key]);
-  expect(dots()).toHaveLength(7);
+  expect(dots()).toHaveLength(0);
   for (const banner of banners) {
     const slide = list().props.renderItem({ item: banner });
     expect(slide.props.children.props.contentFit).toBe('contain');
@@ -69,14 +68,12 @@ test('advances every 3 seconds and loops forward through the clone back to poste
   expect(mockLists[0].scrollToOffset).not.toHaveBeenCalled();
   await advance(1);
   expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: 390, animated: true });
-  expect(selected()).toBe(1);
   await act(async () => list().props.onMomentumScrollEnd(event(1)));
   for (let i = 2; i <= 7; i++) {
     await advance(3000);
     expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: i * 390, animated: true });
     await act(async () => list().props.onMomentumScrollEnd(event(i)));
   }
-  expect(selected()).toBe(0);
   expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
   expect(jest.getTimerCount()).toBe(1);
 });
@@ -86,7 +83,7 @@ test('never scrolls past the clone even when a platform skips programmatic momen
   expect(mockLists[0].scrollToOffset.mock.calls.every(([call]) => call.offset <= 7 * 390)).toBe(true);
 });
 
-test('manual dragging pauses autoplay and a swipe without momentum updates dots and restarts the timer', async () => {
+test('manual dragging pauses autoplay and a swipe without momentum restarts the timer', async () => {
   await mount();
   await advance(2500);
   await act(async () => list().props.onScrollBeginDrag());
@@ -94,24 +91,12 @@ test('manual dragging pauses autoplay and a swipe without momentum updates dots 
   await advance(9000);
   expect(mockLists[0].scrollToOffset).not.toHaveBeenCalled();
   await act(async () => list().props.onScrollEndDrag(event(3)));
-  expect(selected()).toBe(3);
   await advance(2999);
   expect(mockLists[0].scrollToOffset).not.toHaveBeenCalled();
   await advance(1);
   expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: 4 * 390, animated: true });
 });
 
-test('dot selection updates the slide and resets the timer', async () => {
-  await mount(); await advance(2500);
-  await act(async () => dots()[5].props.onPress());
-  expect(selected()).toBe(5);
-  expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: 5 * 390, animated: true });
-  mockLists[0].scrollToOffset.mockClear();
-  await advance(2999);
-  expect(mockLists[0].scrollToOffset).not.toHaveBeenCalled();
-  await advance(1);
-  expect(selected()).toBe(6);
-});
 
 test('focus loss and backgrounding pause autoplay, resuming with a fresh interval', async () => {
   await mount();
@@ -126,12 +111,12 @@ test('focus loss and backgrounding pause autoplay, resuming with a fresh interva
   expect(jest.getTimerCount()).toBe(1);
 });
 
-test('reduced motion disables autoplay and dot animations; timers and listeners clean up', async () => {
+test('reduced motion disables autoplay; timers and listeners clean up', async () => {
   AccessibilityInfo.isReduceMotionEnabled.mockResolvedValue(true);
   await mount();
   expect(jest.getTimerCount()).toBe(0);
-  await act(async () => dots()[2].props.onPress());
-  expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: 2 * 390, animated: false });
+  await act(async () => list().props.onScrollEndDrag(event(2)));
+  expect(jest.getTimerCount()).toBe(0);
   await act(async () => mockMotionListeners.forEach(fn => fn(false)));
   expect(jest.getTimerCount()).toBe(1);
   await act(async () => renderer.unmount()); renderer = null;
@@ -146,7 +131,7 @@ test('top and bottom carousels keep independent indices and timers', async () =>
     React.createElement(PromotionalCarousel, props())));
   expect(jest.getTimerCount()).toBe(2);
   await advance(2000);
-  await act(async () => dots()[2].props.onPress());
+  await act(async () => renderer.root.findAllByType('FlatList')[0].props.onScrollEndDrag(event(2)));
   mockLists.forEach(handle => handle.scrollToOffset.mockClear());
   await advance(1000);
   expect(mockLists[0].scrollToOffset).not.toHaveBeenCalled();
@@ -155,7 +140,7 @@ test('top and bottom carousels keep independent indices and timers', async () =>
 
 test('parent width changes preserve the current slide inside safe-area content', async () => {
   await mount();
-  await act(async () => dots()[2].props.onPress());
+  await act(async () => list().props.onScrollEndDrag(event(2)));
   await act(async () => renderer.root.findAllByType('View')[0].props.onLayout({ nativeEvent: { layout: { width: 350 } } }));
   expect(mockLists[0].scrollToOffset).toHaveBeenLastCalledWith({ offset: 700, animated: false });
   expect(list().props.getItemLayout(null, 1).length).toBe(350);

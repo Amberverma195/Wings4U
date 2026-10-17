@@ -26,6 +26,9 @@ jest.mock('react-native-reanimated', () => ({ __esModule: true, default: { Scrol
 jest.mock('lucide-react-native', () => Object.fromEntries(['Clock','AlertCircle','CarFront','Bike','Search','SlidersHorizontal','X','Check'].map(key => [key, key])));
 jest.mock('../src/hooks/use-menu', () => ({ useMenu: jest.fn(() => mockMenuResult) }));
 jest.mock('../src/context/cart', () => ({ useCart: () => mockCart }));
+jest.mock('../src/context/order-setup', () => ({ useOrderSetup: () => ({ openOrderSetup: jest.fn() }) }));
+jest.mock('../src/components/order-setup-summary', () => ({ OrderSetupSummary: 'OrderSetupSummary' }));
+jest.mock('../src/components/trending-flavours', () => ({ TrendingFlavours: 'TrendingFlavours' }));
 jest.mock('../src/components/tab-header', () => ({ HeaderActions: 'HeaderActions', TabHeader: 'TabHeader' }));
 jest.mock('../src/components/menu-item-builder', () => ({ MenuItemBuilder: 'MenuItemBuilder' }));
 jest.mock('../src/components/promotional-carousel', () => ({ PromotionalCarousel: 'PromotionalCarousel' }));
@@ -63,7 +66,7 @@ test('Home renders separate top and footer carousels with the footer last inside
   expect(carousels).toHaveLength(2);
   expect(carousels[0].props.banners).toHaveLength(4);
   expect(carousels[1].props.banners).toBe(banners);
-  const children = renderer.root.findByType('ScrollView').props.children.filter(Boolean);
+  const children = renderer.root.findAllByType('ScrollView').find(node => node.props.refreshControl).props.children.filter(Boolean);
   expect(children.at(-2).props.banners).toBe(banners);
   expect(children.at(-1).props.style.height).toBeGreaterThanOrEqual(40);
   expect(carousels[1].props.imageBackgroundColor).toBe('#FFFFFF');

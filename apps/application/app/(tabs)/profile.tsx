@@ -15,7 +15,8 @@ import {
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import {
   Check,
   CheckCircle2,
@@ -35,7 +36,7 @@ import {
   User,
   X,
 } from 'lucide-react-native';
-import { useAuth } from '../src/hooks/use-auth';
+import { useAuth } from '../../src/hooks/use-auth';
 import {
   type AddressInput,
   type CustomerAddress,
@@ -43,16 +44,17 @@ import {
   type TicketInput,
   type WingsStampEntry,
   useAccountData,
-} from '../src/hooks/use-account-data';
-import { useSession } from '../src/context/session';
+} from '../../src/hooks/use-account-data';
+import { useSession } from '../../src/context/session';
 import {
   ACTIVE_STATUSES,
   SUPPORT_TICKET_TYPES,
   type ActivePromo,
   type OrderSummary,
   type SupportTicketType,
-} from '../src/lib/types';
-import { formatPhoneForDisplay } from '../src/lib/phone';
+} from '../../src/lib/types';
+import { formatPhoneForDisplay } from '../../src/lib/phone';
+import { ProfileTabGuard } from '../../src/components/profile-tab-guard';
 
 type TabKey = 'overview' | 'profile' | 'orders' | 'addresses' | 'support' | 'cards';
 type OrderFilter = 'active' | 'past';
@@ -178,10 +180,16 @@ function formatTicketType(type: string): string {
   return titleCase(type);
 }
 
-export default function ProfileScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ section?: string | string[] }>();
+export default function ProfileTabRoute() {
+  return <ProfileTabGuard><ProfileScreen /></ProfileTabGuard>;
+}
+
+function ProfileScreen() {
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
+  const focused = useIsFocused();
+  const params = useLocalSearchParams<{ section?: string | string[]; entry?: string | string[] }>();
   const requestedTab = Array.isArray(params.section) ? params.section[0] : params.section;
+  const sectionEntry = Array.isArray(params.entry) ? params.entry[0] : params.entry;
   const appliedTabParam = useRef<string | undefined>(undefined);
   const session = useSession();
   const account = useAccountData();
@@ -226,17 +234,11 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!isProfileTab(requestedTab)) return;
-    if (appliedTabParam.current === requestedTab) return;
-    appliedTabParam.current = requestedTab;
+    const key = `${requestedTab}:${sectionEntry ?? ''}`;
+    if (appliedTabParam.current === key) return;
+    appliedTabParam.current = key;
     setActiveTab(requestedTab);
-  }, [requestedTab]);
-
-  useEffect(() => {
-    if (!session.loaded) return;
-    if (!session.authenticated) {
-      router.replace('/');
-    }
-  }, [router, session.authenticated, session.loaded]);
+  }, [requestedTab, sectionEntry]);
 
   useEffect(() => {
     if (!user) return;
@@ -309,7 +311,8 @@ export default function ProfileScreen() {
 
   async function handleLogout() {
     await logout();
-    router.replace('/');
+    // Clear visited-tab history so Android Back cannot reopen the signed-out account.
+    navigation.reset({ index: 0, routes: [{ name: 'index' }] });
   }
 
   function startNewAddress() {
@@ -393,8 +396,8 @@ export default function ProfileScreen() {
 
   if (!session.loaded || !user || account.loading) {
     return (
-      <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
-        <StatusBar style="dark" />
+      <SafeAreaView edges={["left", "right"]} style={styles.container}>
+        {focused && <StatusBar style="dark" />}
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#FF4D4D" />
           <Text style={styles.loadingText}>Loading account...</Text>
@@ -404,8 +407,8 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
-      <StatusBar style="dark" />
+    <SafeAreaView edges={["left", "right"]} style={styles.container}>
+      {focused && <StatusBar style="dark" />}
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -1864,7 +1867,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(17,24,39,0.55)',
   },
   modalCard: {

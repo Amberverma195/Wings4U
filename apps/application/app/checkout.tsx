@@ -26,6 +26,8 @@ import {
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AuthSheet } from "../src/components/auth-sheet";
 import { useCart } from "../src/context/cart";
+import { useOrderSetup } from "../src/context/order-setup";
+import { OrderSetupSummary } from "../src/components/order-setup-summary";
 import { usePromo } from "../src/context/promo";
 import { useAccountData } from "../src/hooks/use-account-data";
 import { useSession, withSilentRefresh } from "../src/context/session";
@@ -140,6 +142,7 @@ function getApiErrorCode(body: unknown): string | null {
 export default function CheckoutScreen() {
   const router = useRouter();
   const cart = useCart();
+  const orderSetup = useOrderSetup();
   const promo = usePromo();
   const account = useAccountData();
   const session = useSession();
@@ -152,8 +155,10 @@ export default function CheckoutScreen() {
   const [contactlessPref, setContactlessPref] = useState<
     "" | "HAND_TO_ME" | "LEAVE_AT_DOOR" | "CALL_ON_ARRIVAL" | "TEXT_ON_ARRIVAL"
   >("");
-  const [line1, setLine1] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  const line1 = orderSetup.deliveryAddress?.line1 ?? "";
+  const postalCode = orderSetup.deliveryAddress?.postal_code ?? "";
+  const setLine1 = (value: string) => orderSetup.setDeliveryAddress({ line1: value, city: FIXED_DELIVERY_CITY, postal_code: postalCode });
+  const setPostalCode = (value: string) => orderSetup.setDeliveryAddress({ line1, city: FIXED_DELIVERY_CITY, postal_code: value });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
@@ -731,6 +736,10 @@ export default function CheckoutScreen() {
                 </View>
               </View>
 
+              <Section title="Order details">
+                <OrderSetupSummary />
+              </Section>
+
               <Section title="Order">
                 {cart.items.map((item) => {
                   const details = cartItemDetails(item);
@@ -914,7 +923,7 @@ export default function CheckoutScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.deliveryActionButton}
-                          onPress={() => cart.setFulfillmentType("PICKUP")}
+                          onPress={() => orderSetup.openOrderSetup("PICKUP")}
                         >
                           <Text style={styles.deliveryActionText}>
                             Choose pickup

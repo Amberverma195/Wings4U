@@ -9,27 +9,29 @@ import {
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { useIsFocused, useRouter } from "expo-router";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react-native";
-import { apiJson } from "../src/lib/api";
-import { useCart, type CartContextValue } from "../src/context/cart";
-import { usePromo } from "../src/context/promo";
-import { useAccountData } from "../src/hooks/use-account-data";
-import { useSession } from "../src/context/session";
-import { promoBenefitLabel } from "../src/lib/deals-display";
+import { apiJson } from "../../src/lib/api";
+import { useCart, type CartContextValue } from "../../src/context/cart";
+import { useOrderSetup } from "../../src/context/order-setup";
+import { OrderSetupSummary } from "../../src/components/order-setup-summary";
+import { usePromo } from "../../src/context/promo";
+import { useAccountData } from "../../src/hooks/use-account-data";
+import { useSession } from "../../src/context/session";
+import { promoBenefitLabel } from "../../src/lib/deals-display";
 import {
   isPromoRejectedQuoteError,
   promoDiscountRows,
   quotePromoParams,
   wingsRewardBlockedReason,
-} from "../src/lib/promo-selection";
+} from "../../src/lib/promo-selection";
 import type {
   ActivePromo,
   CartBuilderPayload,
   CartItem,
   CartQuoteResponse,
   FulfillmentType,
-} from "../src/lib/types";
+} from "../../src/lib/types";
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -93,6 +95,8 @@ function buildQuotePayloadItems(items: CartItem[]) {
 export default function CartScreen() {
   const router = useRouter();
   const cart = useCart();
+  const focused = useIsFocused();
+  const orderSetup = useOrderSetup();
   const promo = usePromo();
   const account = useAccountData();
   const session = useSession();
@@ -208,15 +212,12 @@ export default function CartScreen() {
   );
 
   const setFulfillment = (type: FulfillmentType) => {
-    cart.setFulfillmentType(type);
-    if (type === "PICKUP") {
-      cart.setDriverTipPercent("none");
-    }
+    orderSetup.openOrderSetup(type);
   };
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
-      <StatusBar style="dark" />
+    <SafeAreaView edges={["left", "right"]} style={styles.container}>
+      {focused && <StatusBar style="dark" />}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -247,6 +248,7 @@ export default function CartScreen() {
           <>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Order type</Text>
+              <OrderSetupSummary />
               <View style={styles.segmented}>
                 {(["PICKUP", "DELIVERY"] as const).map((type) => {
                   const active = cart.fulfillmentType === type;

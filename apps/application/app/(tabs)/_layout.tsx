@@ -1,23 +1,41 @@
 import { Tabs } from 'expo-router/js-tabs';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { House, UtensilsCrossed, User, ShoppingBag } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { AuthSheet } from '../../src/components/auth-sheet';
 import { useCart } from '../../src/context/cart';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '../../src/context/session';
+import { useProfileTabAuth } from '../../src/hooks/use-profile-tab-auth';
+
+export const unstable_settings = { initialRouteName: 'index' };
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const focused = useIsFocused();
   const session = useSession();
   const cart = useCart();
-  const [authVisible, setAuthVisible] = useState(false);
+  const openProfile = useCallback(() => router.navigate('/profile'), [router]);
+  const profileAuth = useProfileTabAuth(openProfile);
+  useEffect(() => {
+    if (!focused) profileAuth.cancelPending();
+  }, [focused, profileAuth.cancelPending]);
   const bottom = Math.max(insets.bottom, 8);
   return (
     <>
-    <Tabs initialRouteName="index" backBehavior="history" screenOptions={{
+    <Tabs initialRouteName="index" backBehavior="history"
+      screenListeners={({ route }) => ({
+        tabPress: () => { if (route.name !== 'profile') profileAuth.cancelPending(); },
+        // Also cancel stale intents on programmatic navigation and incoming links.
+        focus: profileAuth.cancelPending,
+      })}
+      screenOptions={{
       headerShown: false,
+      headerStyle: { backgroundColor: '#FFFFFF' },
+      headerTintColor: '#000000',
+      headerTitleStyle: { fontWeight: 'bold' },
+      headerShadowVisible: false,
       tabBarActiveTintColor: '#FF4D4D',
       tabBarInactiveTintColor: '#777777',
       tabBarLabelPosition: 'below-icon',
@@ -37,15 +55,9 @@ export default function TabLayout() {
     }}>
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }} />
       <Tabs.Screen name="menu" options={{ title: 'Menu', tabBarIcon: ({ color, size }) => <UtensilsCrossed color={color} size={size} /> }} />
-      <Tabs.Screen name="profile-tab" listeners={{ tabPress: (event) => {
-        event.preventDefault();
-        if (session.authenticated) router.push('/profile');
-        else setAuthVisible(true);
-      } }} options={{ title: 'Profile', tabBarIcon: ({ color, size }) => <User color={color} size={size} /> }} />
-      <Tabs.Screen name="cart-tab" listeners={{ tabPress: (event) => {
-        event.preventDefault();
-        router.push('/cart');
-      } }} options={{ title: 'Cart', tabBarBadge: cart.itemCount > 0 ? (cart.itemCount > 9 ? '9+' : cart.itemCount) : undefined,
+      <Tabs.Screen name="profile" listeners={{ tabPress: profileAuth.onTabPress }}
+        options={{ title: 'Profile', headerShown: true, tabBarIcon: ({ color, size }) => <User color={color} size={size} /> }} />
+      <Tabs.Screen name="cart" options={{ title: 'Cart', headerShown: true, tabBarBadge: cart.itemCount > 0 ? (cart.itemCount > 9 ? '9+' : cart.itemCount) : undefined,
         tabBarBadgeStyle: { backgroundColor: '#FF4D4D', color: '#FFF' },
         tabBarIcon: ({ color, size }) => <ShoppingBag color={color} size={size} /> }} />
       <Tabs.Screen
@@ -71,7 +83,7 @@ export default function TabLayout() {
         options={{ href: null }}
       />
     </Tabs>
-    <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} />
+    <AuthSheet {...profileAuth.authSheetProps} />
     </>
   );
 }

@@ -7,6 +7,7 @@ import { PromoProvider } from "../src/context/promo";
 import { SessionProvider } from "../src/context/session";
 import { STRIPE_PUBLISHABLE_KEY } from "../src/lib/env";
 import { AccountDataProvider } from "../src/hooks/use-account-data";
+import { OrderSetupProvider } from "../src/context/order-setup";
 
 export const unstable_settings = { initialRouteName: '(tabs)' };
 
@@ -16,6 +17,7 @@ export default function RootLayout() {
       <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
         <SessionProvider>
           <CartProvider>
+            <OrderSetupProvider>
             <AccountDataProvider>
             <PromoProvider>
             <Stack
@@ -42,18 +44,6 @@ export default function RootLayout() {
                 options={{ title: "Sauces" }}
               />
               <Stack.Screen
-                name="profile"
-                options={{
-                  title: "Profile",
-                }}
-              />
-              <Stack.Screen
-                name="cart"
-                options={{
-                  title: "Cart",
-                }}
-              />
-              <Stack.Screen
                 name="checkout"
                 options={{
                   title: "Checkout",
@@ -69,6 +59,7 @@ export default function RootLayout() {
             <StatusBar style="auto" />
             </PromoProvider>
             </AccountDataProvider>
+            </OrderSetupProvider>
           </CartProvider>
         </SessionProvider>
       </StripeProvider>

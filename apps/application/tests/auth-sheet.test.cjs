@@ -70,3 +70,35 @@ test('password reset resends are disabled until cooldown ends', async () => {
   await act(async () => { jest.advanceTimersByTime(30000); });
   expect(button('Resend code').props.disabled).toBe(false);
 });
+
+test('successful password login reports completion once for the Profile tab handoff', async () => {
+  auth.login.mockResolvedValue({ needs_profile_completion: false });
+  await type('Phone or email', 'user@example.com'); await tap('Continue');
+  await type('Password', 'password'); await tap('Sign in');
+  expect(onComplete).toHaveBeenCalledTimes(1);
+});
+
+test('registration completes only after verification, preserving the Profile tab handoff', async () => {
+  auth.signup.mockResolvedValue({ email: 'user@example.com' });
+  auth.verifyEmail.mockResolvedValue({ needs_profile_completion: false });
+  await tap('No account? Sign up');
+  await type('Full name', 'Wing Fan'); await type('Phone number', '5195550123');
+  await type('Email address', 'user@example.com');
+  await type('Password', 'SafeWings1!'); await type('Confirm password', 'SafeWings1!'); await tap('Sign up');
+  expect(onComplete).not.toHaveBeenCalled();
+  await type('Verification code', '123456'); await tap('Verify');
+  expect(auth.verifyEmail).toHaveBeenCalledWith('user@example.com', '123456');
+  expect(onComplete).toHaveBeenCalledTimes(1);
+});
+
+test('login keeps the completion form open until the required profile fields are saved', async () => {
+  auth.login.mockResolvedValue({ needs_profile_completion: true, user: { displayName: 'Wing Fan' } });
+  auth.updateProfile.mockResolvedValue({ profile_complete: true });
+  await type('Phone or email', 'user@example.com'); await tap('Continue');
+  await type('Password', 'password'); await tap('Sign in');
+  expect(onComplete).not.toHaveBeenCalled();
+  expect(input('Full name')).toBeDefined();
+  await type('Email address', 'user@example.com'); await tap('Continue');
+  expect(auth.updateProfile).toHaveBeenCalledWith('Wing Fan', 'user@example.com');
+  expect(onComplete).toHaveBeenCalledTimes(1);
+});
