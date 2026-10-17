@@ -62,24 +62,23 @@ afterEach(async () => {
   global.requestAnimationFrame = originalRaf; global.cancelAnimationFrame = originalCancel;
 });
 
-test('Home renders separate top and footer carousels with the footer last inside the scroll content', async () => {
+test('Home renders only the footer carousel, last inside the scroll content', async () => {
   await mount(true);
   const carousels = renderer.root.findAllByType('PromotionalCarousel');
-  expect(carousels).toHaveLength(2);
-  expect(carousels[0].props.banners).toHaveLength(4);
-  expect(carousels[1].props.banners).toBe(banners);
+  expect(carousels).toHaveLength(1);
+  expect(carousels[0].props.banners).toBe(banners);
   const children = renderer.root.findAllByType('ScrollView').find(node => node.props.refreshControl).props.children.filter(Boolean);
   expect(children.at(-2).props.banners).toBe(banners);
   expect(children.at(-1).props.style.height).toBeGreaterThanOrEqual(40);
-  expect(carousels[1].props.imageBackgroundColor).toBe('#FFFFFF');
+  expect(carousels[0].props.imageBackgroundColor).toBe('#FFFFFF');
 });
-test('Menu mode never renders either Home promotional carousel', async () => {
+test('Menu mode never renders the Home footer carousel', async () => {
   await mount(false);
   expect(renderer.root.findAllByType('PromotionalCarousel')).toHaveLength(0);
 });
 test('each poster navigates to its verified category/item without changing order context', async () => {
   await mount(true);
-  const footer = renderer.root.findAllByType('PromotionalCarousel')[1];
+  const footer = renderer.root.findByType('PromotionalCarousel');
   for (const banner of banners) {
     await act(async () => footer.props.onPressBanner(banner));
     expect(mockRouter.navigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/menu', params: {

@@ -38,7 +38,7 @@ import { needsCustomization } from '../lib/popular-items';
 import { filterMenuCategories } from '../lib/menu-search';
 import { categoryImage, categoryLabel } from '../lib/category-images';
 import { prepareMenuCategories, menuCardDetails, categoryNote, resolveCategorySlug } from '../lib/menu-display';
-import { PROMOTIONAL_BANNERS, type PromotionalBanner } from '../lib/promotional-banners';
+import type { PromotionalBanner } from '../lib/promotional-banners';
 import { FOOTER_PROMOTIONAL_BANNERS, resolveFooterPromotion } from '../lib/footer-promotional-banners';
 
 /* ------------------------------------------------------------------ */
@@ -193,16 +193,6 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     setActiveCategorySlug(slug);
     setSearchQuery('');
   }, [cinematic, router]);
-
-  /* Promo banner tap -> open the Menu tab deep-linked to its category. The
-     changing `ts` guarantees re-selection even if the Menu tab is already
-     mounted on the same category. */
-  const handleBannerPress = useCallback((banner: PromotionalBanner) => {
-    router.navigate({
-      pathname: '/(tabs)/menu',
-      params: { category: banner.categorySlug, ts: String(Date.now()), promotion: 'category', itemSlug: '' },
-    });
-  }, [router]);
 
   const handleFooterBannerPress = useCallback((banner: PromotionalBanner) => {
     router.navigate({ pathname: '/(tabs)/menu', params: {
@@ -537,11 +527,6 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
             );
           })}
         </ScrollView>
-
-        {/* Promotional banner carousel (Home only) */}
-        {cinematic ? (
-          <PromotionalCarousel banners={PROMOTIONAL_BANNERS} onPressBanner={handleBannerPress} />
-        ) : null}
 
         {/* Active Category Items */}
         {!cinematic && displayedCategories.map(activeCategory => (
