@@ -108,7 +108,7 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
                   placeholderTextColor="#8B8079" accessibilityLabel="Delivery postal code" autoCapitalize="characters" autoComplete="postal-code" maxLength={10} />
               </View>
               {postalCode.trim().length > 0 && !validDeliveryAddress(normalizeDeliveryAddress('address', postalCode)) &&
-                <Text style={styles.error}>Enter a Canadian postal code, like N5Y 4J7.</Text>}
+                <Text style={styles.error}>Enter a valid Canadian postal code.</Text>}
               <Text style={styles.small}>Delivery area and fee are checked at checkout.</Text>
             </View>}
 
