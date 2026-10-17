@@ -38,6 +38,10 @@ export default function RootLayout() {
                 }}
               />
               <Stack.Screen
+                name="sauces"
+                options={{ title: "Sauces" }}
+              />
+              <Stack.Screen
                 name="profile"
                 options={{
                   title: "Profile",

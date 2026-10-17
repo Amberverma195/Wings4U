@@ -31,7 +31,6 @@ type Props = {
   /** Auto-advance cadence in ms (default 3000). */
   intervalMs?: number;
   imageBackgroundColor?: string;
-  paginationLabel?: string;
 };
 
 /**
@@ -39,7 +38,7 @@ type Props = {
  *
  * - Advances every `intervalMs`, looping forward from the last banner to the
  *   first via an appended clone slide (seamless, no backward rewind).
- * - Supports manual swipe + tappable pagination dots; the auto-advance timer
+ * - Supports manual swipe; the auto-advance timer
  *   resets after any manual interaction.
  * - Pauses when dragging, when the Home screen is unfocused, when the app is
  *   backgrounded, and when the OS "reduce motion" setting is enabled.
@@ -47,14 +46,13 @@ type Props = {
  *   any device size or orientation change.
  */
 export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_ADVANCE_MS,
-  imageBackgroundColor = '#120A08', paginationLabel = 'Promotions' }: Props) {
+  imageBackgroundColor = '#120A08' }: Props) {
   const { width } = useWindowDimensions();
   const isFocused = useIsFocused();
   const listRef = useRef<FlatList<PromotionalBanner>>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const indexRef = useRef(0); // raw index into `loopData` (0 .. count)
   const draggingRef = useRef(false);
-  const [activeIndex, setActiveIndex] = useState(0); // 0 .. count-1 (for dots)
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -120,7 +118,6 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
       // advance beyond the clone even if its settle callback was skipped.
       if (indexRef.current >= count) goTo(0, false);
       goTo(indexRef.current + 1, true); // may land on the clone (index === count)
-      setActiveIndex(indexRef.current % count);
     }, intervalMs);
   }, [stopTimer, canAutoPlay, goTo, intervalMs, count]);
 
@@ -146,7 +143,6 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
       } else {
         indexRef.current = raw;
       }
-      setActiveIndex(count > 0 ? ((raw % count) + count) % count : 0);
     },
     [slideWidth, count, goTo],
   );
@@ -167,14 +163,6 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
     startTimer();
   }, [settle, startTimer]);
 
-  const handleDotPress = useCallback(
-    (dotIndex: number) => {
-      goTo(dotIndex, reduceMotion === false);
-      setActiveIndex(dotIndex);
-      startTimer();
-    },
-    [goTo, reduceMotion, startTimer],
-  );
 
   const getItemLayout = useCallback(
     (_: ArrayLike<PromotionalBanner> | null | undefined, index: number) => ({
@@ -227,26 +215,6 @@ export function PromotionalCarousel({ banners, onPressBanner, intervalMs = AUTO_
         decelerationRate="fast"
         bounces={false}
       />
-      {count > 1 ? (
-        <View style={styles.dots} accessibilityRole="tablist" accessibilityLabel={paginationLabel}>
-          {banners.map((banner, index) => {
-            const active = index === activeIndex;
-            return (
-              <Pressable
-                key={banner.key}
-                onPress={() => handleDotPress(index)}
-                hitSlop={8}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Show ${banner.label} promotion`}
-                style={styles.dotHit}
-              >
-                <View style={[styles.dot, active ? styles.dotActive : styles.dotInactive]} />
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -260,15 +228,4 @@ const styles = StyleSheet.create({
     borderRadius: CORNER_RADIUS,
     backgroundColor: '#120A08',
   },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  dotHit: { padding: 4, minWidth: 28, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
-  dot: { height: 8, borderRadius: 4 },
-  dotActive: { width: 22, backgroundColor: '#FF4D4D' },
-  dotInactive: { width: 8, backgroundColor: '#D9D9D9' },
 });

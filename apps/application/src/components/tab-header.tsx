@@ -39,7 +39,6 @@ export function TabHeader({ title }: { title: string }) {
   return <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
     {focused && <StatusBar style="dark" />}
     <Text style={styles.title} accessibilityRole="header">{title}</Text>
-    <HeaderActions />
   </View>;
 }
 

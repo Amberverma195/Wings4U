@@ -20,16 +20,16 @@ import Animated, {
   Easing,
   interpolateColor,
   useAnimatedStyle,
-  useAnimatedScrollHandler,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import { Clock, AlertCircle, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
 import { useMenu } from '../hooks/use-menu';
 import { useCart } from '../context/cart';
-import { HeaderActions, TabHeader } from '../components/tab-header';
+import { TabHeader } from '../components/tab-header';
 import { MenuItemBuilder } from '../components/menu-item-builder';
 import { PromotionalCarousel } from '../components/promotional-carousel';
+import { TrendingFlavours } from '../components/trending-flavours';
 import type { MenuItem } from '../lib/types';
 import { filterMenuCategories } from '../lib/menu-search';
 import { categoryImage, categoryLabel } from '../lib/category-images';
@@ -100,8 +100,10 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compactHeader = width < 380;
+  const brandFontSize = Math.min(compactHeader ? 30 : 34,
+    (width - (compactHeader ? 32 + 172 : 40 + 184) - 6) / 4.8);
   const categoryTileSize = Math.max(44, Math.min(56, (width - 32) / 7 - 4));
-  const headerHeight = Math.max(192, Math.min(width * 0.48, 240)) + insets.top;
+  const headerHeight = Math.max(156, Math.min(width * 0.39, 196)) + insets.top;
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(headerHeight);
   const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
   const cart = useCart();
@@ -146,20 +148,6 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [availableOnly, setAvailableOnly] = useState(false);
-  const [categoryViewportWidth, setCategoryViewportWidth] = useState(0);
-  const [categoryContentWidth, setCategoryContentWidth] = useState(0);
-  const categoryScrollX = useSharedValue(0);
-  const categoryScrollHandler = useAnimatedScrollHandler((event) => {
-    categoryScrollX.value = event.contentOffset.x;
-  });
-  const swipeThumbWidth = Math.max(16, Math.min(80,
-    categoryContentWidth > 0 ? (categoryViewportWidth / categoryContentWidth) * 80 : 80,
-  ));
-  const swipeThumbStyle = useAnimatedStyle(() => {
-    const scrollRange = Math.max(1, categoryContentWidth - categoryViewportWidth);
-    const progress = Math.max(0, Math.min(1, categoryScrollX.value / scrollRange));
-    return { transform: [{ translateX: progress * (80 - swipeThumbWidth) }] };
-  });
 
   const sortedCategories = useMemo(() => {
     if (!menu) return [];
@@ -351,17 +339,23 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
               paddingRight: Math.max(compactHeader ? 16 : 20, insets.right),
             },
           ]}>
-            {cinematic && <View style={styles.headerRow}>
-              <View style={styles.branding}>
-                <Text style={[styles.title, compactHeader && styles.titleCompact]} numberOfLines={1} accessibilityRole="header">
-                  Wings<Text style={styles.titleAccent}>4U</Text>
-                </Text>
+            <View style={styles.headerRow}>
+              {cinematic && <View style={styles.branding}>
+                <View style={styles.wordmark} accessible accessibilityRole="header" accessibilityLabel="Wings4U">
+                  <Text style={[styles.title, { fontSize: brandFontSize }]} accessible={false}>W</Text>
+                  <View>
+                    <Text style={[styles.title, { fontSize: brandFontSize }]} accessible={false}>{'\u0131'}</Text>
+                    <View style={[styles.brandDot, {
+                      width: brandFontSize * 0.15, height: brandFontSize * 0.15,
+                      top: brandFontSize * 0.2,
+                    }]} />
+                  </View>
+                  <Text style={[styles.title, { fontSize: brandFontSize }]} accessible={false}>ngs4U</Text>
+                </View>
                 <Text style={styles.tagline} numberOfLines={1} adjustsFontSizeToFit>
                   WINGS · BURGERS · TENDERS · MORE
                 </Text>
-              </View>
-              <HeaderActions />
-            </View>}
+              </View>}
             <View
               style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
               accessibilityRole="radiogroup"
@@ -407,6 +401,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                   </TouchableOpacity>
                 );
               })}
+            </View>
             </View>
           </View>
           {/* Search and menu filters */}
@@ -464,16 +459,12 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         />
 
         {/* Categories Strip */}
-        <Animated.ScrollView
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           onLayout={(event) => {
             productSectionY.current = event.nativeEvent.layout.y;
-            setCategoryViewportWidth(event.nativeEvent.layout.width);
           }}
-          onContentSizeChange={(contentWidth) => setCategoryContentWidth(contentWidth)}
-          onScroll={categoryScrollHandler}
-          scrollEventThrottle={16}
           style={styles.categoriesScroll}
           contentContainerStyle={styles.categoriesContent}
         >
@@ -508,14 +499,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
               </TouchableOpacity>
             );
           })}
-        </Animated.ScrollView>
-        {categoryContentWidth > categoryViewportWidth && categoryViewportWidth > 0 ? (
-          <View style={styles.categorySwipeTrack}>
-            <Animated.View
-              style={[styles.categorySwipeThumb, { width: swipeThumbWidth }, swipeThumbStyle]}
-            />
-          </View>
-        ) : null}
+        </ScrollView>
 
         {/* Promotional banner carousel (Home only) */}
         {cinematic ? (
@@ -562,10 +546,11 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           </View>
         ) : null}
 
+        {cinematic ? <TrendingFlavours /> : null}
+
         {/* Final scroll section: separate instance, Home only, above the fixed tab bar. */}
         {cinematic ? <PromotionalCarousel banners={FOOTER_PROMOTIONAL_BANNERS}
-          onPressBanner={handleFooterBannerPress} imageBackgroundColor="#FFFFFF"
-          paginationLabel="Lunch and Party Specials" /> : null}
+          onPressBanner={handleFooterBannerPress} imageBackgroundColor="#FFFFFF" /> : null}
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -722,7 +707,7 @@ const styles = StyleSheet.create({
   filterLabelDark: { color: '#666' },
   headerContent: {
     flex: 1,
-    paddingBottom: 16,
+    paddingBottom: 10,
     gap: 12,
   },
   headerRow: {
@@ -741,12 +726,8 @@ const styles = StyleSheet.create({
     color: '#FFF',
     flexShrink: 1,
   },
-  titleCompact: {
-    fontSize: 30,
-  },
-  titleAccent: {
-    color: '#FF3434',
-  },
+  wordmark: { flexDirection: 'row', alignItems: 'center' },
+  brandDot: { position: 'absolute', alignSelf: 'center', borderRadius: 1, backgroundColor: '#FFD43B' },
   tagline: {
     fontSize: 9,
     fontWeight: '700',
@@ -755,7 +736,7 @@ const styles = StyleSheet.create({
   },
   fulfillmentSwitch: {
     width: 184,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     flexDirection: 'row',
     backgroundColor: '#F0F0F0',
     borderRadius: 22,
@@ -865,8 +846,8 @@ const styles = StyleSheet.create({
 
   /* Search inside the banner */
   searchSection: {
-    marginHorizontal: 16,
-    paddingBottom: 16,
+    marginHorizontal: 24,
+    paddingBottom: 12,
     zIndex: 1,
   },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -875,9 +856,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minHeight: 46,
-    paddingHorizontal: 14,
-    borderRadius: 24,
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     backgroundColor: '#FFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -885,10 +866,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  searchInput: { flex: 1, minWidth: 0, minHeight: 46, fontSize: 12, color: '#222' },
+  searchInput: { flex: 1, minWidth: 0, minHeight: 40, fontSize: 12, color: '#222' },
   clearSearch: { minWidth: 30, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   filterButton: {
-    width: 46, height: 46, borderRadius: 23, backgroundColor: '#FFF',
+    width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFF',
     alignItems: 'center', justifyContent: 'center', elevation: 3,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8,
   },
@@ -978,20 +959,6 @@ const styles = StyleSheet.create({
     color: '#777',
     fontSize: 12,
     lineHeight: 17,
-  },
-  categorySwipeTrack: {
-    width: 80,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E5E5',
-    alignSelf: 'center',
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  categorySwipeThumb: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#FF4D4D',
   },
 
   /* Empty category */
