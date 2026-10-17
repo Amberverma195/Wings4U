@@ -110,3 +110,9 @@ export function orderTimingLabel(scheduledFor: string | null, timezone: string) 
     timeZone: timezone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   }).format(new Date(scheduledFor)) : 'ASAP';
 }
+
+export function orderTimeAvailable(location: LocationInfo, type: FulfillmentType, scheduledFor: string | null, now = Date.now()) {
+  if (scheduledFor) return buildOrderSlots(location, type, now).some(slot => slot.value === scheduledFor);
+  return location.is_open !== false && serviceAvailable(location, type, new Date(now)) &&
+    serviceAvailable(location, type, new Date(now + leadMinutes(location, type) * 60_000));
+}

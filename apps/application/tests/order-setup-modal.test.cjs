@@ -24,7 +24,7 @@ const text = node => typeof node === 'string' ? node : (node.children ?? []).map
 const button = label => renderer.root.findAllByType('Pressable').find(node => text(node) === label);
 const primary = () => renderer.root.findAllByType('Pressable').find(node => node.props.accessibilityState?.disabled !== undefined && node.props.accessibilityRole === 'button');
 const mount = async props => act(async () => { renderer = create(React.createElement(OrderSetupModal,
-  { initialType: 'PICKUP', initialScheduledFor: null, initialAddress: null, canClose: false, onConfirm, onClose, ...props })); });
+  { initialType: 'PICKUP', initialScheduledFor: null, initialAddress: null, onConfirm, onClose, ...props })); });
 beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(now); jest.clearAllMocks(); mockMenu = { menu: { location }, loading: false, error: null, refetch: jest.fn() }; });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 
@@ -76,6 +76,29 @@ test('unavailable ASAP still allows scheduling, and an in-flight request disable
   expect(renderer.root.findByProps({ accessibilityLabel: 'Schedule a date and time' }).props.disabled).toBe(false);
   mockMenu = { ...mockMenu, loading: true };
   await act(async () => renderer.update(React.createElement(OrderSetupModal, { initialType: 'PICKUP', initialScheduledFor: null,
-    initialAddress: null, canClose: false, onConfirm, onClose })));
+    initialAddress: null, onConfirm, onClose })));
   expect(primary().props.disabled).toBe(true);
+});
+
+test.each(['closed', 'no-slots', 'api-error'])('customers can always browse or dismiss when ordering is %s', async condition => {
+  if (condition === 'closed') jest.setSystemTime(Date.parse('2026-10-17T13:00:00Z'));
+  if (condition === 'no-slots') mockMenu = { ...mockMenu, menu: { location: { ...location, pickup_hours: [], store_hours: [] } } };
+  if (condition === 'api-error') mockMenu = { ...mockMenu, menu: null, error: 'Offline' };
+  await mount();
+  expect(primary().props.disabled).toBe(true);
+  expect(button('Browse Menu for Now').props.disabled).not.toBe(true);
+  await act(async () => button('Browse Menu for Now').props.onPress());
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(onConfirm).not.toHaveBeenCalled();
+  await act(async () => renderer.root.findByType('Modal').props.onRequestClose());
+  expect(onClose).toHaveBeenCalledTimes(2);
+});
+
+test('ordering API errors retain retry and the close button', async () => {
+  mockMenu = { ...mockMenu, menu: null, error: 'Offline' };
+  await mount();
+  await act(async () => button('Try again').props.onPress());
+  expect(mockMenu.refetch).toHaveBeenCalledTimes(1);
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Close order setup' }).props.onPress());
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

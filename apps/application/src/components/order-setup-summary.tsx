@@ -8,7 +8,7 @@ export function OrderSetupSummary({ light = false }: { light?: boolean }) {
   const cart = useCart();
   const setup = useOrderSetup();
   const color = light ? '#111111' : '#6C5142';
-  const label = `${cart.fulfillmentType === 'PICKUP' ? 'Pickup' : 'Delivery'} · ${orderTimingLabel(cart.scheduledFor, cart.locationTimezone)}`;
+  const label = setup.confirmed ? `${cart.fulfillmentType === 'PICKUP' ? 'Pickup' : 'Delivery'} · ${orderTimingLabel(cart.scheduledFor, cart.locationTimezone)}` : 'Order details not selected';
   return <Pressable onPress={() => setup.openOrderSetup()} style={[styles.row, light && styles.bannerRow]} accessibilityRole="button"
     accessibilityLabel={`${label}. Change order details`}>
     <Clock3 size={13} color={color} />

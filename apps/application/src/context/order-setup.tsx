@@ -10,6 +10,11 @@ type OrderSetupContextValue = {
   deliveryAddress: DeliveryAddress | null;
   setDeliveryAddress: (address: DeliveryAddress) => void;
   openOrderSetup: (type?: FulfillmentType) => void;
+  ensureOrderSetup: () => Promise<OrderSetupSelection | null>;
+  getConfirmedSetup: () => OrderSetupSelection | null;
+  hasCheckoutValidation: (fingerprint: string) => boolean;
+  markCheckoutValidated: (fingerprint: string) => void;
+  confirmed: boolean;
   ready: boolean;
 };
 const OrderSetupContext = createContext<OrderSetupContextValue | null>(null);
@@ -35,6 +40,26 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   const wasHydrated = useRef(false);
   const skipCapture = useRef(false);
   const writeQueue = useRef(Promise.resolve());
+  const checkoutValidation = useRef<{ fingerprint: string; expiresAt: number } | null>(null);
+  const setupRequest = useRef<{ promise: Promise<OrderSetupSelection | null>; resolve: (value: OrderSetupSelection | null) => void } | null>(null);
+  const stateRef = useRef({ ready, confirmed, cart, deliveryAddress });
+  stateRef.current = { ready, confirmed, cart, deliveryAddress };
+
+  const getConfirmedSetup = useCallback((): OrderSetupSelection | null => {
+    const current = stateRef.current;
+    const value = selection.current;
+    if (!current.ready || !current.confirmed || !current.cart.isCartHydrated || !value ||
+      value.fulfillmentType !== current.cart.fulfillmentType || value.scheduledFor !== current.cart.scheduledFor) return null;
+    const next = { fulfillmentType: value.fulfillmentType, scheduledFor: value.scheduledFor, deliveryAddress: current.deliveryAddress ?
+      normalizeDeliveryAddress(current.deliveryAddress.line1, current.deliveryAddress.postal_code) : null };
+    return readOrderSetup(JSON.stringify({ ...next, v: 1, lastActiveAt: awaySince.current ?? Date.now() })) ? next : null;
+  }, []);
+
+  const close = useCallback(() => {
+    setVisible(false);
+    setupRequest.current?.resolve(null);
+    setupRequest.current = null;
+  }, []);
 
   // Serialize writes so a background save cannot overwrite a later expiry/reset.
   const persist = useCallback((value: OrderSetupSelection | null, timestamp = Date.now()) => {
@@ -55,23 +80,26 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   const expire = useCallback(() => {
     selection.current = null;
     setConfirmed(false);
+    checkoutValidation.current = null;
     apply(null);
     setRequestedType('PICKUP');
     setModalRevision(value => value + 1);
-    setVisible(true);
+    close();
     persist(null);
-  }, [apply, persist]);
+  }, [apply, persist, close]);
 
   useEffect(() => {
     let cancelled = false;
     setReady(false);
     wasHydrated.current = false;
     selection.current = null;
+    checkoutValidation.current = null;
+    close();
     void AsyncStorage.getItem(key).then(raw => {
       if (!cancelled) setStored({ key, value: readOrderSetup(raw) });
     }).catch(() => { if (!cancelled) setStored({ key, value: null }); });
     return () => { cancelled = true; };
-  }, [key]);
+  }, [key, close]);
 
   useEffect(() => {
     if (!cart.isCartHydrated) { wasHydrated.current = false; return; }
@@ -96,6 +124,13 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!ready || stored?.key !== key || !cart.isCartHydrated || !confirmed) return;
     if (skipCapture.current) { skipCapture.current = false; return; }
+    if (selection.current && (selection.current.fulfillmentType !== cart.fulfillmentType || selection.current.scheduledFor !== cart.scheduledFor)) {
+      selection.current = null;
+      setConfirmed(false);
+      checkoutValidation.current = null;
+      persist(null);
+      return;
+    }
     selection.current = { fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor,
       deliveryAddress: deliveryAddress ? normalizeDeliveryAddress(deliveryAddress.line1, deliveryAddress.postal_code) : null };
     persist(selection.current, awaySince.current ?? Date.now());
@@ -128,6 +163,30 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
     setVisible(true);
   }, [cart.fulfillmentType]);
 
+  const ensureOrderSetup = useCallback(() => {
+    const value = getConfirmedSetup();
+    if (value) return Promise.resolve(value);
+    if (setupRequest.current) return setupRequest.current.promise;
+    if (!stateRef.current.ready) return Promise.resolve(null);
+    let resolve!: (value: OrderSetupSelection | null) => void;
+    const promise = new Promise<OrderSetupSelection | null>(done => { resolve = done; });
+    setupRequest.current = { promise, resolve };
+    setRequestedType(stateRef.current.cart.fulfillmentType);
+    setVisible(true);
+    return promise;
+  }, [getConfirmedSetup]);
+
+  useEffect(() => {
+    // Resolve only after React has committed the confirmed type/time/address to the cart.
+    const value = getConfirmedSetup();
+    if (value && setupRequest.current) {
+      setupRequest.current.resolve(value);
+      setupRequest.current = null;
+    }
+  }, [confirmed, cart.isCartHydrated, cart.fulfillmentType, cart.scheduledFor, deliveryAddress, getConfirmedSetup]);
+
+  useEffect(() => () => { setupRequest.current?.resolve(null); setupRequest.current = null; }, []);
+
   const confirm = (value: OrderSetupSelection) => {
     selection.current = value;
     apply(value);
@@ -136,9 +195,13 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
     persist(value);
   };
 
-  return <OrderSetupContext.Provider value={{ deliveryAddress, setDeliveryAddress: setAddress, openOrderSetup, ready }}>
+  return <OrderSetupContext.Provider value={{ deliveryAddress, setDeliveryAddress: setAddress, openOrderSetup, ready, confirmed,
+    ensureOrderSetup, getConfirmedSetup,
+    hasCheckoutValidation: fingerprint => Boolean(getConfirmedSetup() && checkoutValidation.current?.fingerprint === fingerprint && checkoutValidation.current.expiresAt > Date.now()),
+    markCheckoutValidated: fingerprint => { checkoutValidation.current = { fingerprint, expiresAt: Date.now() + 30_000 }; },
+  }}>
     {children}
     {ready && visible && <OrderSetupModal key={`${key}:${modalRevision}`} initialType={requestedType} initialScheduledFor={cart.scheduledFor}
-      initialAddress={deliveryAddress} canClose={confirmed} onClose={() => setVisible(false)} onConfirm={confirm} />}
+      initialAddress={deliveryAddress} onClose={close} onConfirm={confirm} />}
   </OrderSetupContext.Provider>;
 }

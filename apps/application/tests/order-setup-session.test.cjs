@@ -42,7 +42,7 @@ afterEach(async () => { if (renderer) await act(async () => renderer.unmount());
 
 test('opens on first launch and commits type, schedule and address together', async () => {
   await mount();
-  expect(modal().props.canClose).toBe(false);
+  expect(setup.confirmed).toBe(false);
   await act(async () => modal().props.onConfirm(delivery));
   expect(hasModal()).toBe(false);
   expect(mockCart.fulfillmentType).toBe('DELIVERY');
@@ -88,7 +88,8 @@ test('keeps choices on quick return and expires after fifteen minutes away', asy
   await appState('background');
   jest.setSystemTime(now + 20 * 60_000);
   await appState('active');
-  expect(hasModal()).toBe(true);
+  expect(hasModal()).toBe(false);
+  expect(setup.confirmed).toBe(false);
   expect(mockCart.scheduledFor).toBeNull();
   expect(setup.deliveryAddress).toBeNull();
   expect(mockStorage.has(key)).toBe(false);
@@ -114,14 +115,14 @@ test('checkout address edits persist canonically without trimming the live input
   expect(JSON.parse(mockStorage.get(key)).deliveryAddress).toEqual({ line1: '12 Main St unit 3', city: 'London', postal_code: 'N5Y 4J7' });
 });
 
-test('a scheduled time that has passed on return asks for a fresh setup', async () => {
+test('a scheduled time that has passed on return expires silently until checkout', async () => {
   await mount();
   await act(async () => modal().props.onConfirm({ ...delivery, scheduledFor: new Date(now + 5 * 60_000).toISOString() }));
   await appState('background');
   jest.setSystemTime(now + 6 * 60_000);
   await appState('active');
-  expect(hasModal()).toBe(true);
-  expect(modal().props.canClose).toBe(false);
+  expect(hasModal()).toBe(false);
+  expect(setup.confirmed).toBe(false);
   expect(mockCart.scheduledFor).toBeNull();
 });
 
@@ -137,4 +138,58 @@ test('foreground activity keeps a long browsing session alive for a later cold l
   await mount();
   expect(hasModal()).toBe(false);
   expect(mockCart.fulfillmentType).toBe('DELIVERY');
+});
+
+test('Browse dismissal keeps Pickup provisional and does not reopen during ordinary rerenders', async () => {
+  await mount();
+  await act(async () => modal().props.onClose());
+  expect(hasModal()).toBe(false);
+  expect(setup.confirmed).toBe(false);
+  expect(setup.getConfirmedSetup()).toBeNull();
+  expect(mockCart.fulfillmentType).toBe('PICKUP');
+  expect(mockStorage.has(key)).toBe(false);
+  await act(async () => renderer.update(React.createElement(Harness)));
+  await act(async () => jest.advanceTimersByTime(60_000));
+  expect(hasModal()).toBe(false);
+  expect(mockCart.items).toHaveLength(1);
+});
+
+test('checkout requests setup again; cancellation resolves without confirmation or cart loss', async () => {
+  await mount();
+  await act(async () => modal().props.onClose());
+  let request;
+  await act(async () => { request = setup.ensureOrderSetup(); });
+  expect(hasModal()).toBe(true);
+  await act(async () => modal().props.onClose());
+  expect(await request).toBeNull();
+  expect(setup.confirmed).toBe(false);
+  expect(mockCart.items).toHaveLength(1);
+});
+
+test('checkout continuation resolves only after confirmed settings are committed to the shared cart', async () => {
+  await mount();
+  let request, duplicate;
+  await act(async () => { request = setup.ensureOrderSetup(); duplicate = setup.ensureOrderSetup(); });
+  expect(duplicate).toBe(request);
+  await act(async () => modal().props.onConfirm(delivery));
+  expect(await request).toEqual(delivery);
+  expect(mockCart.fulfillmentType).toBe('DELIVERY');
+  expect(mockCart.scheduledFor).toBe(delivery.scheduledFor);
+  expect(setup.getConfirmedSetup()).toEqual(delivery);
+});
+
+test('15-minute expiry clears checkout approval without reopening and requires fresh confirmation', async () => {
+  await mount();
+  await act(async () => modal().props.onConfirm(delivery));
+  setup.markCheckoutValidated('cart-fingerprint');
+  expect(setup.hasCheckoutValidation('cart-fingerprint')).toBe(true);
+  await appState('background'); jest.setSystemTime(now + ORDER_SETUP_TTL_MS); await appState('active');
+  expect(hasModal()).toBe(false);
+  expect(setup.getConfirmedSetup()).toBeNull();
+  expect(setup.hasCheckoutValidation('cart-fingerprint')).toBe(false);
+  let request;
+  await act(async () => { request = setup.ensureOrderSetup(); });
+  expect(hasModal()).toBe(true);
+  await act(async () => modal().props.onClose());
+  expect(await request).toBeNull();
 });

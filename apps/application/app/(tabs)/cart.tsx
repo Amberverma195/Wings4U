@@ -14,6 +14,7 @@ import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react-native";
 import { apiJson } from "../../src/lib/api";
 import { useCart, type CartContextValue } from "../../src/context/cart";
 import { useOrderSetup } from "../../src/context/order-setup";
+import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
 import { OrderSetupSummary } from "../../src/components/order-setup-summary";
 import { usePromo } from "../../src/context/promo";
 import { useAccountData } from "../../src/hooks/use-account-data";
@@ -97,6 +98,7 @@ export default function CartScreen() {
   const cart = useCart();
   const focused = useIsFocused();
   const orderSetup = useOrderSetup();
+  const checkout = useCheckoutPreparation();
   const promo = usePromo();
   const account = useAccountData();
   const session = useSession();
@@ -104,6 +106,7 @@ export default function CartScreen() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [promoNotice, setPromoNotice] = useState<string | null>(null);
+  useEffect(() => { if (!focused) checkout.cancel(); }, [focused, checkout.cancel]);
 
   const quoteDependencyKey = useMemo(
     () =>
@@ -472,17 +475,18 @@ export default function CartScreen() {
               {quoteError ? (
                 <Text style={styles.quoteError}>{quoteError}</Text>
               ) : null}
+              {checkout.error && checkout.error !== quoteError ? <Text style={styles.quoteError} accessibilityRole="alert">{checkout.error}</Text> : null}
             </View>
 
             <TouchableOpacity
               style={[
                 styles.checkoutButton,
-                (quoteLoading || !quote || Boolean(quoteError)) && styles.checkoutButtonDisabled,
+                (checkout.busy || cart.isCartHydrating || !orderSetup.ready) && styles.checkoutButtonDisabled,
               ]}
-              disabled={quoteLoading || !quote || Boolean(quoteError)}
-              onPress={() => router.push("/checkout")}
+              disabled={checkout.busy || cart.isCartHydrating || !orderSetup.ready}
+              onPress={async () => { if (await checkout.prepare()) router.push("/checkout"); }}
             >
-              <Text style={styles.checkoutButtonText}>Checkout</Text>
+              <Text style={styles.checkoutButtonText}>{checkout.busy ? 'Checking order…' : 'Checkout'}</Text>
             </TouchableOpacity>
           </>
         )}

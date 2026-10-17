@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Bike, CalendarDays, CarFront, Check, ChevronRight, Clock3, MapPin, X } from 'lucide-react-native';
 import { useCart } from '../context/cart';
 import { useMenu } from '../hooks/use-menu';
-import { buildOrderSlots, DELIVERY_CITY, leadMinutes, normalizeDeliveryAddress, orderTimingLabel, serviceAvailable, validDeliveryAddress,
+import { buildOrderSlots, DELIVERY_CITY, leadMinutes, normalizeDeliveryAddress, orderTimingLabel, orderTimeAvailable, validDeliveryAddress,
   type DeliveryAddress, type OrderSetupSelection } from '../lib/order-setup';
 import type { FulfillmentType } from '../lib/types';
 
@@ -12,12 +12,11 @@ type Props = {
   initialType: FulfillmentType;
   initialScheduledFor: string | null;
   initialAddress: DeliveryAddress | null;
-  canClose: boolean;
   onClose: () => void;
   onConfirm: (value: OrderSetupSelection) => void;
 };
 
-export function OrderSetupModal({ initialType, initialScheduledFor, initialAddress, canClose, onClose, onConfirm }: Props) {
+export function OrderSetupModal({ initialType, initialScheduledFor, initialAddress, onClose, onConfirm }: Props) {
   const cart = useCart();
   const insets = useSafeAreaInsets();
   const [type, setType] = useState(initialType);
@@ -37,8 +36,7 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
   const selectedDay = dates.some(([key]) => key === dateKey) ? dateKey : dates[0]?.[0];
   const daySlots = slots.filter(slot => slot.dateKey === selectedDay);
   const address = normalizeDeliveryAddress(line1, postalCode);
-  const asapAvailable = Boolean(location && serviceAvailable(location, type, new Date(now)) &&
-    serviceAvailable(location, type, new Date(now + leadMinutes(location, type) * 60_000)));
+  const asapAvailable = Boolean(location && orderTimeAvailable(location, type, null, now));
   const scheduleValid = Boolean(scheduledFor && slots.some(slot => slot.value === scheduledFor));
   const addressValid = type === 'PICKUP' || validDeliveryAddress(address);
   const canContinue = Boolean(location && addressValid && (scheduledFor ? scheduleValid : asapAvailable));
@@ -63,13 +61,11 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
     setDateKey(current?.dateKey ?? '');
     setStep('schedule');
   };
-  const back = () => step === 'schedule' ? setStep('setup') : canClose ? onClose() : undefined;
+  const back = () => step === 'schedule' ? setStep('setup') : onClose();
   const confirm = () => {
     if (!canContinue || !location) return;
     // Recheck the clock on the actual tap, including after the phone was locked.
-    const latestSlots = scheduledFor ? buildOrderSlots(location, type) : [];
-    const available = scheduledFor ? latestSlots.some(slot => slot.value === scheduledFor) :
-      serviceAvailable(location, type, new Date()) && serviceAvailable(location, type, new Date(Date.now() + leadMinutes(location, type) * 60_000));
+    const available = orderTimeAvailable(location, type, scheduledFor);
     if (!available) { setNow(Date.now()); setNotice('That time is no longer available. Please choose another time.'); return; }
     cart.setLocationTimezone(location.timezone);
     onConfirm({ fulfillmentType: type, scheduledFor, deliveryAddress: type === 'DELIVERY' ? address : initialAddress });
@@ -79,11 +75,11 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16), marginTop: insets.top + 16 }]} accessibilityViewIsModal>
         <View style={styles.handle} />
-        {(step === 'schedule' || canClose) && <View style={styles.topRow}>
+        <View style={styles.topRow}>
           {step === 'schedule' && <Pressable onPress={() => setStep('setup')} style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Back to order setup"><ArrowLeft size={21} color="#29201D" /></Pressable>}
           {step === 'schedule' ? <Text style={styles.eyebrow}>PLAN AHEAD</Text> : <View style={{ flex: 1 }} />}
-          {canClose ? <Pressable onPress={onClose} style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Close order setup"><X size={21} color="#64564E" /></Pressable> : <View style={{ width: 36 }} />}
-        </View>}
+          <Pressable onPress={onClose} style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Close order setup"><X size={21} color="#64564E" /></Pressable>
+        </View>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text accessibilityRole="header" style={styles.title}>{step === 'schedule' ? `Schedule ${type === 'PICKUP' ? 'pickup' : 'delivery'}` : 'How are you ordering?'}</Text>
           <Text style={styles.subtitle}>{step === 'schedule' ? `Choose a date and time. All times are in ${timezone}.` : 'Fresh wings, on your time. Choose what works for you.'}</Text>
@@ -162,6 +158,9 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
             style={({ pressed }) => [styles.primary, (step === 'schedule' ? !slots.some(slot => slot.value === draftSlot) : !canContinue) && styles.primaryDisabled, pressed && { opacity: 0.8 }]}>
             <Text style={styles.primaryText}>{step === 'schedule' ? 'Confirm time' : `Start ${type === 'PICKUP' ? 'pickup' : 'delivery'} order`}</Text>
           </Pressable>
+          <Pressable onPress={onClose} accessibilityRole="button" style={styles.browse}>
+            <Text style={styles.browseText}>Browse Menu for Now</Text>
+          </Pressable>
           <Text style={styles.footerNote}>You can change these details anytime.</Text>
         </View>
       </View>
@@ -211,4 +210,6 @@ const styles = StyleSheet.create({
   primaryDisabled: { backgroundColor: '#D9C9C2' },
   primaryText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
   footerNote: { textAlign: 'center', color: '#9A8C82', fontSize: 11, marginTop: 10 },
+  browse: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 8, borderWidth: 1, borderColor: '#E9DFD7', borderRadius: 14 },
+  browseText: { color: '#D93636', fontSize: 14, fontWeight: '700' },
 });

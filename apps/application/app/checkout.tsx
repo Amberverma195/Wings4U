@@ -25,6 +25,7 @@ import {
 } from "lucide-react-native";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AuthSheet } from "../src/components/auth-sheet";
+import { CheckoutEntryGuard } from "../src/components/checkout-entry-guard";
 import { useCart } from "../src/context/cart";
 import { useOrderSetup } from "../src/context/order-setup";
 import { OrderSetupSummary } from "../src/components/order-setup-summary";
@@ -140,6 +141,10 @@ function getApiErrorCode(body: unknown): string | null {
 }
 
 export default function CheckoutScreen() {
+  return <CheckoutEntryGuard><CheckoutScreenContent /></CheckoutEntryGuard>;
+}
+
+function CheckoutScreenContent() {
   const router = useRouter();
   const cart = useCart();
   const orderSetup = useOrderSetup();
@@ -483,6 +488,11 @@ export default function CheckoutScreen() {
 
   const placeOrder = useCallback(async () => {
     if (cart.items.length === 0 || submittingRef.current) return;
+    if (!orderSetup.getConfirmedSetup()) {
+      pendingSubmitRef.current = false;
+      setSubmitError('Confirm your order details again before placing the order.');
+      return;
+    }
     if (pricingBlock) {
       setSubmitError(pricingBlock);
       return;
@@ -671,6 +681,7 @@ export default function CheckoutScreen() {
     }
   }, [
     account,
+    orderSetup,
     cart,
     contactlessPref,
     deliveryAddress,

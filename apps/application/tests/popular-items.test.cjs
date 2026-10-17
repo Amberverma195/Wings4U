@@ -81,6 +81,15 @@ test('stale menu data cannot be added while the order context is refreshing', as
   await mount({ updating: true });
   expect(cta('Wing Combo').props.disabled).toBe(true);
   expect(strings()).toContain('Updating…');
-  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'See all menu items' }).props.onPress());
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Browse menu' }).props.onPress());
   expect(onSeeAll).toHaveBeenCalledTimes(1);
+});
+
+test('Wing Combo uses its bundled food photo if the menu image fails to load', async () => {
+  await mount();
+  const photo = () => renderer.root.findAllByType('Image')[2];
+  expect(photo().props.source).toEqual({ uri: combo.image_url });
+  await act(async () => photo().props.onError());
+  expect(photo().props.source).toEqual(require('../assets/categories/combos.png'));
+  expect(photo().props.contentFit).toBe('contain');
 });

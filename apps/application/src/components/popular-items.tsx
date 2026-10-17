@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
 import { Image } from 'expo-image';
 import { ArrowRight, ShoppingBag, SlidersHorizontal } from 'lucide-react-native';
 import { categoryImage } from '../lib/category-images';
@@ -14,12 +15,20 @@ type Props = {
   onSeeAll: () => void;
 };
 
+function PopularItemImage({ item, category }: { item: MenuItem; category: MenuCategory }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const remote = Boolean(item.image_url && item.image_url !== failedUrl);
+  return <Image source={remote ? { uri: item.image_url! } : categoryImage(category)}
+    onError={() => { if (remote) setFailedUrl(item.image_url); }}
+    style={styles.image} contentFit={remote ? 'cover' : 'contain'} accessible={false} />;
+}
+
 export function PopularItems({ categories, cartItems, fulfillmentType, updating, onChoose, onSeeAll }: Props) {
   return <View style={styles.section}>
     <View style={styles.header}>
       <Text style={styles.heading}>Popular Items</Text>
-      <Pressable onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all menu items" hitSlop={8} style={styles.seeAll}>
-        <Text style={styles.seeAllText}>See All</Text><ArrowRight size={12} color="#E53C3C" />
+      <Pressable onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="Browse menu" hitSlop={8} style={styles.seeAll}>
+        <Text style={styles.seeAllText}>Browse Menu</Text><ArrowRight size={12} color="#E53C3C" />
       </Pressable>
     </View>
     <View style={styles.cards}>
@@ -30,8 +39,7 @@ export function PopularItems({ categories, cartItems, fulfillmentType, updating,
         const price = item ? `${item.weight_options?.length || item.combo_options?.length ? 'From ' : ''}$${(item.base_price_cents / 100).toFixed(2)}` : null;
         return <View key={categorySlug} style={styles.card}>
           <View style={styles.photo}>
-            {item && category ? <Image source={item.image_url ? { uri: item.image_url } : categoryImage(category)}
-              style={styles.image} contentFit={item.image_url ? 'cover' : 'contain'} accessible={false} /> :
+            {item && category ? <PopularItemImage item={item} category={category} /> :
               <Text style={styles.placeholder}>🍗</Text>}
           </View>
           <View style={styles.content}>
