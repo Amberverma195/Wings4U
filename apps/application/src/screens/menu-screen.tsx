@@ -352,6 +352,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           </View>}
           <View style={[
             styles.headerContent,
+            cinematic && styles.homeHeaderContent,
             {
               paddingTop: cinematic ? insets.top + 12 : 12,
               paddingLeft: Math.max(compactHeader ? 16 : 20, insets.left),
@@ -738,6 +739,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 4,
   },
+  homeHeaderContent: { gap: 10, paddingBottom: 16 },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -941,7 +943,7 @@ const styles = StyleSheet.create({
   categoriesContent: {
     paddingRight: 12,
   },
-  homeCategoriesScroll: { marginTop: 6, marginBottom: 2 },
+  homeCategoriesScroll: { marginTop: 20, marginBottom: 18 },
   homeCategoryIcon: { borderRadius: 13, marginBottom: 3, padding: 2 },
   homeCategoryText: { fontSize: 10 },
   homeCategoryUnderline: { marginTop: 2 },
