@@ -37,6 +37,7 @@ const { MenuScreen } = require('../src/screens/menu-screen');
 const { FOOTER_PROMOTIONAL_BANNERS: banners } = require('../src/lib/footer-promotional-banners');
 const { useMenu } = require('../src/hooks/use-menu');
 const { Alert } = require('react-native');
+const { categoryImageForSlug } = require('../src/lib/category-images');
 const slugs = banners.slice(0, 6).map(banner => banner.itemSlug);
 const item = slug => ({ id: `backend-${slug}`, slug, name: slug, is_available: true,
   stock_status: 'NORMAL', allowed_fulfillment_type: 'BOTH', base_price_cents: 999, modifier_groups: [] });
@@ -221,4 +222,16 @@ test('Home search opens Menu search results without restoring the old Home produ
   mockParams = mockRouter.navigate.mock.calls[0][0].params;
   await mount(false);
   expect(shownNames()).toEqual(expect.arrayContaining(['classic-burger', 'cheese-burger']));
+});
+
+test('Menu cards use the local category image fallback and keep the product action visually prominent', async () => {
+  mockMenuResult = { ...mockMenuResult, menu: { categories: [{ id: 'wings', slug: 'wings', name: 'Wings', sort_order: 1,
+    items: [{ ...item('offline-wings'), image_url: null, builder_type: 'WINGS' }] }] } };
+  await mount(false);
+  const productImage = renderer.root.findAllByType('Image').find(node => node.props.contentFit === 'contain');
+  expect(productImage.props.source).toBe(categoryImageForSlug('wings'));
+  expect(productImage.props.contentFit).toBe('contain');
+  expect(shownNames()).toContain('Customize');
+  const productCard = renderer.root.findAllByType('TouchableOpacity').find(node => Array.isArray(node.props.style) && node.props.style[0]?.borderColor === '#F0E2D9');
+  expect(productCard).toBeDefined();
 });

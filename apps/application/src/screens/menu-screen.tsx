@@ -23,7 +23,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Clock, AlertCircle, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
+import { AlertCircle, CarFront, Bike, Search, SlidersHorizontal, X, Check } from 'lucide-react-native';
 import { useMenu } from '../hooks/use-menu';
 import { useCart } from '../context/cart';
 import { useOrderSetup } from '../context/order-setup';
@@ -36,7 +36,7 @@ import { TrendingFlavours } from '../components/trending-flavours';
 import type { CartItem, MenuItem } from '../lib/types';
 import { needsCustomization } from '../lib/popular-items';
 import { filterMenuCategories } from '../lib/menu-search';
-import { categoryImage, categoryLabel } from '../lib/category-images';
+import { categoryImage, categoryImageForSlug, categoryLabel } from '../lib/category-images';
 import { prepareMenuCategories, menuCardDetails, categoryNote, resolveCategorySlug } from '../lib/menu-display';
 import type { PromotionalBanner } from '../lib/promotional-banners';
 import { FOOTER_PROMOTIONAL_BANNERS, resolveFooterPromotion } from '../lib/footer-promotional-banners';
@@ -107,7 +107,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const compactHeader = width < 380;
   const brandFontSize = Math.min(compactHeader ? 30 : 34,
     (width - (compactHeader ? 32 + 172 : 40 + 184) - 6) / 4.8);
-  const categoryTileSize = cinematic ? 50 : Math.max(44, Math.min(56, (width - 32) / 7 - 4));
+  const categoryTileSize = cinematic ? 50 : Math.max(52, Math.min(60, (width - 32) / 6 - 3));
   const headerHeight = Math.max(156, Math.min(width * 0.39, 196)) + insets.top;
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(headerHeight);
   const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
@@ -115,7 +115,8 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const orderSetup = useOrderSetup();
   const fulfillmentType = cart.fulfillmentType;
   const fulfillmentProgress = useSharedValue(fulfillmentType === 'DELIVERY' ? 1 : 0);
-  const fulfillmentOptionWidth = ((compactHeader ? 172 : 184) - 6) / 2;
+  const fulfillmentSwitchWidth = cinematic ? (compactHeader ? 172 : 184) : Math.min(208, width - 32);
+  const fulfillmentOptionWidth = (fulfillmentSwitchWidth - 6) / 2;
 
   useEffect(() => {
     fulfillmentProgress.value = withTiming(fulfillmentType === 'DELIVERY' ? 1 : 0, {
@@ -305,7 +306,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+    <SafeAreaView style={[styles.container, !cinematic && styles.menuContainer]} edges={['left', 'right']}>
       {focused && <StatusBar style={cinematic && !headerScrolledAway ? 'light' : 'dark'} />}
       {!cinematic && <TabHeader title="Menu" />}
       <ScrollView
@@ -323,7 +324,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         }
       >
         {/* Header Section */}
-        <View style={[styles.header, !cinematic && styles.compactHeader, cinematic && { minHeight: headerHeight }]}
+        <View style={[styles.header, !cinematic && styles.compactHeader, !cinematic && styles.menuHeader, cinematic && { minHeight: headerHeight }]}
           onLayout={({ nativeEvent }) => setMeasuredHeaderHeight(nativeEvent.layout.height)}>
           {cinematic && <View
             style={StyleSheet.absoluteFill}
@@ -353,13 +354,14 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           <View style={[
             styles.headerContent,
             cinematic && styles.homeHeaderContent,
+            !cinematic && styles.menuHeaderContent,
             {
               paddingTop: cinematic ? insets.top + 12 : 12,
               paddingLeft: Math.max(compactHeader ? 16 : 20, insets.left),
               paddingRight: Math.max(compactHeader ? 16 : 20, insets.right),
             },
           ]}>
-            <View style={styles.headerRow}>
+            <View style={[styles.headerRow, !cinematic && styles.menuHeaderRow]}>
               {cinematic && <View style={styles.branding}>
                 <View style={styles.wordmark} accessible accessibilityRole="header" accessibilityLabel="Wings4U">
                   <Text style={[styles.title, { fontSize: brandFontSize }]} accessible={false}>W</Text>
@@ -377,7 +379,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                 </Text>
               </View>}
             <View
-              style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact]}
+              style={[styles.fulfillmentSwitch, compactHeader && styles.fulfillmentSwitchCompact, !cinematic && styles.menuFulfillmentSwitch, { width: fulfillmentSwitchWidth }]}
               accessibilityRole="radiogroup"
               accessibilityLabel="Order type"
             >
@@ -423,12 +425,12 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
               })}
             </View>
             </View>
-            <OrderSetupSummary light={cinematic} />
+            {!cinematic ? <View style={styles.menuOrderSummary}><OrderSetupSummary /></View> : <OrderSetupSummary light />}
           </View>
           {/* Search and menu filters */}
-          <View style={styles.searchSection}>
+          <View style={[styles.searchSection, !cinematic && styles.menuSearchSection]}>
             <View style={styles.searchRow}>
-              <View style={styles.searchField}>
+              <View style={[styles.searchField, !cinematic && styles.menuSearchField]}>
                 <Search size={18} color="#555" />
                 <TextInput
                   style={styles.searchInput}
@@ -453,7 +455,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                 </TouchableOpacity>}
               </View>
               <TouchableOpacity
-                style={[styles.filterButton, availableOnly && styles.filterButtonActive]}
+                style={[styles.filterButton, !cinematic && styles.menuFilterButton, availableOnly && styles.filterButtonActive]}
                 onPress={() => setFiltersVisible(value => !value)}
                 accessibilityRole="button"
                 accessibilityLabel="Menu filters"
@@ -493,7 +495,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           onLayout={(event) => {
             productSectionY.current = event.nativeEvent.layout.y;
           }}
-          style={[styles.categoriesScroll, cinematic && styles.homeCategoriesScroll]}
+          style={[styles.categoriesScroll, cinematic && styles.homeCategoriesScroll, !cinematic && styles.menuCategoriesScroll]}
           contentContainerStyle={styles.categoriesContent}
         >
           {sortedCategories.map((cat) => {
@@ -501,7 +503,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
             return (
               <TouchableOpacity
                 key={cat.id}
-                style={[styles.categoryCard, { width: categoryTileSize }]}
+                style={[styles.categoryCard, !cinematic && styles.menuCategoryCard, { width: categoryTileSize }]}
                 onPress={() => handleCategoryPress(cat.slug)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
@@ -510,21 +512,23 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                 <View style={[
                   styles.categoryIcon,
                   cinematic && styles.homeCategoryIcon,
+                  !cinematic && styles.menuCategoryIcon,
                   { width: categoryTileSize, height: categoryTileSize },
                   isActive && styles.categoryIconActive,
+                  !cinematic && isActive && styles.menuCategoryIconActive,
                 ]}>
                   <Image source={categoryImage(cat)} style={styles.categoryPhoto}
                     contentFit="contain" accessible={false} />
                 </View>
                 <Text
-                  style={[styles.categoryText, cinematic && styles.homeCategoryText, isActive && styles.categoryTextActive]}
+                  style={[styles.categoryText, cinematic && styles.homeCategoryText, !cinematic && styles.menuCategoryText, isActive && styles.categoryTextActive]}
                   numberOfLines={2}
                   adjustsFontSizeToFit
                   minimumFontScale={0.8}
                 >
                   {categoryLabel(cat)}
                 </Text>
-                <View style={[styles.categoryUnderline, cinematic && styles.homeCategoryUnderline, isActive && styles.categoryUnderlineActive]} />
+                <View style={[styles.categoryUnderline, cinematic && styles.homeCategoryUnderline, !cinematic && styles.menuCategoryUnderline, isActive && styles.categoryUnderlineActive]} />
               </TouchableOpacity>
             );
           })}
@@ -534,7 +538,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         {!cinematic && displayedCategories.map(activeCategory => (
           <React.Fragment key={activeCategory.id}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{activeCategory.name}</Text>
+              <View style={styles.sectionHeadingCopy}><Text style={styles.sectionKicker}>MENU</Text><Text style={styles.sectionTitle}>{activeCategory.name}</Text></View>
               <Text style={styles.itemCount}>
                 {activeCategory.items.length} item{activeCategory.items.length !== 1 ? 's' : ''}
               </Text>
@@ -553,14 +557,16 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                 </Text>
               </View>
             ) : (
-              activeCategory.items.map((item) => (
-                <MenuItemCard
-                  key={item.id}
-                  item={item}
-                  categorySlug={activeCategory.slug}
-                  onPress={() => setSelectedItem(item)}
-                />
-              ))
+              <View style={styles.itemGrid}>
+                {activeCategory.items.map((item) => (
+                  <MenuItemCard
+                    key={item.id}
+                    item={item}
+                    categorySlug={activeCategory.slug}
+                    onPress={() => setSelectedItem(item)}
+                  />
+                ))}
+              </View>
             )}
           </React.Fragment>
         ))}
@@ -599,7 +605,6 @@ function MenuItemCard({
   categorySlug: string;
   onPress: () => void;
 }) {
-  const emoji = emojiForCategorySlug(categorySlug);
   const isUnavailable = item.stock_status === 'UNAVAILABLE';
   const isLowStock = item.stock_status === 'LOW_STOCK';
   const hasImage = Boolean(item.image_url);
@@ -623,7 +628,7 @@ function MenuItemCard({
       activeOpacity={0.7}
       onPress={onPress}
     >
-      {/* Image or emoji placeholder */}
+      {/* Catalog image, with the existing local category image as the offline fallback. */}
       {hasImage ? (
         <Image
           source={{ uri: item.image_url! }}
@@ -633,7 +638,8 @@ function MenuItemCard({
         />
       ) : (
         <View style={styles.itemImagePlaceholder}>
-          <Text style={styles.itemPlaceholderEmoji}>{emoji}</Text>
+          <Image source={categoryImageForSlug(categorySlug)} style={styles.itemImage}
+            contentFit="contain" accessible={false} />
         </View>
       )}
 
@@ -656,11 +662,8 @@ function MenuItemCard({
         ) : null}
 
         <View style={styles.itemMeta}>
-          <View style={styles.metaRow}>
-            <Clock size={14} color="#999" />
-            <Text style={styles.metaText}>
-              {item.builder_type ? 'Customize' : 'Quick add'}
-            </Text>
+          <View style={styles.itemAction}>
+            <Text style={styles.itemActionText}>{item.builder_type ? 'Customize' : 'Add to cart'}</Text>
           </View>
           <Text style={[styles.itemPrice, isUnavailable && styles.itemPriceUnavailable]}>
             {isUnavailable ? 'UNAVAILABLE' : priceLabel}
@@ -680,6 +683,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAFAFA',
   },
+  menuContainer: { backgroundColor: '#FFF9F5' },
 
   /* Loading */
   loadingWrap: {
@@ -733,6 +737,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   compactHeader: { backgroundColor: '#FAFAFA' },
+  menuHeader: { backgroundColor: '#FFF7F1', borderBottomWidth: 1, borderBottomColor: '#F0E3DA' },
   filterLabelDark: { color: '#666' },
   headerContent: {
     flex: 1,
@@ -740,12 +745,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   homeHeaderContent: { gap: 10, paddingBottom: 16 },
+  menuHeaderContent: { gap: 9, paddingBottom: 14 },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 6,
   },
+  menuHeaderRow: { justifyContent: 'flex-start' },
   branding: {
     flex: 1,
     gap: 3,
@@ -775,6 +782,7 @@ const styles = StyleSheet.create({
   fulfillmentSwitchCompact: {
     width: 172,
   },
+  menuFulfillmentSwitch: { backgroundColor: '#F4E8E1', borderWidth: 1, borderColor: '#EBD8CC' },
   fulfillmentOption: {
     flex: 1,
     flexDirection: 'row',
@@ -802,6 +810,7 @@ const styles = StyleSheet.create({
   fulfillmentLabelCompact: {
     fontSize: 11,
   },
+  menuOrderSummary: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#F0E3DA', borderRadius: 14, paddingHorizontal: 11, shadowColor: '#533229', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.035, shadowRadius: 6, elevation: 1 },
   headerIconCompact: {
     width: 36,
     height: 36,
@@ -880,6 +889,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     zIndex: 1,
   },
+  menuSearchSection: { marginHorizontal: 20, paddingBottom: 14 },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   searchField: {
     flex: 1,
@@ -896,6 +906,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  menuSearchField: { borderWidth: 1, borderColor: '#EEDFD5', shadowOpacity: 0.035, elevation: 1 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 40, fontSize: 12, color: '#222' },
   clearSearch: { minWidth: 30, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   filterButton: {
@@ -903,6 +914,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', elevation: 3,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8,
   },
+  menuFilterButton: { borderWidth: 1, borderColor: '#EEDFD5', shadowOpacity: 0.035, elevation: 1 },
   filterButtonActive: { backgroundColor: '#FF4D4D' },
   filtersPanel: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 12 },
   filterLabel: { fontSize: 13, color: '#E8E0DD' },
@@ -920,18 +932,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 15,
+    marginTop: 14,
+    marginBottom: 13,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#30241F',
   },
+  sectionHeadingCopy: { gap: 2 },
+  sectionKicker: { color: '#E53C3C', fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
   itemCount: {
-    color: '#999',
-    fontWeight: '600',
-    fontSize: 13,
+    color: '#876F63',
+    fontWeight: '700',
+    fontSize: 12,
+    backgroundColor: '#F7EAE2',
+    borderRadius: 12,
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
 
   /* Categories strip */
@@ -943,6 +962,7 @@ const styles = StyleSheet.create({
   categoriesContent: {
     paddingRight: 12,
   },
+  menuCategoriesScroll: { paddingLeft: 20, marginTop: 15, marginBottom: 8 },
   homeCategoriesScroll: { marginTop: 20, marginBottom: 18 },
   homeCategoryIcon: { borderRadius: 13, marginBottom: 3, padding: 2 },
   homeCategoryText: { fontSize: 10 },
@@ -951,6 +971,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 4,
   },
+  menuCategoryCard: { marginRight: 8 },
   categoryIcon: {
     backgroundColor: '#F2F2F2',
     borderRadius: 14,
@@ -962,6 +983,8 @@ const styles = StyleSheet.create({
   categoryIconActive: {
     backgroundColor: '#FF4D4D',
   },
+  menuCategoryIcon: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EEDFD5', borderRadius: 18, padding: 5, marginBottom: 6, shadowColor: '#533229', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 5, elevation: 1 },
+  menuCategoryIconActive: { backgroundColor: '#FFF0EA', borderColor: '#E53C3C' },
   categoryPhoto: {
     width: '100%',
     height: '100%',
@@ -979,6 +1002,7 @@ const styles = StyleSheet.create({
     color: '#FF4D4D',
     fontWeight: '700',
   },
+  menuCategoryText: { minHeight: 28, color: '#6F5A4F', fontSize: 10, lineHeight: 14, fontWeight: '700' },
   categoryUnderline: {
     width: 20,
     height: 2,
@@ -987,6 +1011,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   categoryUnderlineActive: { backgroundColor: '#FF4D4D' },
+  menuCategoryUnderline: { width: 28, height: 3, marginTop: 5 },
   categoryNote: {
     marginHorizontal: 20,
     marginBottom: 12,
@@ -1021,33 +1046,41 @@ const styles = StyleSheet.create({
   },
 
   /* Item cards */
-  itemCard: {
+  itemGrid: {
     marginHorizontal: 20,
-    marginBottom: 15,
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 12,
     flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 12,
+  },
+  itemCard: {
+    width: '48%',
+    minHeight: 250,
+    backgroundColor: '#FFFEFC',
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#F0E2D9',
+    shadowColor: '#533229',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.045,
+    shadowRadius: 8,
+    elevation: 2,
   },
   itemCardUnavailable: {
     opacity: 0.5,
   },
   itemImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 16,
-    backgroundColor: '#F5F5F5',
+    width: '100%',
+    height: 112,
+    borderRadius: 12,
+    backgroundColor: '#F8EEE8',
   },
   itemImagePlaceholder: {
-    width: 100,
-    height: 100,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 16,
+    width: '100%',
+    height: 112,
+    backgroundColor: '#F8EEE8',
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1056,8 +1089,8 @@ const styles = StyleSheet.create({
   },
   itemDetails: {
     flex: 1,
-    marginLeft: 15,
-    justifyContent: 'center',
+    marginTop: 8,
+    justifyContent: 'space-between',
   },
   itemNameRow: {
     flexDirection: 'row',
@@ -1067,8 +1100,8 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    fontWeight: '800',
+    color: '#30241F',
     flexShrink: 1,
   },
   lowStockBadge: {
@@ -1084,16 +1117,16 @@ const styles = StyleSheet.create({
   },
   itemDesc: {
     fontSize: 12,
-    color: '#888',
+    color: '#806F66',
     marginTop: 4,
     marginBottom: 10,
     lineHeight: 16,
   },
   itemMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+    marginTop: 8,
   },
   metaRow: {
     flexDirection: 'row',
@@ -1105,10 +1138,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 4,
   },
+  itemAction: { backgroundColor: '#E53C3C', borderRadius: 10, paddingHorizontal: 9, minHeight: 30, justifyContent: 'center', alignItems: 'center' },
+  itemActionText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
   itemPrice: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
-    color: '#FF4D4D',
+    color: '#E53C3C',
   },
   itemPriceUnavailable: {
     fontSize: 11,

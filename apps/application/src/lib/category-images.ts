@@ -23,11 +23,15 @@ const photos: Record<string, ImageSource> = {
   sauces: require('../../assets/categories/sauces.png'),
 };
 
+export function categoryImageForSlug(slug: string): ImageSource {
+  return photos[slug] ?? photos['wing-combos'];
+}
+
 export function categoryImage(category: MenuCategory): ImageSource {
   const photo = photos[category.slug];
   if (photo) return photo;
   const menuPhoto = category.items.find(item => item.image_url)?.image_url;
-  return menuPhoto ? { uri: menuPhoto } : photos['wing-combos'];
+  return menuPhoto ? { uri: menuPhoto } : categoryImageForSlug(category.slug);
 }
 
 export function categoryLabel(category: MenuCategory): string {
