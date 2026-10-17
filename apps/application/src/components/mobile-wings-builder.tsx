@@ -360,18 +360,13 @@ export function WingsBuilderMobile({
   }, [extraGroupSelections, selectedSaladGroup]);
 
   const resolvedSaladItem = useMemo(() => {
-    if (!usesChildSaladCustomization) return null;
-    if (selectedSaladOption) {
-      return findSaladMenuItemForSelection(saladMenuItems, selectedSaladOption.name);
+    if (!usesChildSaladCustomization || !selectedSaladOption) return null;
+    const saladItem = findSaladMenuItemForSelection(saladMenuItems, selectedSaladOption.name);
+    if (!saladItem || !saladItemSupportsSize(saladItem, WINGS_SPECIAL_SALAD_SIZE_LABEL)) {
+      return null;
     }
-    if (!editingSaladCustomization) return null;
-    const editingSaladItem =
-      saladMenuItems.find((saladItem) => saladItem.id === editingSaladCustomization.salad_menu_item_id) ??
-      null;
-    return editingSaladItem && saladItemSupportsSize(editingSaladItem, WINGS_SPECIAL_SALAD_SIZE_LABEL)
-      ? editingSaladItem
-      : null;
-  }, [editingSaladCustomization, saladMenuItems, selectedSaladOption, usesChildSaladCustomization]);
+    return saladItem;
+  }, [saladMenuItems, selectedSaladOption, usesChildSaladCustomization]);
 
   const activeRemovableIngredients = useMemo(
     () =>
@@ -445,12 +440,18 @@ export function WingsBuilderMobile({
     }
   }, [selectedWeightId, weightOptions]);
 
-  /* Resize flavour slots when required count changes */
+  /* Resize and prune flavour slots when required count changes or catalogue updates */
   useEffect(() => {
     setFlavourSelections((prev) =>
-      Array.from({ length: requiredFlavourCount }, (_, i) => prev[i] ?? ''),
+      Array.from({ length: requiredFlavourCount }, (_, i) => {
+        const id = prev[i] ?? '';
+        if (id && flavours.length > 0 && !flavours.some((f) => f.id === id)) {
+          return '';
+        }
+        return id;
+      }),
     );
-  }, [requiredFlavourCount]);
+  }, [requiredFlavourCount, flavours]);
 
   const flavourMap = useMemo(
     () => new Map(flavours.map((f) => [f.id, f])),
@@ -517,11 +518,13 @@ export function WingsBuilderMobile({
     }
   }, [effectiveSaucedCount, saucingMethod, sideFlavourOptions]);
 
-  /* Clear plain extra flavour if selected */
+  /* Clear plain or invalid extra flavour if selected */
   useEffect(() => {
     if (!extraFlavourEnabled || !extraFlavourId) return;
     const picked = flavours.find((f) => f.id === extraFlavourId);
-    if (picked?.is_plain) setExtraFlavourId('');
+    if (!picked || picked.is_plain || picked.heat_level === 'PLAIN') {
+      setExtraFlavourId('');
+    }
   }, [extraFlavourEnabled, extraFlavourId, flavours]);
 
   /* Salad edit hydration & change detection */
@@ -544,10 +547,19 @@ export function WingsBuilderMobile({
     ) {
       const nextSelections: Record<string, string[]> = {};
       for (const group of resolvedSaladItem?.modifier_groups ?? []) {
+        if (group.context_key !== 'addon') continue;
         const picks = editingSaladCustomization.modifier_selections
-          .filter((selection) =>
-            group.options.some((option) => option.id === selection.modifier_option_id),
-          )
+          .filter((selection) => {
+            const matchesCartSelection = editingLine.modifier_selections?.some(
+              (sel) =>
+                sel.modifier_option_id === selection.modifier_option_id &&
+                (sel.group_name === group.name || sel.group_name === group.display_label),
+            );
+            const matchesGroupOption = group.options.some(
+              (option) => option.id === selection.modifier_option_id,
+            );
+            return matchesCartSelection || matchesGroupOption;
+          })
           .map((selection) => selection.modifier_option_id);
         if (picks.length > 0) {
           nextSelections[group.id] = picks;
@@ -600,7 +612,7 @@ export function WingsBuilderMobile({
         const picks = prev[group.id] ?? [];
         const filtered = picks.filter((optionId) => {
           const option = group.options.find((candidate) => candidate.id === optionId);
-          if (!option) return false;
+          if (!option) return true; // Retain invalid option IDs so validate() can enforce valid catalogue membership
           const sizeScope = inferOptionSizeScope(option.name, normalizedSaladSizeNames);
           return !sizeScope || selectedSaladSizeNames.includes(sizeScope);
         });
@@ -625,12 +637,30 @@ export function WingsBuilderMobile({
         .filter((id): id is string => Boolean(id));
       if (picks.length > 0) next[group.id] = picks;
     }
+
+    if (usesChildSaladCustomization && selectedSaladGroup) {
+      const currentSaladPicks = next[selectedSaladGroup.id] ?? [];
+      if (currentSaladPicks.length === 0 && editingSaladCustomization) {
+        const matchingSalad = selectedSaladGroup.options.find((opt) => {
+          const item = findSaladMenuItemForSelection(saladMenuItems, opt.name);
+          return (
+            item &&
+            item.id === editingSaladCustomization.salad_menu_item_id &&
+            saladItemSupportsSize(item, WINGS_SPECIAL_SALAD_SIZE_LABEL)
+          );
+        });
+        if (matchingSalad) {
+          next[selectedSaladGroup.id] = [matchingSalad.id];
+        }
+      }
+    }
+
     setExtraGroupSelections((prev) => {
       if (Object.keys(prev).length > 0) return prev;
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOption]);
+  }, [selectedOption, selectedSaladGroup]);
 
   /* Price */
   const extraGroupsTotalDelta = useMemo(() => {
@@ -677,7 +707,12 @@ export function WingsBuilderMobile({
     if (!availability.available) return 'availability';
     if (!selectedOption) return 'quantity';
     if (!wingType || !preparation) return 'preparation';
-    if (flavourSelections.some((s) => !s) || (requiredFlavourCount > 0 && flavours.length === 0)) {
+    if (
+      loading ||
+      Boolean(error) ||
+      (requiredFlavourCount > 0 && flavours.length === 0) ||
+      flavourSelections.some((s) => !s || !flavours.some((f) => f.id === s))
+    ) {
       return 'flavours';
     }
     if (!allMainFlavoursPlain) {
@@ -699,15 +734,37 @@ export function WingsBuilderMobile({
     if (tellUsHowSaucing && saucingMethod === 'TELL_US_HOW' && !instructions.trim()) {
       return 'instructions';
     }
-    if (extraFlavourEnabled && !extraFlavourId) return 'extra-flavour';
+    if (
+      extraFlavourEnabled &&
+      (!extraFlavourId || !flavours.some((f) => f.id === extraFlavourId && !f.is_plain && f.heat_level !== 'PLAIN'))
+    ) {
+      return 'extra-flavour';
+    }
 
-    if (usesChildSaladCustomization && selectedSaladGroup) {
+    if (usesChildSaladCustomization) {
+      if (!selectedSaladGroup || selectedSaladGroup.options.length === 0) {
+        return 'salad';
+      }
       const saladPicks = extraGroupSelections[selectedSaladGroup.id] ?? [];
       if (saladPicks.length === 0) return 'salad';
+      const pickedOptionId = saladPicks[0];
+      const selectedOption = selectedSaladGroup.options.find((opt) => opt.id === pickedOptionId);
+      if (!selectedOption) return 'salad';
+      if (!resolvedSaladItem) return 'salad';
+      if (!saladItemSupportsSize(resolvedSaladItem, WINGS_SPECIAL_SALAD_SIZE_LABEL)) {
+        return 'salad';
+      }
+
       for (const group of saladAddonGroups) {
         const picks = saladModifierSelections[group.id] ?? [];
+        if (picks.some((optId) => !group.options.some((o) => o.id === optId))) {
+          return `salad-addon-${group.id}`;
+        }
         const min = group.is_required ? Math.max(group.min_select, 1) : group.min_select;
         if (picks.length < min) return `salad-addon-${group.id}`;
+        if (group.max_select && picks.length > group.max_select) {
+          return `salad-addon-${group.id}`;
+        }
       }
     }
 
@@ -721,22 +778,26 @@ export function WingsBuilderMobile({
     allMainFlavoursPlain,
     availability.available,
     effectiveSaucedCount,
+    error,
     extraFlavourEnabled,
     extraFlavourId,
     extraGroupSelections,
     extraGroupsMinusSalad,
     flavourSelections,
-    flavours.length,
+    flavours,
     hasValidSideFlavourSlot,
     instructions,
+    loading,
     partyFiveSpecial,
     preparation,
     requiredFlavourCount,
+    resolvedSaladItem,
     saladAddonGroups,
     saladModifierSelections,
     saucingMethod,
     selectedOption,
     selectedSaladGroup,
+    selectedSaladOption,
     tellUsHowSaucing,
     threeFlavourTellUsHow,
     usesChildSaladCustomization,
@@ -759,6 +820,7 @@ export function WingsBuilderMobile({
       return;
     }
     if (!selectedOption || !wingType || !preparation) return;
+    if (usesChildSaladCustomization && !resolvedSaladItem) return;
 
     const resolvedSaucingMethod = allMainFlavoursPlain
       ? null
@@ -1151,22 +1213,38 @@ export function WingsBuilderMobile({
       ) : null}
 
       {/* ---- Wings-4-U Special: Salad selection ---- */}
-      {usesChildSaladCustomization && selectedSaladGroup ? (
+      {usesChildSaladCustomization ? (
         <StepCard
           title="Salad selection"
-          subtitle="Choose a salad included with your special."
+          subtitle={
+            selectedSaladGroup && selectedSaladGroup.options.length > 0
+              ? 'Choose a salad included with your special.'
+              : 'Salad options are currently unavailable.'
+          }
           invalid={submitAttempted && validationError === 'salad'}
-          inlineError={submitAttempted && validationError === 'salad' ? BUILDER_VALIDATION_MESSAGE : null}
+          inlineError={
+            submitAttempted && validationError === 'salad'
+              ? !selectedSaladGroup || selectedSaladGroup.options.length === 0
+                ? 'Salad options are currently unavailable.'
+                : 'Please select a salad for your special.'
+              : null
+          }
         >
-          <OptionPills
-            options={selectedSaladGroup.options.map((opt) => ({
-              value: opt.id,
-              label: opt.name,
-              priceNote: opt.price_delta_cents > 0 ? `+${formatCents(opt.price_delta_cents)}` : undefined,
-            }))}
-            value={saladPickerPicks[0] ?? null}
-            onChange={(optId) => toggleExtraOption(selectedSaladGroup, optId)}
-          />
+          {selectedSaladGroup && selectedSaladGroup.options.length > 0 ? (
+            <OptionPills
+              options={selectedSaladGroup.options.map((opt) => ({
+                value: opt.id,
+                label: opt.name,
+                priceNote: opt.price_delta_cents > 0 ? `+${formatCents(opt.price_delta_cents)}` : undefined,
+              }))}
+              value={saladPickerPicks[0] ?? null}
+              onChange={(optId) => toggleExtraOption(selectedSaladGroup, optId)}
+            />
+          ) : (
+            <Text style={styles.inlineCopy}>
+              Salad customization is required for Wings-4-U Special, but no eligible salads supporting the Small size were found.
+            </Text>
+          )}
         </StepCard>
       ) : null}
 

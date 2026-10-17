@@ -54,6 +54,11 @@ import type {
   CartQuoteResponse,
   CheckoutResponse,
 } from "../src/lib/types";
+import {
+  calculateCartSubtotal,
+  calculateDeliveryTipCents,
+  getCartItemUnitPrice,
+} from "../src/lib/wing-builder-logic";
 
 const FIXED_DELIVERY_CITY = "London";
 const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
@@ -90,13 +95,7 @@ const CANADIAN_POSTAL_CODE_RE =
   /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i;
 
 function cartItemUnitCents(item: CartItem): number {
-  return (
-    item.base_price_cents +
-    item.modifier_selections.reduce(
-      (sum, selection) => sum + selection.price_delta_cents,
-      0,
-    )
-  );
+  return getCartItemUnitPrice(item);
 }
 
 function cartItemDetails(item: CartItem): string[] {
@@ -191,19 +190,15 @@ function CheckoutScreenContent() {
   } | null>(null);
 
   const subtotal = useMemo(
-    () =>
-      cart.items.reduce(
-        (sum, item) => sum + cartItemUnitCents(item) * item.quantity,
-        0,
-      ),
+    () => calculateCartSubtotal(cart.items),
     [cart.items],
   );
 
   const subtotalForTip = quote?.item_subtotal_cents ?? subtotal;
-  const tipCents = useMemo(() => {
-    if (cart.driverTipPercent === "none") return 0;
-    return Math.round((subtotalForTip * cart.driverTipPercent) / 100);
-  }, [cart.driverTipPercent, subtotalForTip]);
+  const tipCents = useMemo(
+    () => calculateDeliveryTipCents(subtotalForTip, cart.driverTipPercent, cart.fulfillmentType),
+    [cart.driverTipPercent, cart.fulfillmentType, subtotalForTip],
+  );
 
   const applyCoupon = (code: string) => {
     setPromoNotice(null);

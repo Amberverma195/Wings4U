@@ -13,7 +13,10 @@
 
 import type {
   CartBuilderPayload,
+  CartItem,
   FulfillmentType,
+  ItemCustomizationPayload,
+  LunchSpecialPayload,
   MenuItem,
   ModifierGroup,
   WingFlavour,
@@ -385,13 +388,78 @@ export function isComboBuilderItem(item: MenuItem): boolean {
 
 export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
   if (!payload) return 0;
+  if (payload.builder_type === "LUNCH_SPECIAL") {
+    const addons = (payload as LunchSpecialPayload).child_addons;
+    if (!Array.isArray(addons)) return 0;
+    return addons.reduce((sum, addon) => sum + (addon?.price_delta_cents ?? 0), 0);
+  }
+  if (payload.builder_type === "ITEM_CUSTOMIZATION") {
+    const bundle = (payload as ItemCustomizationPayload).side_pop_bundle;
+    return bundle?.price_cents ?? 0;
+  }
   if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
     return (
       (payload.extra_flavour ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
       (payload.wing_type === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0)
     );
   }
-  return 0;
+  return (payload as { extra_flavour?: unknown }).extra_flavour
+    ? EXTRA_FLAVOUR_PRICE_CENTS
+    : 0;
+}
+
+/**
+ * Shared unit price for a cart item including modifier selections and all builder price deltas
+ * (boneless wing upcharge, extra flavour upcharge, lunch special add-ons, item customization bundles).
+ */
+export function getCartItemUnitPrice(
+  item: Pick<CartItem, "base_price_cents" | "modifier_selections" | "builder_payload">,
+): number {
+  const modifiers = item.modifier_selections.reduce(
+    (sum, selection) => sum + selection.price_delta_cents,
+    0,
+  );
+  return item.base_price_cents + modifiers + getBuilderPriceDelta(item.builder_payload);
+}
+
+/**
+ * Shared line subtotal for a cart item: unit price * quantity.
+ */
+export function getCartItemSubtotal(
+  item: Pick<CartItem, "base_price_cents" | "modifier_selections" | "builder_payload" | "quantity">,
+): number {
+  return getCartItemUnitPrice(item) * item.quantity;
+}
+
+/**
+ * Shared cart subtotal: sum of getCartItemSubtotal for all items in the cart.
+ */
+export function calculateCartSubtotal(
+  items: Array<Pick<CartItem, "base_price_cents" | "modifier_selections" | "builder_payload" | "quantity">>,
+): number {
+  return items.reduce((sum, item) => sum + getCartItemSubtotal(item), 0);
+}
+
+/**
+ * Shared percentage-based delivery tip calculation with standard mathematical rounding.
+ * Returns 0 if not DELIVERY or driverTipPercent is 'none'.
+ */
+export function calculateDeliveryTipCents(
+  subtotalCents: number,
+  driverTipPercent: "none" | 10 | 15 | 20 | number | string,
+  fulfillmentType?: string,
+): number {
+  if (fulfillmentType && fulfillmentType !== "DELIVERY") {
+    return 0;
+  }
+  if (driverTipPercent === "none" || !driverTipPercent) {
+    return 0;
+  }
+  const percentNum = Number(driverTipPercent);
+  if (!Number.isFinite(percentNum) || percentNum <= 0) {
+    return 0;
+  }
+  return Math.round((subtotalCents * percentNum) / 100);
 }
 
 export function isItemAvailableForOrder(

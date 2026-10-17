@@ -3,6 +3,7 @@ import { orderTimeAvailable, validDeliveryAddress, type OrderSetupSelection } fr
 import { checkoutPricingBlock } from './payment-options';
 import { quotePromoParams, wingsRewardBlockedReason } from './promo-selection';
 import type { CartItem, CartQuoteResponse, MenuResponse } from './types';
+import { calculateCartSubtotal, calculateDeliveryTipCents } from './wing-builder-logic';
 
 export type CheckoutSnapshot = {
   locationId: string;
@@ -53,8 +54,7 @@ export async function validateCheckout(snapshot: CheckoutSnapshot): Promise<Cart
     }
     deliveryToken = delivery.delivery_quote_token;
   }
-  const subtotal = items.reduce((sum, item) => sum + item.quantity * (item.base_price_cents +
-    item.modifier_selections.reduce((total, modifier) => total + modifier.price_delta_cents, 0)), 0);
+  const subtotal = calculateCartSubtotal(items);
   const quote = (await apiJson<CartQuoteResponse>('/api/v1/cart/quote', {
     method: 'POST', locationId, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ location_id: locationId, fulfillment_type: setup.fulfillmentType,
@@ -64,7 +64,7 @@ export async function validateCheckout(snapshot: CheckoutSnapshot): Promise<Cart
           .map(selection => ({ modifier_option_id: selection.modifier_option_id })),
         removed_ingredients: item.removed_ingredients ?? [], special_instructions: item.special_instructions.trim() || undefined,
         builder_payload: item.builder_payload })),
-      driver_tip_cents: setup.fulfillmentType === 'DELIVERY' && snapshot.driverTipPercent !== 'none' ? Math.round(subtotal * snapshot.driverTipPercent / 100) : 0,
+      driver_tip_cents: calculateDeliveryTipCents(subtotal, snapshot.driverTipPercent, setup.fulfillmentType),
       delivery_quote_token: deliveryToken, address_snapshot_json: setup.fulfillmentType === 'DELIVERY' ? setup.deliveryAddress : undefined,
       ...quotePromoParams(snapshot),
     }),

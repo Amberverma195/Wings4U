@@ -420,7 +420,14 @@ export function ComboBuilderMobile({
     if (!availability.available) return 'availability';
     if (!selectedOption) return 'combo-size';
     if (!wingType || !preparation) return 'preparation';
-    if (flavourSelections.some((selection) => !selection) || (requiredFlavourCount > 0 && flavours.length === 0)) {
+    if (
+      loading ||
+      Boolean(error) ||
+      (requiredFlavourCount > 0 && flavours.length === 0) ||
+      flavourSelections.some(
+        (selection) => !selection || !flavours.some((f) => f.id === selection),
+      )
+    ) {
       return 'flavours';
     }
     if (!allMainFlavoursPlain) {
@@ -474,10 +481,12 @@ export function ComboBuilderMobile({
     drinkGroups,
     drinkSelections,
     effectiveSaucedCount,
+    error,
     flavourSelections,
-    flavours.length,
+    flavours,
     hasValidSideFlavourSlot,
     instructions,
+    loading,
     preparation,
     requiredFlavourCount,
     saucingMethod,

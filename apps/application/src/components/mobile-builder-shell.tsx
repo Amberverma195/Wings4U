@@ -708,7 +708,19 @@ export function useWingFlavours(_fallbackItem?: MenuItem | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const activeRequestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      activeRequestIdRef.current += 1;
+    };
+  }, []);
+
   const loadFlavours = useCallback(async () => {
+    const requestId = ++activeRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -716,15 +728,26 @@ export function useWingFlavours(_fallbackItem?: MenuItem | null) {
         `/api/v1/menu/wing-flavours?location_id=${effectiveLocationId}`,
         { locationId: effectiveLocationId },
       );
+      if (!isMountedRef.current || activeRequestIdRef.current !== requestId) {
+        return;
+      }
       setFlavours(env.data ?? []);
+      setError(null);
     } catch (cause) {
+      if (!isMountedRef.current || activeRequestIdRef.current !== requestId) {
+        return;
+      }
+      setFlavours([]);
       setError(cause instanceof Error ? cause.message : 'Failed to load wing flavours');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && activeRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [effectiveLocationId]);
 
   useEffect(() => {
+    setFlavours([]);
     void loadFlavours();
   }, [loadFlavours]);
 

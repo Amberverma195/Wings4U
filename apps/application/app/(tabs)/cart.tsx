@@ -25,7 +25,11 @@ import {
   quotePromoParams,
   wingsRewardBlockedReason,
 } from "../../src/lib/promo-selection";
-import { getBuilderPriceDelta } from "../../src/lib/wing-builder-logic";
+import {
+  calculateCartSubtotal,
+  calculateDeliveryTipCents,
+  getCartItemSubtotal,
+} from "../../src/lib/wing-builder-logic";
 import type {
   ActivePromo,
   CartBuilderPayload,
@@ -38,20 +42,12 @@ function formatPrice(cents: number): string {
 }
 
 function lineSubtotal(item: CartItem): number {
-  const modifiers = item.modifier_selections.reduce(
-    (sum, selection) => sum + selection.price_delta_cents,
-    0,
-  );
-  const builderDelta = getBuilderPriceDelta(item.builder_payload);
-  return (item.base_price_cents + modifiers + builderDelta) * item.quantity;
+  return getCartItemSubtotal(item);
 }
 
 function driverTipCents(cart: CartContextValue): number {
-  if (cart.fulfillmentType !== "DELIVERY" || cart.driverTipPercent === "none") {
-    return 0;
-  }
-  const subtotal = cart.items.reduce((sum, item) => sum + lineSubtotal(item), 0);
-  return Math.round((subtotal * cart.driverTipPercent) / 100);
+  const subtotal = calculateCartSubtotal(cart.items);
+  return calculateDeliveryTipCents(subtotal, cart.driverTipPercent, cart.fulfillmentType);
 }
 
 function payloadSummary(payload: CartBuilderPayload | undefined): string[] {
