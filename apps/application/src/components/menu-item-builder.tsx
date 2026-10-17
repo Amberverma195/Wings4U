@@ -13,6 +13,7 @@ import { useCart } from "../context/cart";
 import type {
   BuilderMenuOption,
   CartBuilderPayload,
+  CartItem,
   CartModifierSelection,
   ItemCustomizationPayload,
   LunchSpecialPayload,
@@ -44,6 +45,7 @@ type Props = {
   visible: boolean;
   categories: MenuCategory[];
   onClose: () => void;
+  editItem?: CartItem | null;
 };
 
 const BONELESS_WINGS_UPCHARGE_CENTS = 100;
@@ -241,7 +243,7 @@ function addSpecialInstructions(
   return parts.join(" | ");
 }
 
-export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
+export function MenuItemBuilder({ item, visible, categories, onClose, editItem = null }: Props) {
   const cart = useCart();
   const variants = useMemo(() => variantOptions(item), [item]);
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -271,20 +273,38 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
   useEffect(() => {
     if (!visible || !item) return;
     const nextVariants = variantOptions(item);
-    setVariantId(nextVariants[0]?.menu_item_id ?? null);
-    setQuantity(1);
-    setNotes("");
+    setVariantId(nextVariants.find(variant => variant.menu_item_id === editItem?.menu_item_id)?.menu_item_id ?? nextVariants[0]?.menu_item_id ?? null);
+    setQuantity(editItem?.quantity ?? 1);
+    setNotes(editItem?.special_instructions ?? "");
     setSubmitted(false);
-    setRemovedIds(new Set());
+    setRemovedIds(new Set(editItem?.removed_ingredients?.map(ingredient => ingredient.id) ?? []));
     setChildRemovedIds(new Set());
     const children = lunchChildren(categories, item);
     setChildId(children[0]?.id ?? null);
-  }, [categories, item, visible]);
+  }, [categories, item, visible, editItem]);
 
   useEffect(() => {
     if (!buildable) return;
-    setSelections(initialSelections(sortedGroups(buildable.modifier_groups)));
-  }, [buildable]);
+    const groups = sortedGroups(buildable.modifier_groups);
+    const initial = initialSelections(groups);
+    if (editItem && editItem.menu_item_id === buildable.id) {
+      for (const group of groups) {
+        const selected = group.options.filter(option => editItem.modifier_selections.some(selection =>
+          selection.modifier_option_id === option.id ||
+          (selection.group_name === group.name && selection.option_name === option.name)));
+        if (selected.length) initial[group.id] = selected.map(option => option.id);
+      }
+      const payload = editItem.builder_payload;
+      if (payload?.builder_type === 'WINGS' || payload?.builder_type === 'WING_COMBO') {
+        groups.filter(isFlavourGroup).forEach((group, index) => {
+          const flavour = payload.flavour_slots.find(slot => slot.slot_no === index + 1);
+          const option = group.options.find(option => option.linked_flavour_id === flavour?.wing_flavour_id);
+          if (option) initial[group.id] = [option.id];
+        });
+      }
+    }
+    setSelections(initial);
+  }, [buildable, editItem]);
 
   useEffect(() => {
     if (!selectedChild) {
@@ -321,6 +341,10 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
       : 0);
 
   const validate = (): string | null => {
+    if (!item.is_available || item.stock_status === 'UNAVAILABLE' ||
+      (item.allowed_fulfillment_type !== 'BOTH' && item.allowed_fulfillment_type !== cart.fulfillmentType)) {
+      return 'This item is unavailable for your current order.';
+    }
     const baseError = validationMessage(groups, selections);
     if (baseError) return baseError;
 
@@ -405,7 +429,11 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
       const wingOption = optionById(wingTypeGroup!, selections[wingTypeGroup!.id]?.[0]);
       const sideGroups = groupsByContext(groups, "side");
       const drinkGroups = groupsByContext(groups, "drink");
+      const savedPayload = editItem?.builder_payload;
+      const priorWings = editItem?.menu_item_id === buildable.id &&
+        (savedPayload?.builder_type === 'WINGS' || savedPayload?.builder_type === 'WING_COMBO') ? savedPayload : null;
       builderPayload = {
+        ...priorWings,
         builder_type: buildable.builder_type === "WING_COMBO" ? "WING_COMBO" : "WINGS",
         wing_type: resolveWingType(wingOption),
         preparation: resolvePreparation(wingOption),
@@ -416,7 +444,7 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
             slot_no: index + 1,
             wing_flavour_id: option.linked_flavour_id!,
             flavour_name: option.name,
-            placement: "ON_WINGS",
+            placement: priorWings?.flavour_slots.find(slot => slot.slot_no === index + 1)?.placement ?? "ON_WINGS",
           };
         }),
         side_selections:
@@ -458,7 +486,7 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
       } satisfies ItemCustomizationPayload;
     }
 
-    cart.addItem({
+    const nextItem: Omit<CartItem, 'key'> = {
       menu_item_id: buildable.id,
       menu_item_slug: buildable.slug,
       name: buildable.name,
@@ -469,7 +497,9 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
       removed_ingredients: removed,
       special_instructions: specialInstructions,
       builder_payload: builderPayload,
-    });
+    };
+    if (editItem) cart.replaceItem(editItem.key, nextItem);
+    else cart.addItem(nextItem);
     onClose();
   };
 
@@ -644,7 +674,7 @@ export function MenuItemBuilder({ item, visible, categories, onClose }: Props) {
             </View>
             <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
               <Text style={styles.addButtonText}>
-                Add {formatPrice(unitTotal * quantity)}
+                {editItem ? 'Update' : 'Add'} {formatPrice(unitTotal * quantity)}
               </Text>
             </TouchableOpacity>
           </View>

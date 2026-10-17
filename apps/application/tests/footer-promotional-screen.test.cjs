@@ -4,7 +4,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 let mockParams = {};
 let mockMenuResult;
 const mockRouter = { navigate: jest.fn() };
-const mockCart = { fulfillmentType: 'PICKUP', locationId: 'store', scheduledFor: null,
+const mockCart = { fulfillmentType: 'PICKUP', locationId: 'store', scheduledFor: null, items: [], addItem: jest.fn(),
   setFulfillmentType: jest.fn(), setDriverTipPercent: jest.fn() };
 jest.mock('expo-router', () => ({ useIsFocused: () => true, useRouter: () => mockRouter, useLocalSearchParams: () => mockParams }));
 jest.mock('expo-image', () => ({ Image: 'Image' }));
@@ -29,6 +29,7 @@ jest.mock('../src/context/cart', () => ({ useCart: () => mockCart }));
 jest.mock('../src/context/order-setup', () => ({ useOrderSetup: () => ({ openOrderSetup: jest.fn() }) }));
 jest.mock('../src/components/order-setup-summary', () => ({ OrderSetupSummary: 'OrderSetupSummary' }));
 jest.mock('../src/components/trending-flavours', () => ({ TrendingFlavours: 'TrendingFlavours' }));
+jest.mock('../src/components/popular-items', () => ({ PopularItems: 'PopularItems' }));
 jest.mock('../src/components/tab-header', () => ({ HeaderActions: 'HeaderActions', TabHeader: 'TabHeader' }));
 jest.mock('../src/components/menu-item-builder', () => ({ MenuItemBuilder: 'MenuItemBuilder' }));
 jest.mock('../src/components/promotional-carousel', () => ({ PromotionalCarousel: 'PromotionalCarousel' }));
@@ -176,5 +177,49 @@ test('category links wait for Menu data before selecting the requested category'
   mockMenuResult = { ...mockMenuResult, menu, loading: false };
   await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic: false })));
   expect(categoryButton('Burgers').props.accessibilityState.selected).toBe(true);
+  expect(shownNames()).toEqual(expect.arrayContaining(['classic-burger', 'cheese-burger']));
+});
+
+test('Home replaces the product list with Popular Items immediately above Trending Flavours', async () => {
+  await mount(true);
+  const popular = renderer.root.findByType('PopularItems');
+  expect(popular.props.categories).toBe(menu.categories);
+  expect(popular.props.fulfillmentType).toBe('PICKUP');
+  expect(shownNames()).not.toContain(slugs[0]);
+  const content = renderer.root.findAllByType('ScrollView').find(node => node.props.refreshControl).props.children.flat().filter(Boolean);
+  const index = content.findIndex(child => child.type === 'PopularItems');
+  expect(content[index + 1].type).toBe('TrendingFlavours');
+  await act(async () => popular.props.onSeeAll());
+  expect(mockRouter.navigate).toHaveBeenCalledWith(expect.objectContaining({ pathname: '/(tabs)/menu' }));
+});
+
+test('Home quick-adds plain items but sends required choices and existing lines through the builder', async () => {
+  await mount(true);
+  const popular = () => renderer.root.findByType('PopularItems');
+  const tender = { ...item('tenders'), removable_ingredients: [], builder_type: null, description: null };
+  await act(async () => popular().props.onChoose(tender, null));
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: tender.id, base_price_cents: 999, quantity: 1 }));
+  const configured = { ...tender, modifier_groups: [{ id: 'dip' }] };
+  await act(async () => popular().props.onChoose(configured, null));
+  expect(builder().props.item).toBe(configured);
+  expect(builder().props.editItem).toBeNull();
+  await act(async () => builder().props.onClose());
+  const line = { key: 'saved-line', menu_item_id: tender.id };
+  await act(async () => popular().props.onChoose(tender, line));
+  expect(builder().props.editItem).toBe(line);
+  expect(mockCart.addItem).toHaveBeenCalledTimes(1);
+});
+
+test('Home search opens Menu search results without restoring the old Home product list', async () => {
+  await mount(true);
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Search menu' }).props.onChangeText('burger'));
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Search menu' }).props.onSubmitEditing());
+  expect(mockRouter.navigate).toHaveBeenCalledWith({ pathname: '/(tabs)/menu', params: {
+    query: 'burger', category: '', promotion: 'search', itemSlug: '', ts: expect.any(String),
+  } });
+  expect(shownNames()).not.toContain('classic-burger');
+  await act(async () => renderer.unmount());
+  mockParams = mockRouter.navigate.mock.calls[0][0].params;
+  await mount(false);
   expect(shownNames()).toEqual(expect.arrayContaining(['classic-burger', 'cheese-burger']));
 });

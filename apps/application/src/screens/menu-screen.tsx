@@ -31,8 +31,10 @@ import { OrderSetupSummary } from '../components/order-setup-summary';
 import { TabHeader } from '../components/tab-header';
 import { MenuItemBuilder } from '../components/menu-item-builder';
 import { PromotionalCarousel } from '../components/promotional-carousel';
+import { PopularItems } from '../components/popular-items';
 import { TrendingFlavours } from '../components/trending-flavours';
-import type { MenuItem } from '../lib/types';
+import type { CartItem, MenuItem } from '../lib/types';
+import { needsCustomization } from '../lib/popular-items';
 import { filterMenuCategories } from '../lib/menu-search';
 import { categoryImage, categoryLabel } from '../lib/category-images';
 import { prepareMenuCategories, menuCardDetails, categoryNote, resolveCategorySlug } from '../lib/menu-display';
@@ -93,7 +95,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const focused = useIsFocused();
   const router = useRouter();
   // Deep-link params set by the Home promo carousel (e.g. ?category=wings&ts=...).
-  const params = useLocalSearchParams<{ category?: string; ts?: string; itemSlug?: string; promotion?: string }>();
+  const params = useLocalSearchParams<{ category?: string; ts?: string; itemSlug?: string; promotion?: string; query?: string }>();
   const footerReloadKey = !cinematic && params.promotion === 'footer' && typeof params.ts === 'string' ? params.ts : undefined;
   const handledFooterRequest = useRef<string | null>(null);
   const footerNavigationNonce = useRef(0);
@@ -149,6 +151,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -231,6 +234,13 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   }, [categoryParam, categoryParamTs, sortedCategories, params.promotion]);
 
   useEffect(() => {
+    if (cinematic || params.promotion !== 'search' || typeof params.query !== 'string') return;
+    setSearchQuery(params.query);
+    setAvailableOnly(false);
+    setSelectedItem(null);
+  }, [cinematic, params.promotion, params.query, categoryParamTs]);
+
+  useEffect(() => {
     if (cinematic || !focused || !footerReloadKey || loading || error || !menu ||
       loadedReloadKey !== footerReloadKey || handledFooterRequest.current === footerReloadKey) return;
     handledFooterRequest.current = footerReloadKey;
@@ -255,6 +265,17 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {
     orderSetup.openOrderSetup(type);
   }, [orderSetup.openOrderSetup]);
+
+  const choosePopularItem = (item: MenuItem, line: CartItem | null) => {
+    if (line || needsCustomization(item)) {
+      setEditingCartItem(line);
+      setSelectedItem(item);
+    } else {
+      cart.addItem({ menu_item_id: item.id, menu_item_slug: item.slug, name: item.name,
+        image_url: item.image_url, base_price_cents: item.base_price_cents, quantity: 1,
+        modifier_selections: [], removed_ingredients: [], special_instructions: '' });
+    }
+  };
 
   /* ---------------------------------------------------------------- */
   /*  Loading state                                                    */
@@ -426,6 +447,12 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                   placeholderTextColor="#888"
                   accessibilityLabel="Search menu"
                   returnKeyType="search"
+                  onSubmitEditing={() => {
+                    if (cinematic && searchQuery.trim()) router.navigate({ pathname: '/(tabs)/menu', params: {
+                      query: searchQuery.trim(), category: '', promotion: 'search', itemSlug: '',
+                      ts: `${Date.now()}-${++categoryNavigationNonce.current}`,
+                    } });
+                  }}
                   autoCorrect={false}
                 />
                 {searchQuery.length > 0 && <TouchableOpacity
@@ -464,7 +491,8 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           visible={Boolean(selectedItem)}
           item={selectedItem}
           categories={menu?.categories ?? []}
-          onClose={() => setSelectedItem(null)}
+          editItem={editingCartItem}
+          onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
         />
 
         {/* Categories Strip */}
@@ -516,7 +544,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         ) : null}
 
         {/* Active Category Items */}
-        {displayedCategories.map(activeCategory => (
+        {!cinematic && displayedCategories.map(activeCategory => (
           <React.Fragment key={activeCategory.id}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{activeCategory.name}</Text>
@@ -549,12 +577,17 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
             )}
           </React.Fragment>
         ))}
-        {displayedCategories.length === 0 && (searchQuery.trim() || availableOnly) ? (
+        {!cinematic && displayedCategories.length === 0 && (searchQuery.trim() || availableOnly) ? (
           <View style={styles.emptyCategory}>
             <Text style={styles.emptyCategoryText}>No items match your search or filters.</Text>
           </View>
         ) : null}
 
+        {cinematic ? <PopularItems categories={menu?.categories ?? []} cartItems={cart.items} fulfillmentType={fulfillmentType}
+          updating={loading || Boolean(error)} onChoose={choosePopularItem}
+          onSeeAll={() => router.navigate({ pathname: '/(tabs)/menu', params: {
+            category: '', promotion: 'category', itemSlug: '', ts: `${Date.now()}-${++categoryNavigationNonce.current}`,
+          } })} /> : null}
         {cinematic ? <TrendingFlavours /> : null}
 
         {/* Final scroll section: separate instance, Home only, above the fixed tab bar. */}
