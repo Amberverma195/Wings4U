@@ -30,6 +30,9 @@ import { useOrderSetup } from '../context/order-setup';
 import { OrderSetupSummary } from '../components/order-setup-summary';
 import { TabHeader } from '../components/tab-header';
 import { MenuItemBuilder } from '../components/menu-item-builder';
+import { WingsBuilderMobile } from '../components/mobile-wings-builder';
+import { ComboBuilderMobile } from '../components/mobile-combo-builder';
+import { isWingBuilderItem, isComboBuilderItem } from '../lib/wing-builder-logic';
 import { PromotionalCarousel } from '../components/promotional-carousel';
 import { PopularItems } from '../components/popular-items';
 import { TrendingFlavours } from '../components/trending-flavours';
@@ -480,13 +483,29 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           </View>
         </View>
 
-        <MenuItemBuilder
-          visible={Boolean(selectedItem)}
-          item={selectedItem}
-          categories={menu?.categories ?? []}
-          editItem={editingCartItem}
-          onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
-        />
+        {selectedItem && isWingBuilderItem(selectedItem) ? (
+          <WingsBuilderMobile
+            visible={Boolean(selectedItem)}
+            item={selectedItem}
+            editingLine={editingCartItem}
+            onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
+          />
+        ) : selectedItem && isComboBuilderItem(selectedItem) ? (
+          <ComboBuilderMobile
+            visible={Boolean(selectedItem)}
+            item={selectedItem}
+            editingLine={editingCartItem}
+            onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
+          />
+        ) : (
+          <MenuItemBuilder
+            visible={Boolean(selectedItem)}
+            item={selectedItem}
+            categories={menu?.categories ?? []}
+            editItem={editingCartItem}
+            onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
+          />
+        )}
 
         {/* Categories Strip */}
         <ScrollView
@@ -662,12 +681,12 @@ function MenuItemCard({
         ) : null}
 
         <View style={styles.itemMeta}>
-          <View style={styles.itemAction}>
-            <Text style={styles.itemActionText}>{item.builder_type ? 'Customize' : 'Add to cart'}</Text>
-          </View>
           <Text style={[styles.itemPrice, isUnavailable && styles.itemPriceUnavailable]}>
             {isUnavailable ? 'UNAVAILABLE' : priceLabel}
           </Text>
+          <View style={styles.itemAction}>
+            <Text style={styles.itemActionText}>{item.builder_type ? 'Customize' : 'Add to cart'}</Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -1123,9 +1142,9 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   itemMeta: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 8,
   },
   metaRow: {

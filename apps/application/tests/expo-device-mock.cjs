@@ -1,0 +1,3 @@
+module.exports = {
+  isDevice: false,
+};

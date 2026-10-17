@@ -43,7 +43,7 @@ export default function OrdersTab() {
 
   useFocusEffect(useCallback(() => {
     if (!session.loaded || !session.authenticated) return;
-    router.push('/profile?section=orders');
+    router.push(`/profile?section=orders&entry=${Date.now()}`);
   }, [router, session.authenticated, session.loaded]));
 
   if (session.loaded && session.authenticated) {

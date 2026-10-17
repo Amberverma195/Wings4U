@@ -3,6 +3,8 @@ module.exports = {
   testMatch: ['<rootDir>/tests/**/*.test.cjs'],
   moduleNameMapper: {
     '\\.(png|jpe?g)$': '<rootDir>/tests/image-asset.cjs',
+    '^expo-constants$': '<rootDir>/tests/expo-constants-mock.cjs',
+    '^expo-device$': '<rootDir>/tests/expo-device-mock.cjs',
     '^react$': require.resolve('react'),
     '^react/jsx-runtime$': require.resolve('react/jsx-runtime'),
   },

@@ -447,7 +447,7 @@ export default function CartScreen() {
             </View>
 
             <TouchableOpacity
-              style={[
+              style={[styles.checkoutButtonInline,
                 styles.checkoutButton,
                 (checkout.busy || cart.isCartHydrating || !orderSetup.ready) && styles.checkoutButtonDisabled,
               ]}
@@ -459,6 +459,20 @@ export default function CartScreen() {
           </>
         )}
       </ScrollView>
+      {cart.items.length > 0 ? (
+        <View style={styles.checkoutDock}>
+          <TouchableOpacity
+            style={[
+              styles.checkoutButton,
+              (checkout.busy || cart.isCartHydrating || !orderSetup.ready) && styles.checkoutButtonDisabled,
+            ]}
+            disabled={checkout.busy || cart.isCartHydrating || !orderSetup.ready}
+            onPress={async () => { if (await checkout.prepare()) router.push("/checkout"); }}
+          >
+            <Text style={styles.checkoutButtonText}>Checkout</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -473,7 +487,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 36,
+    // Keep the checkout action clear of the persistent bottom tab bar.
+    paddingBottom: 112,
   },
   emptyContent: {
     flexGrow: 1,
@@ -767,6 +782,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FF4D4D",
+  },
+  checkoutButtonInline: {
+    display: "none",
+  },
+  checkoutDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 72,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: "#FAFAFA",
+    borderTopWidth: 1,
+    borderTopColor: "#EEEEEE",
   },
   checkoutButtonDisabled: {
     opacity: 0.55,

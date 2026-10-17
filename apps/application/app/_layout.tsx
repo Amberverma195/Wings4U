@@ -8,6 +8,7 @@ import { SessionProvider } from "../src/context/session";
 import { STRIPE_PUBLISHABLE_KEY } from "../src/lib/env";
 import { AccountDataProvider } from "../src/hooks/use-account-data";
 import { OrderSetupProvider } from "../src/context/order-setup";
+import { CartAddedToast } from "../src/components/cart-added-toast";
 
 export const unstable_settings = { initialRouteName: '(tabs)' };
 
@@ -56,6 +57,7 @@ export default function RootLayout() {
                 }}
               />
             </Stack>
+            <CartAddedToast />
             <StatusBar style="auto" />
             </PromoProvider>
             </OrderSetupProvider>
