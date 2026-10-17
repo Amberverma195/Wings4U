@@ -69,7 +69,7 @@ test('Home renders only the footer carousel, last inside the scroll content', as
   expect(carousels[0].props.banners).toBe(banners);
   const children = renderer.root.findAllByType('ScrollView').find(node => node.props.refreshControl).props.children.filter(Boolean);
   expect(children.at(-2).props.banners).toBe(banners);
-  expect(children.at(-1).props.style.height).toBeGreaterThanOrEqual(40);
+  expect(children.at(-1).props.style.height).toBe(8);
   expect(carousels[0].props.imageBackgroundColor).toBe('#FFFFFF');
 });
 test('Menu mode never renders the Home footer carousel', async () => {

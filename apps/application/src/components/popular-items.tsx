@@ -40,7 +40,7 @@ export function PopularItems({ categories, cartItems, fulfillmentType, updating,
               [item.name, item.description].filter(Boolean).join(' · ') : item.description : 'Not available right now'}</Text>
             <Text style={styles.price}>{price ?? 'Unavailable'}</Text>
             {item?.stock_status === 'LOW_STOCK' && <Text style={styles.stock}>Low stock</Text>}
-            <Pressable disabled={!available} accessibilityRole="button" accessibilityState={{ disabled: !available }}
+            <Pressable disabled={!available} hitSlop={5} accessibilityRole="button" accessibilityState={{ disabled: !available }}
               accessibilityLabel={`${line ? 'Customize' : 'Add to cart'} ${title}`}
               onPress={() => { if (item && available) onChoose(item, line); }}
               style={({ pressed }) => [styles.button, line && styles.customize, !available && styles.disabled, pressed && { opacity: 0.7 }]}>
@@ -57,20 +57,20 @@ export function PopularItems({ categories, cartItems, fulfillmentType, updating,
 }
 
 const styles = StyleSheet.create({
-  section: { paddingHorizontal: 16, marginTop: 10, marginBottom: 4 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  section: { paddingHorizontal: 16, marginTop: 0, marginBottom: 0 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   heading: { fontSize: 15, fontWeight: '800', color: '#211B18' },
-  seeAll: { flexDirection: 'row', alignItems: 'center', gap: 3, minHeight: 36 },
+  seeAll: { flexDirection: 'row', alignItems: 'center', gap: 3, minHeight: 28 },
   seeAllText: { fontSize: 11, fontWeight: '700', color: '#E53C3C' },
   cards: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   card: { flex: 1, minWidth: 0, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#F0EBE7' },
-  photo: { aspectRatio: 1.5, backgroundColor: '#FFF3EB', alignItems: 'center', justifyContent: 'center' },
+  photo: { aspectRatio: 1.7, backgroundColor: '#FFF3EB', alignItems: 'center', justifyContent: 'center' },
   image: { width: '100%', height: '100%' },
   placeholder: { fontSize: 28 },
   content: { padding: 7, flex: 1 },
   name: { fontSize: 12, fontWeight: '800', lineHeight: 15, minHeight: 30, color: '#251E1B' },
-  description: { fontSize: 10, lineHeight: 13, height: 26, marginTop: 3, marginBottom: 5, color: '#85756A' },
-  price: { fontSize: 12, fontWeight: '800', color: '#DF3535', marginTop: 'auto', marginBottom: 7 },
+  description: { fontSize: 10, lineHeight: 13, height: 26, marginTop: 2, marginBottom: 4, color: '#85756A' },
+  price: { fontSize: 12, fontWeight: '800', color: '#DF3535', marginTop: 'auto', marginBottom: 5 },
   stock: { fontSize: 9, color: '#946123', marginBottom: 4 },
   button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, minHeight: 34, borderRadius: 8, backgroundColor: '#FFF0ED', paddingHorizontal: 3 },
   buttonText: { fontSize: 10, fontWeight: '700', color: '#DF3535', flexShrink: 1 },

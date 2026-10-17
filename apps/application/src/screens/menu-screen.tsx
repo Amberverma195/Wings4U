@@ -107,7 +107,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const compactHeader = width < 380;
   const brandFontSize = Math.min(compactHeader ? 30 : 34,
     (width - (compactHeader ? 32 + 172 : 40 + 184) - 6) / 4.8);
-  const categoryTileSize = Math.max(44, Math.min(56, (width - 32) / 7 - 4));
+  const categoryTileSize = cinematic ? 50 : Math.max(44, Math.min(56, (width - 32) / 7 - 4));
   const headerHeight = Math.max(156, Math.min(width * 0.39, 196)) + insets.top;
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(headerHeight);
   const [headerScrolledAway, setHeaderScrolledAway] = useState(false);
@@ -492,7 +492,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
           onLayout={(event) => {
             productSectionY.current = event.nativeEvent.layout.y;
           }}
-          style={styles.categoriesScroll}
+          style={[styles.categoriesScroll, cinematic && styles.homeCategoriesScroll]}
           contentContainerStyle={styles.categoriesContent}
         >
           {sortedCategories.map((cat) => {
@@ -508,6 +508,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
               >
                 <View style={[
                   styles.categoryIcon,
+                  cinematic && styles.homeCategoryIcon,
                   { width: categoryTileSize, height: categoryTileSize },
                   isActive && styles.categoryIconActive,
                 ]}>
@@ -515,14 +516,14 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
                     contentFit="contain" accessible={false} />
                 </View>
                 <Text
-                  style={[styles.categoryText, isActive && styles.categoryTextActive]}
+                  style={[styles.categoryText, cinematic && styles.homeCategoryText, isActive && styles.categoryTextActive]}
                   numberOfLines={2}
                   adjustsFontSizeToFit
                   minimumFontScale={0.8}
                 >
                   {categoryLabel(cat)}
                 </Text>
-                <View style={[styles.categoryUnderline, isActive && styles.categoryUnderlineActive]} />
+                <View style={[styles.categoryUnderline, cinematic && styles.homeCategoryUnderline, isActive && styles.categoryUnderlineActive]} />
               </TouchableOpacity>
             );
           })}
@@ -578,7 +579,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         {/* Final scroll section: separate instance, Home only, above the fixed tab bar. */}
         {cinematic ? <PromotionalCarousel banners={FOOTER_PROMOTIONAL_BANNERS}
           onPressBanner={handleFooterBannerPress} imageBackgroundColor="#FFFFFF" /> : null}
-        <View style={{ height: 40 }} />
+        <View style={{ height: cinematic ? 8 : 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -940,6 +941,10 @@ const styles = StyleSheet.create({
   categoriesContent: {
     paddingRight: 12,
   },
+  homeCategoriesScroll: { marginTop: 6, marginBottom: 2 },
+  homeCategoryIcon: { borderRadius: 13, marginBottom: 3, padding: 2 },
+  homeCategoryText: { fontSize: 10 },
+  homeCategoryUnderline: { marginTop: 2 },
   categoryCard: {
     alignItems: 'center',
     marginRight: 4,
