@@ -308,6 +308,10 @@ function CheckoutScreenContent() {
 
     let cancelled = false;
     const controller = new AbortController();
+    // An address/time change immediately invalidates the previous delivery token.
+    setDeliveryQuote(null);
+    setDeliveryQuoteStatus("loading");
+    setDeliveryQuoteError(null);
     const timeout = setTimeout(() => {
       setDeliveryQuote(null);
       setDeliveryQuoteStatus("loading");
@@ -366,6 +370,7 @@ function CheckoutScreenContent() {
     cart.items.length,
     cart.locationId,
     deliveryAddress,
+    cart.scheduledFor,
     deliveryQuoteRetryNonce,
     hasCompleteDeliveryAddress,
   ]);

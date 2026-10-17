@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useCart } from './cart';
+import { useSession } from './session';
+import { useAccountData } from '../hooks/use-account-data';
 import { OrderSetupModal } from '../components/order-setup-modal';
 import { ORDER_SETUP_TTL_MS, normalizeDeliveryAddress, readOrderSetup, type DeliveryAddress, type OrderSetupSelection, type StoredOrderSetup } from '../lib/order-setup';
 import type { FulfillmentType } from '../lib/types';
@@ -26,8 +28,12 @@ export function useOrderSetup() {
 
 export function OrderSetupProvider({ children }: { children: React.ReactNode }) {
   const cart = useCart();
+  const session = useSession();
+  const account = useAccountData();
+  const owner = session.authenticated ? session.user?.id : 'guest';
+  const previousOwner = useRef(owner);
   const { setFulfillmentType, setScheduledFor, setDriverTipPercent } = cart;
-  const key = `wings4u.order-setup-v1:${cart.locationId}`;
+  const key = `wings4u.order-setup-v2:${cart.locationId}:${owner ?? 'loading'}`;
   const [ready, setReady] = useState(false);
   const [stored, setStored] = useState<{ key: string; value: StoredOrderSetup | null } | null>(null);
   const [deliveryAddress, setAddress] = useState<DeliveryAddress | null>(null);
@@ -42,15 +48,18 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   const writeQueue = useRef(Promise.resolve());
   const checkoutValidation = useRef<{ fingerprint: string; expiresAt: number } | null>(null);
   const setupRequest = useRef<{ promise: Promise<OrderSetupSelection | null>; resolve: (value: OrderSetupSelection | null) => void } | null>(null);
+  const guestDraft = useRef<DeliveryAddress | null>(null);
+  const restoreDraft = useRef<DeliveryAddress | null>(null);
+  const restoreVisibility = useRef<boolean | null>(null);
   const stateRef = useRef({ ready, confirmed, cart, deliveryAddress });
-  stateRef.current = { ready, confirmed, cart, deliveryAddress };
+  stateRef.current = { ready: ready && session.loaded && stored?.key === key, confirmed, cart, deliveryAddress };
 
   const getConfirmedSetup = useCallback((): OrderSetupSelection | null => {
     const current = stateRef.current;
     const value = selection.current;
     if (!current.ready || !current.confirmed || !current.cart.isCartHydrated || !value ||
       value.fulfillmentType !== current.cart.fulfillmentType || value.scheduledFor !== current.cart.scheduledFor) return null;
-    const next = { fulfillmentType: value.fulfillmentType, scheduledFor: value.scheduledFor, deliveryAddress: current.deliveryAddress ?
+    const next = { fulfillmentType: value.fulfillmentType, scheduledFor: value.scheduledFor, ...(value.savedAddressId ? { savedAddressId: value.savedAddressId } : {}), deliveryAddress: current.deliveryAddress ?
       normalizeDeliveryAddress(current.deliveryAddress.line1, current.deliveryAddress.postal_code) : null };
     return readOrderSetup(JSON.stringify({ ...next, v: 1, lastActiveAt: awaySince.current ?? Date.now() })) ? next : null;
   }, []);
@@ -78,6 +87,7 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   }, [setFulfillmentType, setScheduledFor, setDriverTipPercent]);
 
   const expire = useCallback(() => {
+    guestDraft.current = null;
     selection.current = null;
     setConfirmed(false);
     checkoutValidation.current = null;
@@ -89,17 +99,38 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   }, [apply, persist, close]);
 
   useEffect(() => {
+    if (!session.loaded || !owner) return;
     let cancelled = false;
+    const changed = previousOwner.current !== owner;
+    const guestHandoff = changed && previousOwner.current === 'guest';
+    const handoff = guestHandoff && !guestDraft.current ? selection.current : null;
+    const handoffAddress = guestHandoff ? guestDraft.current ?? stateRef.current.deliveryAddress : null;
+    restoreDraft.current = handoffAddress;
+    restoreVisibility.current = changed ? visible : null;
+    guestDraft.current = null;
+    const previousKey = `wings4u.order-setup-v2:${cart.locationId}:${previousOwner.current}`;
+    previousOwner.current = owner;
     setReady(false);
+    setConfirmed(false);
+    setAddress(handoffAddress);
     wasHydrated.current = false;
     selection.current = null;
     checkoutValidation.current = null;
     close();
+    if (changed) {
+      apply(handoff);
+      if (handoffAddress) setAddress(handoffAddress);
+      if (handoffAddress) setRequestedType('DELIVERY');
+      // Remove the previous owner's details, including guest details after login.
+      writeQueue.current = writeQueue.current.catch(() => {}).then(() => AsyncStorage.removeItem(previousKey)).catch(() => {});
+    }
+    // The old restaurant-only key cannot safely identify its customer. Never restore it.
+    void AsyncStorage.removeItem(`wings4u.order-setup-v1:${cart.locationId}`).catch(() => {});
     void AsyncStorage.getItem(key).then(raw => {
-      if (!cancelled) setStored({ key, value: readOrderSetup(raw) });
+      if (!cancelled) setStored({ key, value: handoff ? { ...handoff, v: 1, lastActiveAt: Date.now() } : changed ? null : readOrderSetup(raw) });
     }).catch(() => { if (!cancelled) setStored({ key, value: null }); });
     return () => { cancelled = true; };
-  }, [key, close]);
+  }, [key, close, session.loaded, owner, apply, cart.locationId]);
 
   useEffect(() => {
     if (!cart.isCartHydrated) { wasHydrated.current = false; return; }
@@ -110,8 +141,11 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
       const value = stored.value ? readOrderSetup(JSON.stringify(stored.value)) : null;
       selection.current = value;
       apply(value);
+      if (!value && restoreDraft.current) setAddress(restoreDraft.current);
+      restoreDraft.current = null;
       setConfirmed(Boolean(value));
-      setVisible(!value);
+      setVisible(restoreVisibility.current ?? !value);
+      restoreVisibility.current = null;
       setReady(true);
       if (!value) persist(null);
     } else {
@@ -132,9 +166,26 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
       return;
     }
     selection.current = { fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor,
+      ...(selection.current?.savedAddressId ? { savedAddressId: selection.current.savedAddressId } : {}),
       deliveryAddress: deliveryAddress ? normalizeDeliveryAddress(deliveryAddress.line1, deliveryAddress.postal_code) : null };
     persist(selection.current, awaySince.current ?? Date.now());
   }, [ready, stored?.key, key, cart.isCartHydrated, confirmed, cart.fulfillmentType, cart.scheduledFor, deliveryAddress, persist]);
+
+  useEffect(() => {
+    if (!ready || stored?.key !== key || !session.authenticated || account.loading || account.refreshing || account.sectionErrors.addresses) return;
+    const id = selection.current?.savedAddressId;
+    if (!id) return;
+    const saved = account.data.addresses.find(address => address.id === id);
+    if (!saved || saved.city !== 'London') {
+      selection.current = null; setAddress(null); setConfirmed(false); checkoutValidation.current = null; persist(null);
+      return;
+    }
+    const next = normalizeDeliveryAddress(saved.line1, saved.postal_code);
+    if (JSON.stringify(next) !== JSON.stringify(deliveryAddress)) {
+      checkoutValidation.current = null;
+      setAddress(next);
+    }
+  }, [ready, stored?.key, key, session.authenticated, account.loading, account.refreshing, account.sectionErrors.addresses, account.data.addresses, deliveryAddress, persist]);
 
   useEffect(() => {
     if (!ready) return;
@@ -188,6 +239,7 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => () => { setupRequest.current?.resolve(null); setupRequest.current = null; }, []);
 
   const confirm = (value: OrderSetupSelection) => {
+    guestDraft.current = null;
     selection.current = value;
     apply(value);
     setConfirmed(true);
@@ -195,13 +247,18 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
     persist(value);
   };
 
-  return <OrderSetupContext.Provider value={{ deliveryAddress, setDeliveryAddress: setAddress, openOrderSetup, ready, confirmed,
+  const ownsState = session.loaded && previousOwner.current === owner && stored?.key === key;
+  return <OrderSetupContext.Provider value={{ deliveryAddress: ownsState ? deliveryAddress : null, setDeliveryAddress: address => {
+    if (selection.current) selection.current = { ...selection.current, savedAddressId: null };
+    checkoutValidation.current = null;
+    setAddress(address);
+  }, openOrderSetup, ready: ready && ownsState, confirmed: confirmed && ownsState,
     ensureOrderSetup, getConfirmedSetup,
     hasCheckoutValidation: fingerprint => Boolean(getConfirmedSetup() && checkoutValidation.current?.fingerprint === fingerprint && checkoutValidation.current.expiresAt > Date.now()),
     markCheckoutValidated: fingerprint => { checkoutValidation.current = { fingerprint, expiresAt: Date.now() + 30_000 }; },
   }}>
     {children}
-    {ready && visible && <OrderSetupModal key={`${key}:${modalRevision}`} initialType={requestedType} initialScheduledFor={cart.scheduledFor}
-      initialAddress={deliveryAddress} onClose={close} onConfirm={confirm} />}
+    {ready && ownsState && visible && <OrderSetupModal key={`${key}:${modalRevision}`} initialType={requestedType} initialScheduledFor={cart.scheduledFor}
+      initialAddress={deliveryAddress} initialSavedAddressId={selection.current?.savedAddressId} onDraftAddress={address => { if (owner === 'guest') guestDraft.current = address; }} onClose={close} onConfirm={confirm} />}
   </OrderSetupContext.Provider>;
 }

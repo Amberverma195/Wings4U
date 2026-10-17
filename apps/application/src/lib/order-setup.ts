@@ -8,6 +8,7 @@ export type OrderSetupSelection = {
   fulfillmentType: FulfillmentType;
   scheduledFor: string | null;
   deliveryAddress: DeliveryAddress | null;
+  savedAddressId?: string | null;
 };
 export type StoredOrderSetup = OrderSetupSelection & { v: 1; lastActiveAt: number };
 

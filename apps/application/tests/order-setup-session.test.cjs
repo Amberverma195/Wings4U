@@ -2,6 +2,10 @@ const React = require('react');
 const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let mockCart;
+let mockSession;
+let mockAccount;
+jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => mockAccount }));
+jest.mock('../src/context/session', () => ({ useSession: () => mockSession }));
 const mockStorage = new Map();
 const mockListeners = new Set();
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -19,7 +23,7 @@ const { OrderSetupProvider, useOrderSetup } = require('../src/context/order-setu
 const { ORDER_SETUP_TTL_MS } = require('../src/lib/order-setup');
 let setup, renderer, setHydrated;
 const now = Date.parse('2026-10-17T16:00:00Z');
-const key = 'wings4u.order-setup-v1:store';
+const key = 'wings4u.order-setup-v2:store:guest';
 const delivery = { fulfillmentType: 'DELIVERY', scheduledFor: '2026-10-17T19:00:00.000Z',
   deliveryAddress: { line1: '12 Main St unit 2', city: 'London', postal_code: 'N5Y 4J7' } };
 function Probe() { setup = useOrderSetup(); return null; }
@@ -35,9 +39,10 @@ function Harness({ hydrated = true, stale = false }) {
 }
 const mount = async props => act(async () => { renderer = create(React.createElement(Harness, props)); });
 const modal = () => renderer.root.findByType('OrderSetupModal');
+const updateSession = async session => { mockSession = session; await act(async () => renderer.update(React.createElement(Harness))); };
 const hasModal = () => renderer.root.findAllByType('OrderSetupModal').length > 0;
 const appState = async state => act(async () => { AppState.currentState = state; for (const fn of mockListeners) fn(state); });
-beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(now); mockStorage.clear(); mockListeners.clear(); AppState.currentState = 'active'; });
+beforeEach(() => { mockAccount = { data: { addresses: [] }, loading: false, refreshing: false, sectionErrors: {} }; mockSession = { loaded: true, authenticated: false }; jest.useFakeTimers(); jest.setSystemTime(now); mockStorage.clear(); mockListeners.clear(); AppState.currentState = 'active'; });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 
 test('opens on first launch and commits type, schedule and address together', async () => {
@@ -53,6 +58,55 @@ test('opens on first launch and commits type, schedule and address together', as
   expect(modal().props.initialType).toBe('PICKUP');
   await act(async () => modal().props.onClose());
   expect(mockCart.fulfillmentType).toBe('DELIVERY'); // Cancelling edits does not mutate the cart.
+});
+
+test('never restores personal information from the old restaurant-only storage key', async () => {
+  const legacy = 'wings4u.order-setup-v1:store';
+  mockStorage.set(legacy, JSON.stringify({ ...delivery, v: 1, lastActiveAt: now }));
+  await mount();
+  expect(setup.deliveryAddress).toBeNull();
+  expect(setup.confirmed).toBe(false);
+  expect(mockStorage.has(legacy)).toBe(false);
+});
+
+test('logout and account switching clear personal details without deleting cart items', async () => {
+  mockSession = { loaded: true, authenticated: true, user: { id: 'a' } };
+  await mount(); await act(async () => modal().props.onConfirm(delivery));
+  expect(mockStorage.has('wings4u.order-setup-v2:store:a')).toBe(true);
+  await updateSession({ loaded: true, authenticated: true, user: { id: 'b' } });
+  expect(setup.deliveryAddress).toBeNull(); expect(setup.getConfirmedSetup()).toBeNull();
+  expect(mockCart.items).toHaveLength(1);
+  expect(mockStorage.has('wings4u.order-setup-v2:store:a')).toBe(false);
+  expect(hasModal()).toBe(false);
+  await act(async () => setup.openOrderSetup('DELIVERY'));
+  await act(async () => modal().props.onConfirm(delivery));
+  await updateSession({ loaded: true, authenticated: false });
+  expect(setup.deliveryAddress).toBeNull(); expect(mockCart.items).toHaveLength(1);
+  expect(mockStorage.has('wings4u.order-setup-v2:store:b')).toBe(false);
+});
+
+test('guest draft survives login without being marked confirmed', async () => {
+  await mount();
+  await act(async () => modal().props.onDraftAddress(delivery.deliveryAddress));
+  await updateSession({ loaded: true, authenticated: true, user: { id: 'a' } });
+  expect(modal().props.initialAddress).toEqual(delivery.deliveryAddress);
+  expect(modal().props.initialType).toBe('DELIVERY');
+  expect(setup.confirmed).toBe(false);
+});
+
+test('a selected saved address follows Profile edits and invalidates checkout approval; deletion requires confirmation again', async () => {
+  mockSession = { loaded: true, authenticated: true, user: { id: 'a' } };
+  mockAccount.data.addresses = [{ id: 'home', ...delivery.deliveryAddress }];
+  await mount(); await act(async () => modal().props.onConfirm({ ...delivery, savedAddressId: 'home' }));
+  setup.markCheckoutValidated('receipt'); expect(setup.hasCheckoutValidation('receipt')).toBe(true);
+  mockAccount.data.addresses = [{ id: 'home', ...delivery.deliveryAddress, line1: 'New street unit 9' }];
+  await updateSession(mockSession);
+  expect(setup.deliveryAddress.line1).toBe('New street unit 9');
+  expect(setup.hasCheckoutValidation('receipt')).toBe(false);
+  expect(setup.getConfirmedSetup().deliveryAddress.line1).toBe('New street unit 9');
+  mockAccount.data.addresses = []; await updateSession(mockSession);
+  expect(setup.confirmed).toBe(false); expect(setup.deliveryAddress).toBeNull();
+  expect(mockCart.items).toHaveLength(1);
 });
 
 test('restores a recent selection after a cold launch, following cart hydration', async () => {

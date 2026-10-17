@@ -17,8 +17,8 @@ export default function RootLayout() {
       <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
         <SessionProvider>
           <CartProvider>
-            <OrderSetupProvider>
             <AccountDataProvider>
+            <OrderSetupProvider>
             <PromoProvider>
             <Stack
               screenOptions={{
@@ -58,8 +58,8 @@ export default function RootLayout() {
             </Stack>
             <StatusBar style="auto" />
             </PromoProvider>
-            </AccountDataProvider>
             </OrderSetupProvider>
+            </AccountDataProvider>
           </CartProvider>
         </SessionProvider>
       </StripeProvider>

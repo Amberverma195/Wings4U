@@ -2,6 +2,7 @@ const React = require('react');
 const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let mockSession;
+jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => ({ data: { addresses: [] }, loading: false, refreshing: false, sectionErrors: {} }) }));
 const mockStorage = new Map();
 jest.mock('@react-native-async-storage/async-storage', () => ({ getItem: jest.fn(async key => mockStorage.get(key) ?? null),
   setItem: jest.fn(async (key, value) => mockStorage.set(key, value)), removeItem: jest.fn(async key => mockStorage.delete(key)) }));
@@ -23,7 +24,7 @@ beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); mockStorage.clear
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 
 test.each([false, true])('customers can dismiss setup, add to the real cart and keep items on later cancellation (signed in: %s)', async authenticated => {
-  mockSession = { loaded: true, authenticated };
+  mockSession = { loaded: true, authenticated, user: authenticated ? { id: 'customer-a' } : null };
   await act(async () => { renderer = create(tree()); });
   await act(async () => modal().props.onClose());
   await act(async () => cart.addItem({ menu_item_id: 'real-item', name: 'Wings', base_price_cents: 1299, quantity: 1,

@@ -157,10 +157,11 @@ function useAccountDataState() {
   const inFlight = useRef<{ userKey: string | null; promise: Promise<void> } | null>(null);
   const pageBusy = useRef(false);
   const [data, setData] = useState<AccountData>(EMPTY_ACCOUNT_DATA);
+  const [dataOwner, setDataOwner] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sectionErrors, setSectionErrors] = useState<Partial<Record<'orders' | 'rewards' | 'promos' | 'wallet', string>>>({});
+  const [sectionErrors, setSectionErrors] = useState<Partial<Record<'orders' | 'rewards' | 'promos' | 'wallet' | 'addresses', string>>>({});
   const [loadingMoreOrders, setLoadingMoreOrders] = useState(false);
 
   const authedFetch = useCallback(
@@ -266,6 +267,7 @@ function useAccountDataState() {
         tickets: tickets.tickets,
         ticketsNextCursor: tickets.next_cursor,
       });
+      setDataOwner(userKey);
 
       const failures = results
         .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -277,6 +279,7 @@ function useAccountDataState() {
       if (wingsLedgerResult.status === 'rejected') errors.rewards ??= errorMessage(wingsLedgerResult.reason);
       if (promosResult.status === 'rejected') errors.promos = errorMessage(promosResult.reason);
       if (walletResult.status === 'rejected') errors.wallet = errorMessage(walletResult.reason);
+      if (addressesResult.status === 'rejected') errors.addresses = errorMessage(addressesResult.reason);
       setSectionErrors(errors);
       setLoading(false);
       setRefreshing(false);
@@ -380,8 +383,8 @@ function useAccountDataState() {
   );
 
   return {
-    data: session.authenticated ? data : EMPTY_ACCOUNT_DATA,
-    loading,
+    data: session.authenticated && dataOwner === userKey ? data : EMPTY_ACCOUNT_DATA,
+    loading: loading || (session.authenticated && dataOwner !== userKey),
     refreshing,
     error,
     sectionErrors,

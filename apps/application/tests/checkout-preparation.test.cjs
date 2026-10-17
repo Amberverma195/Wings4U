@@ -27,14 +27,15 @@ test('pickup validates the live menu and exact real SKU before obtaining a fresh
   expect(apiJson.mock.calls.some(call => /checkout|payments/.test(call[0]))).toBe(false);
 });
 
-test('delivery validates address/eligibility and passes its fresh delivery token into server pricing', async () => {
+test.each([null, 'saved-home'])('delivery validates manual/saved address eligibility and uses a fresh delivery token (saved id: %s)', async savedAddressId => {
   snapshot.setup = { fulfillmentType: 'DELIVERY', scheduledFor: '2026-10-18T17:00:00.000Z',
-    deliveryAddress: { line1: '12 Main St', city: 'London', postal_code: 'N5Y 4J7' } };
+    savedAddressId, deliveryAddress: { line1: '12 Main St unit 8', city: 'London', postal_code: 'N5Y 4J7' } };
   snapshot.driverTipPercent = 15;
   snapshot.promoCode = 'WINGS5'; quote.applied_promo_code = 'WINGS5';
   await validateCheckout(snapshot);
   const calls = apiJson.mock.calls;
   expect(calls.map(call => call[0])).toEqual([expect.stringContaining('scheduled_for='), '/api/v1/delivery/quote', '/api/v1/cart/quote']);
+  expect(JSON.parse(calls[1][1].body).address_snapshot_json).toEqual(snapshot.setup.deliveryAddress);
   expect(JSON.parse(calls[2][1].body)).toMatchObject({ delivery_quote_token: 'delivery-token', address_snapshot_json: snapshot.setup.deliveryAddress,
     scheduled_for: snapshot.setup.scheduledFor, promo_code: 'WINGS5', driver_tip_cents: 150 });
 });
