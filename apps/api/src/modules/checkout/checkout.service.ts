@@ -49,10 +49,12 @@ import {
   type PricingPolicy,
   computePricing,
   getBuilderPriceDelta,
+  getLunchAddonOptionIds,
   parseRemovedIngredients,
   getSaladCustomization,
 } from "../shared/pricing";
 import {
+  assertBuilderPayloadValid,
   assertLocationOpenForFulfillment,
   assertMenuItemOrderable,
   assertModifierOptionAllowedForItem,
@@ -676,7 +678,8 @@ export class CheckoutService {
         (item) => {
           const standardOpts = item.modifierSelections?.map((selection) => selection.modifierOptionId) ?? [];
           const saladOpts = getSaladCustomization(item.builderPayload)?.modifierOptionIds ?? [];
-          return [...standardOpts, ...saladOpts];
+          const lunchOpts = getLunchAddonOptionIds(item.builderPayload);
+          return [...standardOpts, ...saladOpts, ...lunchOpts];
         }
       );
       const rawModifierOptions =
@@ -865,20 +868,35 @@ export class CheckoutService {
           }
         }
 
+        assertBuilderPayloadValid({
+          menuItem,
+          builderPayload: cartItem.builderPayload,
+          optionMap,
+        });
+
         assertWingFlavoursOrderable({
           builderPayload: cartItem.builderPayload,
           wingFlavourMap,
         });
 
-        let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload);
+        let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload, optionMap);
         const modifiers: (typeof lineItems)[number]["modifiers"] = [];
         const saladModifierOptionIds = new Set(
           saladCustomization?.modifierOptionIds ?? [],
         );
 
         if (cartItem.modifierSelections) {
+          const seenOptionIds = new Set<string>();
           for (let selectionIndex = 0; selectionIndex < cartItem.modifierSelections.length; selectionIndex++) {
             const selection = cartItem.modifierSelections[selectionIndex];
+            if (seenOptionIds.has(selection.modifierOptionId)) {
+              throw new UnprocessableEntityException({
+                message: `Duplicate modifier option ${selection.modifierOptionId} not allowed`,
+                field: "items",
+              });
+            }
+            seenOptionIds.add(selection.modifierOptionId);
+
             const option = optionMap.get(selection.modifierOptionId);
             if (!option) {
               throw new UnprocessableEntityException({
@@ -936,6 +954,7 @@ export class CheckoutService {
               ? {
                   builder_type: "ITEM_CUSTOMIZATION",
                   removed_ingredients: validatedRemovedIngredients,
+                  ...(bp?.side_pop_bundle ? { side_pop_bundle: bp.side_pop_bundle } : {}),
                 }
               : (bp ?? null);
 

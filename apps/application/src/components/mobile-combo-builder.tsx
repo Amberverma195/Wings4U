@@ -656,6 +656,12 @@ export function ComboBuilderMobile({
   /* ================================================================ */
   /*  Render                                                           */
   /* ================================================================ */
+  const isHardDisabled =
+    !availability.available ||
+    loading ||
+    Boolean(error) ||
+    (requiredFlavourCount > 0 && flavours.length === 0);
+
   const submitLabel = editingLine ? 'Save changes' : 'Add to cart';
 
   return (
@@ -669,10 +675,10 @@ export function ComboBuilderMobile({
       quantity={quantity}
       onDecrease={() => setQuantity((v) => Math.max(1, v - 1))}
       onIncrease={() => setQuantity((v) => v + 1)}
-      quantityDisabled={!isReadyToSubmit}
+      quantityDisabled={isHardDisabled}
       totalCents={liveUnitPrice * quantity}
       submitLabel={submitLabel}
-      submitDisabled={!isReadyToSubmit}
+      submitDisabled={isHardDisabled}
       onSubmit={handleAdd}
     >
       {!availability.available ? (

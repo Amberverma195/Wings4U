@@ -113,14 +113,14 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
   if (!payload) return 0;
   if (payload.builder_type === "ITEM_CUSTOMIZATION") {
     const bundle = (payload as ItemCustomizationPayload).side_pop_bundle;
-    return bundle?.price_cents ?? 0;
+    return bundle ? (bundle.price_cents ?? 499) : 0;
   }
   if (payload.builder_type === "LUNCH_SPECIAL") {
     // Lunch specials park child-item add-ons in the payload (not in
     // modifier_selections, since the API would reject those option ids on
     // the lunch row), so they need to be added back to the line price here.
     return payload.child_addons.reduce(
-      (sum, addon) => sum + addon.price_delta_cents,
+      (sum, addon) => sum + Math.max(0, addon.price_delta_cents),
       0,
     );
   }

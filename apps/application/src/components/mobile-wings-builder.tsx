@@ -580,24 +580,44 @@ export function WingsBuilderMobile({
     }
   }, [editingLine, editingSaladCustomization, resolvedSaladItem, usesChildSaladCustomization]);
 
-  /* Filter invalid options for selectedSaladGroup */
+  /* Revalidate and prune extraGroupSelections when extraGroups change (e.g. variant change) */
   useEffect(() => {
-    if (!selectedSaladGroup) return;
-
-    const validOptionIds = new Set(selectedSaladGroup.options.map((option) => option.id));
     setExtraGroupSelections((prev) => {
-      const current = prev[selectedSaladGroup.id];
-      if (!current?.length) return prev;
+      let changed = false;
+      const next: Record<string, string[]> = {};
+      const activeGroupIds = new Set(extraGroups.map((g) => g.id));
 
-      const filtered = current.filter((optionId) => validOptionIds.has(optionId));
-      if (filtered.length === current.length) return prev;
+      for (const group of extraGroups) {
+        const current = prev[group.id];
+        if (!current?.length) continue;
 
-      return {
-        ...prev,
-        [selectedSaladGroup.id]: filtered,
-      };
+        const validOptionIds = new Set(group.options.map((option) => option.id));
+        let validPicks = current.filter((optionId) => validOptionIds.has(optionId));
+        validPicks = Array.from(new Set(validPicks));
+        if (group.selection_mode === 'SINGLE' && validPicks.length > 1) {
+          validPicks = validPicks.slice(0, 1);
+        }
+        if (group.max_select && validPicks.length > group.max_select) {
+          validPicks = validPicks.slice(0, group.max_select);
+        }
+
+        if (validPicks.length > 0) {
+          next[group.id] = validPicks;
+        }
+        if (validPicks.length !== current.length) {
+          changed = true;
+        }
+      }
+
+      for (const prevKey of Object.keys(prev)) {
+        if (!activeGroupIds.has(prevKey)) {
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
     });
-  }, [selectedSaladGroup]);
+  }, [extraGroups]);
 
   /* Scope salad add-on selections to active size */
   useEffect(() => {
@@ -770,8 +790,20 @@ export function WingsBuilderMobile({
 
     for (const group of extraGroupsMinusSalad) {
       const picks = extraGroupSelections[group.id] ?? [];
+      if (picks.some((optId) => !group.options.some((o) => o.id === optId))) {
+        return `extra-${group.id}`;
+      }
+      if (new Set(picks).size !== picks.length) {
+        return `extra-${group.id}`;
+      }
+      if (group.selection_mode === 'SINGLE' && picks.length > 1) {
+        return `extra-${group.id}`;
+      }
       const min = group.is_required ? Math.max(group.min_select, 1) : group.min_select;
       if (picks.length < min) return `extra-${group.id}`;
+      if (group.max_select && picks.length > group.max_select) {
+        return `extra-${group.id}`;
+      }
     }
     return null;
   }, [
@@ -845,7 +877,7 @@ export function WingsBuilderMobile({
     for (const group of extraGroups) {
       for (const optionId of (extraGroupSelections[group.id] ?? [])) {
         const opt = group.options.find((o) => o.id === optionId);
-        if (!opt) continue;
+        if (!opt) return;
         modifierSelections.push({
           modifier_option_id: opt.id,
           group_name: group.name,
@@ -866,7 +898,7 @@ export function WingsBuilderMobile({
         const picks = saladModifierSelections[group.id] ?? [];
         for (const optionId of picks) {
           const option = group.options.find((candidate) => candidate.id === optionId);
-          if (!option) continue;
+          if (!option) return;
           saladModifierSelectionsList.push({
             modifier_option_id: option.id,
             name: option.name,
@@ -1031,7 +1063,12 @@ export function WingsBuilderMobile({
 
   /* ================================================================ */
   /*  Render                                                           */
-  /* ================================================================ */
+  const isHardDisabled =
+    !availability.available ||
+    loading ||
+    Boolean(error) ||
+    (requiredFlavourCount > 0 && flavours.length === 0);
+
   const submitLabel = editingLine ? 'Save changes' : 'Add to cart';
 
   return (
@@ -1043,10 +1080,10 @@ export function WingsBuilderMobile({
       quantity={quantity}
       onDecrease={() => setQuantity((v) => Math.max(1, v - 1))}
       onIncrease={() => setQuantity((v) => v + 1)}
-      quantityDisabled={!isReadyToSubmit}
+      quantityDisabled={isHardDisabled}
       totalCents={liveUnitPrice * quantity}
       submitLabel={submitLabel}
-      submitDisabled={!isReadyToSubmit}
+      submitDisabled={isHardDisabled}
       onSubmit={handleAdd}
     >
       {!availability.available ? (
@@ -1343,7 +1380,7 @@ export function WingsBuilderMobile({
       })}
 
       {/* ---- Removable ingredients ---- */}
-      {item.removable_ingredients.length > 0 && !usesChildSaladCustomization ? (
+      {(item.removable_ingredients?.length ?? 0) > 0 && !usesChildSaladCustomization ? (
         <StepCard title="Ingredient removals" subtitle="Tap items to leave off.">
           <View style={styles.pillWrap}>
             {item.removable_ingredients.map((ing) => {

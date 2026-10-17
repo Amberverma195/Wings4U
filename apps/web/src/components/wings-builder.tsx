@@ -625,6 +625,45 @@ export function WingsBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOption]);
 
+  /* Revalidate and prune extraGroupSelections when extraGroups change (e.g. variant change) */
+  useEffect(() => {
+    setExtraGroupSelections((prev) => {
+      let changed = false;
+      const next: Record<string, string[]> = {};
+      const activeGroupIds = new Set(extraGroups.map((g) => g.id));
+
+      for (const group of extraGroups) {
+        const current = prev[group.id];
+        if (!current?.length) continue;
+
+        const validOptionIds = new Set(group.options.map((opt) => opt.id));
+        let validPicks = current.filter((optId) => validOptionIds.has(optId));
+        validPicks = Array.from(new Set(validPicks));
+        if (group.selection_mode === "SINGLE" && validPicks.length > 1) {
+          validPicks = validPicks.slice(0, 1);
+        }
+        if (group.max_select && validPicks.length > group.max_select) {
+          validPicks = validPicks.slice(0, group.max_select);
+        }
+
+        if (validPicks.length > 0) {
+          next[group.id] = validPicks;
+        }
+        if (validPicks.length !== current.length) {
+          changed = true;
+        }
+      }
+
+      for (const prevKey of Object.keys(prev)) {
+        if (!activeGroupIds.has(prevKey)) {
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [extraGroups]);
+
   useEffect(() => {
     if (!usesChildSaladCustomization) return;
 
@@ -870,8 +909,19 @@ export function WingsBuilder({
   const isExtraGroupComplete = useCallback(
     (group: ModifierGroup) => {
       const picks = extraGroupSelections[group.id] ?? [];
+      if (picks.some((optId) => !group.options.some((o) => o.id === optId))) {
+        return false;
+      }
+      if (new Set(picks).size !== picks.length) {
+        return false;
+      }
+      if (group.selection_mode === "SINGLE" && picks.length > 1) {
+        return false;
+      }
       const min = group.is_required ? Math.max(group.min_select, 1) : group.min_select;
-      return picks.length >= min;
+      if (picks.length < min) return false;
+      if (group.max_select && picks.length > group.max_select) return false;
+      return true;
     },
     [extraGroupSelections],
   );
@@ -1188,7 +1238,7 @@ export function WingsBuilder({
       const picks = extraGroupSelections[group.id] ?? [];
       for (const optionId of picks) {
         const opt = group.options.find((o) => o.id === optionId);
-        if (!opt) continue;
+        if (!opt) return;
         modifierSelections.push({
           modifier_option_id: opt.id,
           group_name: group.name,
@@ -1208,7 +1258,7 @@ export function WingsBuilder({
         const picks = saladModifierSelections[group.id] ?? [];
         for (const optionId of picks) {
           const option = group.options.find((candidate) => candidate.id === optionId);
-          if (!option) continue;
+          if (!option) return;
           saladModifierSelectionsList.push({
             modifier_option_id: option.id,
             name: option.name,

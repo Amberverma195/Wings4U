@@ -53,12 +53,23 @@ function driverTipCents(cart: CartContextValue): number {
 function payloadSummary(payload: CartBuilderPayload | undefined): string[] {
   if (!payload) return [];
   if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
-    const flavours = payload.flavour_slots.map((slot) => slot.flavour_name);
-    if (payload.extra_flavour) flavours.push(payload.extra_flavour.flavour_name);
-    return flavours;
+    const parts = payload.flavour_slots.map((slot) => slot.flavour_name);
+    if (payload.extra_flavour) parts.push(`Extra: ${payload.extra_flavour.flavour_name}`);
+    if (payload.salad_customization?.salad_name) {
+      parts.push(`Salad: ${payload.salad_customization.salad_name}`);
+      for (const r of payload.salad_customization.removed_ingredients ?? []) {
+        parts.push(`No ${r.name}`);
+      }
+    }
+    return parts;
   }
   if (payload.builder_type === "LUNCH_SPECIAL") {
     return [payload.child_name];
+  }
+  if (payload.builder_type === "ITEM_CUSTOMIZATION") {
+    if (payload.side_pop_bundle) {
+      return [`Combo: ${payload.side_pop_bundle.side_label} & ${payload.side_pop_bundle.pop_label}`];
+    }
   }
   return [];
 }

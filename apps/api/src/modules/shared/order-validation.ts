@@ -4,6 +4,7 @@ import {
   buildScheduleViolationBody,
   getLocationLocalDate,
   isLunchSpecialMenuItem,
+  SIDE_POP_BUNDLE_SLUGS,
 } from "./pricing";
 import {
   isOperatingHourOpenAt,
@@ -18,6 +19,7 @@ export type ValidationMenuItem = {
   id: string;
   name: string;
   slug?: string | null;
+  builderType?: string | null;
   isAvailable: boolean;
   archivedAt: Date | null;
   allowedFulfillmentType: string;
@@ -289,3 +291,135 @@ export function assertModifierOptionAllowedForItem(params: {
     });
   }
 }
+
+export function assertBuilderPayloadValid(params: {
+  menuItem: ValidationMenuItem;
+  builderPayload?: Record<string, unknown>;
+  optionMap?: Map<string, { id: string; isActive?: boolean; priceDeltaCents: number }>;
+}): void {
+  const { menuItem, builderPayload, optionMap } = params;
+  if (!builderPayload) return;
+
+  const validBuilderTypes = new Set([
+    "WINGS",
+    "WING_COMBO",
+    "ITEM_CUSTOMIZATION",
+    "LUNCH_SPECIAL",
+  ]);
+  const builderType =
+    typeof builderPayload.builder_type === "string"
+      ? builderPayload.builder_type
+      : null;
+
+  if (builderType && !validBuilderTypes.has(builderType)) {
+    throw new UnprocessableEntityException({
+      message: `Invalid builder type: "${builderType}"`,
+      field: "items",
+    });
+  }
+
+  if (builderType === "WINGS") {
+    if (menuItem.builderType && menuItem.builderType !== "WINGS") {
+      throw new UnprocessableEntityException({
+        message: `"${menuItem.name}" is not eligible for wing builder`,
+        field: "items",
+      });
+    }
+    if (
+      builderPayload.wing_type === "BONELESS" &&
+      builderPayload.preparation === "NON_BREADED"
+    ) {
+      throw new UnprocessableEntityException({
+        message: "Boneless wings cannot be non-breaded",
+        field: "items",
+      });
+    }
+    if (
+      builderPayload.salad_customization &&
+      menuItem.slug &&
+      menuItem.slug !== "wings-4u-special" &&
+      menuItem.builderType === "WINGS"
+    ) {
+      throw new UnprocessableEntityException({
+        message: "Salad customization is only available for Wings-4-U Special",
+        field: "items",
+      });
+    }
+  }
+
+  if (builderType === "WING_COMBO") {
+    if (menuItem.builderType && menuItem.builderType !== "WING_COMBO") {
+      throw new UnprocessableEntityException({
+        message: `"${menuItem.name}" is not eligible for wing combo builder`,
+        field: "items",
+      });
+    }
+    if (
+      builderPayload.wing_type === "BONELESS" &&
+      builderPayload.preparation === "NON_BREADED"
+    ) {
+      throw new UnprocessableEntityException({
+        message: "Boneless wings cannot be non-breaded",
+        field: "items",
+      });
+    }
+    if (builderPayload.salad_customization) {
+      throw new UnprocessableEntityException({
+        message: "Salad customization is not valid for wing combos",
+        field: "items",
+      });
+    }
+  }
+
+  if (builderType === "ITEM_CUSTOMIZATION") {
+    const bundle = builderPayload.side_pop_bundle;
+    if (bundle && typeof bundle === "object") {
+      if (menuItem.slug && !SIDE_POP_BUNDLE_SLUGS.has(menuItem.slug)) {
+        throw new UnprocessableEntityException({
+          message: `Side and pop combo is not available for ${menuItem.name}`,
+          field: "items",
+        });
+      }
+    }
+  }
+
+  if (builderType === "LUNCH_SPECIAL") {
+    const isLunchItem =
+      (menuItem.slug?.startsWith("lunch-") ?? false) ||
+      menuItem.category?.slug === "lunch-specials";
+    if (!isLunchItem) {
+      throw new UnprocessableEntityException({
+        message: `"${menuItem.name}" is not a lunch special`,
+        field: "items",
+      });
+    }
+    if (Array.isArray(builderPayload.child_addons) && optionMap) {
+      const seenAddonOptionIds = new Set<string>();
+      for (const row of builderPayload.child_addons) {
+        if (
+          row &&
+          typeof row === "object" &&
+          typeof (row as { modifier_option_id?: unknown }).modifier_option_id === "string"
+        ) {
+          const optId = (row as { modifier_option_id: string }).modifier_option_id;
+          if (seenAddonOptionIds.has(optId)) {
+            throw new UnprocessableEntityException({
+              message: `Duplicate add-on option "${optId}" is not allowed`,
+              field: "items",
+            });
+          }
+          seenAddonOptionIds.add(optId);
+
+          const opt = optionMap.get(optId);
+          if (!opt || opt.isActive === false) {
+            throw new UnprocessableEntityException({
+              message: `Add-on option "${optId}" is no longer available`,
+              field: "items",
+            });
+          }
+        }
+      }
+    }
+  }
+}
+

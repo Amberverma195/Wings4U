@@ -996,4 +996,140 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
       expect(onClose).toHaveBeenCalled();
     });
   });
+
+  describe('15. Validation UX & Interactive Trigger', () => {
+    test('Add to Cart button remains clickable when incomplete to trigger inline validation messages without adding to cart', async () => {
+      const onClose = jest.fn();
+      await act(async () => {
+        renderer = create(
+          React.createElement(WingsBuilderMobile, {
+            item: standardWingsItem,
+            visible: true,
+            onClose,
+          })
+        );
+      });
+
+      const submit = submitButton();
+      expect(submit).toBeTruthy();
+      // Button is not hard-disabled
+      expect(submit.props.accessibilityState.disabled).toBe(false);
+
+      // Pressing it triggers validation feedback
+      await act(async () => submit.props.onPress());
+
+      // Cart item is NOT added
+      expect(mockCart.addItem).not.toHaveBeenCalled();
+
+      // Inline validation message is displayed
+      const textContent = texts(renderer.root);
+      expect(textContent).toContain('Please fill all required fields');
+    });
+
+    test('Add to Cart button is hard-disabled when product is unavailable', async () => {
+      const unavailableItem = {
+        ...standardWingsItem,
+        is_available: false,
+      };
+
+      await act(async () => {
+        renderer = create(
+          React.createElement(WingsBuilderMobile, {
+            item: unavailableItem,
+            visible: true,
+            onClose: jest.fn(),
+          })
+        );
+      });
+
+      const submit = submitButton();
+      expect(submit).toBeTruthy();
+      expect(submit.props.accessibilityState.disabled).toBe(true);
+
+      // Attempted press still does not add to cart
+      await act(async () => submit.props.onPress());
+      expect(mockCart.addItem).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('16. Modifier Group Validation & Variant Switching', () => {
+    test('prunes incompatible modifier options on variant switch while preserving valid ones', async () => {
+      const variantGroupA = group('dip-group', 'Dip Selection', [
+        option('opt-ranch', 'Ranch Dip'),
+        option('opt-blue', 'Blue Cheese Dip'),
+      ]);
+      const variantGroupB = group('dip-group', 'Dip Selection', [
+        option('opt-ranch', 'Ranch Dip'),
+        option('opt-dill', 'Creamy Dill Dip'),
+      ]);
+
+      const multiVariantItem = {
+        id: 'wings-variants',
+        slug: 'wings-variants',
+        name: 'Wings with Variants',
+        base_price_cents: 1399,
+        builder_type: 'WINGS',
+        modifier_groups: [wingTypeGroup, flavourGroup],
+        removable_ingredients: [],
+        weight_options: [
+          {
+            menu_item_id: 'var-1',
+            slug: 'var-1',
+            name: '1 lb Wings',
+            base_price_cents: 1399,
+            weight_lb: 1,
+            flavour_count: 1,
+            side_slot_count: 0,
+            drink_slot_count: 0,
+            modifier_groups: [wingTypeGroup, flavourGroup, variantGroupA],
+          },
+          {
+            menu_item_id: 'var-2',
+            slug: 'var-2',
+            name: '2 lb Wings',
+            base_price_cents: 2599,
+            weight_lb: 2,
+            flavour_count: 2,
+            side_slot_count: 0,
+            drink_slot_count: 0,
+            modifier_groups: [wingTypeGroup, flavourGroup, variantGroupB],
+          },
+        ],
+        is_available: true,
+        stock_status: 'NORMAL',
+        allowed_fulfillment_type: 'BOTH',
+      };
+
+      await act(async () => {
+        renderer = create(
+          React.createElement(WingsBuilderMobile, {
+            item: multiVariantItem,
+            visible: true,
+            onClose: jest.fn(),
+          })
+        );
+      });
+
+      // Select 1 lb
+      const var1Btn = buttonByText('1 lb / 1 flavour');
+      expect(var1Btn).toBeTruthy();
+      await act(async () => var1Btn.props.onPress());
+
+      // Select Blue Cheese Dip (exists only on Variant 1)
+      const blueBtn = buttonByText('Blue Cheese Dip');
+      expect(blueBtn).toBeTruthy();
+      await act(async () => blueBtn.props.onPress());
+
+      // Switch to 2 lb (Variant 2)
+      const var2Btn = buttonByText('2 lb / 2 flavours');
+      expect(var2Btn).toBeTruthy();
+      await act(async () => var2Btn.props.onPress());
+
+      // Blue Cheese Dip does not exist on Variant 2, so it should be pruned
+      // and not cause validation failure or stale inclusion
+      const submit = submitButton();
+      await act(async () => submit.props.onPress());
+      expect(mockCart.addItem).not.toHaveBeenCalled();
+    });
+  });
 });

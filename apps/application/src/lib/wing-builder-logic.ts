@@ -28,6 +28,7 @@ import type {
 
 export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
+export const SIDE_POP_BUNDLE_PRICE_CENTS = 499;
 
 /* ------------------------------------------------------------------ */
 /*  Heat level ordering                                                */
@@ -391,11 +392,11 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
   if (payload.builder_type === "LUNCH_SPECIAL") {
     const addons = (payload as LunchSpecialPayload).child_addons;
     if (!Array.isArray(addons)) return 0;
-    return addons.reduce((sum, addon) => sum + (addon?.price_delta_cents ?? 0), 0);
+    return addons.reduce((sum, addon) => sum + Math.max(0, addon?.price_delta_cents ?? 0), 0);
   }
   if (payload.builder_type === "ITEM_CUSTOMIZATION") {
     const bundle = (payload as ItemCustomizationPayload).side_pop_bundle;
-    return bundle?.price_cents ?? 0;
+    return bundle ? (bundle.price_cents ?? SIDE_POP_BUNDLE_PRICE_CENTS) : 0;
   }
   if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
     return (

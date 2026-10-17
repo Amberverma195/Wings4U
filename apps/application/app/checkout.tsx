@@ -105,10 +105,21 @@ function cartItemDetails(item: CartItem): string[] {
   ];
   const payload = item.builder_payload;
   if (payload?.builder_type === "WINGS" || payload?.builder_type === "WING_COMBO") {
-    details.unshift(...payload.flavour_slots.map((slot) => slot.flavour_name));
+    const wingParts = payload.flavour_slots.map((slot) => slot.flavour_name);
+    if (payload.extra_flavour) wingParts.push(`Extra: ${payload.extra_flavour.flavour_name}`);
+    if (payload.salad_customization?.salad_name) {
+      wingParts.push(`Salad: ${payload.salad_customization.salad_name}`);
+      for (const r of payload.salad_customization.removed_ingredients ?? []) {
+        wingParts.push(`No ${r.name}`);
+      }
+    }
+    details.unshift(...wingParts);
   }
   if (payload?.builder_type === "LUNCH_SPECIAL") {
     details.unshift(payload.child_name);
+  }
+  if (payload?.builder_type === "ITEM_CUSTOMIZATION" && payload.side_pop_bundle) {
+    details.push(`Combo: ${payload.side_pop_bundle.side_label} & ${payload.side_pop_bundle.pop_label}`);
   }
   if (item.special_instructions.trim()) details.push(item.special_instructions.trim());
   return details;

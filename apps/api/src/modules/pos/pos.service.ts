@@ -16,12 +16,14 @@ import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import {
   getBuilderPriceDelta,
+  getLunchAddonOptionIds,
   getSaladCustomization,
   parseRemovedIngredients,
   type RemovedIngredientInput,
 } from "../shared/pricing";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import {
+  assertBuilderPayloadValid,
   assertMenuItemOrderable,
   assertModifierOptionAllowedForItem,
   assertWingFlavoursOrderable,
@@ -436,7 +438,8 @@ export class PosService {
             const saladOpts = (
               getSaladCustomization(i.builderPayload)?.modifierOptionIds ?? []
             ).filter((id): id is string => Boolean(id));
-            return [...standardOpts, ...saladOpts];
+            const lunchOpts = getLunchAddonOptionIds(i.builderPayload);
+            return [...standardOpts, ...saladOpts, ...lunchOpts];
           }),
         ),
       );
@@ -580,13 +583,22 @@ export class PosService {
           }
         }
 
-        let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload);
+        if (menuItem) {
+          assertBuilderPayloadValid({
+            menuItem,
+            builderPayload: cartItem.builderPayload,
+            optionMap,
+          });
+        }
+
+        let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload, optionMap);
         const modifiers: (typeof lineItems)[number]["modifiers"] = [];
         const saladModifierOptionIds = new Set(
           saladCustomization?.modifierOptionIds ?? [],
         );
 
         if (cartItem.modifierSelections) {
+          const seenOptionIds = new Set<string>();
           for (let si = 0; si < cartItem.modifierSelections.length; si++) {
             const sel = cartItem.modifierSelections[si];
 
@@ -606,6 +618,14 @@ export class PosService {
               });
               continue;
             }
+
+            if (seenOptionIds.has(sel.modifierOptionId)) {
+              throw new UnprocessableEntityException({
+                message: `Duplicate modifier option ${sel.modifierOptionId} not allowed`,
+                field: "items",
+              });
+            }
+            seenOptionIds.add(sel.modifierOptionId);
 
             const opt = optionMap.get(sel.modifierOptionId);
             if (!opt) {

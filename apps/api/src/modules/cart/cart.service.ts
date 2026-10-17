@@ -14,10 +14,12 @@ import {
   type PricingPolicy,
   computePricing as computePricingShared,
   getBuilderPriceDelta,
+  getLunchAddonOptionIds,
   parseRemovedIngredients,
   getSaladCustomization,
 } from "../shared/pricing";
 import {
+  assertBuilderPayloadValid,
   assertLocationOpenForFulfillment,
   assertMenuItemOrderable,
   assertModifierOptionAllowedForItem,
@@ -123,7 +125,8 @@ export class CartService {
       (item) => {
         const standardOpts = item.modifier_selections?.map((selection) => selection.modifier_option_id) ?? [];
         const saladOpts = getSaladCustomization(item.builder_payload)?.modifierOptionIds ?? [];
-        return [...standardOpts, ...saladOpts];
+        const lunchOpts = getLunchAddonOptionIds(item.builder_payload);
+        return [...standardOpts, ...saladOpts, ...lunchOpts];
       }
     );
     const modifierOptions = allOptionIds.length > 0
@@ -270,17 +273,32 @@ export class CartService {
         }
       }
 
+      assertBuilderPayloadValid({
+        menuItem,
+        builderPayload: cartItem.builder_payload,
+        optionMap,
+      });
+
       assertWingFlavoursOrderable({
         builderPayload: cartItem.builder_payload,
         wingFlavourMap,
       });
 
-      let modifierTotalCents = getBuilderPriceDelta(cartItem.builder_payload);
+      let modifierTotalCents = getBuilderPriceDelta(cartItem.builder_payload, optionMap);
       const saladModifierOptionIds = new Set(
         saladCustomization?.modifierOptionIds ?? [],
       );
       if (cartItem.modifier_selections) {
+        const seenOptionIds = new Set<string>();
         for (const selection of cartItem.modifier_selections) {
+          if (seenOptionIds.has(selection.modifier_option_id)) {
+            throw new UnprocessableEntityException({
+              message: `Duplicate modifier option ${selection.modifier_option_id} not allowed`,
+              field: "items",
+            });
+          }
+          seenOptionIds.add(selection.modifier_option_id);
+
           const option = optionMap.get(selection.modifier_option_id);
           if (!option) {
             throw new UnprocessableEntityException({

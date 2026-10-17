@@ -56,6 +56,17 @@ export type SaladCustomizationInput = {
 
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
 export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
+export const SIDE_POP_BUNDLE_PRICE_CENTS = 499;
+export const SIDE_POP_BUNDLE_SLUGS = new Set([
+  "veggie-burger",
+  "chicken-burger",
+  "buffalo-chicken-burger",
+  "veggie-wrap",
+  "chicken-caesar-wrap",
+  "buffalo-chicken-wrap",
+  "garden-chicken-wrap",
+  "greek-chicken-wrap",
+]);
 export const LUNCH_WINDOW_LABEL = "11 AM - 3 PM";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_CODE = "LUNCH_SPECIAL_SCHEDULE_CONFLICT";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_MESSAGE =
@@ -147,25 +158,52 @@ export function buildScheduleViolationBody(params: {
   };
 }
 
-export function getBuilderPriceDelta(builderPayload?: Record<string, unknown>): number {
+export function getLunchAddonOptionIds(
+  builderPayload?: Record<string, unknown>,
+): string[] {
+  if (!builderPayload || builderPayload.builder_type !== "LUNCH_SPECIAL") {
+    return [];
+  }
+  const addons = builderPayload.child_addons;
+  if (!Array.isArray(addons)) return [];
+  return addons
+    .map((row) =>
+      row &&
+      typeof row === "object" &&
+      typeof (row as { modifier_option_id?: unknown }).modifier_option_id ===
+        "string"
+        ? (row as { modifier_option_id: string }).modifier_option_id
+        : null,
+    )
+    .filter((id): id is string => Boolean(id));
+}
+
+export function getBuilderPriceDelta(
+  builderPayload?: Record<string, unknown>,
+  optionMap?: Map<string, { priceDeltaCents: number }>,
+): number {
   if (!builderPayload) return 0;
   if (builderPayload.builder_type === "LUNCH_SPECIAL") {
     const addons = builderPayload.child_addons;
     if (!Array.isArray(addons)) return 0;
     let sum = 0;
     for (const row of addons) {
-      if (row && typeof row === "object" && "price_delta_cents" in row) {
-        const n = Number((row as { price_delta_cents: unknown }).price_delta_cents);
-        if (Number.isFinite(n)) sum += n;
+      if (row && typeof row === "object") {
+        const optionId = (row as { modifier_option_id?: unknown }).modifier_option_id;
+        if (typeof optionId === "string" && optionMap?.has(optionId)) {
+          sum += optionMap.get(optionId)!.priceDeltaCents;
+        } else if ("price_delta_cents" in row) {
+          const n = Number((row as { price_delta_cents: unknown }).price_delta_cents);
+          if (Number.isFinite(n) && n > 0) sum += n;
+        }
       }
     }
     return sum;
   }
   if (builderPayload.builder_type === "ITEM_CUSTOMIZATION") {
     const bundle = builderPayload.side_pop_bundle;
-    if (bundle && typeof bundle === "object" && "price_cents" in bundle) {
-      const n = Number((bundle as { price_cents: unknown }).price_cents);
-      if (Number.isFinite(n)) return n;
+    if (bundle && typeof bundle === "object") {
+      return SIDE_POP_BUNDLE_PRICE_CENTS;
     }
     return 0;
   }
