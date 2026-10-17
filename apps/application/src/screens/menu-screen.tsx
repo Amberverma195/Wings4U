@@ -97,6 +97,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const footerReloadKey = !cinematic && params.promotion === 'footer' && typeof params.ts === 'string' ? params.ts : undefined;
   const handledFooterRequest = useRef<string | null>(null);
   const footerNavigationNonce = useRef(0);
+  const categoryNavigationNonce = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const productSectionY = useRef(0);
   const { width } = useWindowDimensions();
@@ -179,9 +180,16 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   }, [refetch]);
 
   const handleCategoryPress = useCallback((slug: string) => {
+    if (cinematic) {
+      router.navigate({ pathname: '/(tabs)/menu', params: {
+        category: slug, promotion: 'category', itemSlug: '',
+        ts: `${Date.now()}-${++categoryNavigationNonce.current}`,
+      } });
+      return;
+    }
     setActiveCategorySlug(slug);
     setSearchQuery('');
-  }, []);
+  }, [cinematic, router]);
 
   /* Promo banner tap -> open the Menu tab deep-linked to its category. The
      changing `ts` guarantees re-selection even if the Menu tab is already
@@ -213,6 +221,8 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     if (!resolved) return;
     setActiveCategorySlug(resolved);
     setSearchQuery('');
+    setAvailableOnly(false);
+    setSelectedItem(null);
     requestAnimationFrame(() => {
       if (productSectionY.current > 0) {
         scrollRef.current?.scrollTo({ y: productSectionY.current, animated: true });

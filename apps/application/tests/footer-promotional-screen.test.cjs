@@ -43,6 +43,7 @@ const menu = { categories: [
   { id: 'wings', slug: 'wings', name: 'Wings', sort_order: 2, items: [item('wings')] },
   { id: 'lunch', slug: 'lunch-specials', name: 'Lunch Specials', sort_order: 1, items: slugs.map(item) },
   { id: 'party', slug: 'party-specials', name: 'Party Specials', sort_order: 14, items: [item('party-75-wings')] },
+  { id: 'burgers', slug: 'burgers', name: 'Burgers', sort_order: 4, items: [item('classic-burger'), item('cheese-burger')] },
 ] };
 let renderer;
 const originalRaf = global.requestAnimationFrame;
@@ -121,4 +122,59 @@ test('Party Specials selects the category and leaves package choice to the custo
   const selected = renderer.root.findAllByProps({ accessibilityRole: 'button' })
     .find(node => node.props.accessibilityLabel === 'Party Specials');
   expect(selected.props.accessibilityState.selected).toBe(true);
+});
+
+const categoryButton = label => renderer.root.findAllByType('TouchableOpacity')
+  .find(node => node.props.accessibilityLabel === label);
+const shownNames = () => renderer.root.findAllByType('Text').map(node => node.children.filter(child => typeof child === 'string').join(''));
+
+test('Home category taps navigate to Menu without displaying the selected category on Home', async () => {
+  await mount(true);
+  await act(async () => categoryButton('Burgers').props.onPress());
+  expect(mockRouter.navigate).toHaveBeenCalledWith({ pathname: '/(tabs)/menu', params: {
+    category: 'burgers', promotion: 'category', itemSlug: '', ts: expect.any(String),
+  } });
+  expect(categoryButton('Burgers').props.accessibilityState.selected).toBe(false);
+  expect(shownNames()).not.toContain('classic-burger');
+  const firstRequest = mockRouter.navigate.mock.calls[0][0].params.ts;
+  await act(async () => categoryButton('Burgers').props.onPress());
+  expect(mockRouter.navigate.mock.calls[1][0].params.ts).not.toBe(firstRequest);
+});
+
+test('incoming Home category navigation clears old search/filter state and selects all burgers in Menu', async () => {
+  mockMenuResult = { ...mockMenuResult, menu: { categories: menu.categories.map(category => category.slug === 'burgers'
+    ? { ...category, items: [item('classic-burger'), { ...item('cheese-burger'), is_available: false }] } : category) } };
+  await mount(false);
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Search menu' }).props.onChangeText('wings'));
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Menu filters' }).props.onPress());
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Available items only' }).props.onPress());
+  mockParams = { category: 'burgers', promotion: 'category', itemSlug: '', ts: 'home-category-1' };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic: false })));
+  expect(categoryButton('Burgers').props.accessibilityState.selected).toBe(true);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Search menu' }).props.value).toBe('');
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Available items only' }).props.accessibilityState.checked).toBe(false);
+  expect(shownNames()).toEqual(expect.arrayContaining(['classic-burger', 'cheese-burger']));
+  expect(builder().props.visible).toBe(false);
+  expect(mockRouter.navigate).not.toHaveBeenCalled();
+});
+
+test('Menu category taps still select locally and a repeated Home link reselects Burgers', async () => {
+  mockParams = { category: 'burgers', promotion: 'category', itemSlug: '', ts: 'home-category-1' };
+  await mount(false);
+  await act(async () => categoryButton('Wings').props.onPress());
+  expect(categoryButton('Wings').props.accessibilityState.selected).toBe(true);
+  expect(mockRouter.navigate).not.toHaveBeenCalled();
+  mockParams = { ...mockParams, ts: 'home-category-2' };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic: false })));
+  expect(categoryButton('Burgers').props.accessibilityState.selected).toBe(true);
+});
+
+test('category links wait for Menu data before selecting the requested category', async () => {
+  mockParams = { category: 'burgers', promotion: 'category', ts: 'home-loading' };
+  mockMenuResult = { ...mockMenuResult, menu: null, loading: true };
+  await mount(false);
+  mockMenuResult = { ...mockMenuResult, menu, loading: false };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic: false })));
+  expect(categoryButton('Burgers').props.accessibilityState.selected).toBe(true);
+  expect(shownNames()).toEqual(expect.arrayContaining(['classic-burger', 'cheese-burger']));
 });
