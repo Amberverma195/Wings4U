@@ -15,7 +15,6 @@ import { apiJson } from "../../src/lib/api";
 import { useCart, type CartContextValue } from "../../src/context/cart";
 import { useOrderSetup } from "../../src/context/order-setup";
 import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
-import { OrderSetupSummary } from "../../src/components/order-setup-summary";
 import { usePromo } from "../../src/context/promo";
 import { useAccountData } from "../../src/hooks/use-account-data";
 import { useSession } from "../../src/context/session";
@@ -31,7 +30,6 @@ import type {
   CartBuilderPayload,
   CartItem,
   CartQuoteResponse,
-  FulfillmentType,
 } from "../../src/lib/types";
 
 function formatPrice(cents: number): string {
@@ -214,10 +212,6 @@ export default function CartScreen() {
     (candidate) => !candidate.autoApply,
   );
 
-  const setFulfillment = (type: FulfillmentType) => {
-    orderSetup.openOrderSetup(type);
-  };
-
   return (
     <SafeAreaView edges={["left", "right"]} style={styles.container}>
       {focused && <StatusBar style="dark" />}
@@ -249,32 +243,6 @@ export default function CartScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Order type</Text>
-              <OrderSetupSummary />
-              <View style={styles.segmented}>
-                {(["PICKUP", "DELIVERY"] as const).map((type) => {
-                  const active = cart.fulfillmentType === type;
-                  return (
-                    <TouchableOpacity
-                      key={type}
-                      style={[styles.segment, active && styles.segmentActive]}
-                      onPress={() => setFulfillment(type)}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          active && styles.segmentTextActive,
-                        ]}
-                      >
-                        {type === "PICKUP" ? "Pickup" : "Delivery"}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Items</Text>
               {cart.items.map((item) => {
