@@ -142,15 +142,6 @@ function statusLabel(status: string): string {
   return labels[status] ?? titleCase(status);
 }
 
-function initialsFor(name?: string | null): string {
-  if (!name || isPhoneDisplayName(name)) return 'W4';
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return parts
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || 'W4';
-}
-
 function promoBenefit(promo: ActivePromo): string {
   if (promo.benefitSummary) return promo.benefitSummary;
   if (promo.discountType === 'PERCENT') return `${promo.discountValue}% OFF`;
@@ -421,9 +412,6 @@ function ProfileScreen() {
         }
       >
         <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initialsFor(displayName)}</Text>
-          </View>
           <View style={styles.headerText}>
             <Text style={styles.name} numberOfLines={1}>{shownName}</Text>
             <Text style={styles.phone}>{phoneLabel}</Text>
@@ -1257,7 +1245,20 @@ function SupportTab({
   onSave: () => void;
 }) {
   return (
-    <SectionCard title="Support tickets" actionLabel="New" onAction={onAdd}>
+    <>
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Need help?</Text>
+        </View>
+        <Text style={styles.helperText}>
+          Tell us what happened and our support team will help you out.
+        </Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={onAdd}>
+          <Ticket size={18} color="#FFFFFF" />
+          <Text style={styles.primaryBtnText}>Contact support</Text>
+        </TouchableOpacity>
+      </View>
+      <SectionCard title="Support tickets">
       {error ? <Banner kind="error" text={error} /> : null}
       {formOpen ? (
         <View style={styles.formBlock}>
@@ -1332,7 +1333,8 @@ function SupportTab({
       ) : (
         tickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} />)
       )}
-    </SectionCard>
+      </SectionCard>
+    </>
   );
 }
 
@@ -1468,25 +1470,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 12,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-  },
-  avatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#E53C3C',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
   },
   headerText: {
-    flex: 1,
+    alignItems: 'center',
   },
   name: {
     color: '#30241F',
@@ -1494,10 +1481,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   phone: {
-    color: '#81736A',
+    color: '#4A3B34',
+    backgroundColor: '#FFF0EA',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     fontSize: 13,
-    fontWeight: '700',
-    marginTop: 3,
+    fontWeight: '800',
+    marginTop: 6,
   },
   errorBanner: {
     backgroundColor: 'rgba(229,60,60,0.1)',
