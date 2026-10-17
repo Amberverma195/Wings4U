@@ -399,7 +399,7 @@ function ProfileScreen() {
       <SafeAreaView edges={["left", "right"]} style={styles.container}>
         {focused && <StatusBar style="dark" />}
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#FF4D4D" />
+          <ActivityIndicator size="large" color="#E53C3C" />
           <Text style={styles.loadingText}>Loading account...</Text>
         </View>
       </SafeAreaView>
@@ -416,7 +416,7 @@ function ProfileScreen() {
           <RefreshControl
             refreshing={account.refreshing}
             onRefresh={() => void account.refresh('refresh')}
-            tintColor="#FF4D4D"
+            tintColor="#E53C3C"
           />
         }
       >
@@ -540,7 +540,7 @@ function ProfileScreen() {
 
       <View style={styles.logoutBar}>
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} disabled={authLoading}>
-          <LogOut size={18} color="#FF4D4D" />
+          <LogOut size={18} color="#E53C3C" />
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
@@ -734,7 +734,7 @@ function RewardsHub({
                   {copiedPromoId === promo.id ? (
                     <Check size={15} color="#10B981" />
                   ) : (
-                    <Copy size={15} color="#6B7280" />
+                    <Copy size={15} color="#75665C" />
                   )}
                 </TouchableOpacity>
               </View>
@@ -770,15 +770,15 @@ function StampRing({ available, total, ready }: { available: number; total: numb
       <Svg width={size} height={size} style={styles.ringSvg}>
         <Defs>
           <LinearGradient id="stampRing" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#f97316" />
-            <Stop offset="1" stopColor="#fb923c" />
+            <Stop offset="0" stopColor="#E53C3C" />
+            <Stop offset="1" stopColor="#F2A39B" />
           </LinearGradient>
         </Defs>
         <Circle
           cx={center}
           cy={center}
           r={radius}
-          stroke="#f3f4f6"
+          stroke="#F6EEE9"
           strokeWidth={stroke}
           fill="none"
         />
@@ -996,21 +996,21 @@ function ProfileTab({
           accessibilityLabel={editing || verifyingPhone ? 'Cancel editing' : 'Edit account'}
         >
           {editing || verifyingPhone ? (
-            <X size={16} color="#374151" />
+            <X size={16} color="#4A3B34" />
           ) : (
-            <Pencil size={16} color="#374151" />
+            <Pencil size={16} color="#4A3B34" />
           )}
         </TouchableOpacity>
       )}
     >
       {error ? <Banner kind="error" text={error} /> : null}
       {saved ? <Banner kind="success" text="Profile updated" /> : null}
-      <InputRow icon={<User size={20} color={fieldsLocked ? '#777' : '#FF4D4D'} />}>
+      <InputRow icon={<User size={20} color={fieldsLocked ? '#81736A' : '#E53C3C'} />}>
         <TextInput
           ref={nameRef}
           style={[styles.input, fieldsLocked && styles.inputReadonly]}
           placeholder="Full Name"
-          placeholderTextColor="#AAA"
+          placeholderTextColor="#A6948A"
           value={fullName}
           onChangeText={setFullName}
           autoCapitalize="words"
@@ -1018,22 +1018,22 @@ function ProfileTab({
           editable={!fieldsLocked}
         />
       </InputRow>
-      <InputRow icon={<Mail size={20} color="#777" />}>
+      <InputRow icon={<Mail size={20} color="#81736A" />}>
         <TextInput
           style={[styles.input, styles.inputReadonly]}
           placeholder="Email"
-          placeholderTextColor="#AAA"
+          placeholderTextColor="#A6948A"
           value={email}
           editable={false}
           autoCapitalize="none"
           keyboardType="email-address"
         />
       </InputRow>
-      <InputRow icon={<Phone size={20} color={fieldsLocked ? '#777' : '#FF4D4D'} />}>
+      <InputRow icon={<Phone size={20} color={fieldsLocked ? '#81736A' : '#E53C3C'} />}>
         <TextInput
           style={[styles.input, fieldsLocked && styles.inputReadonly]}
           placeholder="Phone number"
-          placeholderTextColor="#AAA"
+          placeholderTextColor="#A6948A"
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
@@ -1045,11 +1045,11 @@ function ProfileTab({
           <Text style={styles.helperText}>
             Enter the code sent to {phoneCodeTarget} to confirm the new phone number.
           </Text>
-          <InputRow icon={<Mail size={20} color="#FF4D4D" />}>
+          <InputRow icon={<Mail size={20} color="#E53C3C" />}>
             <TextInput
               style={styles.input}
               placeholder="6-digit code"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={otp}
               onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
               keyboardType="number-pad"
@@ -1067,7 +1067,7 @@ function ProfileTab({
         }}
         disabled={!canSave}
       >
-        {loading ? <ActivityIndicator color="#FFF" size="small" /> : <Save size={18} color="#FFF" />}
+        {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Save size={18} color="#FFFFFF" />}
         <Text style={styles.primaryBtnText}>
           {loading ? 'Saving...' : verifyingPhone ? 'Confirm code' : 'Save Changes'}
         </Text>
@@ -1149,39 +1149,39 @@ function AddressesTab({
       {error ? <Banner kind="error" text={error} /> : null}
       {formOpen ? (
         <View style={styles.formBlock}>
-          <InputRow icon={<Home size={20} color="#FF4D4D" />}>
+          <InputRow icon={<Home size={20} color="#E53C3C" />}>
             <TextInput
               style={styles.input}
               placeholder="Street address"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={form.line1}
               onChangeText={(line1) => onChange({ ...form, line1 })}
             />
           </InputRow>
-          <InputRow icon={<MapPin size={20} color="#FF4D4D" />}>
+          <InputRow icon={<MapPin size={20} color="#E53C3C" />}>
             <TextInput
               style={styles.input}
               placeholder="City"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={form.city}
               onChangeText={(city) => onChange({ ...form, city })}
             />
           </InputRow>
-          <InputRow icon={<MapPin size={20} color="#FF4D4D" />}>
+          <InputRow icon={<MapPin size={20} color="#E53C3C" />}>
             <TextInput
               style={styles.input}
               placeholder="Postal code"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={form.postal_code}
               onChangeText={(postal_code) => onChange({ ...form, postal_code })}
               autoCapitalize="characters"
             />
           </InputRow>
-          <InputRow icon={<User size={20} color="#FF4D4D" />}>
+          <InputRow icon={<User size={20} color="#E53C3C" />}>
             <TextInput
               style={styles.input}
               placeholder="Label (Home, Work)"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={form.label}
               onChangeText={(label) => onChange({ ...form, label })}
             />
@@ -1190,7 +1190,7 @@ function AddressesTab({
             style={[styles.checkRow, form.is_default && styles.checkRowActive]}
             onPress={() => onChange({ ...form, is_default: !form.is_default })}
           >
-            <CheckCircle2 size={18} color={form.is_default ? '#FFF' : '#777'} />
+            <CheckCircle2 size={18} color={form.is_default ? '#E53C3C' : '#81736A'} />
             <Text style={[styles.checkText, form.is_default && styles.checkTextActive]}>Default address</Text>
           </TouchableOpacity>
           <View style={styles.formActions}>
@@ -1198,7 +1198,7 @@ function AddressesTab({
               <Text style={styles.secondaryBtnText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.primaryBtn, styles.formPrimaryBtn, busy && styles.disabledBtn]} onPress={onSave} disabled={busy}>
-              {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Save size={18} color="#FFF" />}
+              {busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Save size={18} color="#FFFFFF" />}
               <Text style={styles.primaryBtnText}>{busy ? 'Saving...' : 'Save'}</Text>
             </TouchableOpacity>
           </View>
@@ -1223,7 +1223,7 @@ function AddressesTab({
                 <Text style={styles.smallActionText}>Edit</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.deleteIconBtn} onPress={() => onDelete(address)}>
-                <Trash2 size={16} color="#FF4D4D" />
+                <Trash2 size={16} color="#E53C3C" />
               </TouchableOpacity>
             </View>
           </View>
@@ -1275,11 +1275,11 @@ function SupportTab({
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <InputRow icon={<Ticket size={20} color="#FF4D4D" />}>
+          <InputRow icon={<Ticket size={20} color="#E53C3C" />}>
             <TextInput
               style={styles.input}
               placeholder="Subject"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={form.subject}
               onChangeText={(subject) => onChange({ ...form, subject })}
             />
@@ -1288,7 +1288,7 @@ function SupportTab({
             <TextInput
               style={styles.textArea}
               placeholder="What happened?"
-              placeholderTextColor="#AAA"
+              placeholderTextColor="#A6948A"
               value={form.description}
               onChangeText={(description) => onChange({ ...form, description })}
               multiline
@@ -1320,7 +1320,7 @@ function SupportTab({
               <Text style={styles.secondaryBtnText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.primaryBtn, styles.formPrimaryBtn, busy && styles.disabledBtn]} onPress={onSave} disabled={busy}>
-              {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Plus size={18} color="#FFF" />}
+              {busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Plus size={18} color="#FFFFFF" />}
               <Text style={styles.primaryBtnText}>{busy ? 'Creating...' : 'Create'}</Text>
             </TouchableOpacity>
           </View>
@@ -1342,7 +1342,7 @@ function CardsTab({ orders }: { orders: OrderSummary[] }) {
   return (
     <SectionCard title="Payment methods">
       <View style={styles.emptyCard}>
-        <CreditCard size={30} color="#FF4D4D" />
+        <CreditCard size={30} color="#E53C3C" />
         <Text style={styles.emptyTitle}>No saved cards</Text>
         <Text style={styles.emptyText}>
           Saved card storage is not enabled yet. Past paid orders remain available in order history.
@@ -1449,7 +1449,7 @@ function Banner({ kind, text }: { kind: 'error' | 'success'; text: string }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFF9F5',
   },
   scroll: {
     flex: 1,
@@ -1461,7 +1461,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    color: '#666',
+    color: '#806F66',
     fontWeight: '600',
   },
   header: {
@@ -1476,12 +1476,12 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: '#FF4D4D',
+    backgroundColor: '#E53C3C',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontSize: 22,
     fontWeight: '800',
   },
@@ -1489,25 +1489,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 22,
     fontWeight: '800',
   },
   phone: {
-    color: '#777',
+    color: '#81736A',
     fontSize: 13,
     fontWeight: '700',
     marginTop: 3,
   },
   errorBanner: {
-    backgroundColor: 'rgba(255,77,77,0.1)',
+    backgroundColor: 'rgba(229,60,60,0.1)',
     borderRadius: 12,
     padding: 12,
     marginHorizontal: 20,
     marginBottom: 12,
   },
   errorText: {
-    color: '#FF4D4D',
+    color: '#E53C3C',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1519,35 +1519,35 @@ const styles = StyleSheet.create({
   tab: {
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#EEE',
+    borderColor: '#EFE4DE',
   },
   tabActive: {
-    backgroundColor: '#FF4D4D',
-    borderColor: '#FF4D4D',
+    backgroundColor: '#FFF0EA',
+    borderColor: '#E53C3C',
   },
   tabText: {
-    color: '#666',
+    color: '#806F66',
     fontSize: 13,
     fontWeight: '800',
   },
   tabTextActive: {
-    color: '#FFF',
+    color: '#E53C3C',
   },
   content: {
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
   sectionCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 15,
     marginBottom: 12,
-    shadowColor: '#000',
+    shadowColor: '#4A3B34',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 7,
@@ -1561,7 +1561,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     flex: 1,
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 17,
     fontWeight: '800',
   },
@@ -1569,26 +1569,26 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F6EEE9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sectionAction: {
-    backgroundColor: 'rgba(255,77,77,0.1)',
+    backgroundColor: 'rgba(229,60,60,0.1)',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   sectionActionText: {
-    color: '#FF4D4D',
+    color: '#E53C3C',
     fontSize: 12,
     fontWeight: '800',
   },
   hubCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#EBDDD5',
     padding: 16,
     marginBottom: 12,
   },
@@ -1599,14 +1599,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   hubTab: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
   hubTabActive: {
-    color: '#F97316',
+    color: '#E53C3C',
   },
   hubTabCoupons: {
     flexDirection: 'row',
@@ -1618,29 +1618,29 @@ const styles = StyleSheet.create({
     height: 20,
     paddingHorizontal: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: 'rgba(86,63,51,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   hubCountActive: {
-    backgroundColor: '#F97316',
+    backgroundColor: '#E53C3C',
   },
   hubCountText: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 11,
     fontWeight: '800',
   },
   hubCountTextActive: {
-    color: '#FFF',
+    color: '#FFFFFF',
   },
   hubTitle: {
-    color: '#111827',
+    color: '#30241F',
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
   hubDesc: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 19,
@@ -1650,10 +1650,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFF9F5',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: '#F6EEE9',
     paddingVertical: 14,
     paddingHorizontal: 8,
     marginTop: 14,
@@ -1663,24 +1663,24 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   pointsNum: {
-    color: '#F97316',
+    color: '#E53C3C',
     fontSize: 28,
     fontWeight: '800',
     lineHeight: 30,
   },
   pointsDenom: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 16,
     fontWeight: '700',
   },
   pointsNumMuted: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 24,
     fontWeight: '800',
     lineHeight: 28,
   },
   pointsLabel: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.4,
@@ -1688,7 +1688,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   pointsCredit: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 3,
@@ -1708,7 +1708,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#F97316',
+    backgroundColor: '#E53C3C',
   },
   ringCenter: {
     position: 'absolute',
@@ -1718,7 +1718,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   ringFraction: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 11,
     fontWeight: '800',
     marginTop: 1,
@@ -1732,20 +1732,20 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F6EEE9',
     borderWidth: 2,
     borderStyle: 'dashed',
-    borderColor: '#E5E7EB',
+    borderColor: '#EBDDD5',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stampSlotFilled: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#FFF0EA',
     borderStyle: 'solid',
-    borderColor: '#FB923C',
+    borderColor: '#F2A39B',
   },
   stampSlotText: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -1758,7 +1758,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   historyLinkText: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1774,17 +1774,17 @@ const styles = StyleSheet.create({
     lineHeight: 64,
     textAlign: 'center',
     borderRadius: 32,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F6EEE9',
     overflow: 'hidden',
     marginBottom: 10,
   },
   couponEmptyTitle: {
-    color: '#111827',
+    color: '#30241F',
     fontSize: 16,
     fontWeight: '800',
   },
   couponEmptyDesc: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
@@ -1795,9 +1795,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFF9F5',
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: '#F6EEE9',
     borderRadius: 14,
     padding: 12,
     marginTop: 10,
@@ -1806,7 +1806,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#FFF0EA',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1818,24 +1818,24 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   couponCode: {
-    color: '#111827',
+    color: '#30241F',
     fontSize: 15,
     fontWeight: '800',
   },
   couponName: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
   },
   couponMeta: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
   },
   couponEnds: {
-    color: '#EF4444',
+    color: '#E53C3C',
     fontSize: 11,
     fontWeight: '700',
     marginTop: 2,
@@ -1857,7 +1857,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F6EEE9',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1868,10 +1868,10 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(17,24,39,0.55)',
+    backgroundColor: 'rgba(48,36,31,0.55)',
   },
   modalCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 18,
     maxHeight: '88%',
@@ -1890,14 +1890,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalEyebrow: {
-    color: '#F97316',
+    color: '#E53C3C',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
   modalTitle: {
-    color: '#111827',
+    color: '#30241F',
     fontSize: 22,
     fontWeight: '800',
     marginTop: 4,
@@ -1906,12 +1906,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F6EEE9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalCloseText: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -1924,19 +1924,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalStatValue: {
-    color: '#111827',
+    color: '#30241F',
     fontSize: 16,
     fontWeight: '800',
   },
   modalStatLabel: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
     marginTop: 3,
   },
   historyTitle: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.6,
@@ -1948,9 +1948,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFF9F5',
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: '#F6EEE9',
     borderRadius: 14,
     padding: 10,
     marginBottom: 8,
@@ -1963,10 +1963,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   historyIconEarn: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#FFF0EA',
   },
   historyIconRedeem: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#F1FAF4',
   },
   historyIconText: {
     fontSize: 18,
@@ -1976,18 +1976,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   historyName: {
-    color: '#111827',
+    color: '#30241F',
     fontSize: 14,
     fontWeight: '800',
   },
   historyMeta: {
-    color: '#9CA3AF',
+    color: '#A18F85',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
   },
   historyReason: {
-    color: '#6B7280',
+    color: '#75665C',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
@@ -2000,7 +2000,7 @@ const styles = StyleSheet.create({
     color: '#10B981',
   },
   historyDeltaRedeem: {
-    color: '#EF4444',
+    color: '#E53C3C',
   },
   simpleRow: {
     flexDirection: 'row',
@@ -2008,7 +2008,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 11,
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
     gap: 12,
   },
   orderRow: {
@@ -2017,58 +2017,58 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
     gap: 12,
   },
   ticketRow: {
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
   },
   addressRow: {
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
     gap: 10,
   },
   rowMain: {
     flex: 1,
   },
   rowTitle: {
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 14,
     fontWeight: '800',
   },
   rowMeta: {
-    color: '#777',
+    color: '#81736A',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 3,
   },
   previewText: {
-    color: '#555',
+    color: '#6B5A51',
     fontSize: 12,
     lineHeight: 17,
     marginTop: 8,
   },
   amount: {
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 14,
     fontWeight: '800',
   },
   emptyLine: {
     paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
   },
   emptyLineText: {
-    color: '#888',
+    color: '#93847B',
     fontWeight: '700',
     textAlign: 'center',
   },
   inputRow: {
     height: 54,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#FBF5F1',
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2078,22 +2078,22 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     marginLeft: 12,
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 16,
     fontWeight: '600',
   },
   inputReadonly: {
-    color: '#777',
+    color: '#81736A',
   },
   helperText: {
-    color: '#777',
+    color: '#81736A',
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 17,
     marginBottom: 12,
   },
   primaryBtn: {
-    backgroundColor: '#FF4D4D',
+    backgroundColor: '#E53C3C',
     minHeight: 52,
     borderRadius: 12,
     alignItems: 'center',
@@ -2108,7 +2108,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   primaryBtnText: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },
@@ -2116,14 +2116,14 @@ const styles = StyleSheet.create({
     minHeight: 52,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: '#E4D5CC',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
   },
   secondaryBtnText: {
-    color: '#555',
+    color: '#6B5A51',
     fontSize: 15,
     fontWeight: '800',
   },
@@ -2133,10 +2133,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   errorBannerInline: {
-    backgroundColor: 'rgba(255,77,77,0.1)',
+    backgroundColor: 'rgba(229,60,60,0.1)',
   },
   successBanner: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: '#E9F8EE',
   },
   bannerText: {
     fontSize: 13,
@@ -2148,7 +2148,7 @@ const styles = StyleSheet.create({
   },
   formBlock: {
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
     paddingTop: 12,
     marginBottom: 8,
   },
@@ -2162,7 +2162,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: '#E4D5CC',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2170,16 +2170,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   checkRowActive: {
-    backgroundColor: '#FF4D4D',
-    borderColor: '#FF4D4D',
+    backgroundColor: '#FFF0EA',
+    borderColor: '#E53C3C',
   },
   checkText: {
-    color: '#555',
+    color: '#6B5A51',
     fontSize: 14,
     fontWeight: '800',
   },
   checkTextActive: {
-    color: '#FFF',
+    color: '#E53C3C',
   },
   rowActions: {
     flexDirection: 'row',
@@ -2189,13 +2189,13 @@ const styles = StyleSheet.create({
   smallActionBtn: {
     height: 34,
     borderRadius: 10,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F7F0EB',
     paddingHorizontal: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
   smallActionText: {
-    color: '#555',
+    color: '#6B5A51',
     fontSize: 12,
     fontWeight: '800',
   },
@@ -2203,7 +2203,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,77,77,0.1)',
+    backgroundColor: 'rgba(229,60,60,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2216,23 +2216,23 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 40,
     borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F7F0EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
   switchBtnActive: {
-    backgroundColor: '#FF4D4D',
+    backgroundColor: '#FFF0EA',
   },
   switchText: {
-    color: '#666',
+    color: '#806F66',
     fontWeight: '800',
     fontSize: 13,
   },
   switchTextActive: {
-    color: '#FFF',
+    color: '#E53C3C',
   },
   formLabel: {
-    color: '#555',
+    color: '#6B5A51',
     fontSize: 12,
     fontWeight: '800',
     marginBottom: 8,
@@ -2244,30 +2244,30 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 36,
     borderRadius: 18,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F7F0EB',
     paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chipActive: {
-    backgroundColor: '#FF4D4D',
+    backgroundColor: '#FFF0EA',
   },
   chipText: {
-    color: '#666',
+    color: '#806F66',
     fontSize: 12,
     fontWeight: '800',
   },
   chipTextActive: {
-    color: '#FFF',
+    color: '#E53C3C',
   },
   textAreaWrap: {
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#FBF5F1',
     borderRadius: 12,
     minHeight: 112,
     marginBottom: 12,
   },
   textArea: {
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 15,
     fontWeight: '600',
     minHeight: 112,
@@ -2277,16 +2277,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
   },
   emptyTitle: {
-    color: '#1A1A1A',
+    color: '#30241F',
     fontSize: 16,
     fontWeight: '800',
     marginTop: 10,
   },
   emptyText: {
-    color: '#777',
+    color: '#81736A',
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 19,
@@ -2297,23 +2297,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 12,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFF9F5',
     borderTopWidth: 1,
-    borderTopColor: '#F1F1F1',
+    borderTopColor: '#EEE3DD',
   },
   logoutBtn: {
     height: 52,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,77,77,0.35)',
-    backgroundColor: '#FFF',
+    borderColor: 'rgba(229,60,60,0.35)',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
   },
   logoutText: {
-    color: '#FF4D4D',
+    color: '#E53C3C',
     fontSize: 15,
     fontWeight: '800',
   },
