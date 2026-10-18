@@ -71,8 +71,17 @@ describe('catalogue-backed builder validation', () => {
     ['wings-4u-special', 'Wings-4-U Special', 2], ['party-75-wings', '75 Wings — 5 Flavours', 8],
     ['party-100-wings', '100 Wings — 5 Flavours', 11], ['lunch-5-wings', '5 Wings + Fries + Pop', 0.33],
   ])('accepts catalogue weight for %s without client-derived conversion', async (slug, name, weight) => {
-    const { params, payload } = fixture();
+    const { params, payload, mappings, db } = fixture();
     params.menuItem = { ...item, slug: slug as string, name: name as string }; payload.weight_lb = weight;
+    if (slug === 'wings-4u-special') {
+      mappings.push(group('salads', 'salad', [{ id: 'garden', name: 'Garden Salad' }]));
+      params.modifierOptionIds.push('garden');
+      payload.salad_customization = { salad_menu_item_id: 'garden-item', modifier_selections: [] };
+      db.menuItem.findFirst.mockResolvedValue({ ...item, id: 'garden-item', locationId: 'local', slug: 'garden-salad',
+        category: { slug: 'salads' }, isHidden: false, removableIngredients: [],
+        modifierGroups: [group('size', 'size', [{ id: 'small', name: 'Small' }])],
+      });
+    }
     await expect(assertBuilderCatalogValid(params)).resolves.toBeUndefined();
   });
   it('fails closed if the catalogue weight cannot be determined', async () => {
@@ -135,7 +144,7 @@ describe('catalogue-backed builder validation', () => {
     await expect(assertBuilderCatalogValid(params)).rejects.toThrow('Invalid salad');
     delete payload.salad_customization;
     params.modifierOptionIds.push('garden');
-    await expect(assertBuilderCatalogValid(params)).resolves.toBeUndefined();
+    await expect(assertBuilderCatalogValid(params)).rejects.toThrow('Required salad');
   });
   it('validates side sauce placement against a non-plain slot', async () => {
     const { params, payload, mappings, flavourGroup } = fixture();
@@ -176,7 +185,8 @@ describe('catalogue-backed builder validation', () => {
     f.db.menuItemModifierGroup.findMany.mockResolvedValue([]);
     const child = { ...item, id: 'burger', slug: 'veggie-burger', builderType: null, category: { slug: 'burgers' },
       locationId: 'local', isHidden: false, stockStatus: 'NORMAL', removableIngredients: [{ id: 'onion', name: 'Onion' }],
-      modifierGroups: [group('extras', 'addon', [{ id: 'cheese', priceDeltaCents: 150 }], false)] };
+      modifierGroups: [group('extras', 'addon', [{ id: 'cheese', name: 'Extra Cheese', addonMatchNormalized: '__always__', priceDeltaCents: 150 }], false)] };
+    Object.assign(child.modifierGroups[0].modifierGroup, { name: 'Burger Extras', menuItems: [{ menuItemId: 'burger' }], sortOrder: 0 });
     f.db.menuItem.findFirst.mockResolvedValue(child);
     f.params.builderPayload = { builder_type: 'LUNCH_SPECIAL', child_menu_item_id: 'burger', child_addons: [{ modifier_option_id: 'cheese', price_delta_cents: 0 }], removed_ingredients: [{ id: 'onion', name: 'Onion' }] };
     return { ...f, child };

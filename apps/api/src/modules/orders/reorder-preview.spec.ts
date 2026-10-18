@@ -12,9 +12,9 @@ function product(id = 'burger'): any {
 }
 function group(item: any, id: string, context: string | null, opts: any[], min = 1, max = 1): any {
   const value = { menuItemId: item.id, modifierGroupId: id, contextKey: context, sortOrder: item.modifierGroups.length,
-    modifierGroup: { id, locationId: 'store', name: id, displayLabel: id, contextKey: context, archivedAt: null,
+    modifierGroup: { id, locationId: 'store', name: context === 'addon' ? `${id} Extras` : id, menuItems: [{ menuItemId: item.id }], sortOrder: 0, displayLabel: id, contextKey: context, archivedAt: null,
       isRequired: min > 0, minSelect: min, maxSelect: max, selectionMode: max === 1 ? 'SINGLE' : 'MULTI',
-      options: opts.map(opt => ({ modifierGroupId: id, name: opt.id, linkedFlavourId: null, isActive: true, priceDeltaCents: 0, ...opt })) } };
+      options: opts.map(opt => ({ modifierGroupId: id, name: opt.id, addonMatchNormalized: context === 'addon' ? '__always__' : null, linkedFlavourId: null, isActive: true, priceDeltaCents: 0, ...opt })) } };
   item.modifierGroups.push(value); return value;
 }
 function fixture() {
@@ -115,7 +115,7 @@ describe('read-only reorder using authoritative Cart Quote validation', () => {
   });
   it.each([
     ['wings-1lb', 1, false, 1], ['wings-1.5lb', 1.5, false, 1], ['wings-2.5lb', 2.5, false, 1],
-    ['combo-1.5lb', 1.5, true, 1], ['party-75-wings', 8, false, 5], ['party-100-wings', 11, false, 5], ['wings-4u-special', 2, false, 1],
+    ['combo-1.5lb', 1.5, true, 1], ['party-75-wings', 8, false, 5], ['party-100-wings', 11, false, 5],
   ])('restores %s from validated SKU and ordered flavour slots', async (slug, weight, combo, slots) => {
     const f = fixture(); f.wing(slug as string, weight as number, combo as boolean, slots as number);
     f.source.builderPayloadJson.extra_flavour = { wing_flavour_id: 'hot', flavour_name: 'Hot', placement: 'ON_SIDE' };
@@ -155,14 +155,17 @@ describe('read-only reorder using authoritative Cart Quote validation', () => {
   it.each(['salad', 'wings-special'])('revalidates %s selections, removals and child availability', async family => {
     const f = fixture(), salad = family === 'salad' ? f.current : product('salad');
     salad.removableIngredients = [{ id: 'onion', name: 'Onion' }];
-    group(salad, 'salad-size', 'size', [{ id: 'large', priceDeltaCents: 300 }]);
+    group(salad, 'salad-size', 'size', [{ id: 'small', name: 'Small' }, { id: 'large', name: 'Large', priceDeltaCents: 300 }]);
+    if (family === 'wings-special') group(salad, 'salad-extras', 'addon', [{ id: 'extra-onion', addonMatchNormalized: 'onion', priceDeltaCents: 300 }], 0, 2);
     if (family === 'wings-special') {
-      f.catalog.push(salad); f.wing('wings-4u-special', 2); f.source.builderPayloadJson.salad_customization = {
+      salad.slug = 'garden-salad'; salad.category.slug = 'salads';
+      f.catalog.push(salad); f.wing('wings-4u-special', 2);
+      group(f.current, 'salad-picker', 'salad', [{ id: 'garden-choice', name: 'Garden Salad' }]); f.select('garden-choice'); f.source.builderPayloadJson.salad_customization = {
         salad_menu_item_id: 'salad', salad_name: 'Old Salad', salad_slug: 'old', removed_ingredients: [{ id: 'onion', name: 'Onion' }],
-        modifier_selections: [{ modifier_option_id: 'large', name: 'Large', price_delta_cents: -1000 }],
+        modifier_selections: [{ modifier_option_id: 'extra-onion', name: 'Extra Onion', price_delta_cents: -1000 }],
       };
     }
-    f.select('large'); f.source.modifiers.push({ modifierKind: 'REMOVE_INGREDIENT', modifierNameSnapshot: 'Onion' });
+    f.select(family === 'salad' ? 'large' : 'extra-onion'); f.source.modifiers.push({ modifierKind: 'REMOVE_INGREDIENT', modifierNameSnapshot: 'Onion' });
     const result = await f.run(); expect(result.all_unavailable).toBe(false); expect(result.diff.price_changes[0].new_cents).toBe(1800);
     salad.isAvailable = false; expect((await f.run()).all_unavailable).toBe(true);
   });

@@ -1,3 +1,4 @@
+import { customerCustomizationInstructions } from "@wings4u/customization";
 import { cents } from "./format";
 import { SIDE_POP_BUNDLE_PRICE_CENTS } from "./types";
 import type {
@@ -22,50 +23,9 @@ export function stripSidePopBundleNoteFromInstructions(text: string): string {
     .trim();
 }
 
-function lunchAutoInstructionSegments(
-  itemName: string,
-  payload: LunchSpecialPayload,
-): string[] {
-  const segments = [`Lunch ${itemName}: ${payload.child_name}`];
-  if (payload.removed_ingredients.length > 0) {
-    segments.push(`No: ${payload.removed_ingredients.map((r) => r.name).join(", ")}`);
-  }
-  if (payload.child_addons.length > 0) {
-    segments.push(`Add: ${payload.child_addons.map((a) => a.name).join(", ")}`);
-  }
-  return segments;
-}
-
-/**
- * Customer-facing instruction text.
- * Lunch specials store an auto-generated kitchen summary in `special_instructions`;
- * hide that generated prefix on customer surfaces and only show the user-entered tail.
- */
-export function getCustomerVisibleInstructions(
-  item: Pick<CartItem, "name" | "special_instructions" | "builder_payload">,
-): string {
-  const cleaned = stripSidePopBundleNoteFromInstructions(item.special_instructions ?? "");
-  if (!cleaned) return "";
-  if (item.builder_payload?.builder_type !== "LUNCH_SPECIAL") {
-    return cleaned;
-  }
-
-  const expectedSegments = lunchAutoInstructionSegments(
-    item.name,
-    item.builder_payload as LunchSpecialPayload,
-  );
-  const actualSegments = cleaned
-    .split("|")
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-
-  while (expectedSegments.length > 0 && actualSegments.length > 0) {
-    if (actualSegments[0] !== expectedSegments[0]) break;
-    actualSegments.shift();
-    expectedSegments.shift();
-  }
-
-  return actualSegments.join(" | ").trim();
+/** Strip generated summaries from either client when editing a saved line. */
+export function getCustomerVisibleInstructions(item: Pick<CartItem, "name" | "special_instructions" | "builder_payload">): string {
+  return customerCustomizationInstructions(item.special_instructions ?? '', item.name, item.builder_payload);
 }
 
 /** Cart summary lines for the small side + pop upgrade (matches overlay copy). */

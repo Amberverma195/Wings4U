@@ -1,3 +1,4 @@
+import { SIDE_POP_BUNDLE_SLUGS } from "@wings4u/customization";
 import type { CartItem, FulfillmentType, MenuCategory, MenuItem } from './types';
 
 export type PopularItem = { title: string; categorySlug: string; item: MenuItem | null; category: MenuCategory | null };
@@ -30,5 +31,5 @@ export function cartLineForPopularItem(item: MenuItem, lines: CartItem[]): CartI
 }
 
 export function needsCustomization(item: MenuItem) {
-  return Boolean(item.builder_type || item.requires_special_instructions || item.modifier_groups.length || item.removable_ingredients?.length);
+  return Boolean(SIDE_POP_BUNDLE_SLUGS.has(item.slug) || /tender/i.test(`${item.slug} ${item.name}`) || ["lunch-burger", "lunch-wrap", "chicken-loaded-fries", "bacon-loaded-fries"].includes(item.slug) || item.builder_type || item.requires_special_instructions || item.modifier_groups.length || item.removable_ingredients?.length);
 }

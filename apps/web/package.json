@@ -7,7 +7,11 @@
     "build": "npm run clean && next build",
     "build:clean": "npm run build",
     "start": "next start",
-    "dev:clean": "npm run clean && next dev"
+    "dev:clean": "npm run clean && next dev",
+    "prebuild": "npm run build --workspace @wings4u/customization",
+    "pretest": "npm run build --workspace @wings4u/customization",
+    "predev": "npm run build --workspace @wings4u/customization",
+    "test": "jest --config ./jest.config.cjs --runInBand"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.35.0",
@@ -31,7 +35,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
-    "three": "^0.172.0"
+    "three": "^0.172.0",
+    "@wings4u/customization": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

@@ -1,3 +1,4 @@
+import { embeddedSaladCatalog, customizationCatalog, dedicatedAddonScope, saladSlugForSelectionName, validateSelections } from "@wings4u/customization";
 import { UnprocessableEntityException } from '@nestjs/common';
 import type { Prisma, WingFlavour } from '@prisma/client';
 import { getLunchAddonOptionIds } from './pricing';
@@ -11,7 +12,7 @@ function reject(message: string): never {
   throw new UnprocessableEntityException({ message, field: 'items' });
 }
 
-const mappingInclude = { modifierGroup: { include: { options: true } } } as const;
+const mappingInclude = { modifierGroup: { include: { options: true, menuItems: { select: { menuItemId: true } } } } } as const;
 const childInclude = { category: true, schedules: true, removableIngredients: true,
   modifierGroups: { include: mappingInclude } } as const;
 type BuilderMapping = Prisma.MenuItemModifierGroupGetPayload<{ include: typeof mappingInclude }>;
@@ -29,7 +30,10 @@ export async function loadBuilderCatalogContext(params: {
   const ids = params.menuItems.filter(item => item.modifierGroups.length > 0 || item.builderType === 'WINGS' || item.builderType === 'WING_COMBO' ||
     ['lunch-burger', 'lunch-wrap'].includes(item.slug ?? '')).map(item => item.id);
   const childIds = [...new Set(params.builderPayloads.flatMap(payload => payload?.builder_type === 'LUNCH_SPECIAL' &&
-    typeof payload.child_menu_item_id === 'string' && payload.child_menu_item_id.trim() ? [payload.child_menu_item_id] : []))];
+    typeof payload.child_menu_item_id === 'string' && payload.child_menu_item_id.trim() ? [payload.child_menu_item_id] :
+    payload?.salad_customization && typeof payload.salad_customization === 'object' &&
+    typeof (payload.salad_customization as Record<string, unknown>).salad_menu_item_id === 'string'
+      ? [(payload.salad_customization as { salad_menu_item_id: string }).salad_menu_item_id] : []))];
   const [rows, children] = await Promise.all([
     ids.length ? params.db.menuItemModifierGroup.findMany({
       where: { menuItemId: { in: ids }, menuItem: { locationId: params.locationId } },
@@ -67,7 +71,7 @@ export async function assertBuilderCatalogValid(params: {
     where: { menuItemId: menuItem.id }, orderBy: [{ sortOrder: 'asc' }, { modifierGroupId: 'asc' }],
     include: mappingInclude,
   });
-  const groups = mappings.map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
+  const groups = mappings.map(row => ({ ...row.modifierGroup, sortOrder: row.sortOrder ?? row.modifierGroup.sortOrder, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
   if (groups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid builder catalogue configuration');
 
   const checkSelections = (selectedIds: string[], targetGroups: typeof groups, skip = new Set<string>()) => {
@@ -85,8 +89,29 @@ export async function assertBuilderCatalogValid(params: {
     }
   };
 
+  const checkCustomization = (product: { id: string; removableIngredients?: Array<{ id: string; name: string }> }, target: typeof groups, ids: string[], includedSalad = false) => {
+    const serialized = target.map(group => ({
+      id: group.id, name: group.name, display_label: group.displayLabel, context_key: group.contextKey,
+      selection_mode: group.selectionMode, min_select: group.minSelect, max_select: group.maxSelect,
+      is_required: group.isRequired, sort_order: group.sortOrder,
+      addon_scope_menu_item_id: dedicatedAddonScope(group.name, (group.menuItems ?? []).map(row => row.menuItemId), product.id),
+      options: group.options.filter(option => option.isActive).map(option => ({ id: option.id, name: option.name,
+        price_delta_cents: option.priceDeltaCents, is_default: option.isDefault, sort_order: option.sortOrder,
+        addon_match_normalized: option.addonMatchNormalized, linked_flavour_id: option.linkedFlavourId })),
+    }));
+    const selections = Object.fromEntries(serialized.map(group => [group.id, group.options.filter(option => ids.includes(option.id)).map(option => option.id)]));
+    const item = { id: product.id, modifier_groups: serialized, removable_ingredients: product.removableIngredients ?? [] };
+    const catalog = includedSalad ? embeddedSaladCatalog(item) : customizationCatalog(item, selections);
+    if (includedSalad && !embeddedSaladCatalog(item).supportsIncludedSize) reject('Included Small salad is unavailable');
+    if (includedSalad) for (const group of serialized) if (group.context_key !== 'addon') delete selections[group.id];
+    if (ids.some(id => !catalog.groups.some(group => group.options.some(option => option.id === id)))) reject('Menu options changed or are unauthorized. Please review this item.');
+    const error = validateSelections(catalog.groups, selections);
+    if (error) reject(error);
+  };
+
   if (!wings && !lunch) {
     checkSelections(params.modifierOptionIds, groups);
+    checkCustomization(menuItem, groups, params.modifierOptionIds);
     return;
   }
 
@@ -104,8 +129,9 @@ export async function assertBuilderCatalogValid(params: {
         /-side-add$/i.test(child.slug) || /side\s*&\s*pop/i.test(child.name)) reject('Invalid lunch child product');
     assertMenuItemOrderable({ menuItem: child, fulfillmentType: params.fulfillmentType, specialInstructions: params.specialInstructions });
     if (!isMenuCategoryScheduledAt(child.category, context) || !isMenuItemScheduledAt(child, context)) reject('Lunch child is unavailable at the selected time');
-    const childGroups = child.modifierGroups.map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
+    const childGroups = child.modifierGroups.map(row => ({ ...row.modifierGroup, sortOrder: row.sortOrder ?? row.modifierGroup.sortOrder, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
     if (childGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid lunch child catalogue configuration');
+    checkCustomization(child, childGroups.filter(group => group.contextKey === 'addon'), getLunchAddonOptionIds(payload));
     checkSelections(getLunchAddonOptionIds(payload), childGroups);
     const removed = payload.removed_ingredients;
     if (removed !== undefined) {
@@ -193,12 +219,34 @@ export async function assertBuilderCatalogValid(params: {
   const saladIds = new Set(
     ((payload.salad_customization as { modifier_selections?: Array<{ modifier_option_id: string }> } | undefined)?.modifier_selections ?? []).map(row => row.modifier_option_id),
   );
-  if (salad && params.catalogContext) {
-    const saladGroups = (params.catalogContext.mappings.get(salad.salad_menu_item_id as string) ?? [])
-      .map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
+  let selectedSaladSlug: string | null = null;
+  if (menuItem.slug === 'wings-4u-special') {
+    const saladGroups = groups.filter(group => group.contextKey === 'salad');
+    const selected = saladGroups.flatMap(group => group.options.filter(option => params.modifierOptionIds.includes(option.id)));
+    if (saladGroups.length !== 1 || selected.length !== 1 || !selected[0].isActive) reject('Invalid selections for included salad');
+    selectedSaladSlug = saladSlugForSelectionName(selected[0].name);
+    if (!selectedSaladSlug) reject('Invalid included salad choice');
+    if (!salad) reject('Required salad customization is missing');
+  }
+  if (salad) {
+    const child = params.catalogContext ? params.catalogContext.children.get(salad.salad_menu_item_id as string)
+      : await db.menuItem.findFirst({ where: { id: salad.salad_menu_item_id as string, locationId }, include: childInclude });
+    if (!child || child.locationId !== locationId || child.archivedAt) reject('Invalid salad product');
+    if (selectedSaladSlug) {
+      // (locationId, slug) is unique. Resolve identity using the authoritative
+      // parent option and database slug, never the client's salad name/slug.
+      if (child.id !== salad.salad_menu_item_id || child.slug !== selectedSaladSlug || child.category.slug !== 'salads' || child.isHidden) reject('Salad does not match the selected included salad');
+      if (child.category.isActive === false || child.category.archivedAt) reject('Included salad category is unavailable');
+      assertMenuItemOrderable({ menuItem: child, fulfillmentType: params.fulfillmentType, specialInstructions: params.specialInstructions });
+      if (!isMenuCategoryScheduledAt(child.category, context) || !isMenuItemScheduledAt(child, context)) reject('Included salad is unavailable at the selected time');
+    }
+    const saladGroups = child.modifierGroups.map(row => ({ ...row.modifierGroup,
+      sortOrder: row.sortOrder ?? row.modifierGroup.sortOrder, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
     if (saladGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid salad catalogue configuration');
-    // The Special includes a small salad; both customer builders submit only its
-    // add-ons. A standalone salad's required size is represented by the parent.
+    const submitted = (salad.modifier_selections ?? []) as Array<{ modifier_option_id: string }>;
+    if (submitted.length !== saladIds.size) reject('Duplicate salad modifier selection');
+    if ([...saladIds].some(id => params.modifierOptionIds.filter(optionId => optionId === id).length !== 1)) reject('Invalid salad modifier selections');
+    checkCustomization(child, saladGroups, [...saladIds], menuItem.slug === 'wings-4u-special');
     const includedSize = new Set(menuItem.slug === 'wings-4u-special'
       ? saladGroups.filter(group => group.contextKey === 'size').map(group => group.id) : []);
     checkSelections([...saladIds], saladGroups, includedSize);

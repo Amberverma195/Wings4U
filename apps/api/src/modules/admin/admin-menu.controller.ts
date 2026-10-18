@@ -21,6 +21,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
   ValidateNested,
@@ -64,6 +65,10 @@ class RemovableIngredientDto {
 }
 
 class AdditionalIngredientDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @IsString()
   name!: string;
 

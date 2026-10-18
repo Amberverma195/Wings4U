@@ -255,8 +255,12 @@ test('Home quick-adds plain items but sends required choices and existing lines 
   await mount(true);
   const popular = () => renderer.root.findByType('PopularItems');
   const tender = { ...item('tenders'), removable_ingredients: [], builder_type: null, description: null };
+  const plain = { ...tender, id: 'pop', slug: 'pop', name: 'Pop' };
+  await act(async () => popular().props.onChoose(plain, null));
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: 'pop', quantity: 1 }));
   await act(async () => popular().props.onChoose(tender, null));
-  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: tender.id, base_price_cents: 999, quantity: 1 }));
+  expect(mockCart.addItem).toHaveBeenCalledTimes(1);
+  expect(builder().props.item).toBe(tender);
   const configured = { ...tender, modifier_groups: [{ id: 'dip' }] };
   await act(async () => popular().props.onChoose(configured, null));
   expect(builder().props.item).toBe(configured);

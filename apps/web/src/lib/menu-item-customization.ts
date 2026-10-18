@@ -1,3 +1,4 @@
+import { SIDE_POP_BUNDLE_SLUGS } from "@wings4u/customization";
 import type { MenuItem } from "./types";
 
 /** Slug patterns for items that should always open an overlay even when they have no modifiers. */
@@ -52,6 +53,7 @@ export function shouldUseCustomizationOverlay(item: MenuItem) {
   }
 
   return (
+    SIDE_POP_BUNDLE_SLUGS.has(item.slug) ||
     item.removable_ingredients.length > 0 ||
     item.modifier_groups.length > 0 ||
     item.requires_special_instructions ||

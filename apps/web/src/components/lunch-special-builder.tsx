@@ -20,6 +20,8 @@ import {
   builderSubmitLabel,
 } from "./builder-shared";
 
+import { customizationCatalog, validateSelections } from "@wings4u/customization";
+
 type Props = {
   /** The lunch row itself (lunch-burger or lunch-wrap). */
   item: MenuItem;
@@ -40,7 +42,7 @@ type ChildAddonSelection = {
 };
 
 function getChildAddonGroups(child: MenuItem): ModifierGroup[] {
-  return child.modifier_groups.filter((group) => group.context_key === "addon");
+  return customizationCatalog(child).groups.filter((group) => group.context_key === "addon" && group.options.length > 0);
 }
 
 function getLunchPopGroup(item: MenuItem): ModifierGroup | null {
@@ -155,13 +157,22 @@ export function LunchSpecialBuilder({
     return total;
   }, [childAddonGroups, childAddonIds, selectedChild]);
 
+  const [reviewed, setReviewed] = useState(false);
+  const savedChanged = !reviewed && editingLine && (
+    editingLine.base_price_cents !== item.base_price_cents ||
+    (editingPayload && selectedChild?.id === editingPayload.child_menu_item_id && (
+      editingPayload.child_addons.some(saved => !childAddonGroups.some(group => group.options.some(option => option.id === saved.modifier_option_id && option.price_delta_cents === saved.price_delta_cents))) ||
+      editingPayload.removed_ingredients.some(saved => !selectedChild.removable_ingredients.some(row => row.id === saved.id)))) ||
+    editingLine.modifier_selections.some(saved => !popGroup?.options.some(option => option.id === saved.modifier_option_id && option.price_delta_cents === saved.price_delta_cents)));
+  const childError = validateSelections(childAddonGroups, Object.fromEntries(childAddonGroups.map(group => [group.id, group.options.filter(option => childAddonIds.has(option.id)).map(option => option.id)])));
   const liveUnitPrice = item.base_price_cents + childAddonsTotalDelta;
 
   const validate = useCallback(() => {
+    if (savedChanged || childError) return "catalog-review";
     if (!selectedChild) return "child";
     if (popGroup && !popOptionId) return "pop";
     return null;
-  }, [popGroup, popOptionId, selectedChild]);
+  }, [popGroup, popOptionId, selectedChild, savedChanged, childError]);
 
   const validationError = useMemo(() => validate(), [validate]);
   const isReadyToSubmit = validationError === null;
@@ -308,6 +319,8 @@ export function LunchSpecialBuilder({
       submitLabel={builderSubmitLabel(Boolean(editingLine))}
       onSubmit={handleAdd}
     >
+      {savedChanged || childError ? <section className="builder-step-card" role="alert"><p>{childError || 'Menu options or prices changed. Review the current choices before updating your cart.'}</p>{savedChanged ? <button type="button" onClick={() => setReviewed(true)}>Review current choices</button> : null}</section> : null}
+
       <StepContainer
         title="Pick your item"
         subtitle={
@@ -328,7 +341,7 @@ export function LunchSpecialBuilder({
               key={child.id}
               type="button"
               className={`builder-option-pill${childId === child.id ? " builder-option-pill-active" : ""}`}
-              onClick={() => setChildId(child.id)}
+              onClick={() => { setChildId(child.id); setReviewed(true); }}
             >
               {child.name}
             </button>

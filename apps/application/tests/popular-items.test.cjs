@@ -55,7 +55,7 @@ test('SKU membership changes Add to Cart to Customize and passes the existing ca
   await act(async () => cta('Chicken Tenders').props.onPress());
   expect(onChoose).toHaveBeenLastCalledWith(tenders, null);
   expect(needsCustomization(wings)).toBe(true);
-  expect(needsCustomization(tenders)).toBe(false);
+  expect(needsCustomization(tenders)).toBe(true);
   expect(needsCustomization({ ...tenders, modifier_groups: [{ is_required: true }] })).toBe(true);
   expect(cartLineForPopularItem(combo, [{ key: 'combo', menu_item_id: 'combo-1lb' }])).not.toBeNull();
 });

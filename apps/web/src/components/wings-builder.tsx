@@ -1,4 +1,5 @@
 "use client";
+import { modifierTotal, validateSelections } from "@wings4u/customization";
 import { savedSelectionReview } from "@/lib/cart-validation";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import {
 import { menuCardDescriptionForItem } from "@/lib/menu-item-description";
 import { normalizeIngredientDisplayText } from "@/lib/menu-text";
 import {
+  embeddedSaladCatalog,
   WINGS_SPECIAL_SALAD_SIZE_LABEL,
   findSaladMenuItemForSelection,
   normalizeSaladAddonDisplayLabel,
@@ -171,149 +173,6 @@ function getExtraModifierGroups(option: BuilderMenuOption): ModifierGroup[] {
       return true;
     })
     .sort((a, b) => a.sort_order - b.sort_order);
-}
-
-const ADDON_OPTION_STOP_WORDS = new Set([
-  "add",
-  "extra",
-  "on",
-  "the",
-  "side",
-  "optional",
-  "with",
-]);
-
-const ALWAYS_SHOW_ADDON_TOKENS = new Set([
-  "bacon",
-  "avocado",
-  "jalapeno",
-  "jalapenos",
-  "olive",
-  "olives",
-  "chicken",
-  "beef",
-  "pulled",
-  "butter",
-  "cheese",
-  "curds",
-  "gravy",
-  "sauce",
-  "ranch",
-  "mayo",
-  "dressing",
-  "tzatziki",
-  "feta",
-  "oil",
-]);
-
-function normalizeIngredientText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function inferOptionSizeScope(
-  optionName: string,
-  normalizedSizeNames: string[],
-): string | null {
-  if (normalizedSizeNames.length === 0) return null;
-
-  const normalizedOption = normalizeIngredientText(optionName);
-  for (const sizeName of normalizedSizeNames) {
-    const pattern = new RegExp(`(^|\\s)${escapeRegex(sizeName)}($|\\s)`);
-    if (pattern.test(normalizedOption)) {
-      return sizeName;
-    }
-  }
-
-  return null;
-}
-
-function getAddonMeaningfulTokens(value: string): string[] {
-  return normalizeIngredientText(value)
-    .replace(/\bon the side\b/g, " ")
-    .split(" ")
-    .filter((token) => token && !ADDON_OPTION_STOP_WORDS.has(token));
-}
-
-function optionMatchesAnyIngredient(
-  optionName: string,
-  normalizedIngredientNames: string[],
-): boolean {
-  if (normalizedIngredientNames.length === 0) return true;
-
-  const normalizedOption = normalizeIngredientText(optionName)
-    .replace(/\bon the side\b/g, " ")
-    .trim();
-  const tokens = getAddonMeaningfulTokens(optionName);
-
-  if (!normalizedOption || tokens.length === 0) {
-    return true;
-  }
-
-  if (
-    normalizedIngredientNames.some(
-      (ingredient) =>
-        ingredient === normalizedOption ||
-        ingredient.includes(normalizedOption) ||
-        normalizedOption.includes(ingredient),
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    normalizedIngredientNames.some((ingredient) =>
-      tokens.every((token) => ingredient.includes(token)),
-    )
-  ) {
-    return true;
-  }
-
-  return (
-    normalizedOption.startsWith("add ") ||
-    tokens.some((token) => ALWAYS_SHOW_ADDON_TOKENS.has(token))
-  );
-}
-
-function shouldRenderAddonOption(params: {
-  optionName: string;
-  addonMatchNormalized?: string | null;
-  normalizedIngredientNames: string[];
-  isSelected: boolean;
-  normalizedSizeNames: string[];
-  selectedSizeNames: string[];
-}): boolean {
-  if (params.isSelected) return true;
-
-  const sizeScope = inferOptionSizeScope(
-    params.optionName,
-    params.normalizedSizeNames,
-  );
-  if (sizeScope && params.selectedSizeNames.length > 0) {
-    return params.selectedSizeNames.includes(sizeScope);
-  }
-
-  if (params.addonMatchNormalized === "__always__") {
-    return true;
-  }
-  if (params.addonMatchNormalized) {
-    return params.normalizedIngredientNames.includes(params.addonMatchNormalized);
-  }
-
-  return optionMatchesAnyIngredient(
-    params.optionName,
-    params.normalizedIngredientNames,
-  );
 }
 
 function resolveWingTypeModifier(
@@ -538,60 +397,10 @@ export function WingsBuilder({
         : item.removable_ingredients,
     [item.removable_ingredients, resolvedSaladItem, usesChildSaladCustomization],
   );
-  const normalizedSaladIngredientNames = useMemo(
-    () =>
-      resolvedSaladItem?.removable_ingredients
-        .map((ingredient) => normalizeIngredientText(ingredient.name))
-        .filter(Boolean) ?? [],
-    [resolvedSaladItem],
-  );
-  const normalizedSaladSizeNames = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          resolvedSaladItem?.modifier_groups
-            .filter((group) => group.context_key === "size")
-            .flatMap((group) => group.options)
-            .map((option) => normalizeIngredientText(option.name))
-            .filter(Boolean) ?? [],
-        ),
-      ),
-    [resolvedSaladItem],
-  );
-  const selectedSaladSizeNames = useMemo(
-    () =>
-      normalizedSaladSizeNames.length > 0
-        ? [normalizeIngredientText(WINGS_SPECIAL_SALAD_SIZE_LABEL)]
-        : [],
-    [normalizedSaladSizeNames],
-  );
-  const saladAddonGroups = useMemo(() => {
-    if (!resolvedSaladItem) return [];
+  const saladAddonGroups = useMemo(() => resolvedSaladItem
+    ? embeddedSaladCatalog(resolvedSaladItem).groups : [], [resolvedSaladItem]);
+  const saladSelectionError = validateSelections(saladAddonGroups, saladModifierSelections);
 
-    return resolvedSaladItem.modifier_groups
-      .filter((group) => group.context_key === "addon")
-      .map((group) => ({
-        ...group,
-        options: group.options.filter((option) =>
-          shouldRenderAddonOption({
-            optionName: option.name,
-            addonMatchNormalized: option.addon_match_normalized,
-            normalizedIngredientNames: normalizedSaladIngredientNames,
-            isSelected:
-              saladModifierSelections[group.id]?.includes(option.id) ?? false,
-            normalizedSizeNames: normalizedSaladSizeNames,
-            selectedSizeNames: selectedSaladSizeNames,
-          }),
-        ),
-      }))
-      .filter((group) => group.options.length > 0);
-  }, [
-    normalizedSaladIngredientNames,
-    normalizedSaladSizeNames,
-    resolvedSaladItem,
-    saladModifierSelections,
-    selectedSaladSizeNames,
-  ]);
   const activeRemovedIngredientIds = usesChildSaladCustomization
     ? saladRemovedIngredientIds
     : removedIngredientIds;
@@ -702,6 +511,9 @@ export function WingsBuilder({
           ),
         ),
       );
+      const unknown = editingSaladCustomization.modifier_selections.map(row => row.modifier_option_id)
+        .filter(id => !Object.values(nextSelections).flat().includes(id));
+      if (unknown.length) nextSelections.__stale__ = unknown;
       setSaladModifierSelections(nextSelections);
       previousSaladItemIdRef.current = nextSaladItemId;
       return;
@@ -736,37 +548,6 @@ export function WingsBuilder({
       };
     });
   }, [selectedSaladGroup]);
-
-  useEffect(() => {
-    if (!resolvedSaladItem || selectedSaladSizeNames.length === 0) {
-      return;
-    }
-
-    setSaladModifierSelections((prev) => {
-      let changed = false;
-      const next: Record<string, string[]> = { ...prev };
-
-      for (const group of resolvedSaladItem.modifier_groups) {
-        if (group.context_key !== "addon") continue;
-        const picks = prev[group.id] ?? [];
-        const filtered = picks.filter((optionId) => {
-          const option = group.options.find((candidate) => candidate.id === optionId);
-          if (!option) return false;
-          const sizeScope = inferOptionSizeScope(
-            option.name,
-            normalizedSaladSizeNames,
-          );
-          return !sizeScope || selectedSaladSizeNames.includes(sizeScope);
-        });
-        if (filtered.length !== picks.length) {
-          next[group.id] = filtered;
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [normalizedSaladSizeNames, resolvedSaladItem, selectedSaladSizeNames]);
 
   const requiredFlavourCount = selectedOption?.flavour_count ?? 0;
   const threeFlavourTellUsHow = requiredFlavourCount === 3;
@@ -883,28 +664,12 @@ export function WingsBuilder({
     }
     return total;
   }, [extraGroups, extraGroupSelections]);
-  const saladAddonsTotalDelta = useMemo(() => {
-    if (!resolvedSaladItem) return 0;
-
-    let total = 0;
-    for (const group of resolvedSaladItem.modifier_groups) {
-      if (group.context_key !== "addon") continue;
-      const picks = saladModifierSelections[group.id] ?? [];
-      for (const optionId of picks) {
-        const option = group.options.find((candidate) => candidate.id === optionId);
-        if (option) {
-          total += option.price_delta_cents;
-        }
-      }
-    }
-    return total;
-  }, [resolvedSaladItem, saladModifierSelections]);
+  const saladAddonsTotalDelta = modifierTotal(saladAddonGroups, saladModifierSelections);
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
     (extraFlavourEnabled ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
     (wingType === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0) +
-    extraGroupsTotalDelta +
-    saladAddonsTotalDelta;
+    extraGroupsTotalDelta + saladAddonsTotalDelta;
   const showsSaucingStep = requiredFlavourCount >= 1 && !allMainFlavoursPlain;
 
   const isExtraGroupComplete = useCallback(
@@ -1149,6 +914,7 @@ export function WingsBuilder({
     ) {
       return "instructions";
     }
+    if (usesChildSaladCustomization && saladSelectionError) return 'salad-addons';
     if (extraFlavourEnabled && !extraFlavourId) return "extra-flavour";
     for (const group of extraGroups) {
       if (!isExtraGroupComplete(group)) return `extra-${group.id}`;
@@ -1163,6 +929,7 @@ export function WingsBuilder({
     }
     return null;
   }, [
+    saladSelectionError,
     allMainFlavoursPlain,
     extraFlavourEnabled,
     extraFlavourId,
@@ -1255,8 +1022,7 @@ export function WingsBuilder({
       price_delta_cents: number;
     }> = [];
     if (resolvedSaladItem) {
-      for (const group of resolvedSaladItem.modifier_groups) {
-        if (group.context_key !== "addon") continue;
+      for (const group of saladAddonGroups) {
         const picks = saladModifierSelections[group.id] ?? [];
         for (const optionId of picks) {
           const option = group.options.find((candidate) => candidate.id === optionId);
@@ -1364,7 +1130,7 @@ export function WingsBuilder({
     onClose();
   }
 
-  const selectionReview = savedSelectionReview(editingLine, selectedOption, (resolvedSaladItem?.modifier_groups ?? []).flatMap(group => group.options.map(option => option.id)));
+  const selectionReview = savedSelectionReview(editingLine, selectedOption, saladAddonGroups.flatMap(group => group.options.map(option => option.id)));
 
   return (
     <BuilderShell
@@ -1385,6 +1151,9 @@ export function WingsBuilder({
       onSubmit={handleAdd}
     >
 
+      {usesChildSaladCustomization && saladSelectionError ? <div role="alert" className="surface-error">
+        <p>{saladSelectionError}</p><button type="button" onClick={() => setSaladModifierSelections({})}>Review salad extras: clear selections</button>
+      </div> : null}
       {selectionReview ? <p role="alert" className="surface-error">{selectionReview}</p> : null}
           {showWeightStep ? (
             <StepContainer

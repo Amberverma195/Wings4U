@@ -54,7 +54,7 @@ describe("CatalogCacheService", () => {
     });
 
     expect(lookup.value).toBe(menuPayload);
-    expect(lookup.key).toBe("wings4u:catalog:menu:official-portions-v1:loc-1:7:PICKUP:29453761");
+    expect(lookup.key).toBe("wings4u:catalog:menu:customization-scope-v2:loc-1:7:PICKUP:29453761");
     expect(redis.getJson).toHaveBeenCalledWith(lookup.key);
   });
 

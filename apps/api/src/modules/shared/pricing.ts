@@ -1,3 +1,4 @@
+import { SIDE_POP_BUNDLE_PRICE_CENTS } from "@wings4u/customization";
 import { UnprocessableEntityException } from "@nestjs/common";
 
 /**
@@ -58,17 +59,7 @@ export type SaladCustomizationInput = {
 
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
 export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
-export const SIDE_POP_BUNDLE_PRICE_CENTS = 499;
-export const SIDE_POP_BUNDLE_SLUGS = new Set([
-  "veggie-burger",
-  "chicken-burger",
-  "buffalo-chicken-burger",
-  "veggie-wrap",
-  "chicken-caesar-wrap",
-  "buffalo-chicken-wrap",
-  "garden-chicken-wrap",
-  "greek-chicken-wrap",
-]);
+export { SIDE_POP_BUNDLE_PRICE_CENTS, SIDE_POP_BUNDLE_SLUGS } from "@wings4u/customization";
 export const LUNCH_WINDOW_LABEL = "11 AM - 3 PM";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_CODE = "LUNCH_SPECIAL_SCHEDULE_CONFLICT";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_MESSAGE =

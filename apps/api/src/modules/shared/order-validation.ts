@@ -1,3 +1,4 @@
+import { SIDE_POP_SIDES, SIDE_POP_DRINKS } from "@wings4u/customization";
 import { HttpException, UnprocessableEntityException } from "@nestjs/common";
 import type { Prisma, WingFlavour } from "@prisma/client";
 import {
@@ -35,6 +36,7 @@ export type ValidationMenuItem = {
   } | null;
   schedules: Array<{ dayOfWeek: number; timeFrom: Date; timeTo: Date }>;
   modifierGroups: Array<{ modifierGroupId: string }>;
+  removableIngredients?: Array<{ id: string; name: string }>;
 };
 
 export type ValidationModifierOption = {
@@ -422,8 +424,8 @@ export function assertBuilderPayloadValid(params: {
       }
       const selection = bundle as { side_label?: unknown; pop_label?: unknown } | null;
       if (!selection || Array.isArray(selection) ||
-          !["Fries", "Onion rings", "Wedges", "Coleslaw"].includes(selection.side_label as string) ||
-          !["Pepsi", "Diet Pepsi", "Pepsi Zero", "Coke", "Diet Coke", "Coke Zero", "Mountain Dew", "Diet Mountain Dew"].includes(selection.pop_label as string)) {
+          !(SIDE_POP_SIDES as readonly string[]).includes(selection.side_label as string) ||
+          !(SIDE_POP_DRINKS as readonly string[]).includes(selection.pop_label as string)) {
         throw new UnprocessableEntityException("Unsupported side and pop combo choices");
       }
     }

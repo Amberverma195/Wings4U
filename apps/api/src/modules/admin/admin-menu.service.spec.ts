@@ -1,4 +1,5 @@
 import { AdminMenuService } from "./admin-menu.service";
+import { customizationCatalog, dedicatedAddonScope, modifierTotal } from '@wings4u/customization';
 
 function createPrismaMock() {
   return {
@@ -165,6 +166,147 @@ function createItemMutationPrismaMock(tx: Record<string, unknown>) {
     ),
   };
 }
+
+describe('incremental item extras (mock transactions only)', () => {
+  function fixture(shared = false) {
+    const item = { id: 'burger', name: 'Veggie Burger', isWingComboSide: false };
+    const options = [
+      { id: 'remove', name: 'Add Avocado', priceDeltaCents: 150, addonMatchNormalized: null, isActive: true, sortOrder: 3, isDefault: false },
+      { id: 'keep', name: 'Extra Lettuce', priceDeltaCents: 75, addonMatchNormalized: 'lettuce', isActive: true, sortOrder: 7, isDefault: false },
+      { id: 'unconfigured', name: 'Extra Cheese', priceDeltaCents: 100, addonMatchNormalized: null, isActive: true, sortOrder: 9, isDefault: true },
+      { id: 'inactive', name: 'Old Extra', priceDeltaCents: 50, addonMatchNormalized: null, isActive: false, sortOrder: 11, isDefault: false },
+    ];
+    const group = { id: 'extras', locationId: 'loc-1', name: 'Veggie Burger Additional Ingredients', displayLabel: 'Extras',
+      selectionMode: 'MULTI', minSelect: 0, maxSelect: 4, isRequired: false, contextKey: 'addon', sortOrder: 30, archivedAt: null,
+      options, menuItems: [{ menuItemId: 'burger' }, ...(shared ? [{ menuItemId: 'other' }] : [])] };
+    const links: any[] = [{ menuItemId: item.id, modifierGroupId: group.id, sortOrder: 42, contextKey: 'addon', modifierGroup: group }];
+    const tx = {
+      menuItem: { update: jest.fn().mockResolvedValue(item) },
+      modifierGroup: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'copy' }), update: jest.fn() },
+      modifierOption: { update: jest.fn(async ({ where, data }) => Object.assign(options.find(row => row.id === where.id)!, data)), create: jest.fn(), createMany: jest.fn() },
+      menuItemModifierGroup: { findMany: jest.fn(async () => links), deleteMany: jest.fn(), create: jest.fn(), createMany: jest.fn() },
+    };
+    const prisma = createItemMutationPrismaMock(tx); prisma.menuItem.findFirst.mockResolvedValue(item);
+    const cache = createCacheMock(), web = createWebRevalidationMock(), realtime = createRealtimeMock();
+    const service = new AdminMenuService(prisma as any, cache as any, web as any, realtime as any);
+    const rows = () => options.filter(row => row.isActive && row.id !== 'remove').map(row => ({ id: row.id, name: row.name,
+      price_delta_cents: row.priceDeltaCents, matches_ingredient: row.addonMatchNormalized ?? '__unconfigured__' }));
+    (prisma as any).modifierGroup = { count: jest.fn().mockResolvedValue(1) };
+    const save = (additional_ingredients = rows()) => service.updateItem('loc-1', item.id, { ...itemPayload, is_wing_combo_side: false, modifier_groups: [{ id: 'extras' }], additional_ingredients });
+    return { item, options, group, tx, save, rows, cache, web, realtime };
+  }
+  it.each([['Veggie Burger', 'Add Avocado'], ['Buffalo Chicken Wrap', 'Add Jalapeños']])('removes only %s / %s, preserving unconfigured extras and repeat saves', async (name, removed) => {
+    const f = fixture(); f.item.name = name; f.options[0].name = removed;
+    const unchanged = structuredClone(f.options.slice(1));
+    await f.save(); await f.save();
+    expect(f.options.slice(1)).toEqual(unchanged);
+    expect(f.options[0].isActive).toBe(false);
+    expect(f.tx.modifierOption.update).toHaveBeenCalledTimes(1);
+    expect(f.tx.modifierOption.update).toHaveBeenCalledWith({ where: { id: 'remove' }, data: { isActive: false } });
+    expect(f.tx.modifierGroup.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.create).not.toHaveBeenCalled();
+    expect(f.tx.menuItemModifierGroup.deleteMany).toHaveBeenCalledWith({ where: { menuItemId: 'burger', modifierGroupId: { notIn: ['extras'] } } });
+    expect(f.tx.menuItemModifierGroup.createMany).not.toHaveBeenCalled();
+    expect(f.cache.invalidateLocation).toHaveBeenCalledTimes(2);
+    expect(f.web.revalidateLocation).toHaveBeenCalledTimes(2);
+    expect(f.realtime.emitCatalogUpdated).toHaveBeenCalledTimes(2);
+  });
+  it('copies a changed shared group for this product without mutating any original option', async () => {
+    const f = fixture(true), before = structuredClone(f.group);
+    await f.save();
+    expect(f.group).toEqual(before);
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.create).toHaveBeenCalledTimes(4);
+    expect(f.tx.modifierGroup.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'Veggie Burger Additional Ingredients [shared copy]' }) });
+    expect(f.tx.modifierOption.create).toHaveBeenCalledWith({ data: expect.objectContaining({ modifierGroupId: 'copy', name: 'Extra Cheese', priceDeltaCents: 100,
+      addonMatchNormalized: null, isActive: true, sortOrder: 9, isDefault: true }) });
+    expect(f.tx.menuItemModifierGroup.deleteMany).toHaveBeenCalledWith({ where: { menuItemId: 'burger', modifierGroupId: 'extras' } });
+    expect(f.tx.menuItemModifierGroup.create).toHaveBeenCalledWith({ data: { menuItemId: 'burger', modifierGroupId: 'copy', sortOrder: 42, contextKey: 'addon' } });
+  });
+  it('keeps an explicit new approval item-specific when editing a shared group', async () => {
+    const f = fixture(true), rows = f.rows(), before = structuredClone(f.group);
+    rows[1].matches_ingredient = '';
+    f.tx.modifierGroup.create.mockResolvedValueOnce({ id: 'copy' }).mockResolvedValueOnce({ id: 'approved' });
+    await f.save(rows);
+    expect(f.group).toEqual(before);
+    expect(f.tx.modifierOption.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({
+      modifierGroupId: 'approved', name: 'Extra Cheese', addonMatchNormalized: '__always__', isActive: true,
+    })] });
+    expect(f.tx.modifierGroup.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'Veggie Burger Item Approved Extras' }) });
+  });
+  it('a mixed legacy shared-group copy preserves every unrelated record and cannot authorize __always__ extras', async () => {
+    const f = fixture(true);
+    f.options.push({ ...f.options[1], id: 'legacy-always', name: 'Add Chicken', addonMatchNormalized: '__always__', sortOrder: 12 });
+    f.options.push({ ...f.options[1], id: 'duplicate-looking', sortOrder: 13 });
+    f.options[3].addonMatchNormalized = '__always__';
+    const before = structuredClone(f.group);
+    await f.save();
+    expect(f.group).toEqual(before);
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.createMany).not.toHaveBeenCalled();
+    const copy = f.tx.modifierGroup.create.mock.calls[0][0].data;
+    const copiedOptions = f.tx.modifierOption.create.mock.calls.map(([args], i) => ({ id: `copied-${i}`, ...args.data }));
+    for (const original of before.options) {
+      expect(copiedOptions).toContainEqual(expect.objectContaining({ name: original.name, priceDeltaCents: original.priceDeltaCents,
+        addonMatchNormalized: original.addonMatchNormalized, sortOrder: original.sortOrder, isDefault: original.isDefault,
+        isActive: original.id === 'remove' ? false : original.isActive }));
+    }
+    const scope = dedicatedAddonScope(copy.name, ['burger'], 'burger');
+    expect(scope).toBeNull();
+    const catalog = customizationCatalog({ id: 'burger', removable_ingredients: [{ id: 'recipe', name: 'Lettuce' }], modifier_groups: [{
+      id: 'copy', name: copy.name, display_label: copy.displayLabel, context_key: 'addon', selection_mode: copy.selectionMode,
+      min_select: copy.minSelect, max_select: copy.maxSelect, is_required: copy.isRequired, sort_order: copy.sortOrder,
+      addon_scope_menu_item_id: scope, options: copiedOptions.filter(option => option.isActive).map(option => ({
+        id: option.id, name: option.name, price_delta_cents: option.priceDeltaCents, addon_match_normalized: option.addonMatchNormalized,
+        is_default: option.isDefault, sort_order: option.sortOrder,
+      })),
+    }] });
+    expect(catalog.groups[0].options.map(option => option.name)).toEqual(['Extra Lettuce']);
+    expect(modifierTotal(catalog.groups, { copy: catalog.groups[0].options.map(option => option.id) })).toBe(75);
+  });
+  it('does not copy an unchanged shared group or alter its option IDs', async () => {
+    const f = fixture(true), before = structuredClone(f.group);
+    await f.save([{ id: 'remove', name: f.options[0].name, price_delta_cents: 150, matches_ingredient: '__unconfigured__' }, ...f.rows()]);
+    expect(f.group).toEqual(before);
+    expect(f.tx.modifierGroup.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
+  });
+  it.each(['new', 'renamed', 'price', 'foreign', 'duplicate'])('rejects %s unconfigured or invalid rows before writing options', async change => {
+    const f = fixture(), rows = f.rows();
+    if (change === 'new') rows.push({ id: undefined as any, name: 'New', price_delta_cents: 50, matches_ingredient: '__unconfigured__' });
+    if (change === 'renamed') rows[1].name = 'Changed Cheese';
+    if (change === 'price') rows[1].price_delta_cents++;
+    if (change === 'foreign') rows[1].id = 'other-product-option';
+    if (change === 'duplicate') rows.push(rows[1]);
+    await expect(f.save(rows)).rejects.toThrow();
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
+    expect(f.cache.invalidateLocation).not.toHaveBeenCalled();
+  });
+});
+
+it('retains unchanged recipe IDs, removes only deleted ingredients and refreshes catalog consumers', async () => {
+  const item = { id: 'burger', name: 'Burger', isWingComboSide: false, isAvailable: true, archivedAt: null };
+  const tx = {
+    removableIngredient: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'keep', name: 'Lettuce' }, { id: 'remove', name: 'Onion' }]),
+      update: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'new-tomato' }), deleteMany: jest.fn(),
+    },
+    menuItem: { update: jest.fn().mockResolvedValue(item) },
+    modifierGroup: { findMany: jest.fn().mockResolvedValue([]) },
+  };
+  const prisma = createItemMutationPrismaMock(tx); prisma.menuItem.findFirst.mockResolvedValue(item);
+  const cache = createCacheMock(), web = createWebRevalidationMock(), realtime = createRealtimeMock();
+  const service = new AdminMenuService(prisma as any, cache as any, web as any, realtime as any);
+  await service.updateItem('loc-1', item.id, { ...itemPayload, is_wing_combo_side: false,
+    removable_ingredients: [{ name: 'Lettuce', sortOrder: 2 }, { name: 'Tomato', sortOrder: 3 }] });
+  expect(tx.removableIngredient.update).toHaveBeenCalledWith({ where: { id: 'keep' }, data: { name: 'Lettuce', sortOrder: 2 } });
+  expect(tx.removableIngredient.create).toHaveBeenCalledWith({ data: { menuItemId: 'burger', name: 'Tomato', sortOrder: 3 } });
+  expect(tx.removableIngredient.deleteMany).toHaveBeenCalledWith({ where: { menuItemId: 'burger', id: { notIn: ['keep', 'new-tomato'] } } });
+  expect(cache.invalidateLocation).toHaveBeenCalledWith('loc-1');
+  expect(web.revalidateLocation).toHaveBeenCalledWith('loc-1');
+  expect(realtime.emitCatalogUpdated).toHaveBeenCalledWith('loc-1');
+});
 
 describe("AdminMenuService catalog invalidation", () => {
   it("invalidates the catalog after a successful category create", async () => {
@@ -603,6 +745,7 @@ describe("AdminMenuService additional ingredient management", () => {
         {
           name: "Add Jalapenos",
           price_delta_cents: 75,
+          matches_ingredient: "",
         },
       ],
     });

@@ -12,7 +12,6 @@ import {
   type ItemCustomizationPayload,
   type MenuItem,
   type ModifierGroup,
-  type ModifierOption,
   type RemovedIngredientSelection,
 } from "@/lib/types";
 import { normalizeSaladAddonDisplayLabel } from "@/lib/salad-catalog";
@@ -21,6 +20,8 @@ import {
   BuilderShell,
   builderSubmitLabel,
 } from "./builder-shared";
+
+import { customizationCatalog, initialCustomizationSelections, minimumSelections, validateSelections, modifierTotal as customizationTotal, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from "@wings4u/customization";
 
 type Props = {
   item: MenuItem;
@@ -32,45 +33,8 @@ type Props = {
   editingLine?: CartItem;
 };
 
-/** Three flagship burgers + five wraps — not lunch specials or side-add rows. */
-const SIDE_POP_BUNDLE_SLUGS = new Set([
-  "veggie-burger",
-  "chicken-burger",
-  "buffalo-chicken-burger",
-  "veggie-wrap",
-  "chicken-caesar-wrap",
-  "buffalo-chicken-wrap",
-  "garden-chicken-wrap",
-  "greek-chicken-wrap",
-]);
-
-const SMALL_SIDE_LABELS = ["Fries", "Onion rings", "Wedges", "Coleslaw"] as const;
-
-/** Matches `POP_OPTIONS` in packages/database/prisma/seed.ts */
-const POP_LABELS = [
-  "Pepsi",
-  "Diet Pepsi",
-  "Pepsi Zero",
-  "Coke",
-  "Diet Coke",
-  "Coke Zero",
-  "Mountain Dew",
-  "Diet Mountain Dew",
-] as const;
-
-function normalizeSmallSideLabel(value: string | undefined): string {
-  if (value && (SMALL_SIDE_LABELS as readonly string[]).includes(value)) {
-    return value;
-  }
-  return SMALL_SIDE_LABELS[0];
-}
-
-function normalizePopLabel(value: string | undefined): string {
-  if (value && (POP_LABELS as readonly string[]).includes(value)) {
-    return value;
-  }
-  return POP_LABELS[0];
-}
+const SMALL_SIDE_LABELS = SIDE_POP_SIDES;
+const POP_LABELS = SIDE_POP_DRINKS;
 
 /** Strip legacy serialized bundle note; combo lives on builder_payload only. */
 function getInitialSpecialInstructionsOnly(editingLine?: CartItem): string {
@@ -78,9 +42,10 @@ function getInitialSpecialInstructionsOnly(editingLine?: CartItem): string {
 }
 
 function initSelections(
-  groups: ModifierGroup[],
+  item: MenuItem,
   editingLine?: CartItem,
 ): Record<string, Set<string>> {
+  const groups = item.modifier_groups;
   const map: Record<string, Set<string>> = {};
 
   if (editingLine) {
@@ -99,20 +64,7 @@ function initSelections(
     return map;
   }
 
-  for (const group of groups) {
-    let defaults = group.options
-      .filter((option) => option.is_default)
-      .map((option) => option.id);
-    if (
-      defaults.length === 0 &&
-      group.context_key === "size" &&
-      group.selection_mode === "SINGLE" &&
-      group.options.length === 1
-    ) {
-      defaults = [group.options[0].id];
-    }
-    map[group.id] = new Set(defaults);
-  }
+  for (const [id, defaults] of Object.entries(initialCustomizationSelections(item))) map[id] = new Set(defaults);
   return map;
 }
 
@@ -134,176 +86,10 @@ function selectionRule(group: ModifierGroup) {
   return "Required - choose 1";
 }
 
-const ADDON_OPTION_STOP_WORDS = new Set([
-  "add",
-  "extra",
-  "on",
-  "the",
-  "side",
-  "optional",
-  "with",
-]);
-
-const ALWAYS_SHOW_ADDON_TOKENS = new Set([
-  "bacon",
-  "avocado",
-  "jalapeno",
-  "jalapenos",
-  "olive",
-  "olives",
-  "chicken",
-  "beef",
-  "pulled",
-  "butter",
-  "cheese",
-  "curds",
-  "gravy",
-  "sauce",
-  "ranch",
-  "mayo",
-  "dressing",
-  "tzatziki",
-  "feta",
-]);
-
-function normalizeIngredientText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function inferOptionSizeScope(
-  optionName: string,
-  normalizedSizeNames: string[],
-): string | null {
-  if (normalizedSizeNames.length === 0) return null;
-
-  const normalizedOption = normalizeIngredientText(optionName);
-  for (const sizeName of normalizedSizeNames) {
-    const pattern = new RegExp(`(^|\\s)${escapeRegex(sizeName)}($|\\s)`);
-    if (pattern.test(normalizedOption)) {
-      return sizeName;
-    }
-  }
-
-  return null;
-}
-
-function getAddonMeaningfulTokens(value: string): string[] {
-  return normalizeIngredientText(value)
-    .replace(/\bon the side\b/g, " ")
-    .split(" ")
-    .filter((token) => token && !ADDON_OPTION_STOP_WORDS.has(token));
-}
-
-function optionMatchesAnyIngredient(
-  optionName: string,
-  normalizedIngredientNames: string[],
-  strictIngredientOnly?: boolean,
-): boolean {
-  if (normalizedIngredientNames.length === 0) return true;
-
-  const normalizedOption = normalizeIngredientText(optionName).replace(
-    /\bon the side\b/g,
-    " ",
-  ).trim();
-  const tokens = getAddonMeaningfulTokens(optionName);
-
-  if (!normalizedOption || tokens.length === 0) {
-    return true;
-  }
-
-  if (
-    normalizedIngredientNames.some(
-      (ingredient) =>
-        ingredient === normalizedOption ||
-        ingredient.includes(normalizedOption) ||
-        normalizedOption.includes(ingredient),
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    normalizedIngredientNames.some((ingredient) =>
-      tokens.every((token) => ingredient.includes(token)),
-    )
-  ) {
-    return true;
-  }
-
-  if (strictIngredientOnly) {
-    return false;
-  }
-
-  // Backward-compatible fallback: ambiguous extras that don't cleanly map to
-  // a removable ingredient still stay visible unless they are explicitly scoped.
-  return (
-    normalizedOption.startsWith("add ") ||
-    tokens.some((token) => ALWAYS_SHOW_ADDON_TOKENS.has(token))
-  );
-}
-
-function isSaladMenuItemSlug(slug: string): boolean {
-  return slug.endsWith("-salad");
-}
-
-/** Options like "Add fresh hand breaded chicken (Small)" — shown as one row with size-based price. */
-function isBreadedChickenSizePairOption(
-  optionName: string,
-  normalizedSizeNames: string[],
-): boolean {
-  const scope = inferOptionSizeScope(optionName, normalizedSizeNames);
-  if (!scope) return false;
-  const n = normalizeIngredientText(optionName);
-  return n.includes("breaded") && n.includes("chicken");
-}
-
-function shouldRenderAddonOption(
-  option: ModifierOption,
-  normalizedIngredientNames: string[],
-  isSelected: boolean,
-  selectedSizeNames: string[],
-  normalizedSizeNames: string[],
-  opts?: {
-    strictSaladIngredientAddons?: boolean;
-    hideBreadedChickenPair?: boolean;
-  },
-): boolean {
-  if (opts?.hideBreadedChickenPair && isBreadedChickenSizePairOption(option.name, normalizedSizeNames)) {
-    return false;
-  }
-  if (isSelected) return true;
-  const sizeScope = inferOptionSizeScope(option.name, normalizedSizeNames);
-  if (sizeScope && selectedSizeNames.length > 0) {
-    return selectedSizeNames.includes(sizeScope);
-  }
-  if (option.addon_match_normalized === "__always__") {
-    return true;
-  }
-  if (option.addon_match_normalized) {
-    return normalizedIngredientNames.includes(option.addon_match_normalized);
-  }
-  return optionMatchesAnyIngredient(
-    option.name,
-    normalizedIngredientNames,
-    opts?.strictSaladIngredientAddons,
-  );
-}
-
 export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) {
   const { addItem, replaceItem } = useCart();
   const [selections, setSelections] = useState(() =>
-    initSelections(item.modifier_groups, editingLine),
+    initSelections(item, editingLine),
   );
   const [removedIngredientIds, setRemovedIngredientIds] = useState<Set<string>>(
     () => {
@@ -331,84 +117,36 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     () => sidePopEligible && Boolean(editingItemPayload?.side_pop_bundle),
   );
   const [sidePopSideLabel, setSidePopSideLabel] = useState(() =>
-    normalizeSmallSideLabel(editingItemPayload?.side_pop_bundle?.side_label),
+    editingItemPayload?.side_pop_bundle?.side_label ?? SMALL_SIDE_LABELS[0],
   );
   const [sidePopPopLabel, setSidePopPopLabel] = useState(() =>
-    normalizePopLabel(editingItemPayload?.side_pop_bundle?.pop_label),
+    editingItemPayload?.side_pop_bundle?.pop_label ?? POP_LABELS[0],
   );
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
 
-  const sizeGroups = useMemo(
-    () => item.modifier_groups.filter((group) => group.context_key === "size"),
-    [item.modifier_groups],
-  );
-  const normalizedSizeNames = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          sizeGroups
-            .flatMap((group) => group.options)
-            .map((option) => normalizeIngredientText(option.name))
-            .filter(Boolean),
-        ),
-      ),
-    [sizeGroups],
-  );
-  const selectedSizeNames = useMemo(
-    () =>
-      sizeGroups.flatMap((group) =>
-        group.options
-          .filter((option) => selections[group.id]?.has(option.id))
-          .map((option) => normalizeIngredientText(option.name))
-          .filter(Boolean),
-      ),
-    [selections, sizeGroups],
-  );
-  const normalizedIngredientNames = useMemo(
-    () =>
-      item.removable_ingredients
-        .map((ingredient) => normalizeIngredientText(ingredient.name))
-        .filter(Boolean),
-    [item.removable_ingredients],
-  );
-  const strictSaladIngredientAddons = isSaladMenuItemSlug(item.slug);
-  const addonGroups = useMemo(() => {
-    return item.modifier_groups
-      .filter((group) => group.context_key === "addon")
-      .map((group) => ({
-        ...group,
-        options: group.options.filter((option) =>
-          shouldRenderAddonOption(
-            option,
-            normalizedIngredientNames,
-            selections[group.id]?.has(option.id) ?? false,
-            selectedSizeNames,
-            normalizedSizeNames,
-            {
-              strictSaladIngredientAddons,
-              hideBreadedChickenPair: strictSaladIngredientAddons,
-            },
-          ),
-        ),
-      }))
-      .filter((group) => group.options.length > 0);
-  }, [
-    item.modifier_groups,
-    normalizedIngredientNames,
-    normalizedSizeNames,
-    selections,
-    selectedSizeNames,
-    strictSaladIngredientAddons,
-  ]);
-  const mainGroups = useMemo(
-    () =>
-      item.modifier_groups.filter(
-        (group) =>
-          group.context_key !== "size" && group.context_key !== "addon",
-      ),
-    [item.modifier_groups],
-  );
+  const selectionArrays = useMemo(() => Object.fromEntries(Object.entries(selections).map(([id, values]) => [id, [...values]])), [selections]);
+  const catalog = useMemo(() => customizationCatalog(item, selectionArrays), [item, selectionArrays]);
+  const groups = catalog.groups;
+  const sizeGroups = groups.filter(group => group.context_key === "size");
+  const addonGroups = groups.filter(group => group.context_key === "addon" && group.options.length > 0);
+  const mainGroups = groups.filter(group => group.context_key !== "size" && group.context_key !== "addon");
+  const [reviewed, setReviewed] = useState(false);
+  const savedChanged = Boolean(editingLine && !reviewed && (
+    editingLine.base_price_cents !== item.base_price_cents ||
+    (editingItemPayload?.side_pop_bundle && (!sidePopEligible || editingItemPayload.side_pop_bundle.price_cents !== SIDE_POP_BUNDLE_PRICE_CENTS)) ||
+    editingLine.modifier_selections.some(saved => !groups.some(group => group.options.some(option => option.id === saved.modifier_option_id && option.price_delta_cents === saved.price_delta_cents))) ||
+    [...removedIngredientIds].some(id => !item.removable_ingredients.some(row => row.id === id))));
+  const selectionError = validateSelections(groups, selectionArrays);
+  const catalogError = catalog.issues.find(issue => issue.kind !== 'duplicate')?.message;
+  const bundleError = sidePopBundleEnabled && (!(SMALL_SIDE_LABELS as readonly string[]).includes(sidePopSideLabel) || !(POP_LABELS as readonly string[]).includes(sidePopPopLabel))
+    ? 'Review your side and pop choices.' : null;
+  const reviewMessage = savedChanged || [...removedIngredientIds].some(id => !item.removable_ingredients.some(row => row.id === id)) || selectionError?.startsWith('Menu options changed') ? 'Menu options or prices changed. Review the current choices before updating your cart.' : null;
+  function reviewCurrentChoices() {
+    setSelections(Object.fromEntries(groups.map(group => [group.id, new Set((selectionArrays[group.id] ?? []).filter(id => group.options.some(option => option.id === id)))])));
+    setRemovedIngredientIds(new Set([...removedIngredientIds].filter(id => item.removable_ingredients.some(row => row.id === id))));
+    setReviewed(true);
+  }
 
   const removedIngredients = useMemo<RemovedIngredientSelection[]>(() => {
     return item.removable_ingredients
@@ -416,90 +154,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
       .map((ingredient) => ({ id: ingredient.id, name: ingredient.name }));
   }, [item.removable_ingredients, removedIngredientIds]);
 
-  const modifierTotal = useMemo(() => {
-    return item.modifier_groups.reduce((sum, group) => {
-      for (const option of group.options) {
-        if (selections[group.id]?.has(option.id)) {
-          sum += option.price_delta_cents;
-        }
-      }
-      return sum;
-    }, 0);
-  }, [item.modifier_groups, selections]);
-
-  useEffect(() => {
-    if (selectedSizeNames.length === 0 || normalizedSizeNames.length === 0) {
-      return;
-    }
-
-    setSelections((prev) => {
-      let changed = false;
-      const next = { ...prev };
-
-      for (const group of item.modifier_groups) {
-        if (group.context_key !== "addon") continue;
-
-        const current = next[group.id];
-        if (!current || current.size === 0) continue;
-
-        const chickenOptions = group.options.filter((option) =>
-          isBreadedChickenSizePairOption(option.name, normalizedSizeNames),
-        );
-        const chickenIds = new Set(chickenOptions.map((option) => option.id));
-
-        if (strictSaladIngredientAddons && chickenOptions.length >= 2) {
-          const byScope = new Map<string, ModifierOption>();
-          for (const opt of chickenOptions) {
-            const scope = inferOptionSizeScope(opt.name, normalizedSizeNames);
-            if (scope) byScope.set(scope, opt);
-          }
-
-          const selectedChickenIds = [...current].filter((id) => chickenIds.has(id));
-          if (selectedChickenIds.length > 0) {
-            const selectedId = selectedChickenIds[0];
-            const selectedEntry = [...byScope.entries()].find(([, o]) => o.id === selectedId);
-            const selectedScope = selectedEntry?.[0];
-            const targetScope = selectedSizeNames[0];
-            if (
-              selectedScope &&
-              targetScope &&
-              selectedScope !== targetScope &&
-              byScope.has(targetScope)
-            ) {
-              const replacement = byScope.get(targetScope)!;
-              const set = new Set(current);
-              set.delete(selectedId);
-              set.add(replacement.id);
-              next[group.id] = set;
-              changed = true;
-              continue;
-            }
-          }
-        }
-
-        const filtered = new Set(
-          Array.from(current).filter((optionId) => {
-            const option = group.options.find((candidate) => candidate.id === optionId);
-            if (!option) return false;
-            const sizeScope = inferOptionSizeScope(option.name, normalizedSizeNames);
-            return !sizeScope || selectedSizeNames.includes(sizeScope);
-          }),
-        );
-
-        if (filtered.size !== current.size) {
-          next[group.id] = filtered;
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [
-    item.modifier_groups,
-    normalizedSizeNames,
-    selectedSizeNames,
-    strictSaladIngredientAddons,
-  ]);
+  const modifierTotal = customizationTotal(groups, selectionArrays);
 
   const sidePopCents =
     sidePopEligible && sidePopBundleEnabled ? SIDE_POP_BUNDLE_PRICE_CENTS : 0;
@@ -512,8 +167,9 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
         const set = new Set(next[group.id] ?? []);
 
         if (group.selection_mode === "SINGLE") {
+          const deselect = set.has(optionId) && minimumSelections(group) === 0;
           set.clear();
-          set.add(optionId);
+          if (!deselect && optionId) set.add(optionId);
         } else if (set.has(optionId)) {
           set.delete(optionId);
         } else {
@@ -542,38 +198,6 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     });
   }, []);
 
-  const toggleBreadedChickenForGroup = useCallback(
-    (group: ModifierGroup) => {
-      const chickenOptions = group.options.filter((option) =>
-        isBreadedChickenSizePairOption(option.name, normalizedSizeNames),
-      );
-      const targetScope = selectedSizeNames[0];
-      const active = targetScope
-        ? chickenOptions.find(
-            (option) =>
-              inferOptionSizeScope(option.name, normalizedSizeNames) === targetScope,
-          )
-        : null;
-      if (!active) return;
-
-      setSelections((prev) => {
-        const next = { ...prev };
-        const set = new Set(next[group.id] ?? []);
-        const chickenIds = new Set(chickenOptions.map((option) => option.id));
-        const currentlyOn = set.has(active.id);
-        for (const id of chickenIds) {
-          set.delete(id);
-        }
-        if (!currentlyOn) {
-          set.add(active.id);
-        }
-        next[group.id] = set;
-        return next;
-      });
-    },
-    [normalizedSizeNames, selectedSizeNames],
-  );
-
   const setSectionRef = useCallback((key: string, node: HTMLElement | null) => {
     if (node) {
       sectionRefs.current.set(key, node);
@@ -586,6 +210,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     const node = sectionRefs.current.get(key);
     if (!node) return;
     node.scrollIntoView({ behavior: "smooth", block: "center" });
+    node.focus({ preventScroll: true });
     node.classList.add("builder-step-card-invalid");
     window.setTimeout(
       () => node.classList.remove("builder-step-card-invalid"),
@@ -594,13 +219,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
   }, []);
 
   const validate = useCallback(() => {
-    for (const group of item.modifier_groups) {
-      const count = selections[group.id]?.size ?? 0;
-      const max = group.max_select ?? Number.MAX_SAFE_INTEGER;
-      if (count < group.min_select || count > max) {
-        return group.id;
-      }
-    }
+    if (catalogError || reviewMessage || selectionError || bundleError) return "catalog-review";
 
     if (item.requires_special_instructions && !instructions.trim()) {
       return "special-instructions";
@@ -609,13 +228,18 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     return null;
   }, [
     instructions,
-    item.modifier_groups,
+    catalogError, reviewMessage, selectionError, bundleError,
     item.requires_special_instructions,
     selections,
   ]);
 
   const validationError = useMemo(() => validate(), [validate]);
   const isReadyToSubmit = validationError === null;
+
+  // Wait for the error section to mount before scrolling and focusing it.
+  useEffect(() => {
+    if (submitAttempted && validationError) scrollToSection(validationError);
+  }, [submitAttempted, validationError, scrollToSection]);
 
   // Auto-dismiss the validation banner once everything required is filled.
   useEffect(() => {
@@ -628,12 +252,12 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     const invalidSection = validationError;
     if (invalidSection) {
       setSubmitAttempted(true);
-      scrollToSection(invalidSection);
+      if (submitAttempted) scrollToSection(invalidSection);
       return;
     }
 
     const modifierSelections: CartModifierSelection[] = [];
-    for (const group of item.modifier_groups) {
+    for (const group of groups) {
       for (const option of group.options) {
         if (selections[group.id]?.has(option.id)) {
           modifierSelections.push({
@@ -698,6 +322,13 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
       submitLabel={builderSubmitLabel(Boolean(editingLine))}
       onSubmit={handleAdd}
     >
+      {catalogError || reviewMessage || bundleError || (submitAttempted && selectionError) ? (
+        <section ref={node => setSectionRef('catalog-review', node)} tabIndex={-1}
+          className="builder-step-card" role="alert" aria-live="assertive">
+          <p>{catalogError || reviewMessage || bundleError || selectionError}</p>
+          {reviewMessage ? <button type="button" onClick={reviewCurrentChoices}>Review current choices</button> : null}
+        </section>
+      ) : null}
       {sizeGroups.map((group) => (
         <section
           key={group.id}
@@ -801,7 +432,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                 value={selectedId}
                 onChange={(event) => {
                   const value = event.target.value;
-                  if (value) toggleSelection(group, value);
+                  if (value || minimumSelections(group) === 0) toggleSelection(group, value);
                 }}
               >
                 {!group.is_required || !selectedId ? (
@@ -821,7 +452,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                 {group.options.map((option) => {
                   const checked = selections[group.id]?.has(option.id) ?? false;
                   const type =
-                    group.selection_mode === "SINGLE" ? "radio" : "checkbox";
+                    group.selection_mode === "SINGLE" && minimumSelections(group) > 0 ? "radio" : "checkbox";
                   return (
                     <label key={option.id} className="builder-checkbox-row">
                       <input
@@ -850,9 +481,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
         >
           <div className="builder-step-card-head">
             <h3>
-              {strictSaladIngredientAddons
-                ? "Additional ingredients"
-                : "Add-ons"}
+              Additional ingredients
             </h3>
             <p>Add Extra items.</p>
           </div>
@@ -868,26 +497,6 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
               const count = selections[group.id]?.size ?? 0;
               const max = group.max_select ?? Number.MAX_SAFE_INTEGER;
               const showGroupLabel = addonGroups.length > 1;
-              const fullGroup = item.modifier_groups.find((g) => g.id === group.id);
-              const chickenOpts =
-                fullGroup?.options.filter((option) =>
-                  isBreadedChickenSizePairOption(option.name, normalizedSizeNames),
-                ) ?? [];
-              const showSyntheticChicken =
-                strictSaladIngredientAddons && chickenOpts.length >= 2 && fullGroup;
-              const targetScope = selectedSizeNames[0];
-              const activeChickenOption = targetScope
-                ? chickenOpts.find(
-                    (option) =>
-                      inferOptionSizeScope(option.name, normalizedSizeNames) ===
-                      targetScope,
-                  )
-                : null;
-              const chickenChecked =
-                activeChickenOption !== undefined &&
-                activeChickenOption !== null &&
-                (selections[group.id]?.has(activeChickenOption.id) ?? false);
-
               return (
                 <div key={group.id} className="builder-addon-group">
                   {showGroupLabel ? (
@@ -907,7 +516,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                       >
                           <input
                             type={
-                              group.selection_mode === "SINGLE"
+                              group.selection_mode === "SINGLE" && minimumSelections(group) > 0
                                 ? "radio"
                                 : "checkbox"
                             }
@@ -923,28 +532,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                         </label>
                       );
                     })}
-                    {showSyntheticChicken && fullGroup ? (
-                      <label className="builder-checkbox-row">
-                        <input
-                          type="checkbox"
-                          checked={chickenChecked}
-                          onChange={() => toggleBreadedChickenForGroup(fullGroup)}
-                          disabled={!activeChickenOption}
-                        />
-                        <span>Add fresh hand breaded chicken</span>
-                        {activeChickenOption ? (
-                          activeChickenOption.price_delta_cents !== 0 ? (
-                            <span className="price-text">
-                              +{cents(activeChickenOption.price_delta_cents)}
-                            </span>
-                          ) : (
-                            <span>Included</span>
-                          )
-                        ) : (
-                          <span>Choose a size first</span>
-                        )}
-                      </label>
-                    ) : null}
+
                   </div>
                 </div>
               );
@@ -969,10 +557,6 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
               onChange={(event) => {
                 const on = event.target.checked;
                 setSidePopBundleEnabled(on);
-                if (on) {
-                  setSidePopSideLabel((prev) => normalizeSmallSideLabel(prev));
-                  setSidePopPopLabel((prev) => normalizePopLabel(prev));
-                }
               }}
             />
             <span>
@@ -1018,6 +602,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
       ) : null}
 
       <section
+        tabIndex={-1}
         className={`builder-step-card${submitAttempted && validationError === "special-instructions" ? " builder-step-card-invalid" : ""}`}
         ref={(node) => setSectionRef("special-instructions", node)}
       >

@@ -241,6 +241,8 @@ export function MenuPage({
   const committedFulfillmentType =
     requestedFulfillmentType ?? cartFulfillmentType;
 
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const lastCatalogFocus = useRef(Date.now());
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -424,6 +426,17 @@ export function MenuPage({
   }, [menu, schedulingConfig, setLocationTimezone, setSchedulingConfig]);
 
   useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastCatalogFocus.current < 1000) return;
+      lastCatalogFocus.current = Date.now();
+      setCatalogRefresh(value => value + 1);
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
+
+  useEffect(() => {
     if (!hasCommittedOrderContext) return;
 
     let cancelled = false;
@@ -455,8 +468,10 @@ export function MenuPage({
         }
 
         setMenu(response.data);
+        const currentItems = response.data.categories.flatMap(category => category.items);
+        setPickerItem(previous => previous ? currentItems.find(item => item.id === previous.id) ?? null : null);
         if (response.data.categories.length > 0) {
-          setActiveCategoryId(response.data.categories[0].id);
+          setActiveCategoryId(previous => response.data!.categories.some(category => category.id === previous) ? previous : response.data!.categories[0].id);
         }
       } catch (cause) {
         if (!cancelled) {
@@ -469,7 +484,7 @@ export function MenuPage({
     return () => {
       cancelled = true;
     };
-  }, [committedFulfillmentType, hasCommittedOrderContext, locationId, scheduledFor]);
+  }, [committedFulfillmentType, hasCommittedOrderContext, locationId, scheduledFor, catalogRefresh]);
 
   /**
    * Sync ?fulfillment_type= from persisted cart when the URL omits it (e.g. "Back to menu"

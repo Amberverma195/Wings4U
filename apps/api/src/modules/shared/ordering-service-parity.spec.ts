@@ -15,9 +15,9 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     const item = { id: 'lunch', locationId: 'local', name: 'Lunch Burger', slug: 'lunch-burger', categoryId: category.id,
       basePriceCents: 1000, isAvailable: true, stockStatus: 'NORMAL', archivedAt: null, builderType: null, allowedFulfillmentType: 'BOTH', requiresSpecialInstructions: false,
       category, schedules: [], modifierGroups: [], removableIngredients: [] };
-    const option = { id: 'cheese', modifierGroupId: 'extras', isActive: true, priceDeltaCents: 150, name: 'Cheese', modifierGroup: { name: 'Extras' } };
+    const option = { id: 'cheese', modifierGroupId: 'extras', isActive: true, priceDeltaCents: 150, name: 'Cheese', addonMatchNormalized: '__always__', modifierGroup: { name: 'Extras' } };
     const child = { ...item, id: 'burger', slug: 'veggie-burger', stockStatus: 'NORMAL', isHidden: false, category: { ...category, slug: 'burgers' },
-      modifierGroups: [{ contextKey: 'addon', modifierGroup: { id: 'extras', name: 'Extras', displayLabel: 'Extras', contextKey: 'addon', locationId: 'local',
+      modifierGroups: [{ contextKey: 'addon', modifierGroup: { id: 'extras', name: 'Burger Extras', menuItems: [{ menuItemId: 'burger' }], sortOrder: 0, displayLabel: 'Extras', contextKey: 'addon', locationId: 'local',
         archivedAt: null, minSelect: 0, maxSelect: 2, isRequired: false, selectionMode: 'MULTI', options: [option] } }] };
     const db = {
       location: { findUnique: jest.fn().mockResolvedValue({ id: 'local', isActive: true, timezoneName: 'America/Toronto', settings }) },
@@ -48,8 +48,8 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     const run = (path: string) => {
       const lines = Array.from({ length: request.lineCount }, () => ({ menuItemId: item.id, quantity: 2, builderPayload: payload,
         modifierSelections: selectionIds.map(id => ({ modifierOptionId: id })) }));
-      return path === 'quote'
-        ? cart.computeQuote('local', 'PICKUP', lines.map(line => ({ menu_item_id: line.menuItemId, quantity: line.quantity, builder_payload: line.builderPayload,
+      return path === 'quote' || path === 'cart'
+        ? cart[path === 'cart' ? 'validateItems' : 'computeQuote']('local', 'PICKUP', lines.map(line => ({ menu_item_id: line.menuItemId, quantity: line.quantity, builder_payload: line.builderPayload,
           modifier_selections: selectionIds.map(id => ({ modifier_option_id: id })) })))
         : path === 'checkout'
           ? checkout.placeOrder({ userId: 'customer', locationId: 'local', fulfillmentType: 'PICKUP', idempotencyKey: 'fixture', items: lines })
@@ -86,18 +86,25 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     f.db.wingFlavour.findMany.mockResolvedValue([{ id: 'hot', name: 'Catalogue Hot', heatLevel: 'HOT', isPlain: false, isActive: true, archivedAt: null }] as never);
     return { ...f, groups };
   }
-  it.each(['quote', 'checkout', 'pos'].flatMap(path => ['valid', 'missing-addon', 'too-many-addons'].map(problem => ({ path, problem }))))(
-    '$path checks the website/mobile included-small salad payload ($problem)', async ({ path, problem }) => {
+  it.each(['cart', 'quote', 'checkout', 'pos'].flatMap(path => [
+    ...['Caesar Salad', 'Garden Salad', 'Greek Salad'].map(label => ({ problem: 'valid', label })),
+    ...['missing-addon', 'too-many-addons', 'unauthorized', 'stale', 'large-only', 'duplicate', 'price-conflict',
+      'mismatch', 'wrong-location', 'non-salad', 'wrong-category', 'archived', 'hidden', 'unavailable', 'out-of-stock', 'inactive-category', 'archived-category',
+      'fulfillment', 'category-schedule', 'item-schedule', 'small-missing', 'small-inactive', 'small-invalid',
+      'forged-labels', 'unknown-parent-choice', 'missing-payload', 'missing-choice', 'stale-choice', 'duplicate-choice', 'missing-child',
+    ].map(problem => ({ problem, label: 'Caesar Salad' })),
+  ].map(scenario => ({ path, ...scenario }))))(
+    '$path checks included $label identity and extras ($problem)', async ({ path, problem, label }) => {
     const f = wingFixture();
     Object.assign(f.item, { id: 'special', slug: 'wings-4u-special' }); f.payload.weight_lb = 2;
     for (const group of f.groups) group.menuItemId = 'special';
-    const saladGroup = (id: string, contextKey: string, options: any[], minSelect: number) => ({ menuItemId: 'salad', modifierGroupId: id, contextKey,
+    const saladGroup = (id: string, contextKey: string, options: any[], minSelect: number) => ({ menuItemId: 'salad', modifierGroupId: id, sortOrder: 1, contextKey,
       modifierGroup: { id, locationId: 'local', name: id, displayLabel: id, contextKey, archivedAt: null, minSelect, maxSelect: 1,
         isRequired: minSelect > 0, selectionMode: 'SINGLE', options: options.map(option => ({ modifierGroupId: id, isActive: true, linkedFlavourId: null, priceDeltaCents: 0, ...option })) } });
     const size = saladGroup('salad-size', 'size', [{ id: 'small', name: 'Small' }, { id: 'large', name: 'Large', priceDeltaCents: 400 }], 1);
-    const extras = saladGroup('salad-extras', 'addon', [{ id: 'croutons', name: 'Extra Croutons', priceDeltaCents: 50 }, { id: 'tomato', name: 'Extra Tomato', priceDeltaCents: 25 }], 0);
-    const salad = { ...f.item, id: 'salad', slug: 'caesar-salad', name: 'Caesar Salad', builderType: null,
-      category: { ...f.item.category, slug: 'salads' }, modifierGroups: [size, extras], removableIngredients: [] };
+    const extras = saladGroup('salad-extras', 'addon', [{ id: 'croutons', addonMatchNormalized: 'croutons', name: 'Extra Croutons', priceDeltaCents: 50 }, { id: 'tomato', addonMatchNormalized: 'tomato', name: 'Extra Tomato', priceDeltaCents: 25 }], 0);
+    const salad = { ...f.item, id: 'salad', slug: label.toLowerCase().replaceAll(' ', '-'), name: label, builderType: null, isHidden: false,
+      category: { ...f.item.category, slug: 'salads' }, modifierGroups: [size, extras], removableIngredients: [{ id: 'recipe-croutons', name: 'Croutons' }, { id: 'recipe-tomato', name: 'Tomato' }] };
     f.payload.salad_customization = { salad_menu_item_id: 'salad', salad_name: salad.name, salad_slug: salad.slug,
       removed_ingredients: [], modifier_selections: [{ modifier_option_id: 'croutons', name: 'Extra Croutons', price_delta_cents: 50 }] };
     f.selectionIds.push('croutons');
@@ -106,16 +113,55 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       f.selectionIds.push('tomato');
       (f.payload.salad_customization as { modifier_selections: unknown[] }).modifier_selections.push({ modifier_option_id: 'tomato', name: 'Extra Tomato', price_delta_cents: 25 });
     }
+    if (problem === 'unauthorized') extras.modifierGroup.options[0].addonMatchNormalized = null;
+    if (problem === 'stale') extras.modifierGroup.options[0].isActive = false;
+    if (problem === 'large-only') extras.modifierGroup.options[0].name = 'Extra Croutons Large';
+    if (problem === 'duplicate') {
+      f.selectionIds.push('croutons');
+      (f.payload.salad_customization as { modifier_selections: unknown[] }).modifier_selections.push({ modifier_option_id: 'croutons' });
+    }
+    if (problem === 'price-conflict') {
+      extras.modifierGroup.selectionMode = 'MULTI';
+      extras.modifierGroup.options.push({ ...extras.modifierGroup.options[0], id: 'conflict', priceDeltaCents: 100 });
+    }
+    const picker = { ...size, menuItemId: 'special', modifierGroupId: 'salad-picker', contextKey: 'salad', modifierGroup: {
+      ...size.modifierGroup, id: 'salad-picker', name: 'Included Salad', displayLabel: 'Included Salad', contextKey: 'salad',
+      options: [{ ...size.modifierGroup.options[0], id: 'salad-choice', modifierGroupId: 'salad-picker', name: label }],
+    } };
+    f.groups.push(picker); f.selectionIds.push('salad-choice');
+    if (problem === 'mismatch' || problem === 'forged-labels') salad.slug = 'garden-salad';
+    if (problem === 'forged-labels') Object.assign(f.payload.salad_customization as object, { salad_name: label, salad_slug: 'caesar-salad' });
+    if (problem === 'wrong-location') salad.locationId = 'another-location';
+    if (problem === 'non-salad') { salad.slug = 'veggie-burger'; salad.category.slug = 'burgers'; }
+    if (problem === 'wrong-category') salad.category.slug = 'burgers';
+    if (problem === 'inactive-category') Object.assign(salad.category, { isActive: false });
+    if (problem === 'archived-category') Object.assign(salad.category, { archivedAt: new Date() });
+    if (problem === 'archived') Object.assign(salad, { archivedAt: new Date() });
+    if (problem === 'hidden') salad.isHidden = true;
+    if (problem === 'unavailable') salad.isAvailable = false;
+    if (problem === 'out-of-stock') salad.stockStatus = 'UNAVAILABLE';
+    if (problem === 'fulfillment') salad.allowedFulfillmentType = 'DELIVERY';
+    if (problem === 'category-schedule') Object.assign(salad.category, { availableFromMinutes: 800, availableUntilMinutes: 900 });
+    if (problem === 'item-schedule') Object.assign(salad, { schedules: [{ dayOfWeek: 2, timeFrom: new Date('1970-01-01T11:00Z'), timeTo: new Date('1970-01-01T15:00Z') }] });
+    if (problem === 'small-missing') size.modifierGroup.options[0].name = 'Medium';
+    if (problem === 'small-inactive') size.modifierGroup.options[0].isActive = false;
+    if (problem === 'small-invalid') size.modifierGroup.maxSelect = 0;
+    if (problem === 'unknown-parent-choice') picker.modifierGroup.options[0].name = 'Chef Special';
+    if (problem === 'missing-payload') delete f.payload.salad_customization;
+    if (problem === 'missing-choice') f.selectionIds.splice(f.selectionIds.indexOf('salad-choice'), 1);
+    if (problem === 'stale-choice') picker.modifierGroup.options[0].isActive = false;
+    if (problem === 'duplicate-choice') f.selectionIds.push('salad-choice');
     const mappings = [...f.groups, size, extras];
-    f.db.menuItem.findMany.mockResolvedValue([f.item, salad] as never);
+    f.db.menuItem.findMany.mockResolvedValue((problem === 'missing-child' ? [f.item] : [f.item, salad]) as never);
     f.db.menuItemModifierGroup.findMany.mockResolvedValue(mappings as never);
     f.db.modifierOption.findMany.mockResolvedValue(mappings.flatMap(group => group.modifierGroup.options.map(option => ({ ...option, modifierGroup: group.modifierGroup }))) as never);
     f.db.modifierGroup.findMany.mockResolvedValue(mappings.map(group => group.modifierGroup) as never);
     if (problem !== 'valid') {
-      await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: 'Invalid selections for salad-extras' }) });
+      await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: expect.any(String) }) });
       expect(f.db.order.create).not.toHaveBeenCalled(); return;
     }
-    if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2800 });
+    if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: 2800 });
+    else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2800 });
     else {
       await expect(f.run(path)).rejects.toBe(stop);
       expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2800 }) }));

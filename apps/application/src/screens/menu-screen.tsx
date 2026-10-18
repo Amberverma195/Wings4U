@@ -153,6 +153,11 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const { menu, loading, error, refetch, loadedReloadKey } = useMenu(
     fulfillmentType, cart.locationId, cart.scheduledFor, footerReloadKey,
   );
+  const wasFocused = useRef(focused);
+  useEffect(() => {
+    if (focused && !wasFocused.current) refetch();
+    wasFocused.current = focused;
+  }, [focused, refetch]);
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -165,6 +170,11 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     if (!menu) return [];
     return prepareMenuCategories(menu.categories);
   }, [menu]);
+
+  useEffect(() => {
+    if (loading || !menu) return;
+    setSelectedItem(previous => previous ? menu.categories.flatMap(category => category.items).find(item => item.id === previous.id) ?? null : null);
+  }, [menu, loading]);
 
   useEffect(() => {
     if (cinematic || !focused || !params.editKey || loading || !menu || loadedReloadKey !== footerReloadKey) return;
