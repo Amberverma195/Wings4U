@@ -27,6 +27,7 @@
     "test:e2e": "npm run test:e2e --workspace @wings4u/api",
     "ci": "npm run db:generate && npm run build:database && npm run build:api && npm run build:web && npm run test:e2e",
     "build:customization": "npm run build --workspace @wings4u/customization",
+    "test:menu-safety": "npm run build:customization && npm run test:menu-safety --workspace @wings4u/database",
     "test:customization": "npm run build:customization && node --test packages/customization/test/rules.test.cjs packages/customization/test/embedded-salad.test.cjs packages/customization/test/normalization.test.cjs packages/customization/test/mapped-menu.test.cjs packages/customization/test/paid-extras.test.cjs"
   },
   "devDependencies": {

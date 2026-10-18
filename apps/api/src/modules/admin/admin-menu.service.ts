@@ -257,6 +257,7 @@ export class AdminMenuService {
       isAvailable: boolean;
       archivedAt: Date | null;
     },
+    allowRestore = false,
   ): Promise<void> {
     const sideGroups = await tx.modifierGroup.findMany({
       where: {
@@ -275,6 +276,7 @@ export class AdminMenuService {
             id: true,
             name: true,
             linkedMenuItemId: true,
+            isActive: true,
             sortOrder: true,
           },
         },
@@ -303,14 +305,15 @@ export class AdminMenuService {
           where: { id: option.id },
           data: {
             name: item.name,
-            isActive: shouldBeActive,
+            // An unrelated product edit must not undo an option-level removal.
+            isActive: shouldBeActive && (allowRestore || option.isActive !== false),
             linkedMenuItemId: item.id,
           },
         });
         continue;
       }
 
-      if (!shouldBeActive) continue;
+      if (!shouldBeActive || !allowRestore) continue;
 
       await tx.modifierOption.create({
         data: {
@@ -705,7 +708,7 @@ export class AdminMenuService {
           });
         }
 
-        await this.syncWingComboSideOptions(tx, locationId, item);
+        await this.syncWingComboSideOptions(tx, locationId, item, true);
         if (data.additional_ingredients !== undefined) {
           await this.createAdditionalIngredientsGroup(
             tx,
@@ -811,7 +814,10 @@ export class AdminMenuService {
           },
         });
 
-        await this.syncWingComboSideOptions(tx, locationId, updatedItem);
+        // Only a deliberate false -> true membership change may create or
+        // restore side options. Sending the unchanged checkbox is not consent.
+        await this.syncWingComboSideOptions(tx, locationId, updatedItem,
+          data.is_wing_combo_side === true && item.isWingComboSide === false);
         if (data.additional_ingredients !== undefined) {
           await this.updateAdditionalIngredients(tx, locationId, id, updatedItem.name, data.additional_ingredients);
         }
