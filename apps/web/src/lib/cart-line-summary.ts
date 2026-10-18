@@ -83,7 +83,7 @@ function buildSaucingSummaryLines(payload: WingBuilderPayload): string[] {
   const method = payload.saucing_method;
   if (!method) return [];
 
-  const sortedSlots = [...payload.flavour_slots].sort((a, b) => a.slot_no - b.slot_no);
+  const sortedSlots = [...(payload.flavour_slots ?? [])].sort((a, b) => a.slot_no - b.slot_no);
   const names = sortedSlots.map((s) => (s.flavour_name?.trim() ? s.flavour_name : "Plain"));
   const n = names.length;
   const sideSlot = payload.side_flavour_slot_no ?? null;
@@ -142,14 +142,14 @@ function buildWingSummaryLines(item: CartItem): string[] {
 
   const maxSlots = Math.max(
     parseMaxFlavoursFromName(item.name),
-    payload.flavour_slots.length,
-    payload.flavour_slots.reduce((m, s) => Math.max(m, s.slot_no), 0),
+    (payload.flavour_slots ?? []).length,
+    (payload.flavour_slots ?? []).reduce((m, s) => Math.max(m, s.slot_no), 0),
   );
 
-  const sortedSlots = [...payload.flavour_slots].sort((a, b) => a.slot_no - b.slot_no);
+  const sortedSlots = [...(payload.flavour_slots ?? [])].sort((a, b) => a.slot_no - b.slot_no);
   for (let i = 0; i < maxSlots; i++) {
     const slot = sortedSlots[i];
-    const sauceName = slot?.flavour_name?.trim() ? slot.flavour_name : "Plain";
+    const sauceName = slot?.flavour_name?.trim() ? slot.flavour_name : "Needs review";
     lines.push(`Sauce ${i + 1}: ${sauceName}`);
   }
 

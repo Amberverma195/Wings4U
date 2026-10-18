@@ -67,15 +67,16 @@ describe('catalogue-backed builder validation', () => {
     ['wings-1lb', '1 Pound – 1 Flavour', 1], ['wings-1.5lb', '1.5 Pound – 1 Flavour', 1.5],
     ['wings-2lb', '2 Pound – 1 Flavour', 2], ['wings-3lb', '3 Pound – 2 Flavours', 3],
     ['wings-4lb', '4 Pound – 2 Flavours', 4], ['wings-5lb', '5 Pound – 3 Flavours', 5],
-    ['wings-4u-special', 'Wings-4-U Special', 2], ['party-75-wings', '75 Wings — 5 Flavours', 5],
-    ['party-100-wings', '100 Wings — 5 Flavours', 6.67], ['lunch-5-wings', '5 Wings + Fries + Pop', 0.33],
+    ['wings-2.5lb', '2.5 Pound – 2 Flavours', 2.5],
+    ['wings-4u-special', 'Wings-4-U Special', 2], ['party-75-wings', '75 Wings — 5 Flavours', 8],
+    ['party-100-wings', '100 Wings — 5 Flavours', 11], ['lunch-5-wings', '5 Wings + Fries + Pop', 0.33],
   ])('accepts catalogue weight for %s without client-derived conversion', async (slug, name, weight) => {
     const { params, payload } = fixture();
     params.menuItem = { ...item, slug: slug as string, name: name as string }; payload.weight_lb = weight;
     await expect(assertBuilderCatalogValid(params)).resolves.toBeUndefined();
   });
   it('fails closed if the catalogue weight cannot be determined', async () => {
-    const { params, payload } = fixture(); params.menuItem = { ...item, name: 'Unspecified pack' }; payload.weight_lb = 1;
+    const { params, payload } = fixture(); params.menuItem = { ...item, slug: 'unknown-pack', name: 'Unspecified pack' }; payload.weight_lb = 1;
     await expect(assertBuilderCatalogValid(params)).rejects.toThrow('not configured');
   });
   it('batches distinct SKUs and duplicate child IDs without sharing state across requests', async () => {
@@ -149,7 +150,7 @@ describe('catalogue-backed builder validation', () => {
     const { params, payload, mappings, flavourGroup } = fixture();
     for (let n = 1; n < count; n++) mappings.push({ ...flavourGroup, modifierGroupId: 'slot-' + n, modifierGroup: { ...flavourGroup.modifierGroup, id: 'slot-' + n } });
     params.menuItem = { ...item, name: count === 5 ? '75 Wings ? 5 Flavours' : '5 Pound ? 3 Flavours', slug: count === 5 ? 'party-75-wings' : 'wings-5lb' };
-    payload.weight_lb = 5;
+    payload.weight_lb = count === 5 ? 8 : 5;
     payload.flavour_slots = Array.from({ length: count }, (_, n) => ({ slot_no: n + 1, wing_flavour_id: 'hot', placement: 'ON_WINGS' }));
     payload.saucing_method = 'TELL_US_HOW';
     await expect(assertBuilderCatalogValid(params)).rejects.toThrow('Saucing instructions');

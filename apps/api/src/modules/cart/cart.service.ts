@@ -1,3 +1,4 @@
+import { throwCartItemError } from "../shared/cart-item-error";
 import { assertBuilderCatalogValid, loadBuilderCatalogContext } from "../shared/builder-catalog-validation";
 import { Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
@@ -182,169 +183,176 @@ export class CartService {
       builderPayloads: items.map(item => item.builder_payload),
     });
 
-    for (const cartItem of items) {
-      const menuItem = menuItemMap.get(cartItem.menu_item_id);
-      if (!menuItem) {
-        throw new UnprocessableEntityException({
-          message: `Menu item ${cartItem.menu_item_id} not found at this location`,
-          field: "items",
-        });
-      }
-      assertMenuItemOrderable({
-        menuItem,
-        fulfillmentType,
-        specialInstructions: cartItem.special_instructions,
-      });
-      collectScheduleViolation(
-        menuItem,
-        scheduleContext,
-        scheduleViolationIds,
-        lunchScheduleViolationIds,
-      );
-
-      const removedIngredients = getRemovedIngredients(cartItem);
-      const saladCustomization = getSaladCustomization(cartItem.builder_payload);
-      const allowedIngredientIds = new Set(menuItem.removableIngredients.map((ingredient) => ingredient.id));
-      for (const ingredient of removedIngredients) {
-        if (!allowedIngredientIds.has(ingredient.id)) {
+    for (const [itemIndex, cartItem] of items.entries()) {
+      try {
+        const menuItem = menuItemMap.get(cartItem.menu_item_id);
+        if (!menuItem) {
           throw new UnprocessableEntityException({
-            message: `Ingredient removal \"${ingredient.name}\" is not valid for ${menuItem.name}`,
-            field: "items",
-          });
-        }
-      }
-
-      if (saladCustomization) {
-        const saladMenuItem = menuItemMap.get(saladCustomization.saladMenuItemId);
-        if (!saladMenuItem) {
-          throw new UnprocessableEntityException({
-            message: `Salad menu item ${saladCustomization.saladMenuItemId} not found at this location`,
+            message: `Menu item ${cartItem.menu_item_id} not found at this location`,
             field: "items",
           });
         }
         assertMenuItemOrderable({
-          menuItem: saladMenuItem,
+          menuItem,
           fulfillmentType,
-          label: "Salad",
+          specialInstructions: cartItem.special_instructions,
         });
         collectScheduleViolation(
-          saladMenuItem,
+          menuItem,
           scheduleContext,
           scheduleViolationIds,
           lunchScheduleViolationIds,
         );
-        for (const optId of saladCustomization.modifierOptionIds) {
-          const opt = optionMap.get(optId);
-          if (!opt) {
+
+        const removedIngredients = getRemovedIngredients(cartItem);
+        const saladCustomization = getSaladCustomization(cartItem.builder_payload);
+        const allowedIngredientIds = new Set(menuItem.removableIngredients.map((ingredient) => ingredient.id));
+        for (const ingredient of removedIngredients) {
+          if (!allowedIngredientIds.has(ingredient.id)) {
             throw new UnprocessableEntityException({
-              message: `A selected salad option is no longer available.`,
+              message: `Ingredient removal \"${ingredient.name}\" is not valid for ${menuItem.name}`,
               field: "items",
             });
           }
         }
 
-        const allowedSaladIngredientIds = new Set(
-          saladMenuItem.removableIngredients.map((ingredient) => ingredient.id),
-        );
-        for (const ingredient of saladCustomization.removedIngredients) {
-          if (!allowedSaladIngredientIds.has(ingredient.id)) {
+        if (saladCustomization) {
+          const saladMenuItem = menuItemMap.get(saladCustomization.saladMenuItemId);
+          if (!saladMenuItem) {
             throw new UnprocessableEntityException({
-              message: `Ingredient removal \"${ingredient.name}\" is not valid for ${saladMenuItem.name}`,
+              message: `Salad menu item ${saladCustomization.saladMenuItemId} not found at this location`,
               field: "items",
             });
+          }
+          assertMenuItemOrderable({
+            menuItem: saladMenuItem,
+            fulfillmentType,
+            label: "Salad",
+          });
+          collectScheduleViolation(
+            saladMenuItem,
+            scheduleContext,
+            scheduleViolationIds,
+            lunchScheduleViolationIds,
+          );
+          for (const optId of saladCustomization.modifierOptionIds) {
+            const opt = optionMap.get(optId);
+            if (!opt) {
+              throw new UnprocessableEntityException({
+                message: `A selected salad option is no longer available.`,
+                field: "items",
+              });
+            }
+          }
+
+          const allowedSaladIngredientIds = new Set(
+            saladMenuItem.removableIngredients.map((ingredient) => ingredient.id),
+          );
+          for (const ingredient of saladCustomization.removedIngredients) {
+            if (!allowedSaladIngredientIds.has(ingredient.id)) {
+              throw new UnprocessableEntityException({
+                message: `Ingredient removal \"${ingredient.name}\" is not valid for ${saladMenuItem.name}`,
+                field: "items",
+              });
+            }
+          }
+
+          const selectedModifierIds = new Set(
+            cartItem.modifier_selections?.map((selection) => selection.modifier_option_id) ??
+              [],
+          );
+          const allowedSaladGroupIds = new Set(
+            saladMenuItem.modifierGroups.map((group) => group.modifierGroupId),
+          );
+          for (const optionId of saladCustomization.modifierOptionIds) {
+            const option = optionMap.get(optionId);
+            if (!option || !allowedSaladGroupIds.has(option.modifierGroupId)) {
+              throw new UnprocessableEntityException({
+                message: `Modifier option ${optionId} is not valid for ${saladMenuItem.name}`,
+                field: "items",
+              });
+            }
+            if (!selectedModifierIds.has(optionId)) {
+              throw new UnprocessableEntityException({
+                message: `Modifier option ${optionId} must also be present on the cart line`,
+                field: "items",
+              });
+            }
           }
         }
 
-        const selectedModifierIds = new Set(
-          cartItem.modifier_selections?.map((selection) => selection.modifier_option_id) ??
-            [],
+        assertBuilderPayloadValid({
+          menuItem,
+          builderPayload: cartItem.builder_payload,
+          optionMap,
+        });
+
+        await assertBuilderCatalogValid({
+          catalogContext,
+          db: this.prisma,
+          locationId,
+          menuItem,
+          builderPayload: cartItem.builder_payload,
+          modifierOptionIds: cartItem.modifier_selections?.map(row => row.modifier_option_id) ?? [],
+          fulfillmentType,
+          context: scheduleContext,
+          specialInstructions: cartItem.special_instructions,
+          wingFlavourMap,
+        });
+
+        assertWingFlavoursOrderable({
+          builderPayload: cartItem.builder_payload,
+          wingFlavourMap,
+        });
+
+        let modifierTotalCents = getBuilderPriceDelta(cartItem.builder_payload, optionMap);
+        const saladModifierOptionIds = new Set(
+          saladCustomization?.modifierOptionIds ?? [],
         );
-        const allowedSaladGroupIds = new Set(
-          saladMenuItem.modifierGroups.map((group) => group.modifierGroupId),
-        );
-        for (const optionId of saladCustomization.modifierOptionIds) {
-          const option = optionMap.get(optionId);
-          if (!option || !allowedSaladGroupIds.has(option.modifierGroupId)) {
-            throw new UnprocessableEntityException({
-              message: `Modifier option ${optionId} is not valid for ${saladMenuItem.name}`,
-              field: "items",
-            });
-          }
-          if (!selectedModifierIds.has(optionId)) {
-            throw new UnprocessableEntityException({
-              message: `Modifier option ${optionId} must also be present on the cart line`,
-              field: "items",
-            });
+        if (cartItem.modifier_selections) {
+          const seenOptionIds = new Set<string>();
+          for (const selection of cartItem.modifier_selections) {
+            if (seenOptionIds.has(selection.modifier_option_id)) {
+              throw new UnprocessableEntityException({
+                message: `Duplicate modifier option ${selection.modifier_option_id} not allowed`,
+                field: "items",
+              });
+            }
+            seenOptionIds.add(selection.modifier_option_id);
+
+            const option = optionMap.get(selection.modifier_option_id);
+            if (!option) {
+              throw new UnprocessableEntityException({
+                message: `Modifier option ${selection.modifier_option_id} not found or inactive`,
+                field: "items",
+              });
+            }
+            if (!saladModifierOptionIds.has(selection.modifier_option_id)) {
+              assertModifierOptionAllowedForItem({ option, menuItem });
+            }
+            modifierTotalCents += option.priceDeltaCents;
           }
         }
+
+        const unitPriceCents = menuItem.basePriceCents + modifierTotalCents;
+        const lineTotalCents = unitPriceCents * cartItem.quantity;
+        itemSubtotalCents += lineTotalCents;
+
+        lineDetails.push({
+          menu_item_id: menuItem.id,
+          name: menuItem.name,
+          quantity: cartItem.quantity,
+          unit_price_cents: unitPriceCents,
+          modifier_total_cents: modifierTotalCents,
+          line_total_cents: lineTotalCents,
+          special_instructions: cartItem.special_instructions ?? null,
+        });
+
+      } catch (error) {
+        const affected = menuItemMap.get(cartItem.menu_item_id ?? "");
+        throwCartItemError(error, { id: cartItem.menu_item_id, index: itemIndex, name: affected?.name,
+          unavailable: !affected || !affected.isAvailable || Boolean(affected.archivedAt) });
       }
-
-      assertBuilderPayloadValid({
-        menuItem,
-        builderPayload: cartItem.builder_payload,
-        optionMap,
-      });
-
-      await assertBuilderCatalogValid({
-        catalogContext,
-        db: this.prisma,
-        locationId,
-        menuItem,
-        builderPayload: cartItem.builder_payload,
-        modifierOptionIds: cartItem.modifier_selections?.map(row => row.modifier_option_id) ?? [],
-        fulfillmentType,
-        context: scheduleContext,
-        specialInstructions: cartItem.special_instructions,
-        wingFlavourMap,
-      });
-
-      assertWingFlavoursOrderable({
-        builderPayload: cartItem.builder_payload,
-        wingFlavourMap,
-      });
-
-      let modifierTotalCents = getBuilderPriceDelta(cartItem.builder_payload, optionMap);
-      const saladModifierOptionIds = new Set(
-        saladCustomization?.modifierOptionIds ?? [],
-      );
-      if (cartItem.modifier_selections) {
-        const seenOptionIds = new Set<string>();
-        for (const selection of cartItem.modifier_selections) {
-          if (seenOptionIds.has(selection.modifier_option_id)) {
-            throw new UnprocessableEntityException({
-              message: `Duplicate modifier option ${selection.modifier_option_id} not allowed`,
-              field: "items",
-            });
-          }
-          seenOptionIds.add(selection.modifier_option_id);
-
-          const option = optionMap.get(selection.modifier_option_id);
-          if (!option) {
-            throw new UnprocessableEntityException({
-              message: `Modifier option ${selection.modifier_option_id} not found or inactive`,
-              field: "items",
-            });
-          }
-          if (!saladModifierOptionIds.has(selection.modifier_option_id)) {
-            assertModifierOptionAllowedForItem({ option, menuItem });
-          }
-          modifierTotalCents += option.priceDeltaCents;
-        }
-      }
-
-      const unitPriceCents = menuItem.basePriceCents + modifierTotalCents;
-      const lineTotalCents = unitPriceCents * cartItem.quantity;
-      itemSubtotalCents += lineTotalCents;
-
-      lineDetails.push({
-        menu_item_id: menuItem.id,
-        name: menuItem.name,
-        quantity: cartItem.quantity,
-        unit_price_cents: unitPriceCents,
-        modifier_total_cents: modifierTotalCents,
-        line_total_cents: lineTotalCents,
-        special_instructions: cartItem.special_instructions ?? null,
-      });
     }
 
     throwScheduleViolations({

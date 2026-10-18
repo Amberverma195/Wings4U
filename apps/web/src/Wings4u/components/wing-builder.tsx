@@ -51,17 +51,9 @@ const SAUCING_THREE_EXTRA = {
 
 const EXTRA_FLAVOUR_CENTS = 100;
 
-function parseWeightFromName(name: string): number {
-  const partyMatch = name.match(/(\d+)\s*Wings/i);
-  if (partyMatch) {
-    const count = parseInt(partyMatch[1], 10);
-    if (count >= 100) return 7.0;
-    if (count >= 75) return 5.0;
-    return count / 15;
-  }
-  const lbMatch = name.match(/([\d.]+)\s*Pound/i);
-  if (lbMatch) return parseFloat(lbMatch[1]);
-  return 1.0;
+function catalogueWeightLb(item: MenuItem): number {
+  return [...(item.weight_options ?? []), ...(item.combo_options ?? [])]
+    .find(option => option.menu_item_id === item.id)?.weight_lb ?? 0;
 }
 
 function parseMaxFlavours(item: MenuItem): number {
@@ -361,7 +353,7 @@ export function WingBuilder({ item, onClose }: Props) {
       builder_type: isCombo ? "WING_COMBO" : "WINGS",
       wing_type: wingType,
       preparation,
-      weight_lb: parseWeightFromName(item.name),
+      weight_lb: catalogueWeightLb(item),
       flavour_slots: flavourSlots
         .filter((s) => s.flavourId)
         .map((s, i) => ({

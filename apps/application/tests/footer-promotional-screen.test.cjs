@@ -56,9 +56,23 @@ const mount = async cinematic => act(async () => { renderer = create(React.creat
 const builder = () => renderer.root.findByType('MenuItemBuilder');
 beforeEach(() => {
   jest.clearAllMocks(); mockParams = {};
+  mockCart.items = [];
   mockMenuResult = { menu, loading: false, error: null, refetch: jest.fn(), loadedReloadKey: undefined };
   global.requestAnimationFrame = fn => { fn(); return 1; };
   global.cancelAnimationFrame = jest.fn();
+});
+
+test('Cart edit waits for the fresh menu and preserves the selected line and quantity', async () => {
+  const line = { key: 'saved-party', menu_item_id: 'backend-party-75-wings', name: '75 Wings', quantity: 3, builder_payload: { builder_type: 'WINGS', weight_lb: 5 } };
+  mockCart.items = [line]; mockParams = { editKey: line.key, ts: 'cart-edit-request' };
+  await mount(false);
+  expect(builder().props.visible).toBe(false);
+  mockMenuResult = { ...mockMenuResult, loadedReloadKey: 'cart-edit-request' };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic: false })));
+  expect(builder().props.item.id).toBe('backend-party-75-wings');
+  expect(builder().props.editItem).toBe(line);
+  expect(builder().props.editItem.quantity).toBe(3);
+  expect(mockCart.items).toEqual([line]);
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount()); renderer = null;

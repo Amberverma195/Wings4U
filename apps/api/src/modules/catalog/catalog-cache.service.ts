@@ -20,6 +20,7 @@ type MenuCacheKeyParams = {
 
 const KEY_PREFIX = "wings4u:catalog";
 const FALLBACK_VERSION = "0";
+const MENU_FORMAT_VERSION = "official-portions-v1";
 
 @Injectable()
 export class CatalogCacheService {
@@ -75,6 +76,7 @@ export class CatalogCacheService {
     return [
       KEY_PREFIX,
       "menu",
+      MENU_FORMAT_VERSION,
       params.locationId,
       version,
       params.fulfillmentType,

@@ -1234,6 +1234,7 @@ export function CheckoutClient() {
         state.step !== "error" && (
           <p className="surface-error" style={{ marginBottom: "1rem" }}>
             {quoteError}
+            {" "}<Link href="/cart">Review cart items</Link>
           </p>
         )}
       {!quoteError && promoRejectionMessage && state.step !== "error" ? (

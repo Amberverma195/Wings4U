@@ -185,6 +185,13 @@ describe("KdsService external delivery bypass", () => {
     },
   );
 
+  it.each(['PICKED_UP', 'DELIVERED', 'NO_PIN_DELIVERY'] as const)('rejects historical completed-order replay (%s) without entering an accrual transaction', async status => {
+    const harness = createHarness({ status });
+    await expect(harness.service.updateOrderStatus('order-1', 'staff-1', 'loc-1', status)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+    expect(harness.rewards.accrueForOrderInTransaction).not.toHaveBeenCalled();
+  });
+
   it("does not weaken the generic READY status transition", async () => {
     const harness = createHarness();
 

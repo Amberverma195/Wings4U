@@ -73,6 +73,38 @@ test('empty Cart keeps Browse menu available, and pricing errors still block che
   expect(button('Checkout').props.disabled).toBe(false); // Allow a deliberate retry.
 });
 
+test.each([false, true].flatMap(authenticated => ['old 75-wing weight / missing fields', 'old 100-wing weight', 'inactive modifier', 'invalid flavour'].map(problem => ({ authenticated, problem }))))('saved $problem recovers individually without losing other lines (authenticated=$authenticated)', async ({ authenticated, problem }) => {
+  mockSession.authenticated = authenticated;
+  const untouched = { ...mockCart.items[0], key: 'burger', menu_item_id: 'burger', name: 'Burger', quantity: 3 };
+  const outdated = { ...mockCart.items[0], key: 'party', menu_item_id: 'party-75', name: '75 Wings', quantity: 2,
+    builder_payload: { builder_type: 'WINGS', weight_lb: 5 } }; // Missing flavour fields must remain renderable.
+  if (problem === 'old 100-wing weight') Object.assign(outdated, { menu_item_id: 'party-100', name: '100 Wings', builder_payload: { builder_type: 'WINGS', weight_lb: 6.67 } });
+  if (problem === 'inactive modifier') outdated.modifier_selections = [{ modifier_option_id: 'removed-paid', group_name: 'Extras', option_name: 'Extra cheese', price_delta_cents: 150 }];
+  if (problem === 'invalid flavour') outdated.builder_payload.flavour_slots = [{ slot_no: 1, wing_flavour_id: 'removed-flavour', flavour_name: 'Old sauce' }];
+  mockCart.items = [outdated, untouched];
+  const message = `Your ${outdated.name} selection needs updating because our menu options have changed. Please review this item before checkout.`;
+  let rejected = true;
+  apiJson.mockImplementation(async (url, init) => {
+    const request = init?.body ? JSON.parse(init.body) : null;
+    if (request?.items && rejected) {
+      throw Object.assign(new Error(message), { body: { errors: [{ code: 'CART_ITEM_CONFIGURATION_INVALID', message,
+        detail: { affected_item_ids: ['party-75'], affected_item_indices: [0] } }] } });
+    }
+    return { data: { item_subtotal_cents: 20998, final_payable_cents: 20998, lines: request?.items ?? [] } };
+  });
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  const name = renderer.root.findAllByType('Text').find(node => node.children.join('') === outdated.name);
+  expect(name.parent.parent.parent.findAllByType('Text').map(node => node.children.join('')).join(' ')).toContain(message);
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: `Edit ${outdated.name}` }).props.onPress());
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/(tabs)/menu', params: { editKey: 'party', ts: expect.any(String) } });
+  expect(mockCart.items[1]).toBe(untouched); expect(mockCart.removeItem).not.toHaveBeenCalled();
+  rejected = false;
+  mockCart = { ...mockCart, items: [{ ...outdated, modifier_selections: [], builder_payload: { builder_type: 'WINGS', weight_lb: problem === 'old 100-wing weight' ? 11 : 8, flavour_slots: [] } }, untouched] };
+  await rerender(); await act(async () => jest.advanceTimersByTime(250));
+  expect(renderer.root.findAllByType('Text').some(node => node.children.join('') === message)).toBe(false);
+  expect(mockCart.items.map(item => item.quantity)).toEqual([2, 3]);
+});
+
 test('unconfirmed browsing checkout asks for setup, and cancelling does not navigate or lose items', async () => {
   mockSetup.confirmed = false;
   mockSetup.ensureOrderSetup.mockResolvedValue(null);

@@ -124,7 +124,7 @@ export async function apiJson<T>(
     if (res.status >= 500) {
       dispatchConnectivityFailure("server");
     }
-    throw new Error(getApiErrorMessage(body, res.statusText));
+    throw new ApiRequestError(getApiErrorMessage(body, res.statusText), body, res.status);
   }
   return body;
 }
@@ -167,3 +167,7 @@ export function getApiErrorMessage(body: unknown, fallback = "Request failed"): 
 }
 
 export type { ApiEnvelope, ApiErrorBody };
+
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly body: unknown, public readonly status: number) { super(message); }
+}

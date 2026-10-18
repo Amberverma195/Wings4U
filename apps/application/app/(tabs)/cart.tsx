@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useIsFocused, useRouter } from "expo-router";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react-native";
 import { apiJson } from "../../src/lib/api";
+import { getCartItemIssue, issueAffectsLine, type CartItemIssue } from "../../src/lib/cart-validation";
 import { useCart, type CartContextValue } from "../../src/context/cart";
 import { useOrderSetup } from "../../src/context/order-setup";
 import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
@@ -53,7 +54,7 @@ function driverTipCents(cart: CartContextValue): number {
 function payloadSummary(payload: CartBuilderPayload | undefined): string[] {
   if (!payload) return [];
   if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
-    const parts = payload.flavour_slots.map((slot) => slot.flavour_name);
+    const parts = (payload.flavour_slots ?? []).map((slot) => slot.flavour_name);
     if (payload.extra_flavour) parts.push(`Extra: ${payload.extra_flavour.flavour_name}`);
     if (payload.salad_customization?.salad_name) {
       parts.push(`Salad: ${payload.salad_customization.salad_name}`);
@@ -112,6 +113,7 @@ export default function CartScreen() {
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [itemIssue, setItemIssue] = useState<{ items: CartItem[]; issue: CartItemIssue } | null>(null);
   const [promoNotice, setPromoNotice] = useState<string | null>(null);
   useEffect(() => { if (!focused) checkout.cancel(); }, [focused, checkout.cancel]);
 
@@ -174,9 +176,12 @@ export default function CartScreen() {
           });
           if (!cancelled) {
             setQuote(envelope.data ?? null);
+            setItemIssue(null);
           }
         } catch (cause) {
           if (!cancelled) {
+            const issue = getCartItemIssue(cause);
+            setItemIssue(issue ? { items: cart.items, issue } : null);
             const message =
               cause instanceof Error ? cause.message : "Unable to price cart";
             // Server rejected the selected promo (invalid/expired/not eligible).
@@ -254,8 +259,9 @@ export default function CartScreen() {
           <>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Items</Text>
-              {cart.items.map((item) => {
+              {cart.items.map((item, itemIndex) => {
                 const details = itemDetails(item);
+                const issue = itemIssue?.items === cart.items && issueAffectsLine(itemIssue.issue, item.menu_item_id, itemIndex) ? itemIssue.issue : null;
                 return (
                   <View key={item.key} style={styles.cartLine}>
                     <View style={styles.cartLineTop}>
@@ -272,6 +278,7 @@ export default function CartScreen() {
                       </Text>
                     </View>
 
+                    {issue ? <Text accessibilityRole="alert" style={styles.quoteError}>{issue.message}</Text> : null}
                     <View style={styles.lineActions}>
                       <View style={styles.quantityControl}>
                         <TouchableOpacity
@@ -292,7 +299,11 @@ export default function CartScreen() {
                           <Plus size={16} color="#1A1A1A" />
                         </TouchableOpacity>
                       </View>
+                      <TouchableOpacity accessibilityLabel={`Edit ${item.name}`} onPress={() => router.push({ pathname: '/(tabs)/menu', params: { editKey: item.key, ts: String(Date.now()) } })}>
+                        <Text>Edit</Text>
+                      </TouchableOpacity>
                       <TouchableOpacity
+                        accessibilityLabel={`Remove ${item.name}`}
                         style={styles.removeButton}
                         onPress={() => cart.removeItem(item.key)}
                       >

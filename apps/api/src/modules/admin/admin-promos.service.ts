@@ -1,3 +1,4 @@
+import { getWingSkuWeightLb, getWingSkuPortion } from "../shared/wing-sku";
 import {
   BadRequestException,
   Injectable,
@@ -98,21 +99,6 @@ type ItemForSize = {
   }>;
 };
 
-function extractWingWeightLbFromName(name: string): number {
-  const wingsMatch = name.match(/(\d+)\s*wings/i);
-  if (wingsMatch) {
-    const wingCount = Number.parseInt(wingsMatch[1] ?? "", 10);
-    return Number.isFinite(wingCount)
-      ? Number((wingCount / 15).toFixed(2))
-      : 0;
-  }
-
-  const poundsMatch = name.match(/([\d.]+)\s*pound/i);
-  if (!poundsMatch) return 0;
-  const weight = Number.parseFloat(poundsMatch[1] ?? "");
-  return Number.isFinite(weight) ? weight : 0;
-}
-
 function getSizeContextOptions(item: ItemForSize) {
   const sizeGroup = item.modifierGroups.find((link) => {
     const context = link.contextKey ?? link.modifierGroup?.contextKey ?? null;
@@ -143,15 +129,16 @@ type SerializedSize =
     };
 
 function collectItemSizes(
-  item: ItemForSize & { id: string; name: string },
+  item: ItemForSize & { id: string; name: string; slug?: string },
 ): SerializedSize[] {
   if (item.builderType === "WINGS" || item.builderType === "WING_COMBO") {
-    const weightLb = extractWingWeightLbFromName(item.name) || 1;
+    const weightLb = getWingSkuWeightLb(item);
+    if (weightLb == null) return [];
     return [
       {
         kind: "weight_lb",
         weightLb,
-        label: `${weightLb}lb`,
+        label: item.slug?.startsWith("party-") ? `${getWingSkuPortion(item.slug)?.pieces} wings` : `${weightLb}lb`,
         menuItemId: item.id,
       },
     ];

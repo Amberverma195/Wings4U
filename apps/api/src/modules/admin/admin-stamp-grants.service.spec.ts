@@ -31,7 +31,7 @@ function setup(balance = 0) {
     };
     const tx: any = {
       user: { findFirst: jest.fn(async () => activeCustomer ? { id: CUSTOMER } : null) },
-      order: { findUnique: async () => ({ id: "completed-order", customerUserId: CUSTOMER, orderItems: [
+      order: { findUnique: async () => ({ id: "completed-order", status: 'PICKED_UP', customerUserId: CUSTOMER, orderItems: [
         { quantity: 1, builderType: "WINGS", builderPayloadJson: { weight_lb: 2 }, menuItem: { slug: "wings-2lb" } },
       ] }) },
       customerWingsRewards: {

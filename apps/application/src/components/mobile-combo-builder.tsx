@@ -1,3 +1,4 @@
+import { savedSelectionReview } from "../lib/cart-validation";
 /**
  * mobile-combo-builder.tsx
  *
@@ -200,7 +201,7 @@ export function ComboBuilderMobile({
     ),
   );
   const [flavourSelections, setFlavourSelections] = useState<string[]>(
-    () => editingPayload?.flavour_slots.map((s) => s.wing_flavour_id) ?? [],
+    () => editingPayload?.flavour_slots?.map((s) => s.wing_flavour_id) ?? [],
   );
   const [saucingMethod, setSaucingMethod] = useState<string | null>(
     editingPayload?.saucing_method ?? null,
@@ -664,6 +665,8 @@ export function ComboBuilderMobile({
 
   const submitLabel = editingLine ? 'Save changes' : 'Add to cart';
 
+  const selectionReview = savedSelectionReview(editingLine, selectedOption);
+
   return (
     <MobileBuilderShell
       visible={visible}
@@ -681,6 +684,8 @@ export function ComboBuilderMobile({
       submitDisabled={isHardDisabled}
       onSubmit={handleAdd}
     >
+
+      {selectionReview ? <Text accessibilityRole="alert">{selectionReview}</Text> : null}
       {!availability.available ? (
         <View style={styles.unavailableBanner} accessibilityRole="alert">
           <Text style={styles.unavailableBannerText}>{availability.reason}</Text>

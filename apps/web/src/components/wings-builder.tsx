@@ -1,4 +1,5 @@
 "use client";
+import { savedSelectionReview } from "@/lib/cart-validation";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
@@ -395,7 +396,7 @@ export function WingsBuilder({
     normalizeInitialPreparation(initialWingType, editingPayload?.preparation ?? null),
   );
   const [flavourSelections, setFlavourSelections] = useState<string[]>(
-    () => editingPayload?.flavour_slots.map((slot) => slot.wing_flavour_id) ?? [],
+    () => editingPayload?.flavour_slots?.map((slot) => slot.wing_flavour_id) ?? [],
   );
   const [saucingMethod, setSaucingMethod] = useState<string | null>(
     editingPayload?.saucing_method ?? null,
@@ -1121,7 +1122,7 @@ export function WingsBuilder({
   const validate = useCallback(() => {
     if (!selectedOption) return "quantity";
     if (!wingType || !resolvedPreparation) return "preparation";
-    if (flavourSelections.some((selection) => !selection)) return "flavours";
+    if (flavourSelections.some((selection) => !selection || !flavourMap.has(selection))) return "flavours";
     if (!allMainFlavoursPlain) {
       if (
         !isSaucingMethodValidForCount(
@@ -1168,6 +1169,7 @@ export function WingsBuilder({
     extraGroups,
     extraGroupSelections,
     flavourSelections,
+    flavourMap,
     effectiveSaucedCount,
     hasValidSideFlavourSlot,
     isExtraGroupComplete,
@@ -1362,6 +1364,8 @@ export function WingsBuilder({
     onClose();
   }
 
+  const selectionReview = savedSelectionReview(editingLine, selectedOption, (resolvedSaladItem?.modifier_groups ?? []).flatMap(group => group.options.map(option => option.id)));
+
   return (
     <BuilderShell
       title={item.name}
@@ -1380,6 +1384,8 @@ export function WingsBuilder({
       submitLabel={builderSubmitLabel(Boolean(editingLine))}
       onSubmit={handleAdd}
     >
+
+      {selectionReview ? <p role="alert" className="surface-error">{selectionReview}</p> : null}
           {showWeightStep ? (
             <StepContainer
               title="Pound size"

@@ -58,6 +58,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
             {
               code: explicitCode ?? mapStatusToCode(status),
               message: typeof message === "string" ? message : "Request failed",
+              ...(payload["detail"] && typeof payload["detail"] === "object" ? { detail: payload["detail"] } : {}),
               ...(field ? { field } : {})
             }
           ];

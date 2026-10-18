@@ -1,4 +1,4 @@
-import { getWingSkuWeightLb } from "../shared/wing-sku";
+import { getWingSkuWeightLb, getWingSkuPortion } from "../shared/wing-sku";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
@@ -78,6 +78,7 @@ type SerializedBuilderOption = {
   description: string | null;
   base_price_cents: number;
   weight_lb: number;
+  wing_piece_count?: number | null;
   flavour_count: number;
   side_slot_count: number;
   drink_slot_count: number;
@@ -302,6 +303,7 @@ function serializeBuilderOption(item: CatalogItem): SerializedBuilderOption {
     description: item.description,
     base_price_cents: item.basePriceCents,
     weight_lb: getWingSkuWeightLb(item) ?? 1,
+    wing_piece_count: getWingSkuPortion(item.slug)?.pieces ?? null,
     flavour_count: countFlavourSlots(modifierGroups),
     side_slot_count: countGroupsByContext(modifierGroups, "side"),
     drink_slot_count: countGroupsByContext(modifierGroups, "drink"),

@@ -160,6 +160,20 @@ afterEach(async () => {
 });
 
 describe('WingsBuilderMobile', () => {
+  test.each([['party-75-wings', '75 Wings', 8999, 8, 5], ['party-100-wings', '100 Wings', 11699, 11, 6.67]])('editing %s explicitly saves the official equivalent and retains pieces, price, quantity and flavours', async (slug, name, price, weight, oldWeight) => {
+    const groups = [wingTypeGroup, ...Array.from({ length: 5 }, (_, i) => ({ ...flavourGroup, id: `flavour-${i + 1}`, name: `Flavour ${i + 1}` }))];
+    const party = { ...wingsItem, id: slug, slug, name, base_price_cents: price, modifier_groups: groups, weight_options: [{ ...variants[0],
+      menu_item_id: slug, slug, name, base_price_cents: price, weight_lb: weight, flavour_count: 5, modifier_groups: groups }] };
+    const editingLine = { ...existingEditingLine, menu_item_id: slug, name, quantity: 3, builder_payload: { ...existingEditingLine.builder_payload,
+      weight_lb: oldWeight, flavour_slots: Array.from({ length: 5 }, (_, i) => ({ slot_no: i + 1, wing_flavour_id: 'f-plain', flavour_name: 'Plain', placement: 'ON_WINGS' })) } };
+    await mount(party, editingLine);
+    expect(texts(renderer.root)).toContain('Portion information has changed');
+    expect(mockCart.replaceItem).not.toHaveBeenCalled();
+    await act(async () => submitButton().props.onPress());
+    expect(mockCart.replaceItem).toHaveBeenCalledWith(editingLine.key, expect.objectContaining({ menu_item_id: slug, name, quantity: 3, base_price_cents: price,
+      builder_payload: expect.objectContaining({ weight_lb: weight, flavour_slots: editingLine.builder_payload.flavour_slots }) }));
+    expect(mockCart.addItem).not.toHaveBeenCalled();
+  });
   test('renders with initial unselected state when adding new item and blocks submit', async () => {
     await mount(wingsItem);
     const submit = submitButton();

@@ -1,4 +1,5 @@
 "use client";
+import { savedSelectionReview } from "@/lib/cart-validation";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
@@ -173,7 +174,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     normalizeInitialPreparation(initialWingType, editingPayload?.preparation ?? null),
   );
   const [flavourSelections, setFlavourSelections] = useState<string[]>(
-    () => editingPayload?.flavour_slots.map((slot) => slot.wing_flavour_id) ?? [],
+    () => editingPayload?.flavour_slots?.map((slot) => slot.wing_flavour_id) ?? [],
   );
   const [saucingMethod, setSaucingMethod] = useState<string | null>(
     editingPayload?.saucing_method ?? null,
@@ -387,7 +388,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
   const validate = useCallback(() => {
     if (!selectedOption) return "combo-size";
     if (!wingType || !resolvedPreparation) return "preparation";
-    if (flavourSelections.some((selection) => !selection)) return "flavours";
+    if (flavourSelections.some((selection) => !selection || !flavourMap.has(selection))) return "flavours";
     if (!allMainFlavoursPlain) {
       if (
         !isSaucingMethodValidForCount(
@@ -422,6 +423,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     drinkSelections,
     effectiveSaucedCount,
     flavourSelections,
+    flavourMap,
     hasValidSideFlavourSlot,
     instructions,
     requiredFlavourCount,
@@ -566,6 +568,8 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
     onClose();
   }
 
+  const selectionReview = savedSelectionReview(editingLine, selectedOption);
+
   return (
     <BuilderShell
       title={item.name}
@@ -581,6 +585,8 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
       submitLabel={builderSubmitLabel(Boolean(editingLine))}
       onSubmit={handleAdd}
     >
+
+      {selectionReview ? <p role="alert" className="surface-error">{selectionReview}</p> : null}
           <StepContainer
             title="Combo size"
             subtitle="Choose your combo size (pounds)."

@@ -105,7 +105,7 @@ function cartItemDetails(item: CartItem): string[] {
   ];
   const payload = item.builder_payload;
   if (payload?.builder_type === "WINGS" || payload?.builder_type === "WING_COMBO") {
-    const wingParts = payload.flavour_slots.map((slot) => slot.flavour_name);
+    const wingParts = (payload.flavour_slots ?? []).map((slot) => slot.flavour_name);
     if (payload.extra_flavour) wingParts.push(`Extra: ${payload.extra_flavour.flavour_name}`);
     if (payload.salad_customization?.salad_name) {
       wingParts.push(`Salad: ${payload.salad_customization.salad_name}`);
@@ -187,6 +187,7 @@ function CheckoutScreenContent() {
     useState<DeliveryQuoteResponse | null>(null);
   const [deliveryQuoteStatus, setDeliveryQuoteStatus] =
     useState<DeliveryQuoteStatus>("idle");
+  const [pricedDeliveryKey, setPricedDeliveryKey] = useState<string | null>(null);
   const [deliveryQuoteError, setDeliveryQuoteError] = useState<string | null>(
     null,
   );
@@ -243,9 +244,13 @@ function CheckoutScreenContent() {
   const hasCompleteDeliveryAddress =
     deliveryAddress.line1.length > 0 &&
     CANADIAN_POSTAL_CODE_RE.test(deliveryAddress.postal_code);
+  const deliveryContextKey = JSON.stringify({
+    locationId: cart.locationId, fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor,
+    address: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : null,
+  });
   const deliveryQuoteReady =
     cart.fulfillmentType !== "DELIVERY" ||
-    (deliveryQuoteStatus === "ready" && deliveryQuote !== null);
+    (deliveryQuoteStatus === "ready" && deliveryQuote !== null && pricedDeliveryKey === deliveryContextKey);
 
   const quoteKey = useMemo(
     () =>
@@ -256,6 +261,7 @@ function CheckoutScreenContent() {
         scheduledFor: cart.scheduledFor,
         tipCents,
         deliveryQuoteToken: deliveryQuote?.delivery_quote_token ?? null,
+        deliveryAddress: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : null,
         promoCode: promo.promoCode,
         applyWingsReward: promo.applyWingsReward,
       }),
@@ -264,6 +270,7 @@ function CheckoutScreenContent() {
       cart.fulfillmentType,
       cart.items,
       cart.scheduledFor,
+      deliveryAddress,
       deliveryQuote?.delivery_quote_token,
       tipCents,
       promo.promoCode,
@@ -353,6 +360,7 @@ function CheckoutScreenContent() {
             return;
           }
           setDeliveryQuote(body.data);
+          setPricedDeliveryKey(deliveryContextKey);
           setDeliveryQuoteStatus("ready");
           setDeliveryQuoteError(null);
         } catch (cause) {
@@ -382,6 +390,7 @@ function CheckoutScreenContent() {
     cart.scheduledFor,
     deliveryQuoteRetryNonce,
     hasCompleteDeliveryAddress,
+    deliveryContextKey,
   ]);
 
   useEffect(() => {
@@ -1067,6 +1076,7 @@ function CheckoutScreenContent() {
                   <Text style={styles.noticeText}>{pricingBlock}</Text>
                 ) : null}
                 {quoteError ? <Text style={styles.errorText}>{quoteError}</Text> : null}
+                {quoteError ? <TouchableOpacity onPress={() => router.push('/(tabs)/cart')} accessibilityRole="button"><Text>Review cart items</Text></TouchableOpacity> : null}
                 {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
               </Section>
 

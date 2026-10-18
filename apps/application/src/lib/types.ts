@@ -44,6 +44,7 @@ export type BuilderMenuOption = {
   description: string | null;
   base_price_cents: number;
   weight_lb: number;
+  wing_piece_count?: number | null;
   flavour_count: number;
   side_slot_count: number;
   drink_slot_count: number;

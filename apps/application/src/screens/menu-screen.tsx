@@ -98,8 +98,9 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const focused = useIsFocused();
   const router = useRouter();
   // Deep-link params set by the Home promo carousel (e.g. ?category=wings&ts=...).
-  const params = useLocalSearchParams<{ category?: string; ts?: string; itemSlug?: string; promotion?: string; query?: string }>();
-  const footerReloadKey = !cinematic && params.promotion === 'footer' && typeof params.ts === 'string' ? params.ts : undefined;
+  const params = useLocalSearchParams<{ category?: string; ts?: string; itemSlug?: string; promotion?: string; query?: string; editKey?: string }>();
+  const footerReloadKey = !cinematic && (params.promotion === 'footer' || typeof params.editKey === 'string') && typeof params.ts === 'string' ? params.ts : undefined;
+  const handledCartEdit = useRef<string | null>(null);
   const handledFooterRequest = useRef<string | null>(null);
   const footerNavigationNonce = useRef(0);
   const categoryNavigationNonce = useRef(0);
@@ -164,6 +165,20 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     if (!menu) return [];
     return prepareMenuCategories(menu.categories);
   }, [menu]);
+
+  useEffect(() => {
+    if (cinematic || !focused || !params.editKey || loading || !menu || loadedReloadKey !== footerReloadKey) return;
+    const request = `${params.editKey}:${params.ts ?? ''}`;
+    if (handledCartEdit.current === request) return;
+    handledCartEdit.current = request;
+    const line = cart.items.find(candidate => candidate.key === params.editKey);
+    if (!line) return;
+    const item = menu.categories.flatMap(category => category.items).find(candidate => candidate.id === line.menu_item_id ||
+      [...(candidate.weight_options ?? []), ...(candidate.combo_options ?? [])].some(option => option.menu_item_id === line.menu_item_id));
+    if (!item) { Alert.alert('Item no longer available', 'This item cannot be edited. You can remove it from your cart and choose another item.'); return; }
+    setEditingCartItem(line);
+    setSelectedItem(item);
+  }, [cinematic, focused, params.editKey, params.ts, loading, menu, loadedReloadKey, footerReloadKey, cart.items]);
 
   /* The "active" category: either user-tapped or the first one once loaded. */
   const resolvedActiveSlug = sortedCategories.some(category => category.slug === activeCategorySlug)
@@ -235,7 +250,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   }, [cinematic, params.promotion, params.query, categoryParamTs]);
 
   useEffect(() => {
-    if (cinematic || !focused || !footerReloadKey || loading || error || !menu ||
+    if (cinematic || params.promotion !== 'footer' || !focused || !footerReloadKey || loading || error || !menu ||
       loadedReloadKey !== footerReloadKey || handledFooterRequest.current === footerReloadKey) return;
     handledFooterRequest.current = footerReloadKey;
     setSelectedItem(null);
@@ -253,7 +268,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
       scrollRef.current?.scrollTo({ y: productSectionY.current, animated: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [cinematic, focused, footerReloadKey, loading, error, menu, loadedReloadKey,
+  }, [cinematic, params.promotion, focused, footerReloadKey, loading, error, menu, loadedReloadKey,
     categoryParam, params.itemSlug, fulfillmentType]);
 
   const selectFulfillment = useCallback((type: 'PICKUP' | 'DELIVERY') => {

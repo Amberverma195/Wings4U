@@ -1,3 +1,4 @@
+import { savedSelectionReview } from "../lib/cart-validation";
 /**
  * mobile-wings-builder.tsx
  *
@@ -240,7 +241,7 @@ export function WingsBuilderMobile({
     normalizeInitialPreparation(initialWingType, editingPayload?.preparation ?? null),
   );
   const [flavourSelections, setFlavourSelections] = useState<string[]>(
-    () => editingPayload?.flavour_slots.map((s) => s.wing_flavour_id) ?? [],
+    () => editingPayload?.flavour_slots?.map((s) => s.wing_flavour_id) ?? [],
   );
   const [saucingMethod, setSaucingMethod] = useState<string | null>(
     editingPayload?.saucing_method ?? null,
@@ -1071,6 +1072,8 @@ export function WingsBuilderMobile({
 
   const submitLabel = editingLine ? 'Save changes' : 'Add to cart';
 
+  const selectionReview = savedSelectionReview(editingLine, selectedOption, (resolvedSaladItem?.modifier_groups ?? []).flatMap(group => group.options.map(option => option.id)));
+
   return (
     <MobileBuilderShell
       visible={visible}
@@ -1086,6 +1089,8 @@ export function WingsBuilderMobile({
       submitDisabled={isHardDisabled}
       onSubmit={handleAdd}
     >
+
+      {selectionReview ? <Text accessibilityRole="alert">{selectionReview}</Text> : null}
       {!availability.available ? (
         <View style={styles.unavailableBanner} accessibilityRole="alert">
           <Text style={styles.unavailableBannerText}>{availability.reason}</Text>

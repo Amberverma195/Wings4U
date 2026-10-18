@@ -40,6 +40,7 @@ export function CheckoutEntryGuard({ children }: { children: ReactNode }) {
     <Pressable onPress={() => void retry()} disabled={checkout.busy || !setup.ready || !cart.isCartHydrated}
       accessibilityRole="button" style={styles.button}><Text style={styles.buttonText}>{setup.confirmed ? 'Try again' : 'Confirm order details'}</Text></Pressable>
     {setup.confirmed && <Pressable onPress={() => setup.openOrderSetup()} accessibilityRole="button" style={styles.back}><Text>Change order details</Text></Pressable>}
+    {checkout.error && <Pressable onPress={() => router.replace('/(tabs)/cart')} accessibilityRole="button" style={styles.back}><Text>Review cart items</Text></Pressable>}
     <Pressable onPress={leave} accessibilityRole="button" style={styles.back}><Text>Back to browsing</Text></Pressable>
   </View>;
 }

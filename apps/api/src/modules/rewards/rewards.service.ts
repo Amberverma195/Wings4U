@@ -1,6 +1,7 @@
 import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { getWingSkuPortion } from "../shared/wing-sku";
 
 /** Stamps required to unlock one "1lb of wings free" reward. */
 export const STAMPS_PER_REWARD = 8;
@@ -55,13 +56,6 @@ function extractWeightLb(payload?: Record<string, unknown> | null): number {
   return 0;
 }
 
-function isRewardableWingsByPoundSlug(slug?: string | null): boolean {
-  return (
-    /^wings-\d+(?:\.\d+)?lb$/i.test(slug ?? "") ||
-    /^combo-\d+(?:\.\d+)?lb$/i.test(slug ?? "")
-  );
-}
-
 function isIndividualOnePoundWingsLine(line: WingsCartLine): boolean {
   if (line.builderPayload?.builder_type !== "WINGS") return false;
   if (line.menuItemSlug && line.menuItemSlug !== "wings-1lb") return false;
@@ -110,10 +104,14 @@ export function sumRewardablePaidWingsPounds(
     if (line.builderType !== "WINGS" && line.builderType !== "WING_COMBO") {
       return acc;
     }
-    if (!isRewardableWingsByPoundSlug(line.menuItemSlug)) {
+    const portion = getWingSkuPortion(line.menuItemSlug);
+    if (!portion?.earnsStamps || !Number.isSafeInteger(line.quantity) || line.quantity <= 0) {
       return acc;
     }
-    return acc + extractWeightLb(line.builderPayload) * line.quantity;
+    if ((line.menuItemSlug?.startsWith('combo-') && line.builderType !== 'WING_COMBO') ||
+        (!line.menuItemSlug?.startsWith('combo-') && line.builderType !== 'WINGS')) return acc;
+    // Slug comes from the stored order's catalogue relation, never the cart payload.
+    return acc + portion.weightLb * line.quantity;
   }, 0);
 }
 
@@ -271,13 +269,12 @@ export class RewardsService {
   }
 
   /**
-   * Accrue stamps for a newly completed order (status -> DELIVERED or PICKED_UP).
+   * Accrue stamps for a newly completed order (PICKED_UP, DELIVERED or NO_PIN_DELIVERY).
    *
    * Stamping rules:
-   *   - 1 stamp per whole pound of wings (`floor(sum(weight_lb * quantity))`
-   *     across rewardable by-the-pound wing SKUs only). Some non-pound menu
-   *     items (lunch 5-wings, party packs) reuse the WINGS builder for flavour
-   *     picking, but they must not accrue pound-based stamps.
+   *   - 1 stamp per whole eligible pound, aggregated before flooring, using
+   *     official SKU equivalents for regular Wings, Combos and Party Specials.
+   *     Lunch and other unspecified products do not earn stamps.
    *   - `availableStamps` is capped at `STAMPS_PER_REWARD` (8). Extra paid
    *     pounds are recorded in the ledger reason text, but the redeemable
    *     balance itself does not stockpile past one reward.
@@ -295,6 +292,7 @@ export class RewardsService {
       where: { id: orderId },
       select: {
         id: true,
+        status: true,
         customerUserId: true,
         orderItems: {
           select: {
@@ -309,7 +307,7 @@ export class RewardsService {
       },
     });
 
-    if (!order) return;
+    if (!order || (order.status !== 'PICKED_UP' && order.status !== 'DELIVERED' && order.status !== 'NO_PIN_DELIVERY')) return;
 
     // Guest orders (e.g. anonymous walk-in POS) have no account to accrue
     // loyalty stamps to. Skip silently — there is nothing to credit.
@@ -357,11 +355,8 @@ export class RewardsService {
     const stampsEarned = Math.floor(payablePounds);
     if (stampsEarned <= 0) return;
 
-    // Cap balance at the redemption target (8). Earning a 9th+ pound
-    // before redeeming does NOT accrue — the customer must redeem first.
-    // This is the product-team decision; if you want to allow stockpiling
-    // multiple rewards, raise this cap and the ledger `reason_text` below
-    // will note how many stamps were skipped.
+    // Cap the available balance at eight. Lifetime stamps still record all
+    // calculated whole paid pounds; capped available credit is not rolled over.
     const MAX_BALANCE = STAMPS_PER_REWARD;
 
     const summary = await tx.customerWingsRewards.upsert({

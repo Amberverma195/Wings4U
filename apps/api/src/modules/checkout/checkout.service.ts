@@ -1,3 +1,4 @@
+import { throwCartItemError } from "../shared/cart-item-error";
 import { requireWingSkuWeightLb } from "../shared/wing-sku";
 import { assertBuilderCatalogValid, loadBuilderCatalogContext } from "../shared/builder-catalog-validation";
 import {
@@ -776,229 +777,236 @@ export class CheckoutService {
         builderPayloads: params.items.map(item => item.builderPayload),
       });
 
-      for (const cartItem of params.items) {
-        const menuItem = menuItemMap.get(cartItem.menuItemId);
-        if (!menuItem) {
-          throw new UnprocessableEntityException({
-            message: `Menu item ${cartItem.menuItemId} not found at this location`,
-            field: "items",
-          });
-        }
-        // PRD §8 precedence: soft-deleted / archived items must be rejected
-        // before the is_available check so the error is accurate and explicit.
-        assertMenuItemOrderable({
-          menuItem,
-          fulfillmentType: params.fulfillmentType,
-          specialInstructions: cartItem.specialInstructions,
-        });
-        collectScheduleViolation(
-          menuItem,
-          scheduleContext,
-          scheduleViolationIds,
-          lunchScheduleViolationIds,
-        );
-
-        const removedIngredients = getRemovedIngredientsFromInput({
-          removedIngredients: cartItem.removedIngredients,
-          builderPayload: cartItem.builderPayload,
-        });
-        const saladCustomization = getSaladCustomization(cartItem.builderPayload);
-        const allowedIngredientMap = new Map(
-          menuItem.removableIngredients.map((ingredient) => [ingredient.id, ingredient]),
-        );
-        const validatedRemovedIngredients = removedIngredients.map((ingredient) => {
-          const match = allowedIngredientMap.get(ingredient.id);
-          if (!match) {
+      for (const [itemIndex, cartItem] of params.items.entries()) {
+        try {
+          const menuItem = menuItemMap.get(cartItem.menuItemId);
+          if (!menuItem) {
             throw new UnprocessableEntityException({
-              message: `Ingredient removal \"${ingredient.name}\" is not valid for ${menuItem.name}`,
+              message: `Menu item ${cartItem.menuItemId} not found at this location`,
               field: "items",
             });
           }
-          return { id: match.id, name: match.name };
-        });
-
-        const validatedSaladRemovedIngredients: RemovedIngredientInput[] = [];
-        if (saladCustomization) {
-          const saladMenuItem = menuItemMap.get(saladCustomization.saladMenuItemId);
-          if (!saladMenuItem) {
-            throw new UnprocessableEntityException({
-              message: `Salad menu item ${saladCustomization.saladMenuItemId} not found at this location`,
-              field: "items",
-            });
-          }
+          // PRD §8 precedence: soft-deleted / archived items must be rejected
+          // before the is_available check so the error is accurate and explicit.
           assertMenuItemOrderable({
-            menuItem: saladMenuItem,
+            menuItem,
             fulfillmentType: params.fulfillmentType,
-            label: "Salad",
+            specialInstructions: cartItem.specialInstructions,
           });
           collectScheduleViolation(
-            saladMenuItem,
+            menuItem,
             scheduleContext,
             scheduleViolationIds,
             lunchScheduleViolationIds,
           );
 
-          const allowedSaladIngredientMap = new Map(
-            saladMenuItem.removableIngredients.map((ingredient) => [ingredient.id, ingredient]),
+          const removedIngredients = getRemovedIngredientsFromInput({
+            removedIngredients: cartItem.removedIngredients,
+            builderPayload: cartItem.builderPayload,
+          });
+          const saladCustomization = getSaladCustomization(cartItem.builderPayload);
+          const allowedIngredientMap = new Map(
+            menuItem.removableIngredients.map((ingredient) => [ingredient.id, ingredient]),
           );
-          for (const ingredient of saladCustomization.removedIngredients) {
-            const match = allowedSaladIngredientMap.get(ingredient.id);
+          const validatedRemovedIngredients = removedIngredients.map((ingredient) => {
+            const match = allowedIngredientMap.get(ingredient.id);
             if (!match) {
               throw new UnprocessableEntityException({
-                message: `Ingredient removal \"${ingredient.name}\" is not valid for ${saladMenuItem.name}`,
+                message: `Ingredient removal \"${ingredient.name}\" is not valid for ${menuItem.name}`,
                 field: "items",
               });
             }
-            validatedSaladRemovedIngredients.push({ id: match.id, name: match.name });
-          }
+            return { id: match.id, name: match.name };
+          });
 
-          const selectedModifierIds = new Set(
-            cartItem.modifierSelections?.map((selection) => selection.modifierOptionId) ?? [],
-          );
-          const allowedSaladGroupIds = new Set(
-            saladMenuItem.modifierGroups.map((group) => group.modifierGroupId),
-          );
-          for (const optionId of saladCustomization.modifierOptionIds) {
-            const option = optionMap.get(optionId);
-            if (!option || !allowedSaladGroupIds.has(option.modifierGroupId)) {
+          const validatedSaladRemovedIngredients: RemovedIngredientInput[] = [];
+          if (saladCustomization) {
+            const saladMenuItem = menuItemMap.get(saladCustomization.saladMenuItemId);
+            if (!saladMenuItem) {
               throw new UnprocessableEntityException({
-                message: `Modifier option ${optionId} is not valid for ${saladMenuItem.name}`,
+                message: `Salad menu item ${saladCustomization.saladMenuItemId} not found at this location`,
                 field: "items",
               });
             }
-            if (!selectedModifierIds.has(optionId)) {
-              throw new UnprocessableEntityException({
-                message: `Modifier option ${optionId} must also be present on the order line`,
-                field: "items",
-              });
-            }
-          }
-        }
-
-        assertBuilderPayloadValid({
-          menuItem,
-          builderPayload: cartItem.builderPayload,
-          optionMap,
-        });
-
-        await assertBuilderCatalogValid({
-          catalogContext,
-          db: tx,
-          locationId: params.locationId,
-          menuItem,
-          builderPayload: cartItem.builderPayload,
-          modifierOptionIds: cartItem.modifierSelections?.map(row => row.modifierOptionId) ?? [],
-          fulfillmentType: params.fulfillmentType,
-          context: scheduleContext,
-          specialInstructions: cartItem.specialInstructions,
-          wingFlavourMap,
-        });
-
-        assertWingFlavoursOrderable({
-          builderPayload: cartItem.builderPayload,
-          wingFlavourMap,
-        });
-
-        let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload, optionMap);
-        const modifiers: (typeof lineItems)[number]["modifiers"] = [];
-        const saladModifierOptionIds = new Set(
-          saladCustomization?.modifierOptionIds ?? [],
-        );
-
-        if (cartItem.modifierSelections) {
-          const seenOptionIds = new Set<string>();
-          for (let selectionIndex = 0; selectionIndex < cartItem.modifierSelections.length; selectionIndex++) {
-            const selection = cartItem.modifierSelections[selectionIndex];
-            if (seenOptionIds.has(selection.modifierOptionId)) {
-              throw new UnprocessableEntityException({
-                message: `Duplicate modifier option ${selection.modifierOptionId} not allowed`,
-                field: "items",
-              });
-            }
-            seenOptionIds.add(selection.modifierOptionId);
-
-            const option = optionMap.get(selection.modifierOptionId);
-            if (!option) {
-              throw new UnprocessableEntityException({
-                message: `Modifier option ${selection.modifierOptionId} not found or inactive`,
-                field: "items",
-              });
-            }
-            if (!saladModifierOptionIds.has(selection.modifierOptionId)) {
-              assertModifierOptionAllowedForItem({ option, menuItem });
-            }
-            modifierTotalCents += option.priceDeltaCents;
-            modifiers.push({
-              modifierGroupId: option.modifierGroupId,
-              modifierOptionId: option.id,
-              modifierGroupNameSnapshot: option.modifierGroup.name,
-              modifierNameSnapshot: option.name,
-              modifierKind: "ADDON",
-              priceDeltaCents: option.priceDeltaCents,
-              sortOrder: selectionIndex,
+            assertMenuItemOrderable({
+              menuItem: saladMenuItem,
+              fulfillmentType: params.fulfillmentType,
+              label: "Salad",
             });
+            collectScheduleViolation(
+              saladMenuItem,
+              scheduleContext,
+              scheduleViolationIds,
+              lunchScheduleViolationIds,
+            );
+
+            const allowedSaladIngredientMap = new Map(
+              saladMenuItem.removableIngredients.map((ingredient) => [ingredient.id, ingredient]),
+            );
+            for (const ingredient of saladCustomization.removedIngredients) {
+              const match = allowedSaladIngredientMap.get(ingredient.id);
+              if (!match) {
+                throw new UnprocessableEntityException({
+                  message: `Ingredient removal \"${ingredient.name}\" is not valid for ${saladMenuItem.name}`,
+                  field: "items",
+                });
+              }
+              validatedSaladRemovedIngredients.push({ id: match.id, name: match.name });
+            }
+
+            const selectedModifierIds = new Set(
+              cartItem.modifierSelections?.map((selection) => selection.modifierOptionId) ?? [],
+            );
+            const allowedSaladGroupIds = new Set(
+              saladMenuItem.modifierGroups.map((group) => group.modifierGroupId),
+            );
+            for (const optionId of saladCustomization.modifierOptionIds) {
+              const option = optionMap.get(optionId);
+              if (!option || !allowedSaladGroupIds.has(option.modifierGroupId)) {
+                throw new UnprocessableEntityException({
+                  message: `Modifier option ${optionId} is not valid for ${saladMenuItem.name}`,
+                  field: "items",
+                });
+              }
+              if (!selectedModifierIds.has(optionId)) {
+                throw new UnprocessableEntityException({
+                  message: `Modifier option ${optionId} must also be present on the order line`,
+                  field: "items",
+                });
+              }
+            }
           }
+
+          assertBuilderPayloadValid({
+            menuItem,
+            builderPayload: cartItem.builderPayload,
+            optionMap,
+          });
+
+          await assertBuilderCatalogValid({
+            catalogContext,
+            db: tx,
+            locationId: params.locationId,
+            menuItem,
+            builderPayload: cartItem.builderPayload,
+            modifierOptionIds: cartItem.modifierSelections?.map(row => row.modifierOptionId) ?? [],
+            fulfillmentType: params.fulfillmentType,
+            context: scheduleContext,
+            specialInstructions: cartItem.specialInstructions,
+            wingFlavourMap,
+          });
+
+          assertWingFlavoursOrderable({
+            builderPayload: cartItem.builderPayload,
+            wingFlavourMap,
+          });
+
+          let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload, optionMap);
+          const modifiers: (typeof lineItems)[number]["modifiers"] = [];
+          const saladModifierOptionIds = new Set(
+            saladCustomization?.modifierOptionIds ?? [],
+          );
+
+          if (cartItem.modifierSelections) {
+            const seenOptionIds = new Set<string>();
+            for (let selectionIndex = 0; selectionIndex < cartItem.modifierSelections.length; selectionIndex++) {
+              const selection = cartItem.modifierSelections[selectionIndex];
+              if (seenOptionIds.has(selection.modifierOptionId)) {
+                throw new UnprocessableEntityException({
+                  message: `Duplicate modifier option ${selection.modifierOptionId} not allowed`,
+                  field: "items",
+                });
+              }
+              seenOptionIds.add(selection.modifierOptionId);
+
+              const option = optionMap.get(selection.modifierOptionId);
+              if (!option) {
+                throw new UnprocessableEntityException({
+                  message: `Modifier option ${selection.modifierOptionId} not found or inactive`,
+                  field: "items",
+                });
+              }
+              if (!saladModifierOptionIds.has(selection.modifierOptionId)) {
+                assertModifierOptionAllowedForItem({ option, menuItem });
+              }
+              modifierTotalCents += option.priceDeltaCents;
+              modifiers.push({
+                modifierGroupId: option.modifierGroupId,
+                modifierOptionId: option.id,
+                modifierGroupNameSnapshot: option.modifierGroup.name,
+                modifierNameSnapshot: option.name,
+                modifierKind: "ADDON",
+                priceDeltaCents: option.priceDeltaCents,
+                sortOrder: selectionIndex,
+              });
+            }
+          }
+
+          validatedRemovedIngredients.forEach((ingredient, index) => {
+            modifiers.push({
+              modifierGroupId: null,
+              modifierOptionId: null,
+              modifierGroupNameSnapshot: "Ingredient removal",
+              modifierNameSnapshot: ingredient.name,
+              modifierKind: "REMOVE_INGREDIENT",
+              priceDeltaCents: 0,
+              sortOrder: modifiers.length + index,
+            });
+          });
+          validatedSaladRemovedIngredients.forEach((ingredient, index) => {
+            modifiers.push({
+              modifierGroupId: null,
+              modifierOptionId: null,
+              modifierGroupNameSnapshot: "Ingredient removal",
+              modifierNameSnapshot: ingredient.name,
+              modifierKind: "REMOVE_INGREDIENT",
+              priceDeltaCents: 0,
+              sortOrder: modifiers.length + index,
+            });
+          });
+
+          const bp = cartItem.builderPayload as Record<string, unknown> | undefined;
+          const builderType =
+            typeof bp?.builder_type === "string" ? bp.builder_type : null;
+          /** Keep full structured payloads for kitchen / reorder; do not collapse to ITEM_CUSTOMIZATION when removals exist. */
+          const normalizedBuilderPayload: Record<string, unknown> | null =
+            builderType === "WINGS" || builderType === "WING_COMBO" || builderType === "LUNCH_SPECIAL"
+              ? (bp ?? null)
+              : builderType === "ITEM_CUSTOMIZATION" || validatedRemovedIngredients.length > 0
+                ? {
+                    builder_type: "ITEM_CUSTOMIZATION",
+                    removed_ingredients: validatedRemovedIngredients,
+                    ...(bp?.side_pop_bundle ? { side_pop_bundle: bp.side_pop_bundle } : {}),
+                  }
+                : (bp ?? null);
+
+          const unitPriceCents = menuItem.basePriceCents + modifierTotalCents;
+          const lineTotalCents = unitPriceCents * cartItem.quantity;
+          itemSubtotalCents += lineTotalCents;
+
+          lineItems.push({
+            menuItemId: menuItem.id,
+            productNameSnapshot: menuItem.name,
+            categoryNameSnapshot: menuItem.category.name,
+            builderType:
+              typeof normalizedBuilderPayload?.builder_type === "string"
+                ? String(normalizedBuilderPayload.builder_type)
+                : menuItem.builderType,
+            quantity: cartItem.quantity,
+            menuItemSlug: menuItem.slug,
+            basePriceCents: menuItem.basePriceCents,
+            unitPriceCents,
+            lineTotalCents,
+            specialInstructions: cartItem.specialInstructions ?? null,
+            builderPayload: normalizedBuilderPayload,
+            modifiers,
+          });
+
+        } catch (error) {
+          const affected = menuItemMap.get(cartItem.menuItemId ?? "");
+          throwCartItemError(error, { id: cartItem.menuItemId, index: itemIndex, name: affected?.name,
+            unavailable: !affected || !affected.isAvailable || Boolean(affected.archivedAt) });
         }
-
-        validatedRemovedIngredients.forEach((ingredient, index) => {
-          modifiers.push({
-            modifierGroupId: null,
-            modifierOptionId: null,
-            modifierGroupNameSnapshot: "Ingredient removal",
-            modifierNameSnapshot: ingredient.name,
-            modifierKind: "REMOVE_INGREDIENT",
-            priceDeltaCents: 0,
-            sortOrder: modifiers.length + index,
-          });
-        });
-        validatedSaladRemovedIngredients.forEach((ingredient, index) => {
-          modifiers.push({
-            modifierGroupId: null,
-            modifierOptionId: null,
-            modifierGroupNameSnapshot: "Ingredient removal",
-            modifierNameSnapshot: ingredient.name,
-            modifierKind: "REMOVE_INGREDIENT",
-            priceDeltaCents: 0,
-            sortOrder: modifiers.length + index,
-          });
-        });
-
-        const bp = cartItem.builderPayload as Record<string, unknown> | undefined;
-        const builderType =
-          typeof bp?.builder_type === "string" ? bp.builder_type : null;
-        /** Keep full structured payloads for kitchen / reorder; do not collapse to ITEM_CUSTOMIZATION when removals exist. */
-        const normalizedBuilderPayload: Record<string, unknown> | null =
-          builderType === "WINGS" || builderType === "WING_COMBO" || builderType === "LUNCH_SPECIAL"
-            ? (bp ?? null)
-            : builderType === "ITEM_CUSTOMIZATION" || validatedRemovedIngredients.length > 0
-              ? {
-                  builder_type: "ITEM_CUSTOMIZATION",
-                  removed_ingredients: validatedRemovedIngredients,
-                  ...(bp?.side_pop_bundle ? { side_pop_bundle: bp.side_pop_bundle } : {}),
-                }
-              : (bp ?? null);
-
-        const unitPriceCents = menuItem.basePriceCents + modifierTotalCents;
-        const lineTotalCents = unitPriceCents * cartItem.quantity;
-        itemSubtotalCents += lineTotalCents;
-
-        lineItems.push({
-          menuItemId: menuItem.id,
-          productNameSnapshot: menuItem.name,
-          categoryNameSnapshot: menuItem.category.name,
-          builderType:
-            typeof normalizedBuilderPayload?.builder_type === "string"
-              ? String(normalizedBuilderPayload.builder_type)
-              : menuItem.builderType,
-          quantity: cartItem.quantity,
-          menuItemSlug: menuItem.slug,
-          basePriceCents: menuItem.basePriceCents,
-          unitPriceCents,
-          lineTotalCents,
-          specialInstructions: cartItem.specialInstructions ?? null,
-          builderPayload: normalizedBuilderPayload,
-          modifiers,
-        });
       }
 
       throwScheduleViolations({

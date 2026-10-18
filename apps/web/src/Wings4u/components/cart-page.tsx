@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiJson } from "@/lib/api";
+import { getCartItemIssue, issueAffectsLine, type CartItemIssue } from "@/lib/cart-validation";
 import { useCart } from "@/lib/cart";
 import {
   getRemovedIngredientsForApi,
@@ -125,6 +126,7 @@ export function CartPage() {
   const { setLocationTimezone, driverTipPercent, setDriverTipPercent } = cart;
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [itemIssue, setItemIssue] = useState<{ items: CartItem[]; issue: CartItemIssue } | null>(null);
   const [promoRejectionMessage, setPromoRejectionMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkoutValidating, setCheckoutValidating] = useState(false);
@@ -359,6 +361,10 @@ export function CartPage() {
     if (driverTipPercent === "none") return 0;
     return Math.round((subtotalForTip * driverTipPercent) / 100);
   }, [driverTipPercent, subtotalForTip]);
+  const quoteRequestKey = JSON.stringify({ items: cart.items, locationId: cart.locationId, fulfillmentType: cart.fulfillmentType,
+    scheduledFor: cart.scheduledFor, tipCents, promoApplied, applyWingsReward });
+  const latestQuoteRequestKey = useRef(quoteRequestKey);
+  latestQuoteRequestKey.current = quoteRequestKey;
 
   const totalCartItemUnits = useMemo(
     () => cart.items.reduce((sum, line) => sum + line.quantity, 0),
@@ -409,6 +415,7 @@ export function CartPage() {
       });
 
       setQuote(env.data);
+      setItemIssue(null);
       setApplyWingsReward(false);
       setPromoApplied(code);
       persistPromoHandoff(code);
@@ -550,19 +557,25 @@ export function CartPage() {
         }),
         locationId: cart.locationId,
       });
+      if (latestQuoteRequestKey.current !== quoteRequestKey) return;
       setQuote(env.data);
+      setItemIssue(null);
     } catch (cause) {
+      if (latestQuoteRequestKey.current !== quoteRequestKey) return;
       const message = cause instanceof Error ? cause.message : "Quote failed";
       if (promoApplied.trim() && isPromoRejectedQuoteError(message)) {
         clearRejectedPromo(message);
         return;
       }
+      const issue = getCartItemIssue(cause);
+      setItemIssue(issue ? { items: cart.items, issue } : null);
       setQuoteError(message);
       setQuote(null);
     } finally {
-      setLoading(false);
+      if (latestQuoteRequestKey.current === quoteRequestKey) setLoading(false);
     }
   }, [
+    quoteRequestKey,
     cart.fulfillmentType,
     cart.items,
     cart.locationId,
@@ -747,12 +760,13 @@ export function CartPage() {
 
           <div style={styles.cartLayoutRow}>
             <div style={styles.cartItemsColumn}>
-          {cart.items.map((item) => {
+          {cart.items.map((item, itemIndex) => {
             const summaryLines = buildLineSummary(item);
             const { description } = splitSummaryForDisplay(summaryLines);
             const instructionsForDisplay = getCustomerVisibleInstructions(item);
             const lineTotal = getCartItemUnitPrice(item) * item.quantity;
-            const canEdit = isBuilderLine(item.builder_payload);
+            const issue = itemIssue?.items === cart.items && issueAffectsLine(itemIssue.issue, item.menu_item_id, itemIndex) ? itemIssue.issue : null;
+            const canEdit = isBuilderLine(item.builder_payload) || Boolean(issue);
             const imageUrl = item.image_url ?? menuImageByItemId.get(item.menu_item_id) ?? null;
 
             return (
@@ -809,6 +823,7 @@ export function CartPage() {
                       ) : null}
                     </div>
 
+                    {issue ? <p role="alert" className="surface-error">{issue.message}</p> : null}
                     <div className="wk-cart-line-footer" style={styles.cartItemFooterRow}>
                       <div className="cart-item-qty-wrap" style={styles.cartItemQtyGroup}>
                         <button
@@ -1057,7 +1072,9 @@ export function CartPage() {
                         }),
                         locationId: cart.locationId,
                       });
+                      if (latestQuoteRequestKey.current !== quoteRequestKey) return;
                       setQuote(env.data);
+                      setItemIssue(null);
                       persistPromoHandoff(promoApplied.trim());
                       router.push("/checkout");
                     } catch (cause) {
@@ -1067,6 +1084,10 @@ export function CartPage() {
                         clearRejectedPromo(message);
                         return;
                       }
+                      if (latestQuoteRequestKey.current !== quoteRequestKey) return;
+                      const issue = getCartItemIssue(cause);
+                      setItemIssue(issue ? { items: cart.items, issue } : null);
+                      setQuote(null);
                       setQuoteError(message);
                     } finally {
                       setCheckoutValidating(false);
