@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { LifeBuoy, MessageCircle, RefreshCw, Star } from "lucide-react-native";
+import { ChevronDown, Check, LifeBuoy, MessageCircle, RefreshCw, Star } from "lucide-react-native";
 import { useChat } from "../../src/hooks/use-chat";
 import { useOrderDetail } from "../../src/hooks/use-order-detail";
 import { OrderReorderAction } from "../../src/components/order-history";
@@ -21,22 +21,22 @@ import { OrderReviewModal } from "../../src/components/order-review-modal";
 import { canUseOrderFeedback } from "../../src/lib/order-feedback";
 import { getSessionGeneration } from "../../src/lib/token-store";
 import { useSession } from "../../src/context/session";
-import { cents, orderStatusCustomerLabel, shortDate, shortTime } from "../../src/lib/format";
+import { cents, orderStatusCustomerLabel, shortTime, statusEventWhenLine } from "../../src/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "../../src/lib/realtime";
-import type { ChatMessage, OrderItem } from "../../src/lib/types";
+import { ACTIVE_STATUSES } from "../../src/lib/types";
+import type { ChatMessage, OrderDetail } from "../../src/lib/types";
 
 function paramToString(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
 }
 
-function itemSummary(item: OrderItem): string[] {
-  const parts = [
-    ...item.flavours.map((flavour) => flavour.flavour_name_snapshot),
-    ...item.modifiers.map((modifier) => modifier.modifier_name_snapshot),
-  ];
-  if (item.special_instructions?.trim()) parts.push(item.special_instructions.trim());
-  return parts.filter(Boolean);
+function statusHistory(order: OrderDetail) {
+  const events: Array<{ id: string; to_status: string; created_at: string | null }> = [...(order.status_events ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  if (!events.some(event => event.to_status === 'PLACED')) events.push({ id: 'placed', to_status: 'PLACED', created_at: order.placed_at });
+  const latest = events.find(event => event.to_status === order.status);
+  return [latest ?? { id: 'current', to_status: order.status, created_at: order.status === 'PLACED' ? order.placed_at : order.status === 'ACCEPTED' ? order.accepted_at : order.status === 'READY' ? order.ready_at : order.status === 'CANCELLED' ? order.cancelled_at : order.completed_at },
+    ...events.filter(event => event.id !== latest?.id)];
 }
 
 function messageAuthor(message: ChatMessage, userId: string | undefined): "me" | "staff" {
@@ -53,6 +53,10 @@ export default function OrderDetailScreen() {
   const orderId = paramToString(params.id);
   const order = useOrderDetail(orderId);
   const chat = useChat(orderId);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  useEffect(() => setHistoryOpen(false), [orderId]);
+  const liveOrder = focused && order.order?.id === orderId && ACTIVE_STATUSES.has(order.order.status);
+  const history = useMemo(() => order.order ? statusHistory(order.order) : [], [order.order]);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: 'help' | 'review'; context: string } | null>(null);
   const feedbackContext = JSON.stringify([orderId, order.order?.location_id, session.user?.id, getSessionGeneration(), focused]);
@@ -63,13 +67,13 @@ export default function OrderDetailScreen() {
   const chatRefetch = chat.refetch;
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId || !liveOrder) return;
     let disposed = false;
     let cleanup: (() => void) | null = null;
 
     void (async () => {
       const socket = await createOrdersSocket();
-      if (disposed) return;
+      if (disposed) { socket.disconnect(); return; }
 
       const refreshOrder = () => orderRefetch();
       const refreshChat = () => chatRefetch();
@@ -111,12 +115,7 @@ export default function OrderDetailScreen() {
       cleanup?.();
       setRealtimeConnected(false);
     };
-  }, [chatRefetch, orderId, orderRefetch]);
-
-  const totalItems = useMemo(
-    () => order.order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0,
-    [order.order?.items],
-  );
+  }, [chatRefetch, orderId, orderRefetch, liveOrder]);
 
   if (!orderId) {
     return (
@@ -161,11 +160,11 @@ export default function OrderDetailScreen() {
                       )}
                     </Text>
                   </View>
-                  <TouchableOpacity style={styles.iconButton} onPress={order.refetch}>
+                  {liveOrder ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh order" style={styles.iconButton} onPress={order.refetch}>
                     <RefreshCw size={18} color="#1A1A1A" />
-                  </TouchableOpacity>
+                  </TouchableOpacity> : null}
                 </View>
-                <View style={styles.realtimeRow}>
+                {liveOrder ? <View style={styles.realtimeRow}>
                   <View
                     style={[
                       styles.statusDot,
@@ -175,7 +174,7 @@ export default function OrderDetailScreen() {
                   <Text style={styles.realtimeText}>
                     {realtimeConnected ? "Live updates connected" : "Connecting live updates"}
                   </Text>
-                </View>
+                </View> : null}
               </View>
 
               {order.error ? <View style={styles.refreshWarning}>
@@ -197,43 +196,40 @@ export default function OrderDetailScreen() {
                 </TouchableOpacity>
               </View> : null}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Details</Text>
-                <InfoRow label="Placed" value={shortDate(order.order.placed_at)} />
-                <InfoRow label="Type" value={order.order.fulfillment_type} />
-                <InfoRow label="Items" value={String(totalItems)} />
-                {order.order.estimated_ready_at ? (
-                  <InfoRow
-                    label={
-                      order.order.fulfillment_type === "PICKUP"
-                        ? "Ready for pickup"
-                        : "Estimated ready"
-                    }
-                    value={shortTime(order.order.estimated_ready_at)}
-                  />
-                ) : null}
-                <InfoRow label="Total" value={cents(order.order.final_payable_cents)} />
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Kitchen ticket</Text>
-                {order.order.items.map((item) => {
-                  const details = itemSummary(item);
-                  return (
-                    <View key={item.id} style={styles.itemRow}>
-                      <View style={styles.itemMain}>
-                        <Text style={styles.itemTitle}>
-                          {item.quantity}x {item.product_name_snapshot}
-                        </Text>
-                        {details.length ? (
-                          <Text style={styles.itemMeta} numberOfLines={3}>
-                            {details.join(" • ")}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Text style={styles.itemPrice}>{cents(item.line_total_cents)}</Text>
+                <Text style={styles.sectionTitle}>Items</Text>
+                {order.order.items.map(item => {
+                  const removed = item.modifiers.filter(modifier => modifier.modifier_kind === 'REMOVE_INGREDIENT');
+                  const added = item.modifiers.filter(modifier => modifier.modifier_kind !== 'REMOVE_INGREDIENT');
+                  return <View key={item.id} style={styles.itemRow}>
+                    <View style={styles.itemMain}>
+                      <Text style={styles.itemTitle}>{item.product_name_snapshot} × {item.quantity}</Text>
+                      {removed.length ? <Text style={styles.itemRemoved}>{removed.map(row => 'No ' + row.modifier_name_snapshot).join(', ')}</Text> : null}
+                      {added.length ? <Text style={styles.itemMeta}>{added.map(row => row.modifier_name_snapshot).join(', ')}</Text> : null}
+                      {item.flavours.length ? <Text style={styles.itemMeta}>{item.flavours.map(row => row.flavour_name_snapshot).join(', ')}</Text> : null}
+                      {item.special_instructions ? <Text style={styles.itemInstructions}>{item.special_instructions}</Text> : null}
                     </View>
-                  );
+                    <Text style={styles.itemPrice}>{cents(item.line_total_cents)}</Text>
+                  </View>;
                 })}
+                <View style={styles.summary}>
+                  <InfoRow label="Subtotal" value={cents(order.order.item_subtotal_cents)} />
+                  {(order.order.item_discount_total_cents + order.order.order_discount_total_cents) > 0 ? <InfoRow label="Discounts" value={'-' + cents(order.order.item_discount_total_cents + order.order.order_discount_total_cents)} /> : null}
+                  {order.order.delivery_fee_cents > 0 ? <InfoRow label="Delivery fee" value={cents(order.order.delivery_fee_cents)} /> : null}
+                  <InfoRow label={order.order.tax_rate_bps != null ? 'Tax (' + order.order.tax_rate_bps / 100 + '%)' : 'Tax'} value={cents(order.order.tax_cents)} />
+                  {order.order.driver_tip_cents > 0 ? <InfoRow label="Driver tip" value={cents(order.order.driver_tip_cents)} /> : null}
+                  {order.order.wallet_applied_cents > 0 ? <InfoRow label="Wallet credit" value={'-' + cents(order.order.wallet_applied_cents)} /> : null}
+                  <View style={styles.summaryTotal}><Text style={styles.itemTitle}>Total</Text><Text style={styles.itemPrice}>{cents(order.order.final_payable_cents)}</Text></View>
+                </View>
+                <View style={styles.statusPanel}>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={historyOpen ? 'Hide status updates' : 'View all status updates'}
+                    accessibilityState={{ expanded: historyOpen }} onPress={() => setHistoryOpen(open => !open)} style={styles.statusTrigger}>
+                    <View style={styles.chatHeader}><Text style={styles.statusLabel}>Order status</Text><ChevronDown size={18} color="#E53C3C" style={{ transform: [{ rotate: historyOpen ? '180deg' : '0deg' }] }} /></View>
+                    {history.slice(0, 1).map(event => <StatusEntry key={event.id} status={orderStatusCustomerLabel(event.to_status, order.order!.fulfillment_type)} date={event.created_at} />)}
+                  </TouchableOpacity>
+                  {historyOpen ? <View style={styles.statusHistory}>
+                    {history.slice(1).map(event => <StatusEntry key={event.id} status={orderStatusCustomerLabel(event.to_status, order.order!.fulfillment_type)} date={event.created_at} />)}
+                  </View> : null}
+                </View>
               </View>
 
               <View style={styles.section}>
@@ -285,6 +281,11 @@ export default function OrderDetailScreen() {
   );
 }
 
+function StatusEntry({ status, date }: { status: string; date: string | null }) {
+  return <View style={styles.statusEntry}><View style={styles.timelineDot}><Check size={11} color="#FFF" /></View>
+    <View style={styles.itemMain}><Text style={styles.statusTitle}>{status}</Text><Text style={styles.statusDate}>{date ? statusEventWhenLine(date) : ''}</Text></View></View>;
+}
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -295,6 +296,18 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  itemRemoved: { marginTop: 4, color: '#E53C3C', fontSize: 12, lineHeight: 18 },
+  itemInstructions: { marginTop: 6, color: '#777', fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
+  summary: { backgroundColor: '#F6F6F6', borderRadius: 14, paddingHorizontal: 12, marginTop: 14 },
+  summaryTotal: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#E5E5E5', paddingVertical: 14 },
+  statusPanel: { borderWidth: 1, borderColor: '#FF4D4D', borderRadius: 14, marginTop: 14, overflow: 'hidden' },
+  statusTrigger: { padding: 14, minHeight: 44 },
+  statusLabel: { color: '#777', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '700' },
+  statusEntry: { flexDirection: 'row', gap: 10, paddingTop: 12 },
+  statusTitle: { color: '#1A1A1A', fontSize: 13, fontWeight: '700' },
+  statusDate: { color: '#777', fontSize: 11, marginTop: 5 },
+  timelineDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FF4D4D', alignItems: 'center', justifyContent: 'center' },
+  statusHistory: { marginHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   refreshWarning: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#FFF0ED' },
   refreshWarningText: { flex: 1, color: '#6B5A51', fontSize: 13, lineHeight: 19, paddingVertical: 10 },
   refreshRetry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
@@ -432,9 +445,10 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: "row",
     gap: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F4F4F4",
+    padding: 12,
+    marginBottom: 10,
+    borderRadius: 12,
+    backgroundColor: "#F6F6F6",
   },
   itemMain: {
     flex: 1,

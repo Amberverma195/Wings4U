@@ -50,6 +50,7 @@ beforeEach(() => {
   jest.clearAllMocks(); mockFocused = true; mockGeneration = 1; mockOrderId = 'order'; mockOrderLoading = false; mockOrderError = null;
   mockSession = { loaded: true, authenticated: true, user: { id: 'customer', role: 'CUSTOMER' }, refresh: jest.fn(), clear: jest.fn() };
   mockOrder = { id: 'order', location_id: 'order-location', customer_user_id: 'customer', order_number: 1061, status: 'DELIVERED',
+    item_subtotal_cents: 3000, tax_cents: 390, tax_rate_bps: 1300, item_discount_total_cents: 0, order_discount_total_cents: 0, status_events: [],
     fulfillment_type: 'DELIVERY', placed_at: '2026-10-01', final_payable_cents: 3000, items: [item('line-a', 1), item('line-b', 2)] };
   apiFetch.mockResolvedValue(response([]));
 });
@@ -65,12 +66,12 @@ test('initial order load shows loading, then full-screen error with Try again on
 });
 test('failed refresh keeps details with inline Retry; successful retry removes warning', async () => {
   await mount(Screen); mockOrderLoading = true; await act(async () => renderer.update(React.createElement(Screen)));
-  expect(texts()).toContain('Details'); expect(texts()).not.toContain('Loading order...');
+  expect(texts()).toContain('Items'); expect(texts()).not.toContain('Loading order...');
   mockOrderLoading = false; mockOrderError = 'Network request failed'; await act(async () => renderer.update(React.createElement(Screen)));
-  expect(texts()).toEqual(expect.arrayContaining(['Details', 'Kitchen ticket', refreshWarning]));
+  expect(texts()).toEqual(expect.arrayContaining(['Items', 'Order status', refreshWarning]));
   expect(texts()).not.toContain('Try again'); await tap('Retry order refresh'); expect(mockRefetch).toHaveBeenCalledTimes(1);
   mockOrderLoading = true; await act(async () => renderer.update(React.createElement(Screen)));
-  expect(byLabel('Retry order refresh').props.disabled).toBe(true); expect(texts()).toContain('Details');
+  expect(byLabel('Retry order refresh').props.disabled).toBe(true); expect(texts()).toContain('Items');
   mockOrderLoading = false; mockOrderError = null; mockOrder = { ...mockOrder, order_number: 1062 };
   await act(async () => renderer.update(React.createElement(Screen)));
   expect(texts()).not.toContain(refreshWarning); expect(byLabel('Retry order refresh')).toBeUndefined();
@@ -79,7 +80,7 @@ test('failed refresh keeps details with inline Retry; successful retry removes w
 test('revoked order data shows full-screen error instead of stale details or inline warning', async () => {
   await mount(Screen); mockOrder = null; mockOrderError = 'You do not have access to this order';
   await act(async () => renderer.update(React.createElement(Screen)));
-  expect(texts()).not.toContain('Details'); expect(texts()).not.toContain(refreshWarning);
+  expect(texts()).not.toContain('Items'); expect(texts()).not.toContain(refreshWarning);
   expect(texts()).toContain('You do not have access to this order'); expect(texts()).toContain('Try again');
 });
 
@@ -89,8 +90,8 @@ test.each(['PICKED_UP', 'DELIVERED'])('%s shows both actions immediately after R
   const content = renderer.root.findByType('ScrollView').children;
   const index = content.findIndex(node => node.type === require('../src/components/order-history').OrderReorderAction);
   expect(content[index + 1].findByProps({ accessibilityLabel: 'Help' })).toBeDefined();
-  expect(content[index + 2].findAllByType('Text')[0].children).toEqual(['Details']);
-  expect(texts()).toEqual(expect.arrayContaining(['Kitchen ticket', 'Chat']));
+  expect(content[index + 2].findAllByType('Text')[0].children).toEqual(['Items']);
+  expect(texts()).toEqual(expect.arrayContaining(['Order status', 'Chat']));
   await tap('Help'); expect(renderer.root.findAllByType('Modal')).toHaveLength(1);
   await tap('Cancel'); await tap('Rate Your Order');
   expect(apiFetch).toHaveBeenCalledWith('/api/v1/orders/order/reviews', expect.objectContaining({ locationId: 'order-location' }));
@@ -276,16 +277,46 @@ test('ticket success requires a confirmed creation, and successful tickets canno
   apiFetch.mockResolvedValue(response({ id: 'ticket' })); const submit = byLabel('Submit Ticket').props.onPress; await act(async () => submit());
   await act(async () => submit()); expect(apiFetch).toHaveBeenCalledTimes(2); expect(texts()).toContain('Ticket Submitted!');
 });
-test('opening feedback preserves live order subscriptions, kitchen ticket, and chat history without a message composer', async () => {
-  await mount(Screen);
+test('active orders retain live updates, and completing an order disconnects before feedback opens', async () => {
+  mockOrder.status = 'PREPARING'; await mount(Screen);
   const socket = await require('../src/lib/realtime').createOrdersSocket.mock.results[0].value;
   const handler = event => socket.on.mock.calls.find(([name]) => name === event)[1];
-  await tap('Help'); await tap('Cancel'); await tap('Rate Your Order'); await tap('Close modal');
-  expect(socket.connect).toHaveBeenCalledTimes(1); expect(socket.disconnect).not.toHaveBeenCalled();
+  expect(byLabel('Refresh order')).toBeDefined();
+  expect(socket.connect).toHaveBeenCalledTimes(1);
   await act(async () => { handler('order.status_changed')(); handler('chat.message')(); });
   expect(mockRefetch).toHaveBeenCalledTimes(1); expect(mockChatRefetch).toHaveBeenCalledTimes(1);
-  expect(texts()).toContain('Kitchen ticket');
-  expect(texts()).toContain('Chat');
-  expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
-  expect(mockSendMessage).not.toHaveBeenCalled();
+  mockOrder = { ...mockOrder, status: 'DELIVERED' };
+  await act(async () => renderer.update(React.createElement(Screen)));
+  expect(socket.disconnect).toHaveBeenCalledTimes(1); expect(byLabel('Refresh order')).toBeUndefined();
+  await tap('Help'); await tap('Cancel'); await tap('Rate Your Order'); await tap('Close modal');
+  expect(texts()).toContain('Order status'); expect(texts()).toContain('Chat');
+  expect(renderer.root.findAllByType('TextInput')).toHaveLength(0); expect(mockSendMessage).not.toHaveBeenCalled();
+});
+
+test.each(['PICKED_UP', 'DELIVERED', 'CANCELLED', 'NO_SHOW_PICKUP', 'NO_SHOW_DELIVERY', 'NO_PIN_DELIVERY'])('%s has a final header without refresh or live connection', async status => {
+  mockOrder.status = status; await mount(Screen);
+  expect(byLabel('Refresh order')).toBeUndefined();
+  expect(texts().join(' ')).not.toContain('live updates');
+  expect(require('../src/lib/realtime').createOrdersSocket).not.toHaveBeenCalled();
+});
+
+test('items precede the price breakdown and a collapsed latest status expands into recorded history', async () => {
+  mockOrder = { ...mockOrder, status: 'PICKED_UP', fulfillment_type: 'PICKUP', tax_rate_bps: 1300, tax_cents: 420, item_subtotal_cents: 3796,
+    order_discount_total_cents: 569, final_payable_cents: 3647, status_events: [
+      { id: 'placed', to_status: 'PLACED', created_at: '2026-10-18T05:00:00Z' },
+      { id: 'ready', to_status: 'READY', created_at: '2026-10-18T05:20:00Z' },
+      { id: 'done', to_status: 'PICKED_UP', created_at: '2026-10-18T05:30:00Z' },
+    ] };
+  mockOrder.items[0] = { ...mockOrder.items[0], special_instructions: 'Please keep separate', modifiers: [{ modifier_kind: 'REMOVE_INGREDIENT', modifier_name_snapshot: 'Onion' }] };
+  await mount(Screen);
+  const labels = texts();
+  expect(labels.indexOf('Items')).toBeLessThan(labels.indexOf('Subtotal'));
+  expect(labels.indexOf('Subtotal')).toBeLessThan(labels.indexOf('Order status'));
+  expect(labels).toEqual(expect.arrayContaining(['Wings × 1', '$37.96', '-$5.69', 'Tax (13%)', '$4.20', '$36.47', 'No Onion', 'Please keep separate']));
+  expect(labels).not.toContain('Ready for pickup');
+  expect(byLabel('View all status updates').props.accessibilityState.expanded).toBe(false);
+  await tap('View all status updates');
+  expect(texts()).toEqual(expect.arrayContaining(['Picked up', 'Ready for pickup', 'Order placed']));
+  expect(texts().indexOf('Ready for pickup')).toBeLessThan(texts().indexOf('Order placed'));
+  await tap('Hide status updates'); expect(texts()).not.toContain('Ready for pickup');
 });
