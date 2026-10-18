@@ -15,9 +15,9 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     const item = { id: 'lunch', locationId: 'local', name: 'Lunch Burger', slug: 'lunch-burger', categoryId: category.id,
       basePriceCents: 1000, isAvailable: true, stockStatus: 'NORMAL', archivedAt: null, builderType: null, allowedFulfillmentType: 'BOTH', requiresSpecialInstructions: false,
       category, schedules: [], modifierGroups: [], removableIngredients: [] };
-    const option = { id: 'cheese', modifierGroupId: 'extras', isActive: true, priceDeltaCents: 150, name: 'Cheese', modifierGroup: { name: 'Extras' } };
+    const option = { id: 'cheese', modifierGroupId: 'extras', isActive: true, priceDeltaCents: 150, name: 'Cheese', addonMatchNormalized: '__always__', modifierGroup: { name: 'Extras' } };
     const child = { ...item, id: 'burger', slug: 'veggie-burger', stockStatus: 'NORMAL', isHidden: false, category: { ...category, slug: 'burgers' },
-      modifierGroups: [{ contextKey: 'addon', modifierGroup: { id: 'extras', name: 'Extras', displayLabel: 'Extras', contextKey: 'addon', locationId: 'local',
+      modifierGroups: [{ contextKey: 'addon', modifierGroup: { id: 'extras', name: 'Burger Extras', menuItems: [{ menuItemId: 'burger' }], sortOrder: 0, displayLabel: 'Extras', contextKey: 'addon', locationId: 'local',
         archivedAt: null, minSelect: 0, maxSelect: 2, isRequired: false, selectionMode: 'MULTI', options: [option] } }] };
     const db = {
       location: { findUnique: jest.fn().mockResolvedValue({ id: 'local', isActive: true, timezoneName: 'America/Toronto', settings }) },

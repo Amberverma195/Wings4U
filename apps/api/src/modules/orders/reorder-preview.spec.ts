@@ -12,9 +12,9 @@ function product(id = 'burger'): any {
 }
 function group(item: any, id: string, context: string | null, opts: any[], min = 1, max = 1): any {
   const value = { menuItemId: item.id, modifierGroupId: id, contextKey: context, sortOrder: item.modifierGroups.length,
-    modifierGroup: { id, locationId: 'store', name: id, displayLabel: id, contextKey: context, archivedAt: null,
+    modifierGroup: { id, locationId: 'store', name: context === 'addon' ? `${id} Extras` : id, menuItems: [{ menuItemId: item.id }], sortOrder: 0, displayLabel: id, contextKey: context, archivedAt: null,
       isRequired: min > 0, minSelect: min, maxSelect: max, selectionMode: max === 1 ? 'SINGLE' : 'MULTI',
-      options: opts.map(opt => ({ modifierGroupId: id, name: opt.id, linkedFlavourId: null, isActive: true, priceDeltaCents: 0, ...opt })) } };
+      options: opts.map(opt => ({ modifierGroupId: id, name: opt.id, addonMatchNormalized: context === 'addon' ? '__always__' : null, linkedFlavourId: null, isActive: true, priceDeltaCents: 0, ...opt })) } };
   item.modifierGroups.push(value); return value;
 }
 function fixture() {

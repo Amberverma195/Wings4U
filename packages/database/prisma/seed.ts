@@ -801,6 +801,7 @@ async function main() {
         scopeIngredientName?: string;
       }>,
       displayLabel = name,
+      itemScoped = false,
     ) {
       const group = await tx.modifierGroup.create({
         data: {
@@ -824,7 +825,7 @@ async function main() {
             sortOrder: idx + 1,
             addonMatchNormalized: opt.scopeIngredientName
               ? normalizeIngredientText(opt.scopeIngredientName)
-              : null,
+              : itemScoped ? "__always__" : null,
           },
         });
       }
@@ -838,8 +839,6 @@ async function main() {
         { name: "Extra Cheese", price: 100 },
         { name: "Extra Sauce", price: 50 },
         { name: "Add Bacon", price: 150 },
-        { name: "Add Avocado", price: 200 },
-        { name: "Add Jalapenos", price: 100 },
       ],
       "Wrap extras",
     );
@@ -861,7 +860,6 @@ async function main() {
         { name: "Extra Cheese", price: 100 },
         { name: "Extra Sauce", price: 50 },
         { name: "Add Bacon", price: 150 },
-        { name: "Add Jalapenos", price: 100 },
       ],
       "Specialty fry extras",
     );
@@ -922,6 +920,7 @@ async function main() {
           `${name} Extras`,
           opts.addonOptions,
           opts.addonDisplayLabel ?? `${name} extras`,
+          true,
         );
         await tx.menuItemModifierGroup.create({
           data: {
@@ -1163,7 +1162,6 @@ async function main() {
         { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese Blend" },
         { name: "Extra Tzatziki", price: 50, scopeIngredientName: "Tzatziki" },
         { name: "Add Feta", price: 150 },
-        { name: "Add Avocado", price: 200 },
       ],
       description: "Lettuce, red onion, tomato, cauliflower bites, jalapeno popper, cheese blend, roasted garlic, tzatziki",
       removableIngredients: ["Lettuce", "Red Onion", "Tomato", "Cauliflower Bites", "Jalapeno Popper", "Cheese Blend", "Roasted Garlic", "Tzatziki"],
@@ -1190,7 +1188,6 @@ async function main() {
         { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese Blend" },
         { name: "Extra Croutons", price: 50, scopeIngredientName: "Croutons" },
         { name: "Extra Sriracha Mayo", price: 50, scopeIngredientName: "Sriracha Mayo" },
-        { name: "Add Jalapenos", price: 100 },
       ],
       description: "Lettuce, red onion, cucumber, tomato, cheese blend, croutons, buffalo breaded chicken, sriracha mayo",
       removableIngredients: ["Lettuce", "Red Onion", "Cucumber", "Tomato", "Cheese Blend", "Croutons", "Sriracha Mayo"],
@@ -1205,7 +1202,6 @@ async function main() {
         { name: "Extra Julienne Carrots", price: 50, scopeIngredientName: "Julienne Carrots" },
         { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese Blend" },
         { name: "Extra Ranch", price: 50, scopeIngredientName: "Ranch" },
-        { name: "Add Jalapenos", price: 100 },
       ],
       description: "Lettuce, red onion, tomato, cucumber, julienne carrots, cheese blend, hand-breaded chicken, ranch",
       removableIngredients: ["Lettuce", "Red Onion", "Tomato", "Cucumber", "Julienne Carrots", "Cheese Blend", "Ranch"],
@@ -1451,7 +1447,6 @@ async function main() {
       addonOptions: [
         { name: "Extra Spicy Garlic Parmesan Sauce", price: 50, scopeIngredientName: "Spicy Garlic Parmesan Sauce" },
         { name: "Extra Cheese", price: 100 },
-        { name: "Add Jalapenos", price: 100 },
       ],
       removableIngredients: ["Spicy Garlic Parmesan Sauce"],
     });
@@ -1467,7 +1462,6 @@ async function main() {
       addonOptions: [
         { name: "Extra Spicy Garlic Parmesan Sauce", price: 50, scopeIngredientName: "Spicy Garlic Parmesan Sauce" },
         { name: "Extra Cheese", price: 100 },
-        { name: "Add Jalapenos", price: 100 },
       ],
       removableIngredients: ["Spicy Garlic Parmesan Sauce"],
     });
@@ -1483,7 +1477,6 @@ async function main() {
       addonOptions: [
         { name: "Extra Spicy Garlic Parmesan Sauce", price: 50, scopeIngredientName: "Spicy Garlic Parmesan Sauce" },
         { name: "Extra Cheese", price: 100 },
-        { name: "Add Jalapenos", price: 100 },
       ],
       removableIngredients: ["Spicy Garlic Parmesan Sauce"],
     });
@@ -1505,7 +1498,6 @@ async function main() {
       addonOptions: [
         { name: "Extra Chilli", price: 100, scopeIngredientName: "Red Meat Chilli" },
         { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese" },
-        { name: "Add Jalapenos", price: 100 },
       ],
       description: "Red meat chilli",
       removableIngredients: ["Red Meat Chilli", "Cheese"],
@@ -1539,7 +1531,6 @@ async function main() {
         { name: "Extra House Seasoning", price: 50, scopeIngredientName: "House Seasoning" },
         { name: "Extra Sour Cream", price: 50, scopeIngredientName: "Sour Cream" },
         { name: "Add Bacon", price: 150 },
-        { name: "Add Jalapenos", price: 100 },
       ],
     });
     await createItem("appetizers", "Bacon Loaded Fries", "bacon-loaded-fries", 1199, {
@@ -1555,7 +1546,6 @@ async function main() {
         { name: "Extra House Seasoning", price: 50, scopeIngredientName: "House Seasoning" },
         { name: "Extra Sour Cream", price: 50, scopeIngredientName: "Sour Cream" },
         { name: "Add Chicken", price: 200 },
-        { name: "Add Jalapenos", price: 100 },
       ],
     });
 

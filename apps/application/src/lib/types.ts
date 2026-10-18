@@ -10,6 +10,7 @@
 /* Menu */
 
 export type ModifierOption = {
+  sort_order?: number;
   id: string;
   name: string;
   price_delta_cents: number;
@@ -19,6 +20,7 @@ export type ModifierOption = {
 };
 
 export type ModifierGroup = {
+  addon_scope_menu_item_id?: string | null;
   id: string;
   name: string;
   display_label: string;

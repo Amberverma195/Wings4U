@@ -1,7 +1,9 @@
 const React = require('react');
 const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
-jest.mock('react-native', () => ({ Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
+jest.mock('../src/lib/api', () => ({ apiJson: jest.fn() }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 20, bottom: 20, left: 0, right: 0 }) }));
+jest.mock('react-native', () => ({ KeyboardAvoidingView: 'KeyboardAvoidingView', Platform: { OS: 'ios' }, Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', StyleSheet: { create: value => value } }));
 jest.mock('lucide-react-native', () => ({ X: 'X' }));
 const mockCart = { fulfillmentType: 'PICKUP', addItem: jest.fn(), replaceItem: jest.fn() };
@@ -26,10 +28,10 @@ const existing = { key: 'saved-wings-key', menu_item_id: 'wings-2lb', name: '2 l
 let renderer;
 const onClose = jest.fn();
 const texts = node => node.findAllByType('Text').map(text => text.children.join('')).join(' ');
-const button = label => renderer.root.findAllByType('TouchableOpacity').find(node => texts(node) === label);
-const submit = () => renderer.root.findAllByType('TouchableOpacity').find(node => /^(Add|Update) \$/.test(texts(node)));
-const mount = async (item, editItem = null) => act(async () => { renderer = create(React.createElement(MenuItemBuilder,
-  { item, editItem, visible: true, categories: [], onClose })); });
+const button = label => renderer.root.findAllByType('TouchableOpacity').find(node => texts(node).replace(/^\u2713 /, '') === label);
+const submit = () => renderer.root.findAllByType('TouchableOpacity').find(node => /^(Add to Cart|Update Cart) \$/.test(texts(node)));
+const mount = async (item, editItem = null, categories = []) => act(async () => { renderer = create(React.createElement(MenuItemBuilder,
+  { item, editItem, visible: true, categories, onClose })); });
 beforeEach(() => jest.clearAllMocks());
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 
@@ -83,4 +85,67 @@ test('the builder refuses an unavailable item without mutating the cart', async 
   await act(async () => submit().props.onPress());
   expect(mockCart.addItem).not.toHaveBeenCalled();
   expect(mockCart.replaceItem).not.toHaveBeenCalled();
+});
+
+const { product: sharedProduct } = require('../../../packages/customization/test/fixtures.cjs');
+test.each(['veggie-burger', 'chicken-burger', 'buffalo-chicken-wrap'])('mobile uses the identical web fixture for %s', async slug => {
+  await mount(sharedProduct(slug));
+  expect(texts(renderer.root)).not.toContain('Add Avocado');
+  expect(texts(renderer.root)).not.toContain('Add Jalapenos');
+  await act(async () => button('Extra Lettuce +$0.50').props.onPress());
+  await act(async () => submit().props.onPress());
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: slug,
+    modifier_selections: [expect.objectContaining({ modifier_option_id: 'lettuce', price_delta_cents: 50 })] }));
+});
+
+test('included checkboxes remove real ingredients for free and bundle is charged once in its payload', async () => {
+  await mount(sharedProduct());
+  const included = button('Lettuce');
+  expect(included.props.accessibilityState.checked).toBe(true);
+  await act(async () => included.props.onPress());
+  expect(button('− Lettuce').props.accessibilityState.checked).toBe(false);
+  await act(async () => button('Add side + pop').props.onPress());
+  await act(async () => button('Wedges').props.onPress());
+  await act(async () => button('Coke Zero').props.onPress());
+  await act(async () => submit().props.onPress());
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ base_price_cents: 999, modifier_selections: [],
+    removed_ingredients: [{ id: 'veggie-burger-lettuce', name: 'Lettuce' }],
+    builder_payload: { builder_type: 'ITEM_CUSTOMIZATION', removed_ingredients: [{ id: 'veggie-burger-lettuce', name: 'Lettuce' }],
+      side_pop_bundle: { price_cents: 499, side_label: 'Wedges', pop_label: 'Coke Zero' } } }));
+});
+
+test('changed admin price requires review before editing with the latest price, quantity and notes', async () => {
+  const item = sharedProduct();
+  const saved = { key: 'old', menu_item_id: item.id, quantity: 3, base_price_cents: 999, special_instructions: 'Keep warm',
+    modifier_selections: [{ modifier_option_id: 'lettuce', price_delta_cents: 25 }], removed_ingredients: [],
+    builder_payload: { builder_type: 'ITEM_CUSTOMIZATION', removed_ingredients: [], side_pop_bundle: { price_cents: 499, side_label: 'Fries', pop_label: 'Pepsi' } } };
+  await mount(item, saved); await act(async () => submit().props.onPress());
+  expect(mockCart.replaceItem).not.toHaveBeenCalled();
+  await act(async () => button('Review current choices').props.onPress());
+  await act(async () => submit().props.onPress());
+  expect(mockCart.replaceItem).toHaveBeenCalledWith('old', expect.objectContaining({ quantity: 3, special_instructions: 'Keep warm',
+    modifier_selections: [expect.objectContaining({ modifier_option_id: 'lettuce', price_delta_cents: 50 })],
+    builder_payload: expect.objectContaining({ side_pop_bundle: expect.objectContaining({ price_cents: 499 }) }) }));
+});
+
+test('tender combo requires API dip, side and drink choices', async () => {
+  const groups = ['dip', 'side', 'drink'].map(id => group(id, id, [option(`${id}-api`, id)], { context_key: id }));
+  await mount({ ...base, modifier_groups: groups });
+  await act(async () => submit().props.onPress()); expect(mockCart.addItem).not.toHaveBeenCalled();
+  for (const id of ['dip', 'side', 'drink']) await act(async () => button(id).props.onPress());
+  await act(async () => submit().props.onPress());
+  expect(mockCart.addItem.mock.calls[0][0].modifier_selections.map(row => row.modifier_option_id)).toEqual(['dip-api', 'drink-api', 'side-api']);
+});
+
+test('lunch edit restores child, removals, extras and customer notes without duplicating kitchen summaries', async () => {
+  const child = sharedProduct(); const parent = { ...base, id: 'lunch', slug: 'lunch-burger' };
+  const saved = { key: 'lunch-old', menu_item_id: 'lunch', base_price_cents: 1234, quantity: 2,
+    modifier_selections: [], removed_ingredients: [], special_instructions: 'veggie-burger | No Tomato | Add Extra Lettuce | Keep warm',
+    builder_payload: { builder_type: 'LUNCH_SPECIAL', child_menu_item_id: child.id, child_name: child.name, child_slug: child.slug,
+      removed_ingredients: [{ id: 'veggie-burger-tomato', name: 'Tomato' }], child_addons: [{ modifier_option_id: 'lettuce', name: 'Extra Lettuce', price_delta_cents: 50 }] } };
+  await mount(parent, saved, [{ slug: 'burgers', items: [child] }]);
+  expect(renderer.root.findAllByType('TextInput').some(node => node.props.value === 'Keep warm')).toBe(true);
+  await act(async () => submit().props.onPress());
+  expect(mockCart.replaceItem).toHaveBeenCalledWith(saved.key, expect.objectContaining({ quantity: 2,
+    special_instructions: saved.special_instructions, builder_payload: saved.builder_payload }));
 });

@@ -1,0 +1,46 @@
+-- PROPOSED ONLY. NOT EXECUTED. DO NOT UNCOMMENT WITHOUT EXPLICIT OWNER APPROVAL.
+-- Standalone avocado/jalapeno option deactivations only. Prepared popper products are untouched.
+-- Re-read live values first; confirm affected row count. Preserve historical order snapshots.
+-- Run admin catalog invalidation/revalidation after any approved direct SQL changes.
+-- BEGIN;
+-- Bacon Loaded Fries (f64b672b-b5ac-4366-ac7f-f133aa68a6cb): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '270c2c72-ec66-49c0-bd2b-261b82471a8f'::uuid AND modifier_group_id = '118293de-78a5-40f7-b283-b9d35b381640'::uuid AND is_active = true;
+-- Buffalo Chicken Burger (f3bc8293-7111-4086-98cf-b3c45d6cba9b): Add Avocado
+-- UPDATE modifier_options SET is_active = false WHERE id = 'a8461b7a-8347-4828-82c0-e8fccaa85c2e'::uuid AND modifier_group_id = 'f93ded03-edc6-46c6-af7b-4527b6bf6135'::uuid AND is_active = true;
+-- Buffalo Chicken Burger (f3bc8293-7111-4086-98cf-b3c45d6cba9b): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '0a29dca1-e548-4e49-9d07-51d9c46d7d90'::uuid AND modifier_group_id = 'f93ded03-edc6-46c6-af7b-4527b6bf6135'::uuid AND is_active = true;
+-- Buffalo Chicken Wrap (955f451a-b783-4501-9159-df3f4bd40de1): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = 'cfef13cb-aede-4de4-b8db-502fe386e539'::uuid AND modifier_group_id = 'b43e956b-6e07-4654-aa7c-3215f0be865d'::uuid AND is_active = true;
+-- Buffalo Chicken Wrap (955f451a-b783-4501-9159-df3f4bd40de1): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = 'ddd855db-a8b6-4271-8770-468c4eb52456'::uuid AND modifier_group_id = 'b43e956b-6e07-4654-aa7c-3215f0be865d'::uuid AND is_active = true;
+-- Chicken Burger (a078cad2-e68f-405b-b391-c994adf6bb75): Add Avocado
+-- UPDATE modifier_options SET is_active = false WHERE id = '3e89f009-bcd5-41e2-b22e-0040d0c3023f'::uuid AND modifier_group_id = 'adca8b24-6d5f-45c3-8728-f396c97c22e7'::uuid AND is_active = true;
+-- Chicken Burger (a078cad2-e68f-405b-b391-c994adf6bb75): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '30cd0377-85ef-438f-a8b9-63ad748f02d9'::uuid AND modifier_group_id = 'adca8b24-6d5f-45c3-8728-f396c97c22e7'::uuid AND is_active = true;
+-- Chicken Loaded Fries (dc6a64fc-baba-4f48-a873-254b0799f8ea): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '8bdbe6e7-5506-45bc-84f3-dea258ab1618'::uuid AND modifier_group_id = '2d43e0ba-4591-43b8-bdf3-dadc025665d4'::uuid AND is_active = true;
+-- Chilli Cheese Fries (5cf78284-b31a-435c-b8a5-9798da786bc4): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '0ef76b1d-c7a7-4044-a5e0-e9fa43554db8'::uuid AND modifier_group_id = 'b6b5bdbc-c0d2-4cb8-abbc-2e028d002047'::uuid AND is_active = true;
+-- Chilli Cheese Fries (5cf78284-b31a-435c-b8a5-9798da786bc4): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = 'c1262673-3695-43cb-930f-5363163e8fea'::uuid AND modifier_group_id = 'b6b5bdbc-c0d2-4cb8-abbc-2e028d002047'::uuid AND is_active = true;
+-- Garden Chicken Wrap (babfb1eb-7fa7-494d-871d-c51bd67b4e08): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '6b98e0ed-0db2-4bfd-965d-8860d528cfac'::uuid AND modifier_group_id = 'b44965be-53b0-4c4b-b74c-a277cc027a3f'::uuid AND is_active = true;
+-- Garden Chicken Wrap (babfb1eb-7fa7-494d-871d-c51bd67b4e08): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = 'b4389a5d-2ade-4e87-9d92-b1685bb292df'::uuid AND modifier_group_id = 'b44965be-53b0-4c4b-b74c-a277cc027a3f'::uuid AND is_active = true;
+-- Spicy Gar-Par Fries (33038a26-5faf-41b3-af87-52d5c4084f61): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '0fbd90e6-c1b1-4f1d-bc54-9a8a914fd429'::uuid AND modifier_group_id = '7251e14d-11ef-4825-8ae7-a50a72e9c196'::uuid AND is_active = true;
+-- Spicy Gar-Par Fries (33038a26-5faf-41b3-af87-52d5c4084f61): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '4809aed1-f70f-4be4-8e2d-1199a1d0308f'::uuid AND modifier_group_id = '7251e14d-11ef-4825-8ae7-a50a72e9c196'::uuid AND is_active = true;
+-- Spicy Gar-Par Onion Rings (4aca95dd-f780-4641-8140-d063892d8416): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '2416aaac-4a1f-4817-9ec8-13d1d4fb0553'::uuid AND modifier_group_id = '49e7e47a-23c2-4d6d-95eb-8c5c10c51ef4'::uuid AND is_active = true;
+-- Spicy Gar-Par Onion Rings (4aca95dd-f780-4641-8140-d063892d8416): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = 'b2bae929-d247-4316-a9e2-3b3bf1430861'::uuid AND modifier_group_id = '49e7e47a-23c2-4d6d-95eb-8c5c10c51ef4'::uuid AND is_active = true;
+-- Spicy Gar-Par Wedges (0528fbe4-a946-448e-b4b8-5ab074e42dc0): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '135bfab0-2c82-4ed1-a32d-ea4374e0fe36'::uuid AND modifier_group_id = 'fd370748-1c40-43f2-950b-85aeb4cebc54'::uuid AND is_active = true;
+-- Spicy Gar-Par Wedges (0528fbe4-a946-448e-b4b8-5ab074e42dc0): Add Jalapenos
+-- UPDATE modifier_options SET is_active = false WHERE id = '706ce480-9ad7-4231-aa92-d20b6f52d70c'::uuid AND modifier_group_id = 'fd370748-1c40-43f2-950b-85aeb4cebc54'::uuid AND is_active = true;
+-- Veggie Burger (16f7975f-375e-440e-8462-a3bc5898b355): Add Avocado
+-- UPDATE modifier_options SET is_active = false WHERE id = '2ca79a96-b456-4e89-9648-df517964e8e1'::uuid AND modifier_group_id = '199e4961-ad21-4f45-abf5-d75a9efcd150'::uuid AND is_active = true;
+-- Veggie Wrap (a2143f99-738e-4840-b903-f5290733f342): Add Avocado
+-- UPDATE modifier_options SET is_active = false WHERE id = '7f0c393a-1013-408d-8704-05969540371b'::uuid AND modifier_group_id = '91c19729-b394-464f-a381-38ef12a5abc6'::uuid AND is_active = true;
+-- ROLLBACK; -- Inspection/rehearsal only; owner decides whether and when to commit.

@@ -166,6 +166,29 @@ function createItemMutationPrismaMock(tx: Record<string, unknown>) {
   };
 }
 
+it('retains unchanged recipe IDs, removes only deleted ingredients and refreshes catalog consumers', async () => {
+  const item = { id: 'burger', name: 'Burger', isWingComboSide: false, isAvailable: true, archivedAt: null };
+  const tx = {
+    removableIngredient: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'keep', name: 'Lettuce' }, { id: 'remove', name: 'Onion' }]),
+      update: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'new-tomato' }), deleteMany: jest.fn(),
+    },
+    menuItem: { update: jest.fn().mockResolvedValue(item) },
+    modifierGroup: { findMany: jest.fn().mockResolvedValue([]) },
+  };
+  const prisma = createItemMutationPrismaMock(tx); prisma.menuItem.findFirst.mockResolvedValue(item);
+  const cache = createCacheMock(), web = createWebRevalidationMock(), realtime = createRealtimeMock();
+  const service = new AdminMenuService(prisma as any, cache as any, web as any, realtime as any);
+  await service.updateItem('loc-1', item.id, { ...itemPayload, is_wing_combo_side: false,
+    removable_ingredients: [{ name: 'Lettuce', sortOrder: 2 }, { name: 'Tomato', sortOrder: 3 }] });
+  expect(tx.removableIngredient.update).toHaveBeenCalledWith({ where: { id: 'keep' }, data: { name: 'Lettuce', sortOrder: 2 } });
+  expect(tx.removableIngredient.create).toHaveBeenCalledWith({ data: { menuItemId: 'burger', name: 'Tomato', sortOrder: 3 } });
+  expect(tx.removableIngredient.deleteMany).toHaveBeenCalledWith({ where: { menuItemId: 'burger', id: { notIn: ['keep', 'new-tomato'] } } });
+  expect(cache.invalidateLocation).toHaveBeenCalledWith('loc-1');
+  expect(web.revalidateLocation).toHaveBeenCalledWith('loc-1');
+  expect(realtime.emitCatalogUpdated).toHaveBeenCalledWith('loc-1');
+});
+
 describe("AdminMenuService catalog invalidation", () => {
   it("invalidates the catalog after a successful category create", async () => {
     const prisma = createPrismaMock();

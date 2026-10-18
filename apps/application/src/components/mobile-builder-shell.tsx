@@ -65,6 +65,7 @@ type BuilderShellProps = {
   totalCents: number;
   submitLabel: string;
   submitDisabled?: boolean;
+  compactFooter?: boolean;
   onSubmit: () => void;
   children: React.ReactNode;
 };
@@ -81,6 +82,7 @@ export function MobileBuilderShell({
   totalCents,
   submitLabel,
   submitDisabled,
+  compactFooter = false,
   onSubmit,
   children,
 }: BuilderShellProps) {
@@ -153,9 +155,9 @@ export function MobileBuilderShell({
               accessibilityState={{ disabled: Boolean(submitDisabled) }}
               accessibilityLabel={submitLabel}
             >
-              <Text style={sh.addBtnText}>{submitLabel}</Text>
+              <Text style={[sh.addBtnText, compactFooter && { fontSize: 14 }]}>{submitLabel}</Text>
               <View style={sh.addBtnSep} />
-              <Text style={sh.addBtnPrice}>{formatCents(totalCents)}</Text>
+              <Text style={[sh.addBtnPrice, compactFooter && { fontSize: 14, paddingHorizontal: 10 }]}>{formatCents(totalCents)}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>

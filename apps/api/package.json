@@ -3,12 +3,14 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "prebuild": "npm run prisma:generate --workspace @wings4u/database",
+    "prebuild": "npm run build --workspace @wings4u/customization && npm run prisma:generate --workspace @wings4u/database",
     "build": "nest build",
     "start": "node dist/main.js",
     "start:cron:overdue-deliveries": "node dist/cron/overdue-deliveries.js",
     "test:unit": "jest --config ./jest-unit.json --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "pretest:unit": "npm run build --workspace @wings4u/customization",
+    "predev": "npm run build --workspace @wings4u/customization"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",
@@ -29,7 +31,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
-    "stripe": "^22.2.0"
+    "stripe": "^22.2.0",
+    "@wings4u/customization": "*"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",

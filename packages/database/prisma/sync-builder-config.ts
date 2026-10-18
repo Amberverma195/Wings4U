@@ -3,11 +3,14 @@ import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { requireSafeDestructiveTarget } from "../production-database-guard.cjs";
 
 const seedDir = path.dirname(fileURLToPath(import.meta.url));
 
 loadEnv({ path: path.resolve(seedDir, "../../../.env"), quiet: true });
 loadEnv({ path: path.resolve(seedDir, "../.env"), override: false, quiet: true });
+
+requireSafeDestructiveTarget("the builder configuration sync");
 
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
@@ -193,7 +196,6 @@ const SCOPED_ADDON_SPECS = {
       { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese Blend" },
       { name: "Extra Tzatziki", price: 50, scopeIngredientName: "Tzatziki" },
       { name: "Add Feta", price: 150 },
-      { name: "Add Avocado", price: 200 },
     ],
   },
   "chicken-caesar-wrap": {
@@ -213,7 +215,6 @@ const SCOPED_ADDON_SPECS = {
       { name: "Extra Chicken", price: 250 },
       { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese Blend" },
       { name: "Extra Sriracha Mayo", price: 50, scopeIngredientName: "Sriracha Mayo" },
-      { name: "Add Jalapenos", price: 100 },
     ],
   },
   "garden-chicken-wrap": {
@@ -223,7 +224,6 @@ const SCOPED_ADDON_SPECS = {
       { name: "Extra Chicken", price: 250 },
       { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese Blend" },
       { name: "Extra Ranch", price: 50, scopeIngredientName: "Ranch" },
-      { name: "Add Jalapenos", price: 100 },
     ],
   },
   "greek-chicken-wrap": {
@@ -304,7 +304,6 @@ const SCOPED_ADDON_SPECS = {
     options: [
       { name: "Extra Spicy Garlic Parmesan Sauce", price: 50, scopeIngredientName: "Spicy Garlic Parmesan Sauce" },
       { name: "Extra Cheese", price: 100 },
-      { name: "Add Jalapenos", price: 100 },
     ],
   },
   "gar-par-onion-rings": {
@@ -322,7 +321,6 @@ const SCOPED_ADDON_SPECS = {
     options: [
       { name: "Extra Spicy Garlic Parmesan Sauce", price: 50, scopeIngredientName: "Spicy Garlic Parmesan Sauce" },
       { name: "Extra Cheese", price: 100 },
-      { name: "Add Jalapenos", price: 100 },
     ],
   },
   "gar-par-wedges": {
@@ -340,7 +338,6 @@ const SCOPED_ADDON_SPECS = {
     options: [
       { name: "Extra Spicy Garlic Parmesan Sauce", price: 50, scopeIngredientName: "Spicy Garlic Parmesan Sauce" },
       { name: "Extra Cheese", price: 100 },
-      { name: "Add Jalapenos", price: 100 },
     ],
   },
   "greek-fries": {
@@ -358,7 +355,6 @@ const SCOPED_ADDON_SPECS = {
     options: [
       { name: "Extra Chilli", price: 100, scopeIngredientName: "Red Meat Chilli" },
       { name: "Extra Cheese", price: 100, scopeIngredientName: "Cheese" },
-      { name: "Add Jalapenos", price: 100 },
     ],
   },
 } as const;
@@ -506,7 +502,7 @@ async function ensureAddonGroup(
       sortOrder: index + 1,
       addonMatchNormalized: option.scopeIngredientName
         ? normalizeIngredientText(option.scopeIngredientName)
-        : null,
+        : "__always__",
     })),
   );
 

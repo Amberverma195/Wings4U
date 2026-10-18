@@ -7,19 +7,6 @@ import styles from "./admin-menu.module.css";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ADMIN_MENU_API_BASE = "/api/v1/admin/menu";
-const ADDITIONAL_INGREDIENT_CATEGORY_SLUGS = new Set([
-  "wraps",
-  "burgers",
-  "salads",
-  "poutines-and-sides",
-  "poutines-sides",
-  "specialty-fries",
-]);
-const ADDITIONAL_INGREDIENT_ITEM_SLUGS = new Set([
-  "chicken-loaded-fries",
-  "bacon-loaded-fries",
-]);
-
 type Props = {
   itemId: string | null;
   categories: Category[];
@@ -84,7 +71,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
     additional_ingredients: [],
     schedules: [],
   });
-  const [itemSlug, setItemSlug] = useState<string | null>(null);
+  const [builderType, setBuilderType] = useState<string | null>(null);
   const [loadedAddonGroupIds, setLoadedAddonGroupIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -156,7 +143,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
               matches_ingredient:
                 option.addonMatchNormalized === "__always__"
                   ? ""
-                  : option.addonMatchNormalized || "",
+                  : option.addonMatchNormalized || "__unconfigured__",
             })),
           ),
           schedules: (data.schedules || []).map((s: any) => {
@@ -171,7 +158,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
         };
         setForm(loadedForm);
         setInitialFormSnapshot(JSON.stringify(loadedForm));
-        setItemSlug(data.slug || null);
+        setBuilderType(data.builderType || null);
         setLoadedAddonGroupIds(
           new Set(addonMappings.map((mapping: any) => mapping.modifierGroupId)),
         );
@@ -274,10 +261,8 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
     (category) => category.id === form.category_id,
   );
   const canManageAdditionalIngredients =
-    ADDITIONAL_INGREDIENT_CATEGORY_SLUGS.has(selectedCategory?.slug || "") ||
-    ADDITIONAL_INGREDIENT_ITEM_SLUGS.has(itemSlug || "") ||
-    (!itemSlug &&
-      /^(chicken|bacon)\s+loaded\s+fries$/i.test(form.name.trim()));
+    builderType !== 'WINGS' && builderType !== 'WING_COMBO' &&
+    !['wings', 'wing-combos', 'party-packs'].includes(selectedCategory?.slug ?? '');
   const addonGroupIds = new Set([
     ...loadedAddonGroupIds,
     ...availableModGroups
@@ -332,13 +317,18 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
 
     try {
       let savedId = itemId;
+      const original = initialFormSnapshot ? JSON.parse(initialFormSnapshot) as FormState : null;
+      const additionalChanged = !itemId || JSON.stringify(form.additional_ingredients) !== JSON.stringify(original?.additional_ingredients);
+      if (canManageAdditionalIngredients && additionalChanged && form.additional_ingredients.some(row => row.name.trim() && row.matches_ingredient === '__unconfigured__')) {
+        throw new Error('Review each additional ingredient: choose a recipe ingredient or explicitly approve it for this item.');
+      }
       const payload: Record<string, unknown> = {
         ...form,
-        modifier_groups: canManageAdditionalIngredients
+        modifier_groups: canManageAdditionalIngredients && additionalChanged
           ? form.modifier_groups.filter((group) => !addonGroupIds.has(group.id))
           : form.modifier_groups,
       };
-      if (!canManageAdditionalIngredients) {
+      if (!canManageAdditionalIngredients || !additionalChanged) {
         delete payload.additional_ingredients;
       } else {
         payload.additional_ingredients = form.additional_ingredients
@@ -730,7 +720,8 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                           )
                         }
                       >
-                        <option value="">Always available</option>
+                        <option value="__unconfigured__" disabled>Review ingredient mapping</option>
+                        <option value="">Approved for this item (off recipe allowed)</option>
                         {form.removable_ingredients
                           .filter((row) => row.name.trim())
                           .map((row, ingredientIndex) => (

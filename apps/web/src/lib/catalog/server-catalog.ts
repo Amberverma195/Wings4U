@@ -58,10 +58,13 @@ async function fetchCatalogJson<T>(
       headers: {
         "X-Location-Id": locationId,
         Accept: "application/json",
+        "X-W4U-Catalog-Format": "customization-v2",
       },
       next: {
         tags,
-        revalidate: false,
+        // Explicit admin tag invalidation is immediate when configured; this
+        // bound also refreshes catalogs when the revalidation callback is absent.
+        revalidate: 30,
       },
     });
 

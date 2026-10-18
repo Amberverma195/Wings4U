@@ -7,7 +7,12 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "prestart": "npm run build --workspace @wings4u/customization",
+    "pretest": "npm run build --workspace @wings4u/customization",
+    "preandroid": "npm run build --workspace @wings4u/customization",
+    "preios": "npm run build --workspace @wings4u/customization",
+    "preweb": "npm run build --workspace @wings4u/customization"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -39,7 +44,8 @@
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "@wings4u/customization": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.0",

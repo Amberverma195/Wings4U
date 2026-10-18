@@ -1,3 +1,4 @@
+import { dedicatedAddonScope } from "@wings4u/customization";
 import { getWingSkuWeightLb, getWingSkuPortion } from "../shared/wing-sku";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
@@ -38,6 +39,7 @@ type LocationCatalogPayload = Prisma.LocationGetPayload<{
                 modifierGroup: {
                   include: {
                     options: true;
+                    menuItems: { select: { menuItemId: true } };
                   };
                 };
               };
@@ -61,6 +63,7 @@ type SerializedModifierGroup = {
   is_required: boolean;
   sort_order: number;
   context_key: string | null;
+  addon_scope_menu_item_id?: string | null;
   options: Array<{
     id: string;
     name: string;
@@ -264,8 +267,10 @@ function serializeModifierGroups(item: CatalogItem): SerializedModifierGroup[] {
     max_select: mappedGroup.modifierGroup.maxSelect,
     is_required: mappedGroup.modifierGroup.isRequired,
     sort_order: mappedGroup.sortOrder,
+    addon_scope_menu_item_id: dedicatedAddonScope(mappedGroup.modifierGroup.name, (mappedGroup.modifierGroup.menuItems ?? []).map(row => row.menuItemId), item.id),
     context_key: mappedGroup.contextKey ?? mappedGroup.modifierGroup.contextKey ?? null,
     options: mappedGroup.modifierGroup.options.map((option) => ({
+      sort_order: option.sortOrder,
       id: option.id,
       name: option.name,
       price_delta_cents: option.priceDeltaCents,
@@ -447,6 +452,7 @@ export class CatalogService {
                   include: {
                     modifierGroup: {
                       include: {
+                        menuItems: { select: { menuItemId: true } },
                         options: {
                           where: { isActive: true },
                           orderBy: { sortOrder: "asc" },

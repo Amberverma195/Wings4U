@@ -176,7 +176,8 @@ describe('catalogue-backed builder validation', () => {
     f.db.menuItemModifierGroup.findMany.mockResolvedValue([]);
     const child = { ...item, id: 'burger', slug: 'veggie-burger', builderType: null, category: { slug: 'burgers' },
       locationId: 'local', isHidden: false, stockStatus: 'NORMAL', removableIngredients: [{ id: 'onion', name: 'Onion' }],
-      modifierGroups: [group('extras', 'addon', [{ id: 'cheese', priceDeltaCents: 150 }], false)] };
+      modifierGroups: [group('extras', 'addon', [{ id: 'cheese', name: 'Extra Cheese', addonMatchNormalized: '__always__', priceDeltaCents: 150 }], false)] };
+    Object.assign(child.modifierGroups[0].modifierGroup, { name: 'Burger Extras', menuItems: [{ menuItemId: 'burger' }], sortOrder: 0 });
     f.db.menuItem.findFirst.mockResolvedValue(child);
     f.params.builderPayload = { builder_type: 'LUNCH_SPECIAL', child_menu_item_id: 'burger', child_addons: [{ modifier_option_id: 'cheese', price_delta_cents: 0 }], removed_ingredients: [{ id: 'onion', name: 'Onion' }] };
     return { ...f, child };

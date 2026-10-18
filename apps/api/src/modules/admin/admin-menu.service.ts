@@ -788,20 +788,23 @@ export class AdminMenuService {
           }
         }
 
-        // Replace-all: ingredients
-        if (data.removable_ingredients) {
-          await tx.removableIngredient.deleteMany({
-            where: { menuItemId: id },
-          });
-          if (data.removable_ingredients.length > 0) {
-            await tx.removableIngredient.createMany({
-              data: data.removable_ingredients.map((ri) => ({
-                menuItemId: id,
-                name: ri.name,
-                sortOrder: ri.sortOrder,
-              })),
-            });
+        // Keep stable recipe IDs for unchanged ingredients so unrelated edits do
+        // not invalidate saved carts. Deleted/renamed ingredients require review.
+        if (data.removable_ingredients !== undefined) {
+          const existing = await tx.removableIngredient.findMany({ where: { menuItemId: id } });
+          const retained: string[] = [];
+          for (const row of data.removable_ingredients) {
+            const prior = existing.find(ingredient => !retained.includes(ingredient.id) &&
+              normalizeIngredientText(ingredient.name) === normalizeIngredientText(row.name));
+            if (prior) {
+              await tx.removableIngredient.update({ where: { id: prior.id }, data: { name: row.name, sortOrder: row.sortOrder } });
+              retained.push(prior.id);
+            } else {
+              const created = await tx.removableIngredient.create({ data: { menuItemId: id, name: row.name, sortOrder: row.sortOrder } });
+              retained.push(created.id);
+            }
           }
+          await tx.removableIngredient.deleteMany({ where: { menuItemId: id, id: { notIn: retained } } });
         }
 
         // Replace-all: modifier group links
