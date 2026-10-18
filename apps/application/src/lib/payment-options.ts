@@ -54,8 +54,9 @@ export function checkoutPricingBlock(input: {
   quoteError: string | null;
   promoCode: string | null;
   rewardBlockedReason: string | null;
+  quoteIsCurrent?: boolean;
 }): string | null {
-  if (input.quoteLoading || !input.quote) {
+  if (input.quoteLoading || !input.quote || input.quoteIsCurrent === false) {
     return "Wait for the order total to be confirmed before placing the order.";
   }
   if (input.quoteError) return input.quoteError;

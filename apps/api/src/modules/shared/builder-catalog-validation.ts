@@ -1,6 +1,7 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import type { Prisma, WingFlavour } from '@prisma/client';
 import { getLunchAddonOptionIds } from './pricing';
+import { requireWingSkuWeightLb } from './wing-sku';
 import {
   assertMenuItemOrderable, assertWingFlavoursOrderable, isMenuCategoryScheduledAt,
   isMenuItemScheduledAt, type ScheduleContext, type ValidationMenuItem,
@@ -8,6 +9,39 @@ import {
 
 function reject(message: string): never {
   throw new UnprocessableEntityException({ message, field: 'items' });
+}
+
+const mappingInclude = { modifierGroup: { include: { options: true } } } as const;
+const childInclude = { category: true, schedules: true, removableIngredients: true,
+  modifierGroups: { include: mappingInclude } } as const;
+type BuilderMapping = Prisma.MenuItemModifierGroupGetPayload<{ include: typeof mappingInclude }>;
+type LunchChild = Prisma.MenuItemGetPayload<{ include: typeof childInclude }>;
+export type BuilderCatalogContext = {
+  mappings: Map<string, BuilderMapping[]>;
+  children: Map<string, LunchChild>;
+};
+
+// Fresh per request/transaction. Never share prices or availability across requests.
+export async function loadBuilderCatalogContext(params: {
+  db: Prisma.TransactionClient; locationId: string; menuItems: ValidationMenuItem[];
+  builderPayloads: Array<Record<string, unknown> | undefined>;
+}): Promise<BuilderCatalogContext> {
+  const ids = params.menuItems.filter(item => item.builderType === 'WINGS' || item.builderType === 'WING_COMBO' ||
+    ['lunch-burger', 'lunch-wrap'].includes(item.slug ?? '')).map(item => item.id);
+  const childIds = [...new Set(params.builderPayloads.flatMap(payload => payload?.builder_type === 'LUNCH_SPECIAL' &&
+    typeof payload.child_menu_item_id === 'string' && payload.child_menu_item_id.trim() ? [payload.child_menu_item_id] : []))];
+  const [rows, children] = await Promise.all([
+    ids.length ? params.db.menuItemModifierGroup.findMany({
+      where: { menuItemId: { in: ids }, menuItem: { locationId: params.locationId } },
+      orderBy: [{ sortOrder: 'asc' }, { modifierGroupId: 'asc' }], include: mappingInclude,
+    }) : [],
+    childIds.length ? params.db.menuItem.findMany({
+      where: { id: { in: childIds }, locationId: params.locationId }, include: childInclude,
+    }) : [],
+  ]);
+  const mappings = new Map<string, BuilderMapping[]>(ids.map(id => [id, []]));
+  for (const row of rows) mappings.get(row.menuItemId)?.push(row);
+  return { mappings, children: new Map(children.map(child => [child.id, child])) };
 }
 
 // Use the same linked-flavour groups and mapping order as catalog.service.ts.
@@ -22,15 +56,16 @@ export async function assertBuilderCatalogValid(params: {
   context: ScheduleContext;
   specialInstructions?: string;
   wingFlavourMap: Map<string, WingFlavour>;
+  catalogContext?: BuilderCatalogContext;
 }): Promise<void> {
   const { db, locationId, menuItem, builderPayload: payload, context } = params;
   const wings = menuItem.builderType === 'WINGS' || menuItem.builderType === 'WING_COMBO';
   const lunch = payload?.builder_type === 'LUNCH_SPECIAL';
   if (!wings && !lunch) return;
 
-  const mappings = await db.menuItemModifierGroup.findMany({
+  const mappings = params.catalogContext ? params.catalogContext.mappings.get(menuItem.id) ?? [] : await db.menuItemModifierGroup.findMany({
     where: { menuItemId: menuItem.id }, orderBy: [{ sortOrder: 'asc' }, { modifierGroupId: 'asc' }],
-    include: { modifierGroup: { include: { options: true } } },
+    include: mappingInclude,
   });
   const groups = mappings.map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
   if (groups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid builder catalogue configuration');
@@ -56,10 +91,9 @@ export async function assertBuilderCatalogValid(params: {
     if (!categorySlug || typeof payload.child_menu_item_id !== 'string' || !payload.child_menu_item_id.trim()) {
       reject('Invalid lunch child product');
     }
-    const child = await db.menuItem.findFirst({
+    const child = params.catalogContext ? params.catalogContext.children.get(payload.child_menu_item_id as string) : await db.menuItem.findFirst({
       where: { id: payload.child_menu_item_id as string, locationId },
-      include: { category: true, schedules: true, removableIngredients: true,
-        modifierGroups: { include: { modifierGroup: { include: { options: true } } } } },
+      include: childInclude,
     });
     if (!child || child.category.slug !== categorySlug || child.isHidden || child.stockStatus === 'UNAVAILABLE' ||
         /-side-add$/i.test(child.slug) || /side\s*&\s*pop/i.test(child.name)) reject('Invalid lunch child product');
@@ -83,6 +117,10 @@ export async function assertBuilderCatalogValid(params: {
   }
 
   if (!payload || payload.builder_type !== menuItem.builderType) reject('Required wing builder is missing');
+  const expectedWeight = requireWingSkuWeightLb(menuItem);
+  if (typeof payload.weight_lb !== 'number' || !Number.isFinite(payload.weight_lb) || payload.weight_lb !== expectedWeight) {
+    reject('Wing weight must match the purchased SKU');
+  }
   if (!['BONE_IN', 'BONELESS'].includes(payload.wing_type as string) ||
       !['BREADED', 'NON_BREADED'].includes(payload.preparation as string) ||
       (payload.wing_type === 'BONELESS' && payload.preparation === 'NON_BREADED')) reject('Invalid wing preparation');

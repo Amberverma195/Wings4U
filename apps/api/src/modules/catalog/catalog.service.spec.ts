@@ -56,6 +56,29 @@ function createCacheMock() {
 }
 
 describe("CatalogService", () => {
+  it('serializes concrete fractional, special and party SKU weights for current builders', async () => {
+    const definitions = [
+      ['wings', 'wings-1.5lb', '1.5 Pound – 1 Flavour', 1.5],
+      ['wing-combos', 'combo-3lb', '3 Pound Combo', 3],
+      ['specials', 'wings-4u-special', 'Wings-4-U Special', 2],
+      ['party-specials', 'party-75-wings', '75 Wings — 5 Flavours', 5],
+      ['party-specials', 'party-100-wings', '100 Wings — 5 Flavours', 6.67],
+      ['lunch-specials', 'lunch-5-wings', '5 Wings + Fries + Pop', 0.33],
+    ] as const;
+    const prisma = createPrismaMock(), cache = createCacheMock();
+    cache.getMenuBase.mockResolvedValue({ key: 'fixture', value: null });
+    prisma.location.findUnique.mockResolvedValue({ id: 'local', name: 'Fixture', timezoneName: 'America/Toronto', isActive: true,
+      settings: null, hours: [], menuCategories: [...new Set(definitions.map(row => row[0]))].map(slug => ({
+        id: slug, name: slug, slug, menuItems: definitions.filter(row => row[0] === slug).map(([, sku, name]) => ({
+          id: sku, slug: sku, name, basePriceCents: 1000, isAvailable: true, allowedFulfillmentType: 'BOTH', stockStatus: 'NORMAL',
+          builderType: slug === 'wing-combos' ? 'WING_COMBO' : 'WINGS', schedules: [], modifierGroups: [], removableIngredients: [],
+        })),
+      })),
+    });
+    const result = await new CatalogService(prisma as never, cache as never).getMenu('local', 'PICKUP');
+    const options = result.categories.flatMap(category => category.items.flatMap(item => item.weight_options ?? item.combo_options ?? []));
+    expect(options.map(option => [option.menu_item_id, option.weight_lb])).toEqual(definitions.map(([, slug, , weight]) => [slug, weight]));
+  });
   it("uses cached base menus but still computes customer no-show fields", async () => {
     const prisma = createPrismaMock();
     prisma.customerProfile.findUnique.mockResolvedValue({ totalNoShows: 4 });

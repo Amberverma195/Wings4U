@@ -1,4 +1,5 @@
-import { assertBuilderCatalogValid } from "../shared/builder-catalog-validation";
+import { requireWingSkuWeightLb } from "../shared/wing-sku";
+import { assertBuilderCatalogValid, loadBuilderCatalogContext } from "../shared/builder-catalog-validation";
 import {
   BadRequestException,
   ForbiddenException,
@@ -487,6 +488,11 @@ export class PosService {
         }[];
       }[] = [];
 
+      const catalogContext = await loadBuilderCatalogContext({
+        db: tx, locationId: params.locationId, menuItems,
+        builderPayloads: params.items.map(item => item.builderPayload),
+      });
+
       for (const cartItem of params.items) {
         let menuItem = cartItem.menuItemId ? menuItemMap.get(cartItem.menuItemId) : null;
 
@@ -592,6 +598,7 @@ export class PosService {
           });
 
           await assertBuilderCatalogValid({
+            catalogContext,
             db: tx,
             locationId: params.locationId,
             menuItem,
@@ -911,7 +918,7 @@ export class PosService {
 
         const wingType = String(builderPayload.wing_type ?? "BONE_IN");
         const preparation = String(builderPayload.preparation ?? "BREADED");
-        const weightLb = Number(builderPayload.weight_lb ?? 1);
+        const weightLb = requireWingSkuWeightLb(menuItemMap.get(line.menuItemId ?? ""));
         const flavourSlots = (builderPayload.flavour_slots ?? []) as Array<{
           slot_no: number;
           wing_flavour_id: string;
@@ -933,6 +940,7 @@ export class PosService {
             weightLb,
             requiredFlavourCount: flavourSlots.length,
             saucingMethod,
+            sideFlavourSlot: (builderPayload.side_flavour_slot_no as number | undefined) ?? null,
             extraFlavourAdded: !!extraFlavour,
           },
         });

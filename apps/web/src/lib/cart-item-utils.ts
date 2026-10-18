@@ -1,4 +1,5 @@
 import { cents } from "./format";
+import { SIDE_POP_BUNDLE_PRICE_CENTS } from "./types";
 import type {
   CartBuilderPayload,
   CartItem,
@@ -74,7 +75,7 @@ export function sidePopComboDisplayLines(bundle: {
   pop_label: string;
 }): string[] {
   return [
-    `Combo: Small fries + pop (+${cents(bundle.price_cents)})`,
+    `Combo: Small fries + pop (+${cents(SIDE_POP_BUNDLE_PRICE_CENTS)})`,
     `Side: ${bundle.side_label}`,
     `Pop: ${bundle.pop_label}`,
   ];
@@ -113,7 +114,7 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
   if (!payload) return 0;
   if (payload.builder_type === "ITEM_CUSTOMIZATION") {
     const bundle = (payload as ItemCustomizationPayload).side_pop_bundle;
-    return bundle ? (bundle.price_cents ?? 499) : 0;
+    return bundle ? SIDE_POP_BUNDLE_PRICE_CENTS : 0;
   }
   if (payload.builder_type === "LUNCH_SPECIAL") {
     // Lunch specials park child-item add-ons in the payload (not in

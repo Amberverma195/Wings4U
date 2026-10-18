@@ -63,3 +63,9 @@ test('checkout stays blocked until the server quote confirms the selected promot
     rewardBlockedReason: null,
   })).toBeNull();
 });
+
+test('a previous cart quote cannot authorize a changed cart', () => {
+  const input = { quoteLoading: false, quote: { final_payable_cents: 1499 }, quoteError: null, promoCode: null, rewardBlockedReason: null };
+  expect(checkoutPricingBlock({ ...input, quoteIsCurrent: false })).toMatch(/confirmed/i);
+  expect(checkoutPricingBlock({ ...input, quoteIsCurrent: true })).toBeNull();
+});

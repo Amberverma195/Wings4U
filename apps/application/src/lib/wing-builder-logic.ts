@@ -396,7 +396,7 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
   }
   if (payload.builder_type === "ITEM_CUSTOMIZATION") {
     const bundle = (payload as ItemCustomizationPayload).side_pop_bundle;
-    return bundle ? (bundle.price_cents ?? SIDE_POP_BUNDLE_PRICE_CENTS) : 0;
+    return bundle ? SIDE_POP_BUNDLE_PRICE_CENTS : 0;
   }
   if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
     return (

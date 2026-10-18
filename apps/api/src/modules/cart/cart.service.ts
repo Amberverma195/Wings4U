@@ -1,4 +1,4 @@
-import { assertBuilderCatalogValid } from "../shared/builder-catalog-validation";
+import { assertBuilderCatalogValid, loadBuilderCatalogContext } from "../shared/builder-catalog-validation";
 import { Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
@@ -177,6 +177,11 @@ export class CartService {
       refs: wingFlavourRefs,
     });
 
+    const catalogContext = await loadBuilderCatalogContext({
+      db: this.prisma, locationId, menuItems,
+      builderPayloads: items.map(item => item.builder_payload),
+    });
+
     for (const cartItem of items) {
       const menuItem = menuItemMap.get(cartItem.menu_item_id);
       if (!menuItem) {
@@ -281,6 +286,7 @@ export class CartService {
       });
 
       await assertBuilderCatalogValid({
+        catalogContext,
         db: this.prisma,
         locationId,
         menuItem,

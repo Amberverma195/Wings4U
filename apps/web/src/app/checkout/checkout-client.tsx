@@ -111,6 +111,7 @@ export function CheckoutClient() {
   const { address, openAddressPicker } = useDeliveryAddress();
   const [state, setState] = useState<CheckoutState>({ step: "review" });
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
+  const [pricedQuoteKey, setPricedQuoteKey] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
   const [activeDeliveryQuoteContextKey, setActiveDeliveryQuoteContextKey] =
@@ -460,6 +461,13 @@ export function CheckoutClient() {
     selectedDeliveryAddress,
   ]);
 
+  const quoteContextKey = JSON.stringify({
+    items: cart.items, locationId: cart.locationId, fulfillmentType: cart.fulfillmentType,
+    scheduledFor: cart.scheduledFor, tipCents, applyWingsReward, promoApplied,
+    deliveryToken: deliveryQuote?.delivery_quote_token, selectedDeliveryAddress,
+  });
+  const quoteIsCurrent = pricedQuoteKey === quoteContextKey;
+
   /** Do not stay on checkout if delivery subtotal is below minimum — cart shows the fix. */
   useEffect(() => {
     if (isMinimumDeliverySubtotalError(quoteError)) {
@@ -518,6 +526,7 @@ export function CheckoutClient() {
         if (cancelled) return;
         if (res.ok && body.data) {
           setQuote(body.data);
+          setPricedQuoteKey(quoteContextKey);
           setQuoteError(null);
           return;
         }
@@ -549,6 +558,7 @@ export function CheckoutClient() {
       cancelled = true;
     };
   }, [
+    quoteContextKey,
     cart.fulfillmentType,
     cart.items,
     cart.locationId,
@@ -603,7 +613,7 @@ export function CheckoutClient() {
   }, [state]);
 
   const doSubmit = useCallback(async () => {
-    if (!quote) {
+    if (!quote || !quoteIsCurrent) {
       setState({
         step: "error",
         message: "Wait for the order total to be confirmed before placing your order.",
@@ -748,6 +758,7 @@ export function CheckoutClient() {
     deliveryQuote,
     deliveryQuoteReady,
     quote,
+    quoteIsCurrent,
     refreshExpiredDeliveryQuoteOnce,
     selectedDeliveryAddress,
   ]);
@@ -810,6 +821,7 @@ export function CheckoutClient() {
     session.needsProfileCompletion,
     quoteError,
     quote,
+    quoteIsCurrent,
     router,
   ]);
 
@@ -1266,7 +1278,7 @@ export function CheckoutClient() {
         className="cart-checkout-fire-btn"
         disabled={
           state.step === "submitting" ||
-          !quote ||
+          !quote || !quoteIsCurrent ||
           Boolean(
             lunchScheduleConflict ||
               deliveryBlockedMessage ||

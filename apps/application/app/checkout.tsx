@@ -163,6 +163,7 @@ function CheckoutScreenContent() {
   const session = useSession();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
+  const [pricedQuoteKey, setPricedQuoteKey] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [promoNotice, setPromoNotice] = useState<string | null>(null);
@@ -249,6 +250,7 @@ function CheckoutScreenContent() {
   const quoteKey = useMemo(
     () =>
       JSON.stringify({
+        locationId: cart.locationId,
         items: checkoutItems(cart.items),
         fulfillmentType: cart.fulfillmentType,
         scheduledFor: cart.scheduledFor,
@@ -258,6 +260,7 @@ function CheckoutScreenContent() {
         applyWingsReward: promo.applyWingsReward,
       }),
     [
+      cart.locationId,
       cart.fulfillmentType,
       cart.items,
       cart.scheduledFor,
@@ -410,8 +413,8 @@ function CheckoutScreenContent() {
     }
 
     let cancelled = false;
+    setQuoteLoading(true);
     const timeout = setTimeout(() => {
-      setQuoteLoading(true);
       setQuoteError(null);
       void (async () => {
         try {
@@ -438,6 +441,7 @@ function CheckoutScreenContent() {
           });
           if (!cancelled) {
             setQuote(envelope.data ?? null);
+            setPricedQuoteKey(quoteKey);
           }
         } catch (cause) {
           if (!cancelled) {
@@ -480,6 +484,7 @@ function CheckoutScreenContent() {
     stripeConfig?.online_payments_enabled && stripeConfig.configured,
   );
   const pricingBlock = checkoutPricingBlock({
+    quoteIsCurrent: pricedQuoteKey === quoteKey,
     quoteLoading,
     quote,
     quoteError,

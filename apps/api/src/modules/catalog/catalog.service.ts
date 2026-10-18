@@ -1,3 +1,4 @@
+import { getWingSkuWeightLb } from "../shared/wing-sku";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
@@ -282,20 +283,6 @@ function serializeRemovableIngredients(item: CatalogItem) {
   }));
 }
 
-function extractWeightLb(name: string): number {
-  const wingsMatch = name.match(/(\d+)\s*wings/i);
-  if (wingsMatch) {
-    const wingCount = Number.parseInt(wingsMatch[1] ?? "", 10);
-    return Number.isFinite(wingCount) ? Number((wingCount / 15).toFixed(2)) : 0;
-  }
-
-  const poundsMatch = name.match(/([\d.]+)\s*pound/i);
-  if (!poundsMatch) return 0;
-
-  const weight = Number.parseFloat(poundsMatch[1] ?? "");
-  return Number.isFinite(weight) ? weight : 0;
-}
-
 function countFlavourSlots(groups: SerializedModifierGroup[]): number {
   return groups.filter((group) =>
     group.options.some((option) => option.linked_flavour_id),
@@ -314,10 +301,7 @@ function serializeBuilderOption(item: CatalogItem): SerializedBuilderOption {
     slug: item.slug,
     description: item.description,
     base_price_cents: item.basePriceCents,
-    weight_lb:
-      item.slug === "wings-4u-special"
-        ? 2
-        : extractWeightLb(item.name) || 1,
+    weight_lb: getWingSkuWeightLb(item) ?? 1,
     flavour_count: countFlavourSlots(modifierGroups),
     side_slot_count: countGroupsByContext(modifierGroups, "side"),
     drink_slot_count: countGroupsByContext(modifierGroups, "drink"),
@@ -342,6 +326,8 @@ function serializeMenuItem(item: CatalogItem): SerializedMenuItem {
     schedules: serializeSchedules(item),
     modifier_groups: serializeModifierGroups(item),
     removable_ingredients: serializeRemovableIngredients(item),
+    ...(item.builderType === 'WINGS' ? { weight_options: [serializeBuilderOption(item)] }
+      : item.builderType === 'WING_COMBO' ? { combo_options: [serializeBuilderOption(item)] } : {}),
   };
 }
 
@@ -455,7 +441,7 @@ export class CatalogService {
                 },
                 schedules: true,
                 modifierGroups: {
-                  orderBy: { sortOrder: "asc" },
+                  orderBy: [{ sortOrder: "asc" }, { modifierGroupId: "asc" }],
                   include: {
                     modifierGroup: {
                       include: {

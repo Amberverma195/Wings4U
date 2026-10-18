@@ -27,6 +27,22 @@ test('pickup validates the live menu and exact real SKU before obtaining a fresh
   expect(apiJson.mock.calls.some(call => /checkout|payments/.test(call[0]))).toBe(false);
 });
 
+test.each([0, -999, 10000])('stale saved bundle %i is recalculated and freshly quoted before checkout', async price => {
+  snapshot.items[0].builder_payload = { builder_type: 'ITEM_CUSTOMIZATION', side_pop_bundle: { side_label: 'Fries', pop_label: 'Pepsi', price_cents: price } };
+  snapshot.items[0].quantity = 3;
+  snapshot.driverTipPercent = 10;
+  snapshot.setup.fulfillmentType = 'DELIVERY';
+  snapshot.setup.deliveryAddress = { line1: '12 Main St', city: 'London', postal_code: 'N5Y 4J7' };
+  quote.lines[0].quantity = 3;
+  quote.item_subtotal_cents = 4497;
+  quote.final_payable_cents = 5532;
+  const result = await validateCheckout(snapshot);
+  expect(result.final_payable_cents).toBe(5532);
+  const request = JSON.parse(apiJson.mock.calls.find(call => call[0] === '/api/v1/cart/quote')[1].body);
+  expect(request.driver_tip_cents).toBe(450);
+  expect(request.items[0].quantity).toBe(3);
+});
+
 test.each([null, 'saved-home'])('delivery validates manual/saved address eligibility and uses a fresh delivery token (saved id: %s)', async savedAddressId => {
   snapshot.setup = { fulfillmentType: 'DELIVERY', scheduledFor: '2026-10-18T17:00:00.000Z',
     savedAddressId, deliveryAddress: { line1: '12 Main St unit 8', city: 'London', postal_code: 'N5Y 4J7' } };

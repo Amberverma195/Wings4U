@@ -1,10 +1,10 @@
 import { assertBuilderPayloadValid, ValidationMenuItem } from './order-validation';
 import { getBuilderPriceDelta, getLunchAddonOptionIds } from './pricing';
-import { assertBuilderCatalogValid } from './builder-catalog-validation';
+import { assertBuilderCatalogValid, loadBuilderCatalogContext } from './builder-catalog-validation';
 import type { Prisma, WingFlavour } from '@prisma/client';
 
 const item: ValidationMenuItem = {
-  id: 'wings', name: 'Fixture', slug: 'wings-1lb', builderType: 'WINGS',
+  id: 'wings', name: '1 Pound ? 1 Flavour', slug: 'wings-1lb', builderType: 'WINGS',
   isAvailable: true, archivedAt: null, allowedFulfillmentType: 'BOTH',
   requiresSpecialInstructions: false, schedules: [], modifierGroups: [],
 };
@@ -42,7 +42,7 @@ describe('catalogue-backed builder validation', () => {
     const flavourGroup = group('flavour', null, [{ id: 'flavour-option', linkedFlavourId: 'hot' }, { id: 'plain-option', linkedFlavourId: 'plain' }]);
     const mappings = [group('Wing Type', null, [{ id: 'type', name: 'House Breaded Bone-In' }, { id: 'boneless', name: 'Boneless' }]), flavourGroup];
     const db = { menuItemModifierGroup: { findMany: jest.fn().mockResolvedValue(mappings) }, menuItem: { findFirst: jest.fn() } };
-    const payload: Record<string, unknown> = { builder_type: 'WINGS', wing_type: 'BONE_IN', preparation: 'BREADED', saucing_method: 'ON_WINGS',
+    const payload: Record<string, unknown> = { builder_type: 'WINGS', weight_lb: 1, wing_type: 'BONE_IN', preparation: 'BREADED', saucing_method: 'ON_WINGS',
       flavour_slots: [{ slot_no: 1, wing_flavour_id: 'hot', placement: 'ON_WINGS' }] };
     const params = { db: db as unknown as Prisma.TransactionClient, locationId: 'local', menuItem: item, builderPayload: payload,
       modifierOptionIds: ['type'] as string[], fulfillmentType: 'PICKUP' as const,
@@ -53,6 +53,43 @@ describe('catalogue-backed builder validation', () => {
     const { params } = fixture();
     await expect(assertBuilderCatalogValid(params)).resolves.toBeUndefined();
     await expect(assertBuilderCatalogValid({ ...params, builderPayload: JSON.parse(JSON.stringify(params.builderPayload)) })).resolves.toBeUndefined();
+  });
+  it('rejects a client weight that does not match the purchased SKU', async () => {
+    const { params, payload } = fixture();
+    payload.weight_lb = 100;
+    await expect(assertBuilderCatalogValid(params)).rejects.toThrow();
+  });
+  it.each([undefined, null, '1', '', -1, 0, NaN, Infinity, -Infinity, {}, 1.5])('rejects invalid or mismatched weight %j', async weight => {
+    const { params, payload } = fixture(); payload.weight_lb = weight;
+    await expect(assertBuilderCatalogValid(params)).rejects.toThrow('weight');
+  });
+  it.each([
+    ['wings-1lb', '1 Pound – 1 Flavour', 1], ['wings-1.5lb', '1.5 Pound – 1 Flavour', 1.5],
+    ['wings-2lb', '2 Pound – 1 Flavour', 2], ['wings-3lb', '3 Pound – 2 Flavours', 3],
+    ['wings-4lb', '4 Pound – 2 Flavours', 4], ['wings-5lb', '5 Pound – 3 Flavours', 5],
+    ['wings-4u-special', 'Wings-4-U Special', 2], ['party-75-wings', '75 Wings — 5 Flavours', 5],
+    ['party-100-wings', '100 Wings — 5 Flavours', 6.67], ['lunch-5-wings', '5 Wings + Fries + Pop', 0.33],
+  ])('accepts catalogue weight for %s without client-derived conversion', async (slug, name, weight) => {
+    const { params, payload } = fixture();
+    params.menuItem = { ...item, slug: slug as string, name: name as string }; payload.weight_lb = weight;
+    await expect(assertBuilderCatalogValid(params)).resolves.toBeUndefined();
+  });
+  it('fails closed if the catalogue weight cannot be determined', async () => {
+    const { params, payload } = fixture(); params.menuItem = { ...item, name: 'Unspecified pack' }; payload.weight_lb = 1;
+    await expect(assertBuilderCatalogValid(params)).rejects.toThrow('not configured');
+  });
+  it('batches distinct SKUs and duplicate child IDs without sharing state across requests', async () => {
+    const { db } = fixture();
+    Object.assign(db.menuItem, { findMany: jest.fn().mockResolvedValue([]) });
+    const params = { db: db as unknown as Prisma.TransactionClient, locationId: 'local',
+      menuItems: [item, { ...item, id: 'second' }], builderPayloads: [1, 2, 3].map(() => ({ builder_type: 'LUNCH_SPECIAL', child_menu_item_id: 'burger' })) };
+    await loadBuilderCatalogContext(params);
+    expect(db.menuItemModifierGroup.findMany).toHaveBeenCalledTimes(1);
+    expect(db.menuItemModifierGroup.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { menuItemId: { in: ['wings', 'second'] }, menuItem: { locationId: 'local' } },
+      orderBy: [{ sortOrder: 'asc' }, { modifierGroupId: 'asc' }],
+    }));
+    expect((db.menuItem as any).findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['burger'] }, locationId: 'local' } }));
   });
   it.each([
     { wing_type: 'ALIEN' }, { preparation: 'RAW' }, { wing_type: 'BONELESS', preparation: 'NON_BREADED' },
@@ -90,7 +127,7 @@ describe('catalogue-backed builder validation', () => {
   });
   it('preserves the required salad selection for Wings-4-U Special', async () => {
     const { params, mappings, payload } = fixture();
-    params.menuItem = { ...item, slug: 'wings-4u-special' };
+    params.menuItem = { ...item, slug: 'wings-4u-special' }; payload.weight_lb = 2;
     mappings.push(group('salads', 'salad', [{ id: 'garden', name: 'Garden Salad' }]));
     await expect(assertBuilderCatalogValid(params)).rejects.toThrow('Invalid selections');
     payload.salad_customization = {};
@@ -111,7 +148,8 @@ describe('catalogue-backed builder validation', () => {
   it.each([3, 5])('preserves %i-slot special pack rules and requires tell-us-how notes', async count => {
     const { params, payload, mappings, flavourGroup } = fixture();
     for (let n = 1; n < count; n++) mappings.push({ ...flavourGroup, modifierGroupId: 'slot-' + n, modifierGroup: { ...flavourGroup.modifierGroup, id: 'slot-' + n } });
-    params.menuItem = { ...item, slug: count === 5 ? 'party-75-wings' : 'wings-5lb' };
+    params.menuItem = { ...item, name: count === 5 ? '75 Wings ? 5 Flavours' : '5 Pound ? 3 Flavours', slug: count === 5 ? 'party-75-wings' : 'wings-5lb' };
+    payload.weight_lb = 5;
     payload.flavour_slots = Array.from({ length: count }, (_, n) => ({ slot_no: n + 1, wing_flavour_id: 'hot', placement: 'ON_WINGS' }));
     payload.saucing_method = 'TELL_US_HOW';
     await expect(assertBuilderCatalogValid(params)).rejects.toThrow('Saucing instructions');
