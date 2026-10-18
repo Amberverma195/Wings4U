@@ -1,3 +1,4 @@
+import { modifierTotal, validateSelections } from '@wings4u/customization';
 import { savedSelectionReview } from "../lib/cart-validation";
 /**
  * mobile-wings-builder.tsx
@@ -63,13 +64,11 @@ import {
   type WingType,
 } from '../lib/wing-builder-logic';
 import {
+  embeddedSaladCatalog,
   WINGS_SPECIAL_SALAD_SIZE_LABEL,
   findSaladMenuItemForSelection,
-  inferOptionSizeScope,
-  normalizeIngredientText,
   normalizeSaladAddonDisplayLabel,
   saladItemSupportsSize,
-  shouldRenderAddonOption,
 } from '../lib/salad-catalog';
 import {
   BUILDER_VALIDATION_MESSAGE,
@@ -377,62 +376,9 @@ export function WingsBuilderMobile({
     [item.removable_ingredients, resolvedSaladItem, usesChildSaladCustomization],
   );
 
-  const normalizedSaladIngredientNames = useMemo(
-    () =>
-      resolvedSaladItem?.removable_ingredients
-        .map((ingredient) => normalizeIngredientText(ingredient.name))
-        .filter(Boolean) ?? [],
-    [resolvedSaladItem],
-  );
-
-  const normalizedSaladSizeNames = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          resolvedSaladItem?.modifier_groups
-            .filter((group) => group.context_key === 'size')
-            .flatMap((group) => group.options)
-            .map((option) => normalizeIngredientText(option.name))
-            .filter(Boolean) ?? [],
-        ),
-      ),
-    [resolvedSaladItem],
-  );
-
-  const selectedSaladSizeNames = useMemo(
-    () =>
-      normalizedSaladSizeNames.length > 0
-        ? [normalizeIngredientText(WINGS_SPECIAL_SALAD_SIZE_LABEL)]
-        : [],
-    [normalizedSaladSizeNames],
-  );
-
-  const saladAddonGroups = useMemo(() => {
-    if (!resolvedSaladItem) return [];
-
-    return resolvedSaladItem.modifier_groups
-      .filter((group) => group.context_key === 'addon')
-      .map((group) => ({
-        ...group,
-        options: group.options.filter((option) =>
-          shouldRenderAddonOption({
-            optionName: option.name,
-            addonMatchNormalized: option.addon_match_normalized,
-            normalizedIngredientNames: normalizedSaladIngredientNames,
-            isSelected: saladModifierSelections[group.id]?.includes(option.id) ?? false,
-            normalizedSizeNames: normalizedSaladSizeNames,
-            selectedSizeNames: selectedSaladSizeNames,
-          }),
-        ),
-      }))
-      .filter((group) => group.options.length > 0);
-  }, [
-    normalizedSaladIngredientNames,
-    normalizedSaladSizeNames,
-    resolvedSaladItem,
-    saladModifierSelections,
-    selectedSaladSizeNames,
-  ]);
+  const saladAddonGroups = useMemo(() => resolvedSaladItem
+    ? embeddedSaladCatalog(resolvedSaladItem).groups : [], [resolvedSaladItem]);
+  const saladSelectionError = validateSelections(saladAddonGroups, saladModifierSelections);
 
   /* Auto-select single weight option */
   useEffect(() => {
@@ -569,6 +515,9 @@ export function WingsBuilderMobile({
       setSaladRemovedIngredientIds(
         new Set(editingSaladCustomization.removed_ingredients.map((ing) => ing.id)),
       );
+      const unknown = editingSaladCustomization.modifier_selections.map(row => row.modifier_option_id)
+        .filter(id => !Object.values(nextSelections).flat().includes(id));
+      if (unknown.length) nextSelections.__stale__ = unknown;
       setSaladModifierSelections(nextSelections);
       previousSaladItemIdRef.current = nextSaladItemId;
       return;
@@ -620,33 +569,6 @@ export function WingsBuilderMobile({
     });
   }, [extraGroups]);
 
-  /* Scope salad add-on selections to active size */
-  useEffect(() => {
-    if (!resolvedSaladItem || selectedSaladSizeNames.length === 0) return;
-
-    setSaladModifierSelections((prev) => {
-      let changed = false;
-      const next: Record<string, string[]> = { ...prev };
-
-      for (const group of resolvedSaladItem.modifier_groups) {
-        if (group.context_key !== 'addon') continue;
-        const picks = prev[group.id] ?? [];
-        const filtered = picks.filter((optionId) => {
-          const option = group.options.find((candidate) => candidate.id === optionId);
-          if (!option) return true; // Retain invalid option IDs so validate() can enforce valid catalogue membership
-          const sizeScope = inferOptionSizeScope(option.name, normalizedSaladSizeNames);
-          return !sizeScope || selectedSaladSizeNames.includes(sizeScope);
-        });
-        if (filtered.length !== picks.length) {
-          next[group.id] = filtered;
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [normalizedSaladSizeNames, resolvedSaladItem, selectedSaladSizeNames]);
-
   /* Hydrate extra group selections when editing */
   useEffect(() => {
     if (!editingLine || extraGroups.length === 0) return;
@@ -695,21 +617,7 @@ export function WingsBuilderMobile({
     return total;
   }, [extraGroups, extraGroupSelections]);
 
-  const saladAddonsTotalDelta = useMemo(() => {
-    if (!resolvedSaladItem) return 0;
-    let total = 0;
-    for (const group of resolvedSaladItem.modifier_groups) {
-      if (group.context_key !== 'addon') continue;
-      const picks = saladModifierSelections[group.id] ?? [];
-      for (const optionId of picks) {
-        const option = group.options.find((candidate) => candidate.id === optionId);
-        if (option) {
-          total += option.price_delta_cents;
-        }
-      }
-    }
-    return total;
-  }, [resolvedSaladItem, saladModifierSelections]);
+  const saladAddonsTotalDelta = modifierTotal(saladAddonGroups, saladModifierSelections);
 
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
@@ -776,6 +684,7 @@ export function WingsBuilderMobile({
         return 'salad';
       }
 
+      if (saladSelectionError) return 'salad';
       for (const group of saladAddonGroups) {
         const picks = saladModifierSelections[group.id] ?? [];
         if (picks.some((optId) => !group.options.some((o) => o.id === optId))) {
@@ -825,6 +734,7 @@ export function WingsBuilderMobile({
     preparation,
     requiredFlavourCount,
     resolvedSaladItem,
+    saladSelectionError,
     saladAddonGroups,
     saladModifierSelections,
     saucingMethod,
@@ -894,8 +804,7 @@ export function WingsBuilderMobile({
       price_delta_cents: number;
     }> = [];
     if (resolvedSaladItem) {
-      for (const group of resolvedSaladItem.modifier_groups) {
-        if (group.context_key !== 'addon') continue;
+      for (const group of saladAddonGroups) {
         const picks = saladModifierSelections[group.id] ?? [];
         for (const optionId of picks) {
           const option = group.options.find((candidate) => candidate.id === optionId);
@@ -1072,7 +981,7 @@ export function WingsBuilderMobile({
 
   const submitLabel = editingLine ? 'Save changes' : 'Add to cart';
 
-  const selectionReview = savedSelectionReview(editingLine, selectedOption, (resolvedSaladItem?.modifier_groups ?? []).flatMap(group => group.options.map(option => option.id)));
+  const selectionReview = savedSelectionReview(editingLine, selectedOption, saladAddonGroups.flatMap(group => group.options.map(option => option.id)));
 
   return (
     <MobileBuilderShell
@@ -1090,6 +999,10 @@ export function WingsBuilderMobile({
       onSubmit={handleAdd}
     >
 
+      {usesChildSaladCustomization && saladSelectionError ? <View>
+        <Text accessibilityRole="alert">{saladSelectionError}</Text>
+        <TouchableOpacity onPress={() => setSaladModifierSelections({})}><Text>Review salad extras: clear selections</Text></TouchableOpacity>
+      </View> : null}
       {selectionReview ? <Text accessibilityRole="alert">{selectionReview}</Text> : null}
       {!availability.available ? (
         <View style={styles.unavailableBanner} accessibilityRole="alert">

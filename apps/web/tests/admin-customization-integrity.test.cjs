@@ -7,7 +7,7 @@ jest.mock('../src/app/admin/admin-api', () => ({ adminFetch: (...args) => mockFe
 const { MenuItemModal } = require('../src/app/admin/menu/menu-item-modal');
 const item = { id: 'burger', name: 'Burger', slug: 'burger', description: '', basePriceCents: 999, categoryId: 'burgers', stockStatus: 'NORMAL', isHidden: false,
   allowedFulfillmentType: 'BOTH', removableIngredients: [{ name: 'Lettuce', sortOrder: 1 }], modifierGroups: [{ modifierGroupId: 'legacy', contextKey: 'addon',
-    modifierGroup: { contextKey: 'addon', options: [{ name: 'Add Cheese', priceDeltaCents: 100, addonMatchNormalized: null }] } }], schedules: [] };
+    modifierGroup: { contextKey: 'addon', options: [{ id: 'cheese', name: 'Add Cheese', priceDeltaCents: 100, addonMatchNormalized: null }] } }], schedules: [] };
 let renderer;
 beforeEach(() => mockFetch.mockImplementation(async (url, options) => options ? {} : url.endsWith('/modifier-groups') ? [] : item));
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); jest.clearAllMocks(); });
@@ -27,5 +27,17 @@ test('an off-recipe extra requires explicit item approval before it is sent', as
   expect(match.props.value).toBe('__unconfigured__');
   await act(async () => match.props.onChange({ target: { value: '' } })); await save();
   const request = mockFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
-  expect(JSON.parse(request[1].body)).toMatchObject({ modifier_groups: [], additional_ingredients: [{ name: 'Add Cheese', price_delta_cents: 100, matches_ingredient: '' }] });
+  expect(JSON.parse(request[1].body)).toMatchObject({ modifier_groups: [{ id: 'legacy' }], additional_ingredients: [{ name: 'Add Cheese', price_delta_cents: 100, matches_ingredient: '' }] });
+});
+
+test.each(['Add Avocado', 'Add Jalapeños'])('removing %s allows unchanged unconfigured ingredients and preserves their IDs', async name => {
+  const changed = structuredClone(item);
+  changed.modifierGroups[0].modifierGroup.options.push({ id: 'removed', name, priceDeltaCents: 150, addonMatchNormalized: null });
+  mockFetch.mockImplementation(async (url, options) => options ? {} : url.endsWith('/modifier-groups') ? [] : changed);
+  await mount();
+  const remove = renderer.root.findAllByType('button').find(node => node.props['aria-label'] === 'Remove additional ingredient 2');
+  await act(async () => remove.props.onClick()); await save();
+  const payload = JSON.parse(mockFetch.mock.calls.find(([, options]) => options?.method === 'PUT')[1].body);
+  expect(payload.modifier_groups).toEqual([{ id: 'legacy' }]);
+  expect(payload.additional_ingredients).toEqual([{ id: 'cheese', name: 'Add Cheese', price_delta_cents: 100, matches_ingredient: '__unconfigured__' }]);
 });

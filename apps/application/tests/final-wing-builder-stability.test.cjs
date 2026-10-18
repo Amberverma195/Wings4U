@@ -174,9 +174,9 @@ const gardenSaladItem = {
       option('size-lg', 'Large', { price_delta_cents: 300 }),
     ], { context_key: 'size' }),
     group('salad-addons', 'Salad extras', [
-      option('add-feta', 'Add Feta Cheese', { price_delta_cents: 175 }),
+      option('add-feta', 'Add Feta Cheese', { price_delta_cents: 175, addon_match_normalized: '__always__' }),
       option('add-chicken', 'Add Grilled Chicken', { price_delta_cents: 450 }),
-    ], { context_key: 'addon', is_required: false, min_select: 0, max_select: 3 }),
+    ], { context_key: 'addon', addon_scope_menu_item_id: 'salad-garden', is_required: false, min_select: 0, max_select: 3 }),
   ],
   is_available: true,
   stock_status: 'NORMAL',
@@ -820,6 +820,11 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
 
       // Should block replacement due to invalid addon ID
       expect(mockCart.replaceItem).not.toHaveBeenCalled();
+      const clear = buttonByText('Review salad extras: clear selections');
+      expect(clear).toBeTruthy();
+      await act(async () => clear.props.onPress());
+      await act(async () => submitButton().props.onPress());
+      expect(mockCart.replaceItem).toHaveBeenCalledTimes(1);
     });
   });
 

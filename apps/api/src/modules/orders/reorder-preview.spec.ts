@@ -155,14 +155,15 @@ describe('read-only reorder using authoritative Cart Quote validation', () => {
   it.each(['salad', 'wings-special'])('revalidates %s selections, removals and child availability', async family => {
     const f = fixture(), salad = family === 'salad' ? f.current : product('salad');
     salad.removableIngredients = [{ id: 'onion', name: 'Onion' }];
-    group(salad, 'salad-size', 'size', [{ id: 'large', priceDeltaCents: 300 }]);
+    group(salad, 'salad-size', 'size', [{ id: 'small', name: 'Small' }, { id: 'large', name: 'Large', priceDeltaCents: 300 }]);
+    if (family === 'wings-special') group(salad, 'salad-extras', 'addon', [{ id: 'extra-onion', addonMatchNormalized: 'onion', priceDeltaCents: 300 }], 0, 2);
     if (family === 'wings-special') {
       f.catalog.push(salad); f.wing('wings-4u-special', 2); f.source.builderPayloadJson.salad_customization = {
         salad_menu_item_id: 'salad', salad_name: 'Old Salad', salad_slug: 'old', removed_ingredients: [{ id: 'onion', name: 'Onion' }],
-        modifier_selections: [{ modifier_option_id: 'large', name: 'Large', price_delta_cents: -1000 }],
+        modifier_selections: [{ modifier_option_id: 'extra-onion', name: 'Extra Onion', price_delta_cents: -1000 }],
       };
     }
-    f.select('large'); f.source.modifiers.push({ modifierKind: 'REMOVE_INGREDIENT', modifierNameSnapshot: 'Onion' });
+    f.select(family === 'salad' ? 'large' : 'extra-onion'); f.source.modifiers.push({ modifierKind: 'REMOVE_INGREDIENT', modifierNameSnapshot: 'Onion' });
     const result = await f.run(); expect(result.all_unavailable).toBe(false); expect(result.diff.price_changes[0].new_cents).toBe(1800);
     salad.isAvailable = false; expect((await f.run()).all_unavailable).toBe(true);
   });

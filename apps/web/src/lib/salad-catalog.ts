@@ -60,3 +60,5 @@ export function normalizeSaladAddonDisplayLabel(
   const raw = (displayLabel ?? name).trim();
   return raw === "Salad extras" ? "Additional ingredients" : raw;
 }
+
+export { embeddedSaladCatalog } from '@wings4u/customization';

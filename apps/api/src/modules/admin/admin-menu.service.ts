@@ -30,6 +30,7 @@ export type CreateUpdateItemPayload = {
   modifier_groups?: Array<{ id: string }>;
   removable_ingredients?: Array<{ name: string; sortOrder: number }>;
   additional_ingredients?: Array<{
+    id?: string;
     name: string;
     price_delta_cents: number;
     matches_ingredient?: string;
@@ -755,39 +756,6 @@ export class AdminMenuService {
     return this.invalidateCatalogAfter(
       locationId,
       this.prisma.$transaction(async (tx) => {
-        let existingAddonGroupIds: string[] = [];
-        if (data.additional_ingredients !== undefined) {
-          const existingLinks = await tx.menuItemModifierGroup.findMany({
-            where: { menuItemId: id },
-            select: {
-              modifierGroupId: true,
-              contextKey: true,
-              modifierGroup: {
-                select: { contextKey: true },
-              },
-            },
-          });
-          existingAddonGroupIds = existingLinks
-            .filter(
-              (link) =>
-                link.contextKey === "addon" ||
-                link.modifierGroup.contextKey === "addon",
-            )
-            .map((link) => link.modifierGroupId);
-
-          if (
-            data.modifier_groups === undefined &&
-            existingAddonGroupIds.length > 0
-          ) {
-            await tx.menuItemModifierGroup.deleteMany({
-              where: {
-                menuItemId: id,
-                modifierGroupId: { in: existingAddonGroupIds },
-              },
-            });
-          }
-        }
-
         // Keep stable recipe IDs for unchanged ingredients so unrelated edits do
         // not invalidate saved carts. Deleted/renamed ingredients require review.
         if (data.removable_ingredients !== undefined) {
@@ -807,20 +775,15 @@ export class AdminMenuService {
           await tx.removableIngredient.deleteMany({ where: { menuItemId: id, id: { notIn: retained } } });
         }
 
-        // Replace-all: modifier group links
+        // Preserve existing link metadata; only change membership.
         if (data.modifier_groups) {
-          await tx.menuItemModifierGroup.deleteMany({
-            where: { menuItemId: id },
-          });
-          if (data.modifier_groups.length > 0) {
-            await tx.menuItemModifierGroup.createMany({
-              data: data.modifier_groups.map((mg, i) => ({
-                menuItemId: id,
-                modifierGroupId: mg.id,
-                sortOrder: i,
-              })),
-            });
-          }
+          const current = await tx.menuItemModifierGroup.findMany({ where: { menuItemId: id } });
+          const wanted = data.modifier_groups.map(group => group.id);
+          await tx.menuItemModifierGroup.deleteMany({ where: { menuItemId: id, modifierGroupId: { notIn: wanted } } });
+          const added = wanted.filter(groupId => !current.some(link => link.modifierGroupId === groupId));
+          if (added.length) await tx.menuItemModifierGroup.createMany({ data: added.map((groupId, i) => ({
+            menuItemId: id, modifierGroupId: groupId, sortOrder: current.length + i,
+          })) });
         }
 
         // Replace-all: schedules
@@ -858,26 +821,7 @@ export class AdminMenuService {
 
         await this.syncWingComboSideOptions(tx, locationId, updatedItem);
         if (data.additional_ingredients !== undefined) {
-          for (const groupId of existingAddonGroupIds) {
-            const remainingLink = await tx.menuItemModifierGroup.findFirst({
-              where: { modifierGroupId: groupId },
-              select: { modifierGroupId: true },
-            });
-            if (!remainingLink) {
-              await tx.modifierGroup.update({
-                where: { id: groupId },
-                data: { archivedAt: new Date() },
-              });
-            }
-          }
-
-          await this.createAdditionalIngredientsGroup(
-            tx,
-            locationId,
-            id,
-            updatedItem.name,
-            data.additional_ingredients,
-          );
+          await this.updateAdditionalIngredients(tx, locationId, id, updatedItem.name, data.additional_ingredients);
         }
 
         return updatedItem;
@@ -1126,13 +1070,91 @@ export class AdminMenuService {
     }
   }
 
+  private async updateAdditionalIngredients(
+    tx: Prisma.TransactionClient, locationId: string, menuItemId: string, itemName: string,
+    rows: NonNullable<CreateUpdateItemPayload["additional_ingredients"]>,
+  ): Promise<void> {
+    const links = (await tx.menuItemModifierGroup.findMany({
+      where: { menuItemId }, include: { modifierGroup: { include: { options: true, menuItems: true } } },
+    })).filter(link => (link.contextKey ?? link.modifierGroup.contextKey) === 'addon');
+    const options = links.flatMap(link => link.modifierGroup.options);
+    const retained = new Set<string>();
+    const itemApprovals: NonNullable<CreateUpdateItemPayload['additional_ingredients']> = [];
+    for (const row of rows) {
+      const prior = row.id ? options.find(option => option.id === row.id) : undefined;
+      if (row.id && (!prior || !prior.isActive || retained.has(row.id))) throw new BadRequestException('Additional ingredients changed. Reload this item.');
+      if (row.id) retained.add(row.id);
+      if (typeof row.matches_ingredient !== 'string') throw new BadRequestException('Explicit mapping or item approval is required');
+      const unchanged = prior && row.name.trim() === prior.name && row.price_delta_cents === prior.priceDeltaCents;
+      if (row.matches_ingredient === '__unconfigured__' && !(unchanged && (!prior.addonMatchNormalized || prior.addonMatchNormalized === '__unconfigured__'))) {
+        throw new BadRequestException('Explicit ingredient mapping or item approval is required for changed ingredients.');
+      }
+    }
+    const mapping = (row: typeof rows[number]) => {
+      const prior = options.find(option => option.id === row.id);
+      if (prior && (row.matches_ingredient === '__unconfigured__' || row.matches_ingredient === prior.addonMatchNormalized)) return prior.addonMatchNormalized;
+      return row.matches_ingredient?.trim() ? normalizeIngredientText(row.matches_ingredient) : ALWAYS_AVAILABLE_ADDON_MATCH;
+    };
+    for (const link of links) {
+      const group = link.modifierGroup;
+      if (group.locationId !== locationId || group.archivedAt) throw new BadRequestException('Invalid additional ingredients group');
+      const changed = group.options.filter(option => option.isActive).filter(option => {
+        const row = rows.find(row => row.id === option.id);
+        return !row || row.name.trim() !== option.name || row.price_delta_cents !== option.priceDeltaCents || mapping(row) !== option.addonMatchNormalized;
+      });
+      if (!changed.length) continue;
+      if (group.menuItems.some(other => other.menuItemId !== menuItemId)) {
+        // Copy the affected shared group for this product only. Historical
+        // orders and every other product keep their original records.
+        const { id, createdAt, updatedAt, menuItems, options: source, ...config } = group;
+        const copy = await tx.modifierGroup.create({ data: { ...config, name: `${group.name} [shared copy]` } });
+        for (const option of source) {
+          const row = rows.find(row => row.id === option.id);
+          const newlyApproved = row && mapping(row) === ALWAYS_AVAILABLE_ADDON_MATCH && option.addonMatchNormalized !== ALWAYS_AVAILABLE_ADDON_MATCH;
+          if (newlyApproved) itemApprovals.push({ ...row, id: undefined });
+          const { id: optionId, createdAt: oc, updatedAt: ou, ...values } = option;
+          await tx.modifierOption.create({ data: { ...values, modifierGroupId: copy.id,
+            ...(row ? { name: row.name.trim(), priceDeltaCents: row.price_delta_cents, addonMatchNormalized: mapping(row) } : {}),
+            isActive: option.isActive && Boolean(row) && !newlyApproved } });
+        }
+        await tx.menuItemModifierGroup.deleteMany({ where: { menuItemId, modifierGroupId: group.id } });
+        await tx.menuItemModifierGroup.create({ data: { menuItemId, modifierGroupId: copy.id, sortOrder: link.sortOrder, contextKey: link.contextKey } });
+      } else {
+        for (const option of changed) {
+          const row = rows.find(row => row.id === option.id);
+          if (group.name.endsWith(' [shared copy]') && row && mapping(row) === ALWAYS_AVAILABLE_ADDON_MATCH && option.addonMatchNormalized !== ALWAYS_AVAILABLE_ADDON_MATCH) {
+            itemApprovals.push({ ...row, id: undefined });
+            await tx.modifierOption.update({ where: { id: option.id }, data: { isActive: false } });
+            continue;
+          }
+          await tx.modifierOption.update({ where: { id: option.id }, data: row
+            ? { name: row.name.trim(), priceDeltaCents: row.price_delta_cents, addonMatchNormalized: mapping(row) }
+            : { isActive: false } });
+        }
+      }
+    }
+    const added = [...rows.filter(row => !row.id), ...itemApprovals];
+    if (!added.length) return;
+    const dedicated = links.find(link => link.modifierGroup.menuItems.length === 1 && / (additional ingredients|item approved extras)$/i.test(link.modifierGroup.name));
+    if (!dedicated) {
+      await this.createAdditionalIngredientsGroup(tx, locationId, menuItemId, itemName, added, links.length ? 'Item Approved Extras' : 'Additional Ingredients');
+    } else {
+      let sortOrder = Math.max(0, ...dedicated.modifierGroup.options.map(option => option.sortOrder));
+      for (const row of added) await tx.modifierOption.create({ data: { modifierGroupId: dedicated.modifierGroupId,
+        name: row.name.trim(), priceDeltaCents: row.price_delta_cents, addonMatchNormalized: mapping(row), sortOrder: ++sortOrder } });
+      await tx.modifierGroup.update({ where: { id: dedicated.modifierGroupId }, data: { maxSelect: null } });
+    }
+  }
+
   private async createAdditionalIngredientsGroup(
     tx: Prisma.TransactionClient,
     locationId: string,
     menuItemId: string,
     itemName: string,
     rows: NonNullable<CreateUpdateItemPayload["additional_ingredients"]>,
+    suffix = 'Additional Ingredients',
   ): Promise<void> {
+    if (rows.some(row => row.id || typeof row.matches_ingredient !== 'string' || row.matches_ingredient === '__unconfigured__')) throw new BadRequestException('Explicit mapping or item approval is required for new ingredients');
     const ingredients = rows
       .map((row) => ({
         name: row.name.trim(),
@@ -1148,7 +1170,7 @@ export class AdminMenuService {
     const group = await tx.modifierGroup.create({
       data: {
         locationId,
-        name: `${itemName} Additional Ingredients`,
+        name: `${itemName} ${suffix}`,
         displayLabel: "Additional ingredients",
         selectionMode: "MULTI",
         minSelect: 0,

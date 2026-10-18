@@ -86,18 +86,18 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     f.db.wingFlavour.findMany.mockResolvedValue([{ id: 'hot', name: 'Catalogue Hot', heatLevel: 'HOT', isPlain: false, isActive: true, archivedAt: null }] as never);
     return { ...f, groups };
   }
-  it.each(['quote', 'checkout', 'pos'].flatMap(path => ['valid', 'missing-addon', 'too-many-addons'].map(problem => ({ path, problem }))))(
+  it.each(['quote', 'checkout', 'pos'].flatMap(path => ['valid', 'missing-addon', 'too-many-addons', 'unauthorized', 'stale', 'large-only', 'duplicate', 'price-conflict'].map(problem => ({ path, problem }))))(
     '$path checks the website/mobile included-small salad payload ($problem)', async ({ path, problem }) => {
     const f = wingFixture();
     Object.assign(f.item, { id: 'special', slug: 'wings-4u-special' }); f.payload.weight_lb = 2;
     for (const group of f.groups) group.menuItemId = 'special';
-    const saladGroup = (id: string, contextKey: string, options: any[], minSelect: number) => ({ menuItemId: 'salad', modifierGroupId: id, contextKey,
+    const saladGroup = (id: string, contextKey: string, options: any[], minSelect: number) => ({ menuItemId: 'salad', modifierGroupId: id, sortOrder: 1, contextKey,
       modifierGroup: { id, locationId: 'local', name: id, displayLabel: id, contextKey, archivedAt: null, minSelect, maxSelect: 1,
         isRequired: minSelect > 0, selectionMode: 'SINGLE', options: options.map(option => ({ modifierGroupId: id, isActive: true, linkedFlavourId: null, priceDeltaCents: 0, ...option })) } });
     const size = saladGroup('salad-size', 'size', [{ id: 'small', name: 'Small' }, { id: 'large', name: 'Large', priceDeltaCents: 400 }], 1);
-    const extras = saladGroup('salad-extras', 'addon', [{ id: 'croutons', name: 'Extra Croutons', priceDeltaCents: 50 }, { id: 'tomato', name: 'Extra Tomato', priceDeltaCents: 25 }], 0);
+    const extras = saladGroup('salad-extras', 'addon', [{ id: 'croutons', addonMatchNormalized: 'croutons', name: 'Extra Croutons', priceDeltaCents: 50 }, { id: 'tomato', addonMatchNormalized: 'tomato', name: 'Extra Tomato', priceDeltaCents: 25 }], 0);
     const salad = { ...f.item, id: 'salad', slug: 'caesar-salad', name: 'Caesar Salad', builderType: null,
-      category: { ...f.item.category, slug: 'salads' }, modifierGroups: [size, extras], removableIngredients: [] };
+      category: { ...f.item.category, slug: 'salads' }, modifierGroups: [size, extras], removableIngredients: [{ id: 'recipe-croutons', name: 'Croutons' }, { id: 'recipe-tomato', name: 'Tomato' }] };
     f.payload.salad_customization = { salad_menu_item_id: 'salad', salad_name: salad.name, salad_slug: salad.slug,
       removed_ingredients: [], modifier_selections: [{ modifier_option_id: 'croutons', name: 'Extra Croutons', price_delta_cents: 50 }] };
     f.selectionIds.push('croutons');
@@ -106,13 +106,24 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       f.selectionIds.push('tomato');
       (f.payload.salad_customization as { modifier_selections: unknown[] }).modifier_selections.push({ modifier_option_id: 'tomato', name: 'Extra Tomato', price_delta_cents: 25 });
     }
+    if (problem === 'unauthorized') extras.modifierGroup.options[0].addonMatchNormalized = null;
+    if (problem === 'stale') extras.modifierGroup.options[0].isActive = false;
+    if (problem === 'large-only') extras.modifierGroup.options[0].name = 'Extra Croutons Large';
+    if (problem === 'duplicate') {
+      f.selectionIds.push('croutons');
+      (f.payload.salad_customization as { modifier_selections: unknown[] }).modifier_selections.push({ modifier_option_id: 'croutons' });
+    }
+    if (problem === 'price-conflict') {
+      extras.modifierGroup.selectionMode = 'MULTI';
+      extras.modifierGroup.options.push({ ...extras.modifierGroup.options[0], id: 'conflict', priceDeltaCents: 100 });
+    }
     const mappings = [...f.groups, size, extras];
     f.db.menuItem.findMany.mockResolvedValue([f.item, salad] as never);
     f.db.menuItemModifierGroup.findMany.mockResolvedValue(mappings as never);
     f.db.modifierOption.findMany.mockResolvedValue(mappings.flatMap(group => group.modifierGroup.options.map(option => ({ ...option, modifierGroup: group.modifierGroup }))) as never);
     f.db.modifierGroup.findMany.mockResolvedValue(mappings.map(group => group.modifierGroup) as never);
     if (problem !== 'valid') {
-      await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: 'Invalid selections for salad-extras' }) });
+      await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: expect.any(String) }) });
       expect(f.db.order.create).not.toHaveBeenCalled(); return;
     }
     if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2800 });

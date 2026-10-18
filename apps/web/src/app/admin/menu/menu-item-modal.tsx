@@ -16,6 +16,7 @@ type Props = {
 
 type IngredientRow = { name: string; sortOrder: number };
 type AdditionalIngredientRow = {
+  id?: string;
   name: string;
   price_delta_cents: number;
   matches_ingredient: string;
@@ -137,7 +138,8 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
           ),
           removable_ingredients: removableIngredients,
           additional_ingredients: addonMappings.flatMap((mapping: any) =>
-            (mapping.modifierGroup?.options || []).map((option: any) => ({
+            (mapping.modifierGroup?.options || []).filter((option: any) => option.isActive !== false).map((option: any) => ({
+              id: option.id,
               name: option.name,
               price_delta_cents: option.priceDeltaCents,
               matches_ingredient:
@@ -216,7 +218,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
   const addAdditionalIngredient = () =>
     set("additional_ingredients", [
       ...form.additional_ingredients,
-      { name: "", price_delta_cents: 0, matches_ingredient: "" },
+      { name: "", price_delta_cents: 0, matches_ingredient: "__unconfigured__" },
     ]);
 
   const updateAdditionalIngredient = (
@@ -319,12 +321,13 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
       let savedId = itemId;
       const original = initialFormSnapshot ? JSON.parse(initialFormSnapshot) as FormState : null;
       const additionalChanged = !itemId || JSON.stringify(form.additional_ingredients) !== JSON.stringify(original?.additional_ingredients);
-      if (canManageAdditionalIngredients && additionalChanged && form.additional_ingredients.some(row => row.name.trim() && row.matches_ingredient === '__unconfigured__')) {
+      if (canManageAdditionalIngredients && additionalChanged && form.additional_ingredients.some(row => row.name.trim() && row.matches_ingredient === '__unconfigured__' &&
+        !original?.additional_ingredients.some(prior => prior.id && prior.id === row.id && JSON.stringify(prior) === JSON.stringify(row)))) {
         throw new Error('Review each additional ingredient: choose a recipe ingredient or explicitly approve it for this item.');
       }
       const payload: Record<string, unknown> = {
         ...form,
-        modifier_groups: canManageAdditionalIngredients && additionalChanged
+        modifier_groups: !itemId && canManageAdditionalIngredients && additionalChanged
           ? form.modifier_groups.filter((group) => !addonGroupIds.has(group.id))
           : form.modifier_groups,
       };

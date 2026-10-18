@@ -221,9 +221,9 @@ const mockSaladMenuItems = [
         opt('opt-size-lg', 'Large'),
       ]),
       grp('g-salad-addons', 'Salad Extras', 'addon', [
-        opt('opt-bacon', 'Add Bacon (Small)', { price_delta_cents: 200 }),
+        opt('opt-bacon', 'Add Bacon (Small)', { price_delta_cents: 200, addon_match_normalized: '__always__' }),
         opt('opt-feta', 'Add Feta Cheese', { price_delta_cents: 250 }),
-      ], { selection_mode: 'MULTI', min_select: 0, max_select: 3, is_required: false }),
+      ], { addon_scope_menu_item_id: 'salad-garden', selection_mode: 'MULTI', min_select: 0, max_select: 3, is_required: false }),
     ],
   },
   {
@@ -651,6 +651,21 @@ describe('Critical Wing Builder Bug Fixes and Parity', () => {
   // -------------------------------------------------------------------------
   // 10. Wings-4-U Special functionality (Salad selection, removals, add-ons)
   // -------------------------------------------------------------------------
+  test.each(['caesar-salad', 'garden-salad', 'greek-salad'])('embedded %s matches the shared Small salad fixture', async slug => {
+    const child = require('../../../packages/customization/test/fixtures.cjs').salad(slug);
+    const special = makeSpecialItem();
+    // One actual catalog salad choice for each fixture; other wing steps remain unchanged.
+    const saladGroup = special.modifier_groups.find(group => group.context_key === 'salad');
+    saladGroup.options = [opt('fixture-choice', child.name)];
+    await act(async () => { renderer = create(React.createElement(WingsBuilderMobile, {
+      item: special, visible: true, onClose, saladMenuItems: [child],
+    })); });
+    await act(async () => buttonContainingText(child.name).props.onPress());
+    const text = JSON.stringify(renderer.toJSON());
+    expect(text).toContain('Extra Dressing Small'); expect(text).toContain('Add Chicken');
+    for (const name of ['Add Avocado', 'Add Jalape?os', 'Extra Dressing Large']) expect(text).not.toContain(name);
+  });
+
   test('10. Wings-4-U Special child salad customization, removals, and payload serialization', async () => {
     const special = makeSpecialItem();
     await act(async () => {

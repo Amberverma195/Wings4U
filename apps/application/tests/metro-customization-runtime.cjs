@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const Metro = require('@expo/metro/metro');
+const { FileStore } = require('@expo/metro/metro-cache');
 const { getDefaultConfig } = require('expo/metro-config');
 const root = path.resolve(__dirname, '../../..');
 const folder = path.join(root, 'tmp/metro-customization-runtime');
@@ -13,6 +14,10 @@ async function bundle(entry, dev) {
   const config = getDefaultConfig(path.join(root, 'apps/application'));
   config.watchFolders = [...config.watchFolders, folder];
   config.maxWorkers = 2;
+  // Do not reset the running Expo app's shared system cache.
+  config.cacheStores = [new FileStore({ root: path.join(folder, 'transform-cache') })];
+  config.fileMapCacheDirectory = path.join(folder, 'file-map-cache');
+  fs.mkdirSync(config.fileMapCacheDirectory, { recursive: true });
   config.resetCache = true;
   config.reporter = { update() {} };
   config.serializer.getModulesRunBeforeMainModule = () => [];
@@ -54,7 +59,7 @@ async function main() {
 
   const entry = path.join(folder, 'entry.ts');
   fs.writeFileSync(entry, `import * as rules from '@wings4u/customization';
-    const names = ['customerCustomizationInstructions','customizationCatalog','defaultSelections','validateSelections','modifierTotal','maximumSelections','inspectCustomizationDraft'];
+    const names = ['customerCustomizationInstructions','customizationCatalog','embeddedSaladCatalog','defaultSelections','validateSelections','modifierTotal','maximumSelections','inspectCustomizationDraft'];
     const missing = names.filter(name => typeof rules[name] !== 'function');
     if (missing.length) throw new Error('Missing runtime exports: ' + missing.join(','));
     globalThis.__customizationProbe = { missing, notes: rules.customerCustomizationInstructions('Keep warm', 'Burger'),

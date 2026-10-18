@@ -1,4 +1,4 @@
-import { customizationCatalog, dedicatedAddonScope, validateSelections } from "@wings4u/customization";
+import { embeddedSaladCatalog, customizationCatalog, dedicatedAddonScope, validateSelections } from "@wings4u/customization";
 import { UnprocessableEntityException } from '@nestjs/common';
 import type { Prisma, WingFlavour } from '@prisma/client';
 import { getLunchAddonOptionIds } from './pricing';
@@ -30,7 +30,10 @@ export async function loadBuilderCatalogContext(params: {
   const ids = params.menuItems.filter(item => item.modifierGroups.length > 0 || item.builderType === 'WINGS' || item.builderType === 'WING_COMBO' ||
     ['lunch-burger', 'lunch-wrap'].includes(item.slug ?? '')).map(item => item.id);
   const childIds = [...new Set(params.builderPayloads.flatMap(payload => payload?.builder_type === 'LUNCH_SPECIAL' &&
-    typeof payload.child_menu_item_id === 'string' && payload.child_menu_item_id.trim() ? [payload.child_menu_item_id] : []))];
+    typeof payload.child_menu_item_id === 'string' && payload.child_menu_item_id.trim() ? [payload.child_menu_item_id] :
+    payload?.salad_customization && typeof payload.salad_customization === 'object' &&
+    typeof (payload.salad_customization as Record<string, unknown>).salad_menu_item_id === 'string'
+      ? [(payload.salad_customization as { salad_menu_item_id: string }).salad_menu_item_id] : []))];
   const [rows, children] = await Promise.all([
     ids.length ? params.db.menuItemModifierGroup.findMany({
       where: { menuItemId: { in: ids }, menuItem: { locationId: params.locationId } },
@@ -86,7 +89,7 @@ export async function assertBuilderCatalogValid(params: {
     }
   };
 
-  const checkCustomization = (product: { id: string; removableIngredients?: Array<{ id: string; name: string }> }, target: typeof groups, ids: string[]) => {
+  const checkCustomization = (product: { id: string; removableIngredients?: Array<{ id: string; name: string }> }, target: typeof groups, ids: string[], includedSalad = false) => {
     const serialized = target.map(group => ({
       id: group.id, name: group.name, display_label: group.displayLabel, context_key: group.contextKey,
       selection_mode: group.selectionMode, min_select: group.minSelect, max_select: group.maxSelect,
@@ -97,7 +100,10 @@ export async function assertBuilderCatalogValid(params: {
         addon_match_normalized: option.addonMatchNormalized, linked_flavour_id: option.linkedFlavourId })),
     }));
     const selections = Object.fromEntries(serialized.map(group => [group.id, group.options.filter(option => ids.includes(option.id)).map(option => option.id)]));
-    const catalog = customizationCatalog({ id: product.id, modifier_groups: serialized, removable_ingredients: product.removableIngredients ?? [] }, selections);
+    const item = { id: product.id, modifier_groups: serialized, removable_ingredients: product.removableIngredients ?? [] };
+    const catalog = includedSalad ? embeddedSaladCatalog(item) : customizationCatalog(item, selections);
+    if (includedSalad && !embeddedSaladCatalog(item).supportsIncludedSize) reject('Included Small salad is unavailable');
+    if (includedSalad) for (const group of serialized) if (group.context_key !== 'addon') delete selections[group.id];
     if (ids.some(id => !catalog.groups.some(group => group.options.some(option => option.id === id)))) reject('Menu options changed or are unauthorized. Please review this item.');
     const error = validateSelections(catalog.groups, selections);
     if (error) reject(error);
@@ -213,12 +219,17 @@ export async function assertBuilderCatalogValid(params: {
   const saladIds = new Set(
     ((payload.salad_customization as { modifier_selections?: Array<{ modifier_option_id: string }> } | undefined)?.modifier_selections ?? []).map(row => row.modifier_option_id),
   );
-  if (salad && params.catalogContext) {
-    const saladGroups = (params.catalogContext.mappings.get(salad.salad_menu_item_id as string) ?? [])
-      .map(row => ({ ...row.modifierGroup, sortOrder: row.sortOrder ?? row.modifierGroup.sortOrder, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
+  if (salad) {
+    const child = params.catalogContext ? params.catalogContext.children.get(salad.salad_menu_item_id as string)
+      : await db.menuItem.findFirst({ where: { id: salad.salad_menu_item_id as string, locationId }, include: childInclude });
+    if (!child || child.locationId !== locationId || child.archivedAt) reject('Invalid salad product');
+    const saladGroups = child.modifierGroups.map(row => ({ ...row.modifierGroup,
+      sortOrder: row.sortOrder ?? row.modifierGroup.sortOrder, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
     if (saladGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid salad catalogue configuration');
-    // The Special includes a small salad; both customer builders submit only its
-    // add-ons. A standalone salad's required size is represented by the parent.
+    const submitted = (salad.modifier_selections ?? []) as Array<{ modifier_option_id: string }>;
+    if (submitted.length !== saladIds.size) reject('Duplicate salad modifier selection');
+    if ([...saladIds].some(id => params.modifierOptionIds.filter(optionId => optionId === id).length !== 1)) reject('Invalid salad modifier selections');
+    checkCustomization(child, saladGroups, [...saladIds], menuItem.slug === 'wings-4u-special');
     const includedSize = new Set(menuItem.slug === 'wings-4u-special'
       ? saladGroups.filter(group => group.contextKey === 'size').map(group => group.id) : []);
     checkSelections([...saladIds], saladGroups, includedSize);

@@ -20,6 +20,9 @@ export type CatalogIssue = { kind: 'duplicate' | 'price_conflict' | 'id_conflict
 /** Legacy schema has no scope column: recognize dedicated editor/seed groups
  * only when their complete relation set proves exclusive ownership. */
 export function dedicatedAddonScope(groupName: string, linkedItemIds: string[], itemId: string): string | null {
+  // A copy of a shared group preserves its original mapping semantics. Merely
+  // copying it must never turn formerly unscoped __always__ rows into approvals.
+  if (groupName.endsWith(' [shared copy]')) return null;
   return linkedItemIds.length === 1 && linkedItemIds[0] === itemId ? itemId : null;
 }
 
@@ -89,6 +92,16 @@ export function customizationCatalog<T extends Group>(item: Product & { modifier
 export function defaultSelections(groups: Group[]): Record<string, string[]> {
   return Object.fromEntries(groups.map(group => [group.id, group.options.filter(option => option.is_default ||
     (group.context_key === 'size' && group.selection_mode === 'SINGLE' && group.options.length === 1)).slice(0, maximumSelections(group)).map(option => option.id)]));
+}
+
+/** The Special includes a real Small salad size, without charging its base price. */
+export function embeddedSaladCatalog<T extends Group>(item: Product & { modifier_groups: T[] }) {
+  const sizes = item.modifier_groups.filter(group => group.context_key === 'size');
+  const selections = Object.fromEntries(sizes.map(group => [group.id, group.options
+    .filter(option => normalizeIngredientText(option.name) === 'small').map(option => option.id)]));
+  const catalog = customizationCatalog(item, selections);
+  return { ...catalog, groups: catalog.groups.filter(group => group.context_key === 'addon'),
+    supportsIncludedSize: sizes.length > 0 && sizes.every(group => selections[group.id].length === 1) };
 }
 
 export function initialCustomizationSelections(item: Product): Record<string, string[]> {
