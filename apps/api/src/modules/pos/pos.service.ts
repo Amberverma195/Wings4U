@@ -50,6 +50,7 @@ function menuItemRowToValidationPayload(row: {
   name: string;
   slug: string;
   isAvailable: boolean;
+  stockStatus: string;
   archivedAt: Date | null;
   allowedFulfillmentType: string;
   requiresSpecialInstructions: boolean;
@@ -67,6 +68,7 @@ function menuItemRowToValidationPayload(row: {
     name: row.name,
     slug: row.slug,
     isAvailable: row.isAvailable,
+    stockStatus: row.stockStatus,
     archivedAt: row.archivedAt,
     allowedFulfillmentType: row.allowedFulfillmentType,
     requiresSpecialInstructions: row.requiresSpecialInstructions,

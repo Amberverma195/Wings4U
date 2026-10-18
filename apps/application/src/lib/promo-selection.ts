@@ -77,6 +77,7 @@ export function quotePromoParams(
 // Ported verbatim from `apps/web/src/lib/promo-errors.ts` so mobile reacts to
 // the exact same server rejection messages the website handles.
 const PROMO_REJECTION_PATTERNS = [
+  /^no eligible items for this promo\./i,
   /^invalid or expired promo code$/i,
   /^invalid coupon$/i,
   /^only one deal can be applied at a time$/i,

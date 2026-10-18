@@ -442,6 +442,7 @@ export class CartService {
     let promoDiscountCents = 0;
     const promoPricingLines = lineDetails.map((line, index) => ({
       menuItemId: line.menu_item_id,
+      menuItemSlug: menuItemMap.get(line.menu_item_id)?.slug ?? null,
       categoryId: menuItemMap.get(line.menu_item_id)?.categoryId ?? null,
       quantity: line.quantity,
       unitPriceCents: line.unit_price_cents,
@@ -494,6 +495,7 @@ export class CartService {
       fulfillmentType,
       existingDiscountCents: wingsDiscountCents + promoDiscountCents,
       explicitlyOptedIn: promoCodeIsFirstOrderDeal,
+      lines: promoPricingLines,
     });
     if (firstOrderDeal) {
       appliedPromoCodes.push(firstOrderDeal.promoCode);

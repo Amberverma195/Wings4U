@@ -18,6 +18,8 @@ type DbClient = Prisma.TransactionClient | PrismaClient | PrismaService;
 
 export type PromoPricingLine = {
   menuItemId: string;
+  // Set only from the server-loaded catalogue item, alongside calculated prices.
+  menuItemSlug: string | null;
   categoryId: string | null;
   quantity: number;
   unitPriceCents: number;
@@ -50,6 +52,27 @@ type PromoWithRelations = Prisma.PromoCodeGetPayload<{
 }>;
 
 type FirstOrderPromoRow = Prisma.PromoCodeGetPayload<Record<string, never>>;
+
+const COUPON_EXCLUDED_SKUS = new Set(['party-75-wings', 'party-100-wings']);
+
+function rejectNoCouponItems(): never {
+  throw new UnprocessableEntityException({
+    message: 'No eligible items for this promo. Party Specials are excluded from coupons.', field: 'promo_code',
+  });
+}
+
+function couponMerchandise(lines: PromoPricingLine[], targets?: {
+  productTargets?: Array<{ menuItemId: string }>; categoryTargets?: Array<{ menuCategoryId: string }>;
+}, requireEligible = true) {
+  const products = targets?.productTargets ?? [];
+  const categories = targets?.categoryTargets ?? [];
+  const eligibleLines = lines.filter(line => line.menuItemSlug && !COUPON_EXCLUDED_SKUS.has(line.menuItemSlug) &&
+    (!(products.length || categories.length) || products.some(target => target.menuItemId === line.menuItemId) ||
+      categories.some(target => target.menuCategoryId === line.categoryId)));
+  const subtotalCents = eligibleLines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0);
+  if (requireEligible && subtotalCents <= 0) rejectNoCouponItems();
+  return { lines: eligibleLines, subtotalCents };
+}
 
 function getFirstOrderDealPublicCode(
   rulePayloadJson: unknown,
@@ -373,6 +396,8 @@ export class PromotionsService {
       },
       include: {
         bxgyRule: true,
+        productTargets: true,
+        categoryTargets: true,
       },
     });
 
@@ -382,6 +407,8 @@ export class PromotionsService {
         field: "promo_code",
       });
     }
+
+    const eligible = couponMerchandise(params.lines, promo);
 
     if (
       promo.eligibleFulfillmentType !== "BOTH" &&
@@ -446,7 +473,7 @@ export class PromotionsService {
 
     if (
       promo.minSubtotalCents > 0 &&
-      params.itemSubtotalCents < promo.minSubtotalCents
+      eligible.subtotalCents < promo.minSubtotalCents
     ) {
       throw new UnprocessableEntityException({
         message: `Minimum order of ${formatUsdFromCents(promo.minSubtotalCents)} required for this promo`,
@@ -460,12 +487,12 @@ export class PromotionsService {
 
     if (promo.discountType === "PERCENT") {
       discountCents = Math.floor(
-        params.itemSubtotalCents * (Number(promo.discountValue) / 100),
+        eligible.subtotalCents * (Number(promo.discountValue) / 100),
       );
       redemptionValueCents = discountCents;
     } else if (promo.discountType === "FIXED_AMOUNT") {
       discountCents = Math.min(
-        params.itemSubtotalCents,
+        eligible.subtotalCents,
         Math.round(Number(promo.discountValue)),
       );
       redemptionValueCents = discountCents;
@@ -485,7 +512,7 @@ export class PromotionsService {
       waivesDelivery = true;
       redemptionValueCents = params.deliveryFeeCents;
     } else if (promo.discountType === "BXGY") {
-      discountCents = computeBxgyDiscountCents(promo, params.lines);
+      discountCents = computeBxgyDiscountCents(promo, eligible.lines);
       if (discountCents <= 0) {
         throw new UnprocessableEntityException({
           message:
@@ -503,6 +530,9 @@ export class PromotionsService {
         promo.maxDiscountCents,
       );
     }
+
+    discountCents = Math.max(0, Math.min(discountCents, eligible.subtotalCents));
+    if (!waivesDelivery) redemptionValueCents = discountCents;
 
     return {
       promoId: promo.id,
@@ -567,6 +597,7 @@ export class PromotionsService {
     fulfillmentType: "PICKUP" | "DELIVERY";
     existingDiscountCents?: number;
     explicitlyOptedIn?: boolean;
+    lines: PromoPricingLine[];
   }): Promise<EvaluatedFirstOrderDeal | null> {
     const client = params.client ?? this.prisma;
     if (!params.explicitlyOptedIn) {
@@ -591,24 +622,36 @@ export class PromotionsService {
         ...buildActivePromoWhere(new Date()),
         locationId: params.locationId,
       },
+      include: { productTargets: true, categoryTargets: true },
     });
     if (promos.length === 0) {
       return null;
     }
 
+    const eligible = couponMerchandise(params.lines);
+
     let remainingDiscountableCents = Math.max(
       0,
-      params.itemSubtotalCents - (params.existingDiscountCents ?? 0),
+      eligible.subtotalCents - (params.existingDiscountCents ?? 0),
     );
     let discountCents = 0;
     let waivesDelivery = false;
     const redemptions: EvaluatedFirstOrderDeal["redemptions"] = [];
+    let unmetMinimum: number | null = null;
+    let rejectedTargets = false;
 
     for (const promo of promos) {
       if (
         promo.eligibleFulfillmentType !== "BOTH" &&
         promo.eligibleFulfillmentType !== params.fulfillmentType
       ) {
+        continue;
+      }
+
+      const benefitEligible = couponMerchandise(params.lines, promo, false);
+      if (benefitEligible.subtotalCents <= 0) { rejectedTargets = true; continue; }
+      if (benefitEligible.subtotalCents < promo.minSubtotalCents) {
+        unmetMinimum = Math.min(unmetMinimum ?? promo.minSubtotalCents, promo.minSubtotalCents);
         continue;
       }
 
@@ -627,7 +670,7 @@ export class PromotionsService {
       let candidateDiscountCents = 0;
       if (promo.discountType === "PERCENT") {
         candidateDiscountCents = Math.floor(
-          params.itemSubtotalCents * (Number(promo.discountValue) / 100),
+          benefitEligible.subtotalCents * (Number(promo.discountValue) / 100),
         );
       } else if (promo.discountType === "FIXED_AMOUNT") {
         candidateDiscountCents = Math.round(Number(promo.discountValue));
@@ -642,6 +685,7 @@ export class PromotionsService {
 
       const appliedDiscountCents = Math.min(
         Math.max(0, candidateDiscountCents),
+        benefitEligible.subtotalCents,
         remainingDiscountableCents,
       );
       if (appliedDiscountCents <= 0) {
@@ -657,6 +701,12 @@ export class PromotionsService {
     }
 
     if (discountCents <= 0 && !waivesDelivery) {
+      if (unmetMinimum != null) {
+        throw new UnprocessableEntityException({
+          message: `Minimum order of ${formatUsdFromCents(unmetMinimum)} required for this promo`, field: 'promo_code',
+        });
+      }
+      if (rejectedTargets) rejectNoCouponItems();
       return null;
     }
 

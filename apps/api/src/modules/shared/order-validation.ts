@@ -23,6 +23,7 @@ export type ValidationMenuItem = {
   slug?: string | null;
   builderType?: string | null;
   isAvailable: boolean;
+  stockStatus: string;
   archivedAt: Date | null;
   allowedFulfillmentType: string;
   requiresSpecialInstructions: boolean;
@@ -158,6 +159,13 @@ export function assertMenuItemOrderable(params: {
     throw new UnprocessableEntityException({
       message: `${label} "${menuItem.name}" is currently unavailable`,
       field: "items",
+    });
+  }
+  if (menuItem.stockStatus === 'UNAVAILABLE') {
+    throw new UnprocessableEntityException({
+      code: 'CART_ITEM_UNAVAILABLE',
+      message: `${label} "${menuItem.name}" is currently out of stock. Please remove it or choose another item.`,
+      field: 'items',
     });
   }
   if (

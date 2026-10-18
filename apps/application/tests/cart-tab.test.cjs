@@ -73,6 +73,22 @@ test('empty Cart keeps Browse menu available, and pricing errors still block che
   expect(button('Checkout').props.disabled).toBe(false); // Allow a deliberate retry.
 });
 
+test('saved out-of-stock lines show recovery and can be removed without deleting companion items', async () => {
+  const untouched = { ...mockCart.items[0], key: 'burger', menu_item_id: 'burger', name: 'Burger', quantity: 3 };
+  mockCart.items = [mockCart.items[0], untouched];
+  const original = apiJson.getMockImplementation();
+  const message = 'Wings is currently out of stock. Please remove it or choose another item.';
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? Promise.reject(Object.assign(new Error(message), {
+    body: { errors: [{ code: 'CART_ITEM_UNAVAILABLE', message, detail: { affected_item_ids: ['wings'], affected_item_indices: [0] } }] },
+  })) : original(url, init));
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(renderer.root.findAllByType('Text').some(node => node.children.join('') === message)).toBe(true);
+  await act(async () => button('Checkout').props.onPress()); expect(mockRouter.push).not.toHaveBeenCalled();
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Remove Wings' }).props.onPress());
+  expect(mockCart.removeItem).toHaveBeenCalledWith('wings'); expect(mockCart.removeItem).toHaveBeenCalledTimes(1);
+  expect(mockCart.items[1]).toBe(untouched); expect(untouched.quantity).toBe(3);
+});
+
 test.each([false, true].flatMap(authenticated => ['old 75-wing weight / missing fields', 'old 100-wing weight', 'inactive modifier', 'invalid flavour'].map(problem => ({ authenticated, problem }))))('saved $problem recovers individually without losing other lines (authenticated=$authenticated)', async ({ authenticated, problem }) => {
   mockSession.authenticated = authenticated;
   const untouched = { ...mockCart.items[0], key: 'burger', menu_item_id: 'burger', name: 'Burger', quantity: 3 };

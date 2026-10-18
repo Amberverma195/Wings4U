@@ -5,7 +5,7 @@ import type { Prisma, WingFlavour } from '@prisma/client';
 
 const item: ValidationMenuItem = {
   id: 'wings', name: '1 Pound ? 1 Flavour', slug: 'wings-1lb', builderType: 'WINGS',
-  isAvailable: true, archivedAt: null, allowedFulfillmentType: 'BOTH',
+  isAvailable: true, stockStatus: 'NORMAL', archivedAt: null, allowedFulfillmentType: 'BOTH',
   requiresSpecialInstructions: false, schedules: [], modifierGroups: [],
 };
 

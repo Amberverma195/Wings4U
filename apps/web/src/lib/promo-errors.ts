@@ -1,4 +1,5 @@
 const PROMO_REJECTION_PATTERNS = [
+  /^no eligible items for this promo\./i,
   /^invalid or expired promo code$/i,
   /^invalid coupon$/i,
   /^only one deal can be applied at a time$/i,

@@ -59,3 +59,20 @@ test.each(['old 75-wing weight / missing fields', 'old 100-wing weight', 'inacti
   await act(async () => renderer.root.findByProps({ className: 'cart-checkout-fire-btn' }).props.onClick()); expect(mockRouter.push).toHaveBeenCalledWith('/checkout');
   expect(mockCart.items.map(line => line.quantity)).toEqual([2, 3]);
 });
+
+test('a saved out-of-stock line identifies the item, blocks checkout and can be removed individually', async () => {
+  const untouched = mockCart.items[1];
+  const original = apiJson.getMockImplementation();
+  const stockMessage = '75 Wings is currently out of stock. Please remove it or choose another item.';
+  apiJson.mockImplementation((url, init) => url.includes('/cart/quote') ? Promise.reject(Object.assign(new Error(stockMessage), {
+    body: { errors: [{ code: 'CART_ITEM_UNAVAILABLE', message: stockMessage, detail: { affected_item_ids: ['party-75'], affected_item_indices: [0] } }] },
+  })) : original(url, init));
+  await mount(); await tick();
+  const cards = renderer.root.findAll(node => node.type === 'div' && node.props.className === 'wk-cart-line-card');
+  expect(text(cards[0])).toContain(stockMessage); expect(text(cards[1])).not.toContain(stockMessage);
+  await act(async () => renderer.root.findByProps({ className: 'cart-checkout-fire-btn' }).props.onClick());
+  expect(mockRouter.push).not.toHaveBeenCalledWith('/checkout');
+  await act(async () => cards[0].findByProps({ className: 'cart-line-btn-remove' }).props.onClick());
+  expect(mockCart.removeItem).toHaveBeenCalledWith('party'); expect(mockCart.removeItem).toHaveBeenCalledTimes(1);
+  expect(mockCart.items[1]).toBe(untouched); expect(untouched.quantity).toBe(3);
+});

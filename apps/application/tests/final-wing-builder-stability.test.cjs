@@ -256,6 +256,8 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
      1. Cart and checkout subtotal parity
      ========================================================================= */
   describe('1. Cart and checkout subtotal parity', () => {
+    beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-10-17T16:00:00Z')); });
+    afterEach(() => jest.useRealTimers());
     test('shared calculateCartSubtotal matches line subtotal across cart and checkout preparation', async () => {
       const items = [
         {

@@ -851,6 +851,7 @@ function CheckoutScreenContent() {
                       </TouchableOpacity>
                     ) : null}
 
+                    {availableCoupons.length > 0 ? <Text style={styles.dealOptionMeta}>Party Specials are excluded from coupons.</Text> : null}
                     {availableCoupons.map((coupon) => {
                       const applied = promo.promoCode === coupon.code;
                       return (

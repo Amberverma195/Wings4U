@@ -52,6 +52,7 @@ test('quote params mirror the website non-stacking rule (promo code wins)', () =
 });
 
 test('server rejection messages for invalid/expired/conflicting promos are recognized', () => {
+  expect(isPromoRejectedQuoteError('No eligible items for this promo. Party Specials are excluded from coupons.')).toBe(true);
   expect(isPromoRejectedQuoteError('Invalid or expired promo code')).toBe(true);
   expect(isPromoRejectedQuoteError('Only one deal can be applied at a time')).toBe(true);
   expect(isPromoRejectedQuoteError('This promo code is only valid for delivery orders')).toBe(true);

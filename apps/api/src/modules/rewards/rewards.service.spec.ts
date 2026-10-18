@@ -126,6 +126,17 @@ describe('official earning portions and completion ledger', () => {
     expect(f.summary).toMatchObject({ availableStamps: 8, lifetimeStamps: 31 });
     expect(f.entries[0]).toMatchObject({ entryType: 'EARNED', deltaStamps: 8, poundsAwarded: 11 });
   });
+  it.each(['PICKED_UP', 'DELIVERED', 'NO_PIN_DELIVERY'].flatMap(status => [
+    { status, lines: [line('lunch-5-wings', 1)], earned: 0 },
+    { status, lines: [line('lunch-5-wings', 3)], earned: 0 },
+    { status, lines: [line('lunch-5-wings', 3), line('wings-2lb')], earned: 2 },
+    { status, lines: [line('lunch-5-wings'), line('party-75-wings')], earned: 8 },
+    { status, lines: [line('lunch-5-wings'), line('party-100-wings')], earned: 11 },
+  ]))('confirmed lunch exclusion on $status yields $earned stamps', async ({ status, lines, earned }) => {
+    const f = fixture(lines, 0, false, status); await f.run(); await f.run();
+    expect(f.summary).toMatchObject({ availableStamps: Math.min(8, earned), lifetimeStamps: 20 + earned });
+    expect(f.tx.customerWingsStampLedger.create).toHaveBeenCalledTimes(earned > 0 ? 1 : 0);
+  });
   it.each(['PLACED', 'PREPARING', 'CANCELLED'])('does not award before a qualifying completion (%s)', async status => {
     const f = fixture([line('party-75-wings')], 0, false, status); await f.run(); expect(f.tx.customerWingsRewards.update).not.toHaveBeenCalled();
   });

@@ -572,6 +572,7 @@ export class CheckoutService {
           slug: true,
           basePriceCents: true,
           isAvailable: true,
+          stockStatus: true,
           archivedAt: true,
           allowedFulfillmentType: true,
           builderType: true,
@@ -1100,6 +1101,7 @@ export class CheckoutService {
       }> = [];
       const promoPricingLines = lineItems.map((line) => ({
         menuItemId: line.menuItemId,
+        menuItemSlug: menuItemMap.get(line.menuItemId)?.slug ?? null,
         categoryId: menuItemMap.get(line.menuItemId)?.categoryId ?? null,
         quantity: line.quantity,
         unitPriceCents: line.unitPriceCents,
@@ -1161,6 +1163,7 @@ export class CheckoutService {
         fulfillmentType: params.fulfillmentType,
         existingDiscountCents: wingsRewardDiscountCents + promoDiscountCents,
         explicitlyOptedIn: promoCodeIsFirstOrderDeal,
+        lines: promoPricingLines,
       });
       if (firstOrderDeal) {
         appliedPromoCodes.push(firstOrderDeal.promoCode);

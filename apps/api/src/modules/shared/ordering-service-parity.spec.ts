@@ -13,7 +13,7 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     const settings = { taxRateBps: 1300, taxDeliveryFee: false, taxTip: false, discountsReduceTaxableBase: true, defaultPrepTimeMinutes: 15 };
     const category = { id: 'category', slug: 'lunch-specials', name: 'Lunch', availableFromMinutes: 660, availableUntilMinutes: 900 };
     const item = { id: 'lunch', locationId: 'local', name: 'Lunch Burger', slug: 'lunch-burger', categoryId: category.id,
-      basePriceCents: 1000, isAvailable: true, archivedAt: null, builderType: null, allowedFulfillmentType: 'BOTH', requiresSpecialInstructions: false,
+      basePriceCents: 1000, isAvailable: true, stockStatus: 'NORMAL', archivedAt: null, builderType: null, allowedFulfillmentType: 'BOTH', requiresSpecialInstructions: false,
       category, schedules: [], modifierGroups: [], removableIngredients: [] };
     const option = { id: 'cheese', modifierGroupId: 'extras', isActive: true, priceDeltaCents: 150, name: 'Cheese', modifierGroup: { name: 'Extras' } };
     const child = { ...item, id: 'burger', slug: 'veggie-burger', stockStatus: 'NORMAL', isHidden: false, category: { ...category, slug: 'burgers' },
@@ -86,6 +86,31 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     f.db.wingFlavour.findMany.mockResolvedValue([{ id: 'hot', name: 'Catalogue Hot', heatLevel: 'HOT', isPlain: false, isActive: true, archivedAt: null }] as never);
     return { ...f, groups };
   }
+  it.each(['quote', 'checkout', 'pos'].flatMap(path => [true, false].flatMap(isAvailable =>
+    ['NORMAL', 'LOW_STOCK', 'UNAVAILABLE'].flatMap(stockStatus => [false, true].map(archived => ({ path, isAvailable, stockStatus, archived }))))))(
+    '$path enforces catalogue isAvailable=$isAvailable stock=$stockStatus archived=$archived before persistence',
+    async ({ path, isAvailable, stockStatus, archived }) => {
+      const { item, run, db } = fixture();
+      Object.assign(item, { isAvailable, stockStatus, archivedAt: archived ? new Date() : null });
+      if (!isAvailable || stockStatus === 'UNAVAILABLE' || archived) {
+        await expect(run(path)).rejects.toMatchObject({ response: expect.objectContaining({ code: 'CART_ITEM_UNAVAILABLE',
+          detail: { affected_item_ids: ['lunch'], affected_item_indices: [0] },
+          message: expect.stringContaining(isAvailable && !archived && stockStatus === 'UNAVAILABLE' ? 'out of stock' : 'no longer available') }) });
+        expect(db.order.create).not.toHaveBeenCalled();
+      } else if (path === 'quote') {
+        expect(await run(path)).toMatchObject({ item_subtotal_cents: 2300 });
+      } else {
+        await expect(run(path)).rejects.toBe(stop);
+        expect(db.order.create).toHaveBeenCalled();
+      }
+      if (path === 'checkout') expect(db.menuItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ stockStatus: true }) }));
+    },
+  );
+  it.each(['quote', 'checkout', 'pos'])('%s retains lunch-child stock restrictions', async path => {
+    const { child, run, db } = fixture(); child.stockStatus = 'UNAVAILABLE';
+    await expect(run(path)).rejects.toMatchObject({ response: expect.objectContaining({ code: 'CART_ITEM_CONFIGURATION_INVALID' }) });
+    expect(db.order.create).not.toHaveBeenCalled();
+  });
   it.each(['quote', 'checkout', 'pos'])('%s accepts a valid fractional SKU with paid modifiers and extra flavour', async path => {
     const { run, db } = wingFixture();
     if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 2700, lines: [{ unit_price_cents: 1350 }] });

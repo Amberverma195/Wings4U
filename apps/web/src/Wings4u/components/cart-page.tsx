@@ -1177,6 +1177,7 @@ export function CartPage() {
               </button>
             ) : null}
 
+            {activePromos.length > 0 ? <p style={styles.couponCardMeta}>Party Specials are excluded from coupons.</p> : null}
             {!couponsRefreshing ? activePromos.map((promo) => {
               const isApplied = confirmedPromoCodes.has(promo.code.toUpperCase());
               const isAutomatic = Boolean(promo.autoApply);
