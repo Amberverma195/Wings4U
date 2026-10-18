@@ -11,11 +11,13 @@ const burger = (quantity = 1) => line('burger', 1500, quantity);
 
 function fixture(type = 'PERCENT', overrides: Record<string, unknown> = {}) {
   const promo = { id: 'promo', code: 'SAVE', discountType: type, discountValue: 10, minSubtotalCents: 0,
+    isActive: true, archivedAt: null, startsAt: null, endsAt: null, validTimeFrom: null, validTimeTo: null, validDays: [],
     maxDiscountCents: null, eligibleFulfillmentType: 'BOTH', usageLimitTotal: null, usageLimitPerCustomer: null,
     isOneTimePerCustomer: false, isFirstOrderOnly: false, rulePayloadJson: null,
     bxgyRule: { qualifyingProductId: null, qualifyingCategoryId: null, rewardProductId: null, rewardCategoryId: null,
       requiredQty: 1, rewardQty: 1, maxUsesPerOrder: 5 }, ...overrides };
-  const db = { promoCode: { findFirst: jest.fn().mockResolvedValue(promo), findMany: jest.fn().mockResolvedValue([]) },
+  const db = { location: { findUnique: jest.fn().mockResolvedValue({ timezoneName: 'America/Toronto' }) },
+    promoCode: { findFirst: jest.fn().mockResolvedValue(promo), findMany: jest.fn().mockResolvedValue([]) },
     promoRedemption: { count: jest.fn().mockResolvedValue(0) }, order: { count: jest.fn().mockResolvedValue(0) } };
   const service = new PromotionsService(db as never);
   const params = (lines: PromoPricingLine[]) => ({ locationId: 'store', userId: 'customer', code: 'SAVE', lines,

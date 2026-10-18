@@ -2,6 +2,7 @@ import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { PrismaService } from "../../database/prisma.service";
+import { canWaiveDelivery, DELIVERY_CAP_MESSAGE, isPromoScheduledNow, PROMO_SCHEDULE_MESSAGE } from './promotion-schedule';
 import {
   FIRST_ORDER_DEAL_CODE_PREFIX,
   FIRST_ORDER_DEAL_KINDS,
@@ -313,6 +314,11 @@ function computeBxgyDiscountCents(
 export class PromotionsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async locationTimezone(client: DbClient, locationId: string): Promise<string> {
+    const location = await client.location.findUnique({ where: { id: locationId }, select: { timezoneName: true } });
+    return location?.timezoneName ?? 'America/Toronto';
+  }
+
   async getActivePromos(locationId: string, userId?: string) {
     const now = new Date();
     const promos = await this.prisma.promoCode.findMany({
@@ -326,11 +332,13 @@ export class PromotionsService {
       },
       include: {
         bxgyRule: true,
+        validDays: true,
       },
       orderBy: [{ endsAt: "asc" }, { createdAt: "desc" }],
     });
 
-    const serializedPromos = promos.map((promo) => serializePromo(promo));
+    const timezone = await this.locationTimezone(this.prisma, locationId);
+    const serializedPromos = promos.filter(promo => isPromoScheduledNow(promo, now, timezone)).map((promo) => serializePromo(promo));
     if (!userId) {
       return serializedPromos;
     }
@@ -355,10 +363,11 @@ export class PromotionsService {
         ...buildActivePromoWhere(now),
         locationId,
       },
+      include: { validDays: true },
     });
     const firstOrderDeal = serializeFirstOrderDealPromo(
       locationId,
-      firstOrderPromos,
+      firstOrderPromos.filter(promo => isPromoScheduledNow(promo, now, timezone)),
     );
 
     return firstOrderDeal
@@ -377,6 +386,7 @@ export class PromotionsService {
     lines: PromoPricingLine[];
   }): Promise<EvaluatedPromo> {
     const client = params.client ?? this.prisma;
+    const now = new Date();
     const code = params.code.trim().toUpperCase();
     if (isFirstOrderDealCode(code)) {
       throw new UnprocessableEntityException({
@@ -388,7 +398,7 @@ export class PromotionsService {
     const promo = await client.promoCode.findFirst({
       where: {
         code,
-        ...buildActivePromoWhere(new Date()),
+        ...buildActivePromoWhere(now),
         OR: [
           { locationId: params.locationId },
           { scopeType: "GLOBAL", locationId: null },
@@ -398,6 +408,7 @@ export class PromotionsService {
         bxgyRule: true,
         productTargets: true,
         categoryTargets: true,
+        validDays: true,
       },
     });
 
@@ -408,6 +419,9 @@ export class PromotionsService {
       });
     }
 
+    if (!isPromoScheduledNow(promo, now, await this.locationTimezone(client, params.locationId))) {
+      throw new UnprocessableEntityException({ message: PROMO_SCHEDULE_MESSAGE, field: 'promo_code' });
+    }
     const eligible = couponMerchandise(params.lines, promo);
 
     if (
@@ -509,6 +523,9 @@ export class PromotionsService {
           field: "promo_code",
         });
       }
+      if (!canWaiveDelivery(params.deliveryFeeCents, promo.maxDiscountCents)) {
+        throw new UnprocessableEntityException({ message: DELIVERY_CAP_MESSAGE, field: 'promo_code' });
+      }
       waivesDelivery = true;
       redemptionValueCents = params.deliveryFeeCents;
     } else if (promo.discountType === "BXGY") {
@@ -562,7 +579,6 @@ export class PromotionsService {
           ),
         },
         locationId: params.locationId,
-        ...buildActivePromoWhere(new Date()),
       },
     });
 
@@ -600,6 +616,7 @@ export class PromotionsService {
     lines: PromoPricingLine[];
   }): Promise<EvaluatedFirstOrderDeal | null> {
     const client = params.client ?? this.prisma;
+    const now = new Date();
     if (!params.explicitlyOptedIn) {
       return null;
     }
@@ -619,13 +636,15 @@ export class PromotionsService {
             firstOrderDealCode(params.locationId, kind),
           ),
         },
-        ...buildActivePromoWhere(new Date()),
+        ...buildActivePromoWhere(now),
         locationId: params.locationId,
       },
-      include: { productTargets: true, categoryTargets: true },
+      include: { productTargets: true, categoryTargets: true, validDays: true },
     });
-    if (promos.length === 0) {
-      return null;
+    const timezone = await this.locationTimezone(client, params.locationId);
+    const scheduledPromos = promos.filter(promo => isPromoScheduledNow(promo, now, timezone));
+    if (scheduledPromos.length === 0) {
+      throw new UnprocessableEntityException({ message: PROMO_SCHEDULE_MESSAGE, field: 'promo_code' });
     }
 
     const eligible = couponMerchandise(params.lines);
@@ -639,12 +658,14 @@ export class PromotionsService {
     const redemptions: EvaluatedFirstOrderDeal["redemptions"] = [];
     let unmetMinimum: number | null = null;
     let rejectedTargets = false;
+    let deliveryRejection: string | null = null;
 
-    for (const promo of promos) {
+    for (const promo of scheduledPromos) {
       if (
         promo.eligibleFulfillmentType !== "BOTH" &&
         promo.eligibleFulfillmentType !== params.fulfillmentType
       ) {
+        if (promo.discountType === 'FREE_DELIVERY') deliveryRejection = 'This promo code is only valid for delivery orders';
         continue;
       }
 
@@ -657,6 +678,11 @@ export class PromotionsService {
 
       if (promo.discountType === "FREE_DELIVERY") {
         if (params.fulfillmentType !== "DELIVERY" || params.deliveryFeeCents <= 0) {
+          deliveryRejection = params.fulfillmentType !== 'DELIVERY' ? 'This promo code is only valid for delivery orders' : 'Delivery is already free for this order';
+          continue;
+        }
+        if (!canWaiveDelivery(params.deliveryFeeCents, promo.maxDiscountCents)) {
+          deliveryRejection = DELIVERY_CAP_MESSAGE;
           continue;
         }
         waivesDelivery = true;
@@ -707,6 +733,7 @@ export class PromotionsService {
         });
       }
       if (rejectedTargets) rejectNoCouponItems();
+      if (deliveryRejection) throw new UnprocessableEntityException({ message: deliveryRejection, field: 'promo_code' });
       return null;
     }
 
