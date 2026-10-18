@@ -1,3 +1,4 @@
+import { assertBuilderCatalogValid } from "../shared/builder-catalog-validation";
 import {
   BadRequestException,
   ForbiddenException,
@@ -588,6 +589,19 @@ export class PosService {
             menuItem,
             builderPayload: cartItem.builderPayload,
             optionMap,
+          });
+
+          await assertBuilderCatalogValid({
+            db: tx,
+            locationId: params.locationId,
+            menuItem,
+            builderPayload: cartItem.builderPayload,
+            modifierOptionIds: (cartItem.modifierSelections ?? []).flatMap(row =>
+              row.modifierOptionId ? [row.modifierOptionId] : []),
+            fulfillmentType: params.fulfillmentType as "PICKUP" | "DELIVERY",
+            context: scheduleContext,
+            specialInstructions: cartItem.specialInstructions,
+            wingFlavourMap,
           });
         }
 

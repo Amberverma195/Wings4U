@@ -1,3 +1,4 @@
+import { assertBuilderCatalogValid } from "../shared/builder-catalog-validation";
 import {
   ConflictException,
   Injectable,
@@ -872,6 +873,18 @@ export class CheckoutService {
           menuItem,
           builderPayload: cartItem.builderPayload,
           optionMap,
+        });
+
+        await assertBuilderCatalogValid({
+          db: tx,
+          locationId: params.locationId,
+          menuItem,
+          builderPayload: cartItem.builderPayload,
+          modifierOptionIds: cartItem.modifierSelections?.map(row => row.modifierOptionId) ?? [],
+          fulfillmentType: params.fulfillmentType,
+          context: scheduleContext,
+          specialInstructions: cartItem.specialInstructions,
+          wingFlavourMap,
         });
 
         assertWingFlavoursOrderable({

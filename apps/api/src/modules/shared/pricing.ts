@@ -1,3 +1,5 @@
+import { UnprocessableEntityException } from "@nestjs/common";
+
 /**
  * Shared pricing computation and menu-validation helpers.
  *
@@ -165,40 +167,34 @@ export function getLunchAddonOptionIds(
     return [];
   }
   const addons = builderPayload.child_addons;
-  if (!Array.isArray(addons)) return [];
-  return addons
-    .map((row) =>
-      row &&
-      typeof row === "object" &&
-      typeof (row as { modifier_option_id?: unknown }).modifier_option_id ===
-        "string"
-        ? (row as { modifier_option_id: string }).modifier_option_id
-        : null,
-    )
-    .filter((id): id is string => Boolean(id));
+  if (addons === undefined) return [];
+  if (!Array.isArray(addons)) throw new UnprocessableEntityException("Invalid lunch add-ons");
+  const ids: string[] = [];
+  for (const row of addons) {
+    const id = row && typeof row === "object" && !Array.isArray(row)
+      ? (row as { modifier_option_id?: unknown }).modifier_option_id : undefined;
+    if (typeof id !== "string" || !id.trim() || id !== id.trim()) {
+      throw new UnprocessableEntityException("Every lunch add-on requires a modifier_option_id");
+    }
+    if (ids.includes(id)) throw new UnprocessableEntityException(`Duplicate add-on option "${id}" is not allowed`);
+    ids.push(id);
+  }
+  return ids;
 }
 
 export function getBuilderPriceDelta(
   builderPayload?: Record<string, unknown>,
-  optionMap?: Map<string, { priceDeltaCents: number }>,
+  optionMap?: Map<string, { priceDeltaCents: number; isActive?: boolean }>,
 ): number {
   if (!builderPayload) return 0;
   if (builderPayload.builder_type === "LUNCH_SPECIAL") {
-    const addons = builderPayload.child_addons;
-    if (!Array.isArray(addons)) return 0;
-    let sum = 0;
-    for (const row of addons) {
-      if (row && typeof row === "object") {
-        const optionId = (row as { modifier_option_id?: unknown }).modifier_option_id;
-        if (typeof optionId === "string" && optionMap?.has(optionId)) {
-          sum += optionMap.get(optionId)!.priceDeltaCents;
-        } else if ("price_delta_cents" in row) {
-          const n = Number((row as { price_delta_cents: unknown }).price_delta_cents);
-          if (Number.isFinite(n) && n > 0) sum += n;
-        }
+    return getLunchAddonOptionIds(builderPayload).reduce((sum, id) => {
+      const option = optionMap?.get(id);
+      if (!option || option.isActive === false || !Number.isSafeInteger(option.priceDeltaCents)) {
+        throw new UnprocessableEntityException(`Add-on option "${id}" is no longer available`);
       }
-    }
-    return sum;
+      return sum + option.priceDeltaCents;
+    }, 0);
   }
   if (builderPayload.builder_type === "ITEM_CUSTOMIZATION") {
     const bundle = builderPayload.side_pop_bundle;

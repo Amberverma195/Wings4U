@@ -1,3 +1,4 @@
+import { assertBuilderCatalogValid } from "../shared/builder-catalog-validation";
 import { Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { assertDeliveryAvailable } from "../../common/utils/delivery-availability";
@@ -277,6 +278,18 @@ export class CartService {
         menuItem,
         builderPayload: cartItem.builder_payload,
         optionMap,
+      });
+
+      await assertBuilderCatalogValid({
+        db: this.prisma,
+        locationId,
+        menuItem,
+        builderPayload: cartItem.builder_payload,
+        modifierOptionIds: cartItem.modifier_selections?.map(row => row.modifier_option_id) ?? [],
+        fulfillmentType,
+        context: scheduleContext,
+        specialInstructions: cartItem.special_instructions,
+        wingFlavourMap,
       });
 
       assertWingFlavoursOrderable({

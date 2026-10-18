@@ -99,7 +99,7 @@ describe("Order Validation & Pricing Security Hardening", () => {
             builder_type: "WINGS",
             wing_type: "BONE_IN",
             preparation: "BREADED",
-            flavour_slots: [],
+            flavour_slots: [{ slot_no: 1, wing_flavour_id: "fixture", placement: "ON_WINGS" }],
           },
         }),
       ).not.toThrow();
@@ -178,12 +178,14 @@ describe("Order Validation & Pricing Security Hardening", () => {
       ).toThrow("Salad customization is only available for Wings-4-U Special");
     });
 
-    it("allows salad_customization on Wings-4-U Special", () => {
+    it("allows complete salad_customization on Wings-4-U Special", () => {
       expect(() =>
         assertBuilderPayloadValid({
           menuItem: specialWingItem,
           builderPayload: {
             builder_type: "WINGS",
+            wing_type: "BONE_IN", preparation: "BREADED",
+            flavour_slots: [{ slot_no: 1, wing_flavour_id: "fixture", placement: "ON_WINGS" }],
             salad_customization: {
               salad_menu_item_id: "salad-1",
             },
@@ -391,8 +393,8 @@ describe("Order Validation & Pricing Security Hardening", () => {
       // When optionMap is provided, authoritative DB prices (150 + 200 = 350) are enforced
       expect(getBuilderPriceDelta(tamperedPayload, optionMap)).toBe(350);
 
-      // When optionMap is not provided, negative prices are clamped to 0
-      expect(getBuilderPriceDelta(tamperedPayload)).toBe(0);
+      // Missing catalogue pricing must fail closed
+      expect(() => getBuilderPriceDelta(tamperedPayload)).toThrow(UnprocessableEntityException);
     });
   });
 
@@ -404,7 +406,6 @@ describe("Order Validation & Pricing Security Hardening", () => {
           child_addons: [
             { modifier_option_id: "opt-1" },
             { modifier_option_id: "opt-2" },
-            null,
           ],
         }),
       ).toEqual(["opt-1", "opt-2"]);
