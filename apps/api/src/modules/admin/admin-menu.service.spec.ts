@@ -1,3 +1,4 @@
+jest.mock('../../database/prisma.service', () => ({ PrismaService: class {} }));
 import { AdminMenuService } from "./admin-menu.service";
 import { customizationCatalog, dedicatedAddonScope, modifierTotal } from '@wings4u/customization';
 
@@ -195,6 +196,30 @@ describe('incremental item extras (mock transactions only)', () => {
     const save = (additional_ingredients = rows()) => service.updateItem('loc-1', item.id, { ...itemPayload, is_wing_combo_side: false, modifier_groups: [{ id: 'extras' }], additional_ingredients });
     return { item, options, group, tx, save, rows, cache, web, realtime };
   }
+  it('preserves saved legacy mapping bytes on repeated saves without changing scope or IDs', async () => {
+    const f = fixture(); f.options[1].addonMatchNormalized = 'saved legacy value';
+    const rows = [f.options[0], ...f.options.slice(1).filter(o => o.isActive)].map(o => ({
+      id: o.id, name: o.name, price_delta_cents: o.priceDeltaCents, matches_ingredient: o.addonMatchNormalized ?? '__unconfigured__',
+    }));
+    await f.save(rows); await f.save(rows);
+    expect(f.options[1].addonMatchNormalized).toBe('saved legacy value');
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
+    expect(f.tx.modifierGroup.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.create).not.toHaveBeenCalled();
+  });
+  it('uses the shared normalizer when an owner explicitly maps a configured recipe extra', async () => {
+    const rules = require('@wings4u/customization');
+    const normalize = jest.spyOn(rules, 'normalizeIngredientText');
+    try {
+      const f = fixture();
+      f.options[1].addonMatchNormalized = null;
+      const rows = f.rows(); rows[0].matches_ingredient = 'Lettuce';
+      await f.save(rows);
+      expect(normalize).toHaveBeenCalledWith('Lettuce');
+      expect(f.options[1]).toMatchObject({ id: 'keep', addonMatchNormalized: 'lettuce', priceDeltaCents: 75 });
+      expect(f.options.find(o => o.id === 'unconfigured')!.addonMatchNormalized).toBeNull();
+    } finally { normalize.mockRestore(); }
+  });
   it.each([['Veggie Burger', 'Add Avocado'], ['Buffalo Chicken Wrap', 'Add Jalapeños']])('removes only %s / %s, preserving unconfigured extras and repeat saves', async (name, removed) => {
     const f = fixture(); f.item.name = name; f.options[0].name = removed;
     const unchanged = structuredClone(f.options.slice(1));
@@ -700,8 +725,8 @@ describe("AdminMenuService wing combo side synchronization", () => {
 describe("AdminMenuService additional ingredient management", () => {
   it("creates an item-specific addon group from admin-managed ingredients", async () => {
     const createdItem = {
-      id: "item-loaded-fries",
-      name: "Chicken Loaded Fries",
+      id: "item-caesar-wrap",
+      name: "Chicken Caesar Wrap",
       isWingComboSide: false,
       isAvailable: true,
       archivedAt: null,
@@ -734,18 +759,18 @@ describe("AdminMenuService additional ingredient management", () => {
 
     await service.createItem("loc-1", {
       ...itemPayload,
-      name: "Chicken Loaded Fries",
+      name: "Chicken Caesar Wrap",
       is_wing_combo_side: false,
       additional_ingredients: [
         {
-          name: "Extra Cheese",
-          price_delta_cents: 100,
-          matches_ingredient: "Blend Cheese",
+          name: "Extra Caesar Dressing",
+          price_delta_cents: 50,
+          matches_ingredient: "Caesar Dressing",
         },
         {
-          name: "Add Jalapenos",
-          price_delta_cents: 75,
-          matches_ingredient: "",
+          name: "Extra Lettuce",
+          price_delta_cents: 50,
+          matches_ingredient: "Lettuce",
         },
       ],
     });
@@ -753,7 +778,7 @@ describe("AdminMenuService additional ingredient management", () => {
     expect(tx.modifierGroup.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         locationId: "loc-1",
-        name: "Chicken Loaded Fries Additional Ingredients",
+        name: "Chicken Caesar Wrap Additional Ingredients",
         displayLabel: "Additional ingredients",
         contextKey: "addon",
         maxSelect: 2,
@@ -763,21 +788,21 @@ describe("AdminMenuService additional ingredient management", () => {
       data: [
         expect.objectContaining({
           modifierGroupId: "admin-addon-group",
-          name: "Extra Cheese",
-          priceDeltaCents: 100,
-          addonMatchNormalized: "blend cheese",
+          name: "Extra Caesar Dressing",
+          priceDeltaCents: 50,
+          addonMatchNormalized: "caesar dressing",
         }),
         expect.objectContaining({
           modifierGroupId: "admin-addon-group",
-          name: "Add Jalapenos",
-          priceDeltaCents: 75,
-          addonMatchNormalized: "__always__",
+          name: "Extra Lettuce",
+          priceDeltaCents: 50,
+          addonMatchNormalized: "lettuce",
         }),
       ],
     });
     expect(tx.menuItemModifierGroup.create).toHaveBeenCalledWith({
       data: {
-        menuItemId: "item-loaded-fries",
+        menuItemId: "item-caesar-wrap",
         modifierGroupId: "admin-addon-group",
         sortOrder: 30,
         contextKey: "addon",

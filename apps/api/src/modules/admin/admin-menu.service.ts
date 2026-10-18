@@ -1,3 +1,4 @@
+import { normalizeIngredientText } from "@wings4u/customization";
 import {
   BadRequestException,
   ConflictException,
@@ -123,15 +124,6 @@ function normalizeMinuteOfDay(value: unknown, fieldName: string): number | null 
     throw new BadRequestException(`${fieldName} must be between 00:00 and 23:59`);
   }
   return minutes;
-}
-
-function normalizeIngredientText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim()
-    .toLowerCase();
 }
 
 function normalizeCategoryAvailability(data: CreateUpdateCategoryPayload) {

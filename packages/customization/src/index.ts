@@ -31,6 +31,23 @@ export function normalizeIngredientText(value: string = ''): string {
     .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/** Resolve a saved mapping without changing it. Old admin values discarded &.
+ * Only recognize that legacy representation when it identifies one canonical
+ * ingredient on this product; collisions require explicit owner review.
+ * This is compatibility for existing explicit mappings, never inferred approval.
+ */
+export function resolveIngredientMapping(match: string | null | undefined, ingredientNames: readonly string[]): string | null {
+  if (!match || match.startsWith('__')) return null;
+  const normalized = normalizeIngredientText(match);
+  if (!normalized) return null;
+  const candidates = new Set(ingredientNames.filter(name =>
+    normalizeIngredientText(name) === normalized ||
+    // Derive the old admin representation through the canonical normalizer.
+    (name.includes('&') && normalizeIngredientText(name.replace(/&/g, ' ')) === match),
+  ).map(name => normalizeIngredientText(name)));
+  return candidates.size === 1 ? [...candidates][0] : null;
+}
+
 /** Established parent salad-option labels, shared by both clients and the API. */
 export function normalizeSaladSelection(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -58,7 +75,7 @@ export function maximumSelections(group: Group): number {
 }
 
 export function customizationCatalog<T extends Group>(item: Product & { modifier_groups: T[] }, selections: Selections = {}): { groups: T[]; issues: CatalogIssue[] } {
-  const ingredients = new Set(item.removable_ingredients.map(row => normalizeIngredientText(row.name)));
+  const ingredientNames = item.removable_ingredients.map(row => row.name);
   const sizes = item.modifier_groups.filter(group => group.context_key === 'size');
   const sizeNames = sizes.flatMap(group => group.options.map(option => normalizeIngredientText(option.name)));
   const selectedSizes = sizes.flatMap(group => group.options.filter(option => selections[group.id]?.includes(option.id)).map(option => normalizeIngredientText(option.name)));
@@ -70,7 +87,7 @@ export function customizationCatalog<T extends Group>(item: Product & { modifier
       if (dedicated && (group.addon_scope_menu_item_id !== item.id || !/ additional ingredients$/i.test(group.name))) return false;
       const match = option.addon_match_normalized;
       const authorized = match === '__always__' ? group.addon_scope_menu_item_id === item.id
-        : Boolean(match && ingredients.has(normalizeIngredientText(match)));
+        : resolveIngredientMapping(match, ingredientNames) !== null;
       if (!authorized) return false;
       const size = inferOptionSizeScope(option.name, sizeNames);
       return !size || selectedSizes.includes(size);
@@ -88,7 +105,7 @@ export function customizationCatalog<T extends Group>(item: Product & { modifier
     } else ids.set(option.id, { group, option });
     // Required groups and slots retain their distinct business meaning.
     if (group.context_key !== 'addon' || minimumSelections(group) > 0 || group.selection_mode !== 'MULTI') continue;
-    const key = [normalizeIngredientText(option.name).replace(/^(add|extra) /, ''), option.addon_match_normalized ?? '', option.linked_flavour_id ?? ''].join('|');
+    const key = [normalizeIngredientText(option.name).replace(/^(add|extra) /, ''), resolveIngredientMapping(option.addon_match_normalized, ingredientNames) ?? option.addon_match_normalized ?? '', option.linked_flavour_id ?? ''].join('|');
     const rows = seen.get(key) ?? [];
     rows.push({ group, option }); seen.set(key, rows);
   }

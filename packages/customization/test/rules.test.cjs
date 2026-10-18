@@ -8,10 +8,10 @@ for (const slug of ['veggie-burger', 'chicken-burger']) test(`${slug}: unassocia
   assert.deepEqual(ids(catalog(product(slug))), ['lettuce']);
 });
 test('Buffalo wrap does not show either unassociated duplicate jalapeno', () => assert.deepEqual(ids(catalog(product('buffalo-chicken-wrap'))), ['lettuce']));
-test('prepared Jalapeno Popper remains a legitimate explicitly mapped extra', () => {
-  const item = product(); item.removable_ingredients.push({ id: 'popper', name: 'Jalapeño Popper' });
-  item.modifier_groups[0].options.push(option('extra-popper', 'Extra Jalapeno Popper', { addon_match_normalized: 'jalapeno popper' }));
-  assert.ok(ids(catalog(item)).includes('extra-popper'));
+test('the recorded Chicken Caesar Wrap recipe authorizes Extra Caesar Dressing', () => {
+  const item = require('./mapped-menu-fixtures.json').find(item => item.slug === 'chicken-caesar-wrap');
+  const dressing = item.modifier_groups[0].options.find(option => option.name === 'Extra Caesar Dressing');
+  assert.ok(ids(catalog(item)).includes(dressing.id));
 });
 test('ingredient removals and matching follow current records, including removal of last ingredient', () => {
   const item = product(); item.removable_ingredients = [];

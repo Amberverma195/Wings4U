@@ -35,6 +35,24 @@ const mount = async (item, editItem = null, categories = []) => act(async () => 
 beforeEach(() => jest.clearAllMocks());
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 
+const mappedMenu = require('../../../packages/customization/test/mapped-menu-fixtures.json');
+test.each(mappedMenu.map(item => [item.slug, item]))('mobile retains recorded mappings and prices for %s', async (_slug, item) => {
+  await mount({ ...base, ...item });
+  const expected = [];
+  for (const group of item.modifier_groups) {
+    const options = group.context_key === 'size' ? group.options.slice(0, 1) : group.options;
+    for (const option of options) {
+      const choice = renderer.root.findAllByType('TouchableOpacity').find(node => texts(node).startsWith(option.name));
+      expect(choice).toBeDefined();
+      await act(async () => choice.props.onPress());
+      expected.push(expect.objectContaining({ modifier_option_id: option.id, price_delta_cents: option.price_delta_cents }));
+    }
+  }
+  await act(async () => submit().props.onPress());
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: item.id, modifier_selections: expect.arrayContaining(expected) }));
+  expect(mockCart.addItem.mock.calls[0][0].modifier_selections).toHaveLength(expected.length);
+});
+
 test('Customize restores the real variant, quantity, notes and flavour, and updates instead of duplicating', async () => {
   await mount(wings, existing);
   expect(button('Honey').props.style[1]).toBeTruthy();

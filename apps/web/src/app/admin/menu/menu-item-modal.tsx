@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizeIngredientText } from "@wings4u/customization";
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import { adminFetch, adminApiFetch } from "../admin-api";
 import type { Category } from "./admin-menu.types";
@@ -47,15 +49,6 @@ type FormState = {
   additional_ingredients: AdditionalIngredientRow[];
   schedules: ScheduleRow[];
 };
-
-function normalizeIngredientText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim()
-    .toLowerCase();
-}
 
 export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
   const [form, setForm] = useState<FormState>({
@@ -724,6 +717,10 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                         }
                       >
                         <option value="__unconfigured__" disabled>Review ingredient mapping</option>
+                        {ingredient.matches_ingredient && ingredient.matches_ingredient !== '__unconfigured__' &&
+                          !form.removable_ingredients.some(row => normalizeIngredientText(row.name) === ingredient.matches_ingredient) && (
+                            <option value={ingredient.matches_ingredient}>Saved mapping: {ingredient.matches_ingredient}</option>
+                          )}
                         <option value="">Approved for this item (off recipe allowed)</option>
                         {form.removable_ingredients
                           .filter((row) => row.name.trim())

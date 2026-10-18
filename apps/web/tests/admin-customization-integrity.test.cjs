@@ -21,6 +21,18 @@ test('unrelated admin save preserves option IDs and never upgrades unconfigured 
   expect(payload).not.toHaveProperty('additional_ingredients');
   expect(payload.modifier_groups).toEqual([{ id: 'legacy' }]);
 });
+
+test('saved mapping absent from the canonical choices remains selected without rewriting it', async () => {
+  const changed = structuredClone(item);
+  changed.modifierGroups[0].modifierGroup.options[0].addonMatchNormalized = 'saved legacy value';
+  mockFetch.mockImplementation(async (url, options) => options ? {} : url.endsWith('/modifier-groups') ? [] : changed);
+  await mount();
+  const select = renderer.root.findAllByType('select').find(node => node.props['aria-label'] === 'Additional ingredient 1 matching ingredient');
+  expect(select.props.value).toBe('saved legacy value');
+  expect(select.findAllByType('option').some(node => node.props.value === select.props.value)).toBe(true);
+  await save();
+  expect(JSON.parse(mockFetch.mock.calls.find(([, options]) => options?.method === 'PUT')[1].body)).not.toHaveProperty('additional_ingredients');
+});
 test('an off-recipe extra requires explicit item approval before it is sent', async () => {
   await mount();
   const match = renderer.root.findAllByType('select').find(node => node.props['aria-label'] === 'Additional ingredient 1 matching ingredient');

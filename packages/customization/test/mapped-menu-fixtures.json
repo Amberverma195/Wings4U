@@ -1,0 +1,402 @@
+[
+  {
+    "id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+    "name": "Chicken Loaded Fries",
+    "slug": "chicken-loaded-fries",
+    "description": "Fries, tomato, red onion, blend cheese, freshly breaded chicken drizzled with sweet chili sauce, ranch, house seasoning & served with sour cream on side",
+    "base_price_cents": 1199,
+    "builder_type": null,
+    "archived_at": null,
+    "is_hidden": false,
+    "modifier_groups": [
+      {
+        "id": "2d43e0ba-4591-43b8-bdf3-dadc025665d4",
+        "name": "Chicken Loaded Fries Extras",
+        "display_label": "Chicken Loaded Fries extras",
+        "selection_mode": "MULTI",
+        "min_select": 0,
+        "max_select": 10,
+        "is_required": false,
+        "sort_order": 10,
+        "context_key": "addon",
+        "archived_at": null,
+        "addon_scope_menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "options": [
+          {
+            "id": "e51284c0-9864-458e-a2cf-d10532e51a28",
+            "modifier_group_id": "2d43e0ba-4591-43b8-bdf3-dadc025665d4",
+            "name": "Extra Cheese",
+            "price_delta_cents": 100,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 3,
+            "addon_match_normalized": "blend cheese",
+            "linked_flavour_id": null
+          }
+        ]
+      }
+    ],
+    "removable_ingredients": [
+      {
+        "id": "3c657c25-449b-48dc-b5c7-3318eb552493",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Tomato",
+        "sort_order": 1
+      },
+      {
+        "id": "74112d09-c0cc-4a5e-b752-89461728b3a9",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Red Onion",
+        "sort_order": 2
+      },
+      {
+        "id": "87397a1f-a4bd-4331-8413-d02627d5c9e6",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Blend Cheese",
+        "sort_order": 3
+      },
+      {
+        "id": "7e5e6d46-2531-4d76-b71e-4b0bd147544a",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Breaded Chicken",
+        "sort_order": 4
+      },
+      {
+        "id": "5328a0a1-f6a9-471d-a1ce-c64b724a6179",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Sweet Chili Sauce",
+        "sort_order": 5
+      },
+      {
+        "id": "f4d25364-fcbb-4808-9f8e-3f4a288f47f9",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Ranch",
+        "sort_order": 6
+      },
+      {
+        "id": "bc727c14-4de4-4563-b866-436a67f47c66",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "House Seasoning",
+        "sort_order": 7
+      },
+      {
+        "id": "c5b9f33a-9ebb-42b2-be42-44c0c43288f9",
+        "menu_item_id": "dc6a64fc-baba-4f48-a873-254b0799f8ea",
+        "name": "Sour Cream",
+        "sort_order": 8
+      }
+    ]
+  },
+  {
+    "id": "326da761-b7d8-4412-a4b3-64bd7106c275",
+    "name": "Chicken Caesar Wrap",
+    "slug": "chicken-caesar-wrap",
+    "description": "Lettuce, bacon bits, parm cheese, hand-breaded chicken, Caesar dressing",
+    "base_price_cents": 999,
+    "builder_type": null,
+    "archived_at": null,
+    "is_hidden": false,
+    "modifier_groups": [
+      {
+        "id": "5c10cb6b-429d-44eb-9f21-c0c13094549b",
+        "name": "Chicken Caesar Wrap Extras",
+        "display_label": "Chicken Caesar Wrap extras",
+        "selection_mode": "MULTI",
+        "min_select": 0,
+        "max_select": 4,
+        "is_required": false,
+        "sort_order": 10,
+        "context_key": "addon",
+        "archived_at": null,
+        "addon_scope_menu_item_id": "326da761-b7d8-4412-a4b3-64bd7106c275",
+        "options": [
+          {
+            "id": "e3685e58-d6bf-41c7-889e-12ecb1d73ad5",
+            "modifier_group_id": "5c10cb6b-429d-44eb-9f21-c0c13094549b",
+            "name": "Extra Caesar Dressing",
+            "price_delta_cents": 50,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 3,
+            "addon_match_normalized": "caesar dressing",
+            "linked_flavour_id": null
+          }
+        ]
+      }
+    ],
+    "removable_ingredients": [
+      {
+        "id": "b680ebad-9f51-4a6f-b262-e9e68532c3b6",
+        "menu_item_id": "326da761-b7d8-4412-a4b3-64bd7106c275",
+        "name": "Lettuce",
+        "sort_order": 1
+      },
+      {
+        "id": "9c90a240-2322-4e99-93ea-d8b3ec75f414",
+        "menu_item_id": "326da761-b7d8-4412-a4b3-64bd7106c275",
+        "name": "Bacon Bits",
+        "sort_order": 2
+      },
+      {
+        "id": "c0ea718a-4458-4cbe-af6e-7f003ed3cd71",
+        "menu_item_id": "326da761-b7d8-4412-a4b3-64bd7106c275",
+        "name": "Parm Cheese",
+        "sort_order": 3
+      },
+      {
+        "id": "d513b5f4-105b-4c5e-996c-9777de9adc23",
+        "menu_item_id": "326da761-b7d8-4412-a4b3-64bd7106c275",
+        "name": "Caesar Dressing",
+        "sort_order": 4
+      }
+    ]
+  },
+  {
+    "id": "5514a089-935e-4a92-b1f7-92714541187c",
+    "name": "Caesar Salad",
+    "slug": "caesar-salad",
+    "description": "Romaine, bacon, croutons, parm cheese, Caesar dressing",
+    "base_price_cents": 699,
+    "builder_type": null,
+    "archived_at": null,
+    "is_hidden": false,
+    "modifier_groups": [
+      {
+        "id": "e6254c7f-0c55-4dde-82d3-73b474857a0a",
+        "name": "Salad Size",
+        "display_label": "Choose Size",
+        "selection_mode": "SINGLE",
+        "min_select": 1,
+        "max_select": 1,
+        "is_required": true,
+        "sort_order": 1,
+        "context_key": "size",
+        "archived_at": null,
+        "addon_scope_menu_item_id": null,
+        "options": [
+          {
+            "id": "c5097895-6c8b-44da-b313-3237a055bca6",
+            "modifier_group_id": "e6254c7f-0c55-4dde-82d3-73b474857a0a",
+            "name": "Small",
+            "price_delta_cents": 0,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 1,
+            "addon_match_normalized": null,
+            "linked_flavour_id": null
+          },
+          {
+            "id": "7404fc5b-1a64-4de6-ba01-6a1d900faeaa",
+            "modifier_group_id": "e6254c7f-0c55-4dde-82d3-73b474857a0a",
+            "name": "Large",
+            "price_delta_cents": 400,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 2,
+            "addon_match_normalized": null,
+            "linked_flavour_id": null
+          }
+        ]
+      },
+      {
+        "id": "62299561-3465-4eb7-b700-99c94cef211f",
+        "name": "Caesar Salad Extras",
+        "display_label": "Additional ingredients",
+        "selection_mode": "MULTI",
+        "min_select": 0,
+        "max_select": 7,
+        "is_required": false,
+        "sort_order": 10,
+        "context_key": "addon",
+        "archived_at": null,
+        "addon_scope_menu_item_id": "5514a089-935e-4a92-b1f7-92714541187c",
+        "options": [
+          {
+            "id": "15c34e36-f1c4-4466-b309-fef1109caff8",
+            "modifier_group_id": "62299561-3465-4eb7-b700-99c94cef211f",
+            "name": "Extra Romaine",
+            "price_delta_cents": 50,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 1,
+            "addon_match_normalized": "romaine",
+            "linked_flavour_id": null
+          },
+          {
+            "id": "551a3768-94ba-4530-98da-bf9533cb36b0",
+            "modifier_group_id": "62299561-3465-4eb7-b700-99c94cef211f",
+            "name": "Extra Caesar Dressing",
+            "price_delta_cents": 50,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 4,
+            "addon_match_normalized": "caesar dressing",
+            "linked_flavour_id": null
+          }
+        ]
+      }
+    ],
+    "removable_ingredients": [
+      {
+        "id": "5323eb8e-b41a-4a0c-b153-8679606df0fe",
+        "menu_item_id": "5514a089-935e-4a92-b1f7-92714541187c",
+        "name": "Romaine",
+        "sort_order": 1
+      },
+      {
+        "id": "e6725381-7937-40d8-ae72-8bdcee006d55",
+        "menu_item_id": "5514a089-935e-4a92-b1f7-92714541187c",
+        "name": "Bacon",
+        "sort_order": 2
+      },
+      {
+        "id": "31a2ebb3-a4c6-420f-8f9a-ad8c516583f6",
+        "menu_item_id": "5514a089-935e-4a92-b1f7-92714541187c",
+        "name": "Croutons",
+        "sort_order": 3
+      },
+      {
+        "id": "f7700d10-7c12-4ed9-8eea-b00d281d8762",
+        "menu_item_id": "5514a089-935e-4a92-b1f7-92714541187c",
+        "name": "Parm Cheese",
+        "sort_order": 4
+      },
+      {
+        "id": "afe92d23-6bdc-488c-9179-32cc15f873f7",
+        "menu_item_id": "5514a089-935e-4a92-b1f7-92714541187c",
+        "name": "Caesar Dressing",
+        "sort_order": 5
+      }
+    ]
+  },
+  {
+    "id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+    "name": "Greek Salad",
+    "slug": "greek-salad",
+    "description": "Iceberg, red onion, tomato, cucumber, black olives, feta, Greek dressing",
+    "base_price_cents": 699,
+    "builder_type": null,
+    "archived_at": null,
+    "is_hidden": false,
+    "modifier_groups": [
+      {
+        "id": "e6254c7f-0c55-4dde-82d3-73b474857a0a",
+        "name": "Salad Size",
+        "display_label": "Choose Size",
+        "selection_mode": "SINGLE",
+        "min_select": 1,
+        "max_select": 1,
+        "is_required": true,
+        "sort_order": 1,
+        "context_key": "size",
+        "archived_at": null,
+        "addon_scope_menu_item_id": null,
+        "options": [
+          {
+            "id": "c5097895-6c8b-44da-b313-3237a055bca6",
+            "modifier_group_id": "e6254c7f-0c55-4dde-82d3-73b474857a0a",
+            "name": "Small",
+            "price_delta_cents": 0,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 1,
+            "addon_match_normalized": null,
+            "linked_flavour_id": null
+          },
+          {
+            "id": "7404fc5b-1a64-4de6-ba01-6a1d900faeaa",
+            "modifier_group_id": "e6254c7f-0c55-4dde-82d3-73b474857a0a",
+            "name": "Large",
+            "price_delta_cents": 400,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 2,
+            "addon_match_normalized": null,
+            "linked_flavour_id": null
+          }
+        ]
+      },
+      {
+        "id": "39ee54b1-7456-4e64-a816-ded3f502a2f5",
+        "name": "Greek Salad Extras",
+        "display_label": "Additional ingredients",
+        "selection_mode": "MULTI",
+        "min_select": 0,
+        "max_select": 9,
+        "is_required": false,
+        "sort_order": 10,
+        "context_key": "addon",
+        "archived_at": null,
+        "addon_scope_menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "options": [
+          {
+            "id": "df046cac-1373-4455-afc4-c5638cef4350",
+            "modifier_group_id": "39ee54b1-7456-4e64-a816-ded3f502a2f5",
+            "name": "Extra Tomato",
+            "price_delta_cents": 50,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 3,
+            "addon_match_normalized": "tomato",
+            "linked_flavour_id": null
+          },
+          {
+            "id": "5875cb69-5301-4bc9-83b6-4a46b5d72d2c",
+            "modifier_group_id": "39ee54b1-7456-4e64-a816-ded3f502a2f5",
+            "name": "Extra Feta",
+            "price_delta_cents": 150,
+            "is_default": false,
+            "is_active": true,
+            "sort_order": 7,
+            "addon_match_normalized": "feta",
+            "linked_flavour_id": null
+          }
+        ]
+      }
+    ],
+    "removable_ingredients": [
+      {
+        "id": "ec5e3da6-ddae-45b3-96c8-69d0897ec41d",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Iceberg",
+        "sort_order": 1
+      },
+      {
+        "id": "6c780948-923b-4046-bb86-a285c3c902d3",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Red Onion",
+        "sort_order": 2
+      },
+      {
+        "id": "2ec9a437-d056-4b3b-a082-16ba855c398d",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Tomato",
+        "sort_order": 3
+      },
+      {
+        "id": "13e90f77-214a-41d1-ac7e-5c79f01950c8",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Cucumber",
+        "sort_order": 4
+      },
+      {
+        "id": "a3922f6a-f8d3-4649-a309-58b89ebe92da",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Black Olives",
+        "sort_order": 5
+      },
+      {
+        "id": "be514e9a-6154-49e3-9313-681f69684cf8",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Feta",
+        "sort_order": 6
+      },
+      {
+        "id": "f4b1f306-9d02-42e9-b7ed-36cb90a5b89f",
+        "menu_item_id": "311cf0b0-f73f-47d3-97b5-8cbabe61540f",
+        "name": "Greek Dressing",
+        "sort_order": 7
+      }
+    ]
+  }
+]

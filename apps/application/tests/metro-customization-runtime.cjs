@@ -59,9 +59,10 @@ async function main() {
 
   const entry = path.join(folder, 'entry.ts');
   fs.writeFileSync(entry, `import * as rules from '@wings4u/customization';
-    const names = ['customerCustomizationInstructions','customizationCatalog','embeddedSaladCatalog','saladSlugForSelectionName','normalizeSaladSelection','defaultSelections','validateSelections','modifierTotal','maximumSelections','inspectCustomizationDraft'];
+    const names = ['normalizeIngredientText','resolveIngredientMapping','customerCustomizationInstructions','customizationCatalog','embeddedSaladCatalog','saladSlugForSelectionName','normalizeSaladSelection','defaultSelections','validateSelections','modifierTotal','maximumSelections','inspectCustomizationDraft'];
     const missing = names.filter(name => typeof rules[name] !== 'function');
     if (missing.length) throw new Error('Missing runtime exports: ' + missing.join(','));
+    if (rules.normalizeIngredientText('A & B') !== 'a and b' || rules.resolveIngredientMapping('a b', ['A & B']) !== 'a and b') throw new Error('Normalization differs in Metro');
     globalThis.__customizationProbe = { missing, notes: rules.customerCustomizationInstructions('Keep warm', 'Burger'),
       total: rules.modifierTotal([], {}), sides: rules.SIDE_POP_SIDES.length,
       bundle: rules.SIDE_POP_BUNDLE_PRICE_CENTS, eligible: rules.SIDE_POP_BUNDLE_SLUGS.has('veggie-burger') };`);

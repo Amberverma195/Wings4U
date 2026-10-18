@@ -1,3 +1,4 @@
+import { normalizeIngredientText } from "@wings4u/customization";
 ﻿import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
@@ -43,17 +44,6 @@ const WINGS_SPECIAL_SALAD_OPTION_ORDER = [
   "Horiatiki Salad",
   "Buffalo Chicken Salad",
 ] as const;
-
-function normalizeIngredientText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function addonOptionsFromRemovableIngredients(
   ingredients: string[],

@@ -1,3 +1,4 @@
+import { normalizeIngredientText } from "@wings4u/customization";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
@@ -120,17 +121,6 @@ const WING_FLAVOURS = [
 ] as const;
 
 const SIDE_OPTIONS = ["Fries", "Onion Rings", "Wedges", "Coleslaw"] as const;
-
-function normalizeIngredientText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 /** Paid extras that mirror removable ingredients (same names → addon_match_normalized in DB). */
 function addonOptionsFromRemovableIngredients(

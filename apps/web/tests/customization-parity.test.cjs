@@ -11,8 +11,28 @@ jest.mock('../src/components/builder-shared', () => ({
   BUILDER_VALIDATION_MESSAGE: 'Check required choices',
 }));
 const { ItemCustomizationOverlay } = require('../src/components/item-customization-overlay');
+const mappedMenu = require('../../../packages/customization/test/mapped-menu-fixtures.json');
 let renderer;
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); jest.clearAllMocks(); });
+
+test.each(mappedMenu.map(item => [item.slug, item]))('web retains recorded mappings and prices for %s', async (_slug, item) => {
+  await act(async () => { renderer = create(React.createElement(ItemCustomizationOverlay, { item, onClose: jest.fn() })); });
+  const expected = [];
+  for (const group of item.modifier_groups) {
+    const inputs = renderer.root.findAllByType('input').filter(node => node.props.name === `mod-${group.id}`);
+    const options = group.context_key === 'size' ? group.options.slice(0, 1) : group.options;
+    for (let i = 0; i < options.length; i++) {
+      if (group.context_key === 'size') {
+        const choice = renderer.root.findAllByType('button').find(node => node.children.includes(options[i].name));
+        await act(async () => choice.props.onClick());
+      } else await act(async () => inputs[i].props.onChange());
+      expected.push(expect.objectContaining({ modifier_option_id: options[i].id, price_delta_cents: options[i].price_delta_cents }));
+    }
+  }
+  await act(async () => mockSubmit());
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: item.id, modifier_selections: expect.arrayContaining(expected) }));
+  expect(mockCart.addItem.mock.calls[0][0].modifier_selections).toHaveLength(expected.length);
+});
 
 test.each(['veggie-burger', 'chicken-burger', 'buffalo-chicken-wrap'])('web applies the shared fixture for %s and preserves real IDs on add', async slug => {
   await act(async () => { renderer = create(React.createElement(ItemCustomizationOverlay, { item: product(slug), onClose: jest.fn() })); });
