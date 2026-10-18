@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -8,6 +9,7 @@ import {
 import { CartService } from "../cart/cart.service";
 import { previewReorder, type ReorderContext } from "./reorder-preview";
 import { TZDate } from "@date-fns/tz";
+import { isUUID } from "class-validator";
 import { addDays, startOfDay } from "date-fns";
 import { PrismaService } from "../../database/prisma.service";
 import { ChatService } from "../chat/chat.service";
@@ -269,11 +271,17 @@ export class OrdersService {
       }
     }
 
+    if (params.cursor) {
+      if (!isUUID(params.cursor) || !await this.prisma.order.findFirst({
+        where: { ...where, id: params.cursor }, select: { id: true },
+      })) throw new BadRequestException('Invalid order cursor. Refresh your order history and try again.');
+    }
+
     const orders = await this.prisma.order.findMany({
       where,
       take: take + 1,
       ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
-      orderBy: { placedAt: "desc" },
+      orderBy: [{ placedAt: "desc" }, { id: "desc" }],
     });
 
     const hasMore = orders.length > take;

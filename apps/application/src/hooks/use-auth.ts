@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { apiFetch, getApiErrorMessage } from '../lib/api';
-import { clearAllTokens, setAccessToken, setRefreshToken } from '../lib/token-store';
+import { getSessionGeneration, setSessionTokens } from '../lib/token-store';
 import { useSession, withSilentRefresh } from '../context/session';
 import {
   normalizeEmail, normalizeFullName, normalizeLoginIdentifier,
@@ -75,15 +75,16 @@ export function useAuth() {
     }
   }, []);
 
-  const establishSession = useCallback(async (result: AuthSessionResult) => {
+  const establishSession = useCallback(async (result: AuthSessionResult, expectedGeneration: number) => {
     if (!result || typeof result.access_token !== 'string' || !result.access_token ||
         typeof result.refresh_token !== 'string' || !result.refresh_token) {
       throw new Error('Sign in failed: no valid session was returned. Please try again.');
     }
-    await setAccessToken(result.access_token);
-    await setRefreshToken(result.refresh_token);
-    if (!(await session.refresh())) {
-      await clearAllTokens();
+    const generation = await setSessionTokens(result.access_token, result.refresh_token, expectedGeneration);
+    if (generation === null || generation !== getSessionGeneration()) throw new Error('Your session changed. Please sign in again.');
+    const confirmed = await session.refresh();
+    if (generation !== getSessionGeneration()) throw new Error('Your session changed. Please sign in again.');
+    if (!confirmed) {
       session.clear();
       throw new Error('Sign in succeeded but your session could not be established. Please try again or contact support.');
     }
@@ -91,6 +92,7 @@ export function useAuth() {
   }, [session]);
 
   const login = useCallback((identifier: string, password: string) => run(async () => {
+    const generation = getSessionGeneration();
     const normalized = normalizeLoginIdentifier(identifier);
     validateLoginPassword(password);
     const result = await authPost<LoginResult>('/api/v1/auth/login',
@@ -99,13 +101,14 @@ export function useAuth() {
       normalizeEmail(result.email);
       return result;
     }
-    return establishSession(result);
+    return establishSession(result, generation);
   }), [run, establishSession]);
 
   const verifyEmail = useCallback((email: string, code: string) => run(async () => {
+    const generation = getSessionGeneration();
     validateOtp(code);
     return establishSession(await authPost<AuthSessionResult>('/api/v1/auth/signup/verify',
-      { email: normalizeEmail(email), otp_code: code }, 'Verification failed'));
+      { email: normalizeEmail(email), otp_code: code }, 'Verification failed'), generation);
   }), [run, establishSession]);
 
   const resendVerification = useCallback((email: string) => run(() =>
@@ -118,12 +121,13 @@ export function useAuth() {
   [run]);
 
   const confirmPasswordReset = useCallback((identifier: string, code: string, password: string, confirmation: string) => run(async () => {
+    const generation = getSessionGeneration();
     validateOtp(code);
     validateNewPassword(password, confirmation);
     return establishSession(await authPost<AuthSessionResult>('/api/v1/auth/password-reset/confirm', {
       identifier: normalizeLoginIdentifier(identifier), otp_code: code,
       new_password: password, confirm_password: confirmation,
-    }, 'Could not reset password'));
+    }, 'Could not reset password'), generation);
   }), [run, establishSession]);
 
   const signup = useCallback((name: string, phone: string, email: string, password: string, confirmation: string) => run(async () => {
@@ -173,8 +177,10 @@ export function useAuth() {
   }), [run, session]);
 
   const logout = useCallback(() => run(async () => {
-    try { await apiFetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {}); }
-    finally { await clearAllTokens(); session.clear(); }
+    const request = apiFetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
+    // Invalidate refreshes immediately, rather than after a slow logout request.
+    session.clear();
+    await request;
   }), [run, session]);
 
   return { login, verifyEmail, resendVerification, requestPasswordReset, confirmPasswordReset,

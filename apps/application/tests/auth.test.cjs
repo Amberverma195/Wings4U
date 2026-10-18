@@ -2,6 +2,7 @@ const React = require('react');
 const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
+let mockGeneration = 0;
 const session = { refresh: jest.fn(), clear: jest.fn(), user: null };
 jest.mock('../src/context/session', () => ({
   useSession: () => session,
@@ -12,7 +13,8 @@ jest.mock('../src/lib/api', () => ({
   getApiErrorMessage: (body, fallback) => body?.errors?.[0]?.message || fallback,
 }));
 jest.mock('../src/lib/token-store', () => ({
-  clearAllTokens: jest.fn(), setAccessToken: jest.fn(), setRefreshToken: jest.fn(),
+  getSessionGeneration: jest.fn(() => mockGeneration),
+  setSessionTokens: jest.fn(async (_access, _refresh, expected = mockGeneration) => expected === mockGeneration ? ++mockGeneration : null),
 }));
 const { useAuth } = require('../src/hooks/use-auth');
 const { apiFetch } = require('../src/lib/api');
@@ -27,7 +29,7 @@ let auth;
 let renderer;
 function Probe() { auth = useAuth(); return null; }
 beforeEach(async () => {
-  jest.clearAllMocks();
+  jest.clearAllMocks(); mockGeneration = 0;
   session.refresh.mockResolvedValue(true);
   await act(async () => { renderer = create(React.createElement(Probe)); });
 });
@@ -45,7 +47,7 @@ test('uses a generic wrong-credentials message and never stores tokens on failur
   await act(async () => {
     await expect(auth.login('person@example.com', 'password')).rejects.toThrow('Invalid phone/email or password');
   });
-  expect(tokens.setAccessToken).not.toHaveBeenCalled();
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled();
   expect(session.refresh).not.toHaveBeenCalled();
 });
 
@@ -54,7 +56,7 @@ test('unverified email advances to verification without starting a session', asy
   await act(async () => {
     expect((await auth.login('person@example.com', 'password')).needs_email_verification).toBe(true);
   });
-  expect(tokens.setAccessToken).not.toHaveBeenCalled();
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled();
   expect(session.refresh).not.toHaveBeenCalled();
 });
 
@@ -63,22 +65,20 @@ test('requires both tokens and a confirmed session', async () => {
   await act(async () => {
     await expect(auth.login('person@example.com', 'password')).rejects.toThrow('no valid session');
   });
-  expect(tokens.setAccessToken).not.toHaveBeenCalled();
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled();
   apiFetch.mockResolvedValue(response(bundle));
   session.refresh.mockResolvedValue(false);
   await act(async () => {
     await expect(auth.login('person@example.com', 'password')).rejects.toThrow('session could not be established');
   });
-  expect(tokens.clearAllTokens).toHaveBeenCalled();
-  expect(session.clear).toHaveBeenCalled();
+  expect(session.clear).toHaveBeenCalledTimes(1);
 });
 
 test('normalizes login and stores native tokens before session confirmation', async () => {
   apiFetch.mockResolvedValue(response(bundle));
   await act(async () => { await auth.login('(519)-555-1234', 'legacy'); });
   expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ identifier: '+15195551234', password: 'legacy' });
-  expect(tokens.setAccessToken).toHaveBeenCalledWith('access');
-  expect(tokens.setRefreshToken).toHaveBeenCalledWith('refresh');
+  expect(tokens.setSessionTokens).toHaveBeenCalledWith('access', 'refresh', 0);
   expect(session.refresh).toHaveBeenCalledTimes(1);
 });
 
@@ -98,7 +98,7 @@ test('email verification establishes a confirmed session with the returned token
   apiFetch.mockResolvedValue(response(bundle));
   await act(async () => { await auth.verifyEmail('person@example.com', '123456'); });
   expect(apiFetch.mock.calls[0][0]).toBe('/api/v1/auth/signup/verify');
-  expect(tokens.setAccessToken).toHaveBeenCalledWith('access');
+  expect(tokens.setSessionTokens).toHaveBeenCalledWith('access', 'refresh', 0);
   expect(session.refresh).toHaveBeenCalled();
 });
 

@@ -13,6 +13,41 @@
 let _inMemoryAccessToken: string | null = null;
 let _inMemoryRefreshToken: string | null = null;
 let _inMemorySignupDeviceId: string | null = null;
+let sessionGeneration = 0;
+let accessLoaded = false;
+let refreshLoaded = false;
+let tokenWrites: Promise<void> = Promise.resolve();
+const sessionListeners = new Set<() => void>();
+
+export function getSessionGeneration(): number { return sessionGeneration; }
+export function subscribeSessionGeneration(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => { sessionListeners.delete(listener); };
+}
+function publishSessionChange() { for (const listener of sessionListeners) listener(); }
+
+// Serialize native writes: an already-started old write must finish before a
+// newer login is persisted. In-memory credentials always change atomically.
+function persistTokens(generation: number, values: Array<[string, string | null]>): Promise<void> {
+  const write = tokenWrites.then(async () => {
+    for (const [key, value] of values) {
+      if (generation !== sessionGeneration) return;
+      try {
+        if (value === null) await SecureStore?.deleteItemAsync(key);
+        else await SecureStore?.setItemAsync(key, value);
+      } catch { /* Keep the existing in-memory fallback. */ }
+    }
+  });
+  tokenWrites = write.catch(() => {});
+  return write;
+}
+
+function persistCurrentTokens(generation: number): Promise<void> {
+  return persistTokens(generation, [
+    ...(accessLoaded ? [[ACCESS_TOKEN_KEY, _inMemoryAccessToken] as [string, string | null]] : []),
+    ...(refreshLoaded ? [[REFRESH_TOKEN_KEY, _inMemoryRefreshToken] as [string, string | null]] : []),
+  ]);
+}
 
 let SecureStore: typeof import("expo-secure-store") | null = null;
 try {
@@ -41,41 +76,41 @@ function createSignupDeviceId(): string {
 /* ------------------------------------------------------------------ */
 
 export async function getAccessToken(): Promise<string | null> {
-  if (_inMemoryAccessToken) return _inMemoryAccessToken;
+  if (accessLoaded) return _inMemoryAccessToken;
+  const generation = sessionGeneration;
   if (SecureStore) {
     try {
       const stored = await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
+      if (generation !== sessionGeneration) throw new Error('Your session changed. Please try again.');
+      if (accessLoaded) return _inMemoryAccessToken;
       if (stored) {
         _inMemoryAccessToken = stored;
+        accessLoaded = true;
         return stored;
       }
     } catch {
       // ignore
     }
   }
+  if (generation !== sessionGeneration) throw new Error('Your session changed. Please try again.');
+  accessLoaded = true;
   return _inMemoryAccessToken;
 }
 
 export async function setAccessToken(token: string): Promise<void> {
+  const generation = ++sessionGeneration;
   _inMemoryAccessToken = token;
-  if (SecureStore) {
-    try {
-      await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
-    } catch {
-      // ignore
-    }
-  }
+  accessLoaded = true;
+  publishSessionChange();
+  await persistCurrentTokens(generation);
 }
 
 export async function clearAccessToken(): Promise<void> {
+  const generation = ++sessionGeneration;
   _inMemoryAccessToken = null;
-  if (SecureStore) {
-    try {
-      await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-    } catch {
-      // ignore
-    }
-  }
+  accessLoaded = true;
+  publishSessionChange();
+  await persistCurrentTokens(generation);
 }
 
 /* ------------------------------------------------------------------ */
@@ -83,41 +118,41 @@ export async function clearAccessToken(): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 export async function getRefreshToken(): Promise<string | null> {
-  if (_inMemoryRefreshToken) return _inMemoryRefreshToken;
+  if (refreshLoaded) return _inMemoryRefreshToken;
+  const generation = sessionGeneration;
   if (SecureStore) {
     try {
       const stored = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      if (generation !== sessionGeneration) throw new Error('Your session changed. Please try again.');
+      if (refreshLoaded) return _inMemoryRefreshToken;
       if (stored) {
         _inMemoryRefreshToken = stored;
+        refreshLoaded = true;
         return stored;
       }
     } catch {
       // ignore
     }
   }
+  if (generation !== sessionGeneration) throw new Error('Your session changed. Please try again.');
+  refreshLoaded = true;
   return _inMemoryRefreshToken;
 }
 
 export async function setRefreshToken(token: string): Promise<void> {
+  const generation = ++sessionGeneration;
   _inMemoryRefreshToken = token;
-  if (SecureStore) {
-    try {
-      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
-    } catch {
-      // ignore
-    }
-  }
+  refreshLoaded = true;
+  publishSessionChange();
+  await persistCurrentTokens(generation);
 }
 
 export async function clearRefreshToken(): Promise<void> {
+  const generation = ++sessionGeneration;
   _inMemoryRefreshToken = null;
-  if (SecureStore) {
-    try {
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    } catch {
-      // ignore
-    }
-  }
+  refreshLoaded = true;
+  publishSessionChange();
+  await persistCurrentTokens(generation);
 }
 
 /* ------------------------------------------------------------------ */
@@ -155,7 +190,31 @@ export async function getSignupDeviceId(): Promise<string> {
 /*  Convenience                                                        */
 /* ------------------------------------------------------------------ */
 
-export async function clearAllTokens(): Promise<void> {
-  await clearAccessToken();
-  await clearRefreshToken();
+export async function clearAllTokens(expectedGeneration = sessionGeneration): Promise<void> {
+  if (expectedGeneration !== sessionGeneration) return;
+  const generation = ++sessionGeneration;
+  _inMemoryAccessToken = null; _inMemoryRefreshToken = null;
+  accessLoaded = true; refreshLoaded = true;
+  publishSessionChange();
+  await persistTokens(generation, [[ACCESS_TOKEN_KEY, null], [REFRESH_TOKEN_KEY, null]]);
+}
+
+/** A new login is one identity transition, never two independent token writes. */
+export async function setSessionTokens(access: string, refresh: string, expectedGeneration = sessionGeneration): Promise<number | null> {
+  if (expectedGeneration !== sessionGeneration) return null;
+  const generation = ++sessionGeneration;
+  _inMemoryAccessToken = access; _inMemoryRefreshToken = refresh;
+  accessLoaded = true; refreshLoaded = true;
+  publishSessionChange();
+  await persistTokens(generation, [[ACCESS_TOKEN_KEY, access], [REFRESH_TOKEN_KEY, refresh]]);
+  return generation;
+}
+
+/** Rotation belongs to the same identity; it must not invalidate sibling 401s. */
+export async function commitRefreshedTokens(generation: number, access: string, refresh: string): Promise<boolean> {
+  if (generation !== sessionGeneration) return false;
+  _inMemoryAccessToken = access; _inMemoryRefreshToken = refresh;
+  accessLoaded = true; refreshLoaded = true;
+  await persistTokens(generation, [[ACCESS_TOKEN_KEY, access], [REFRESH_TOKEN_KEY, refresh]]);
+  return generation === sessionGeneration;
 }
