@@ -1,11 +1,12 @@
 /**
  * useOrderDetail - fetch a single order's full detail.
  *
- * Mirrors the web app's order-detail pattern:
- *   const { data } = await apiJson<OrderDetail>(`/api/v1/orders/${orderId}`);
+ * Keeps live refetches visible while isolating responses by order and session.
  */
 import { useCallback, useEffect, useState } from "react";
-import { apiJson } from "../lib/api";
+import { apiFetch, getApiErrorMessage } from "../lib/api";
+import { useSession, withSilentRefresh } from "../context/session";
+import { getSessionGeneration } from "../lib/token-store";
 import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { OrderDetail } from "../lib/types";
 
@@ -17,6 +18,10 @@ export type UseOrderDetailResult = {
 };
 
 export function useOrderDetail(orderId: string | null): UseOrderDetailResult {
+  const session = useSession();
+  const generation = getSessionGeneration();
+  const identity = JSON.stringify([orderId, session.authenticated ? session.user?.id : null, generation]);
+  const [dataIdentity, setDataIdentity] = useState(identity);
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,38 +30,44 @@ export function useOrderDetail(orderId: string | null): UseOrderDetailResult {
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
-    if (!orderId) {
+    if (!orderId || !session.loaded || !session.authenticated || !session.user) {
       setOrder(null);
       setLoading(false);
       return;
     }
 
     let cancelled = false;
+    const current = () => !cancelled && generation === getSessionGeneration();
+    setOrder(previous => dataIdentity === identity ? previous : null);
+    setDataIdentity(identity);
     setLoading(true);
     setError(null);
 
     void (async () => {
       try {
-        const envelope = await apiJson<OrderDetail>(
-          `/api/v1/orders/${orderId}`,
-          { locationId: DEFAULT_LOCATION_ID },
-        );
-        if (!cancelled && envelope.data) {
+        const response = await withSilentRefresh(() => {
+          if (!current()) throw new Error('Your session or order changed.');
+          return apiFetch(`/api/v1/orders/${orderId}`, { locationId: DEFAULT_LOCATION_ID, expectedSessionGeneration: generation });
+        }, session.refresh, session.clear);
+        const envelope = await response.json();
+        if (!response.ok) throw new Error(getApiErrorMessage(envelope, 'Unable to load order.'));
+        if (current() && envelope.data) {
           setOrder(envelope.data);
         }
       } catch (err) {
-        if (!cancelled) {
+        if (current()) {
           setError(err instanceof Error ? err.message : String(err));
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (current()) setLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [orderId, nonce]);
+  }, [identity, nonce, session.loaded, session.authenticated, session.refresh, session.clear]);
 
-  return { order, loading, error, refetch };
+  const visible = dataIdentity === identity && session.loaded && session.authenticated;
+  return { order: visible ? order : null, loading: visible ? loading : Boolean(orderId && session.authenticated), error: visible ? error : null, refetch };
 }

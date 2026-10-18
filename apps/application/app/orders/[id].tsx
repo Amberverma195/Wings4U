@@ -12,11 +12,15 @@ import {
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { MessageCircle, RefreshCw, Send } from "lucide-react-native";
+import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
+import { LifeBuoy, MessageCircle, RefreshCw, Send, Star } from "lucide-react-native";
 import { useChat } from "../../src/hooks/use-chat";
 import { useOrderDetail } from "../../src/hooks/use-order-detail";
 import { OrderReorderAction } from "../../src/components/order-history";
+import { OrderHelpModal } from "../../src/components/order-help-modal";
+import { OrderReviewModal } from "../../src/components/order-review-modal";
+import { canUseOrderFeedback } from "../../src/lib/order-feedback";
+import { getSessionGeneration } from "../../src/lib/token-store";
 import { useSession } from "../../src/context/session";
 import { cents, orderStatusCustomerLabel, shortDate, shortTime } from "../../src/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "../../src/lib/realtime";
@@ -46,12 +50,18 @@ export default function OrderDetailScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
   const session = useSession();
+  const focused = useIsFocused();
   const orderId = paramToString(params.id);
   const order = useOrderDetail(orderId);
   const chat = useChat(orderId);
   const [messageDraft, setMessageDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: 'help' | 'review'; context: string } | null>(null);
+  const feedbackContext = JSON.stringify([orderId, order.order?.location_id, session.user?.id, getSessionGeneration(), focused]);
+  useEffect(() => { setFeedback(null); }, [feedbackContext]);
+  const feedbackEligible = focused && order.order && order.order.id === orderId && canUseOrderFeedback(order.order, session);
+  useEffect(() => { if (!feedbackEligible) setFeedback(null); }, [feedbackEligible]);
   const orderRefetch = order.refetch;
   const chatRefetch = chat.refetch;
 
@@ -184,6 +194,16 @@ export default function OrderDetailScreen() {
               </View>
 
               <OrderReorderAction order={order.order} />
+              {feedbackEligible ? <View style={styles.feedbackActions}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Help" style={styles.helpAction}
+                  onPress={() => setFeedback({ kind: 'help', context: feedbackContext })}>
+                  <LifeBuoy size={18} color="#E53C3C" /><Text style={styles.helpActionText}>Help</Text>
+                </TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Rate Your Order" style={[styles.helpAction, styles.rateAction]}
+                  onPress={() => setFeedback({ kind: 'review', context: feedbackContext })}>
+                  <Star size={18} color="#FFF" /><Text style={[styles.helpActionText, styles.rateActionText]}>Rate Your Order</Text>
+                </TouchableOpacity>
+              </View> : null}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Details</Text>
                 <InfoRow label="Placed" value={shortDate(order.order.placed_at)} />
@@ -286,6 +306,10 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+      {feedbackEligible && feedback?.context === feedbackContext && order.order ? (
+        feedback.kind === 'help' ? <OrderHelpModal key={feedbackContext} order={order.order} onClose={() => setFeedback(null)} /> :
+          <OrderReviewModal key={feedbackContext} order={order.order} onClose={() => setFeedback(null)} />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -300,6 +324,11 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  feedbackActions: { flexDirection: 'row', gap: 10 },
+  helpAction: { flex: 1, minHeight: 44, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 1,
+    borderColor: '#FF4D4D', backgroundColor: '#FFF', flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center' },
+  helpActionText: { flexShrink: 1, textAlign: 'center', color: '#E53C3C', fontWeight: '800', fontSize: 14 },
+  rateAction: { backgroundColor: '#FF4D4D' }, rateActionText: { color: '#FFF' },
   container: {
     flex: 1,
     backgroundColor: "#FAFAFA",

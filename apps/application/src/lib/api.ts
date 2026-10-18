@@ -11,7 +11,7 @@
  */
 import type { ApiEnvelope, ApiErrorBody } from "@wings4u/contracts";
 import { getApiBase } from "./env";
-import { getAccessToken, getSignupDeviceId } from "./token-store";
+import { getAccessToken, getSignupDeviceId, getSessionGeneration } from "./token-store";
 
 /* ------------------------------------------------------------------ */
 /*  Connectivity                                                       */
@@ -45,9 +45,9 @@ function dispatchConnectivityFailure(
 
 export async function apiFetch(
   path: string,
-  init: RequestInit & { locationId?: string } = {}
+  init: RequestInit & { locationId?: string; expectedSessionGeneration?: number } = {}
 ): Promise<Response> {
-  const { locationId, headers: initHeaders, ...rest } = init;
+  const { locationId, expectedSessionGeneration, headers: initHeaders, ...rest } = init;
   const headers = new Headers(initHeaders);
 
   // Attach Bearer token from secure storage
@@ -66,6 +66,9 @@ export async function apiFetch(
   }
 
   const base = getApiBase();
+  if (expectedSessionGeneration !== undefined && expectedSessionGeneration !== getSessionGeneration()) {
+    throw new Error('Your session changed. Please try again.');
+  }
   return fetch(`${base}${path}`, {
     ...rest,
     // Native auth uses explicit Bearer/refresh tokens, not the native cookie jar.

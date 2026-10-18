@@ -16,7 +16,6 @@ import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { initStripe, useStripe } from "@stripe/stripe-react-native";
 import {
-  CheckCircle2,
   CreditCard,
   MapPin,
   MessageSquareText,
@@ -762,19 +761,9 @@ function CheckoutScreenContent() {
             </View>
           ) : (
             <>
-              <View style={styles.banner}>
-                <CheckCircle2 size={22} color="#16A34A" />
-                <View style={styles.bannerTextWrap}>
-                  <Text style={styles.bannerTitle}>Review and place order</Text>
-                  <Text style={styles.bannerText}>
-                    New orders are sent to the kitchen as soon as checkout succeeds.
-                  </Text>
-                </View>
-              </View>
-
-              <Section title="Order details">
+              <View style={styles.orderDetailsBar}>
                 <OrderSetupSummary />
-              </Section>
+              </View>
 
               <Section title="Order">
                 {cart.items.map((item) => {
@@ -1208,6 +1197,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 34,
   },
+  orderDetailsBar: {
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EFEFEF",
+  },
   emptyState: {
     minHeight: 420,
     alignItems: "center",
@@ -1218,31 +1215,6 @@ const styles = StyleSheet.create({
     color: "#1A1A1A",
     fontSize: 20,
     fontWeight: "900",
-  },
-  banner: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EFEFEF",
-    padding: 14,
-    marginTop: 14,
-  },
-  bannerTextWrap: {
-    flex: 1,
-  },
-  bannerTitle: {
-    color: "#1A1A1A",
-    fontWeight: "900",
-    fontSize: 15,
-  },
-  bannerText: {
-    color: "#666",
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
   },
   section: {
     marginTop: 16,
