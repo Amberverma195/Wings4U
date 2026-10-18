@@ -41,7 +41,7 @@ export function useOrderDetail(orderId: string | null): UseOrderDetailResult {
     setOrder(previous => dataIdentity === identity ? previous : null);
     setDataIdentity(identity);
     setLoading(true);
-    setError(null);
+    setError(previous => dataIdentity === identity ? previous : null);
 
     void (async () => {
       try {
@@ -49,10 +49,16 @@ export function useOrderDetail(orderId: string | null): UseOrderDetailResult {
           if (!current()) throw new Error('Your session or order changed.');
           return apiFetch(`/api/v1/orders/${orderId}`, { locationId: DEFAULT_LOCATION_ID, expectedSessionGeneration: generation });
         }, session.refresh, session.clear);
+        if (!current()) return;
+        // An access/not-found response revokes cached data even if its body is
+        // not JSON. Timeouts and rate limiting remain retryable refresh errors.
+        if (!response.ok && response.status >= 400 && response.status < 500 &&
+            response.status !== 408 && response.status !== 429) setOrder(null);
         const envelope = await response.json();
         if (!response.ok) throw new Error(getApiErrorMessage(envelope, 'Unable to load order.'));
-        if (current() && envelope.data) {
-          setOrder(envelope.data);
+        if (current()) {
+          setOrder(envelope.data ?? null);
+          setError(null);
         }
       } catch (err) {
         if (current()) {

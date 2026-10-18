@@ -7,13 +7,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { LifeBuoy, MessageCircle, RefreshCw, Send, Star } from "lucide-react-native";
+import { LifeBuoy, MessageCircle, RefreshCw, Star } from "lucide-react-native";
 import { useChat } from "../../src/hooks/use-chat";
 import { useOrderDetail } from "../../src/hooks/use-order-detail";
 import { OrderReorderAction } from "../../src/components/order-history";
@@ -54,8 +53,6 @@ export default function OrderDetailScreen() {
   const orderId = paramToString(params.id);
   const order = useOrderDetail(orderId);
   const chat = useChat(orderId);
-  const [messageDraft, setMessageDraft] = useState("");
-  const [sending, setSending] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: 'help' | 'review'; context: string } | null>(null);
   const feedbackContext = JSON.stringify([orderId, order.order?.location_id, session.user?.id, getSessionGeneration(), focused]);
@@ -121,18 +118,6 @@ export default function OrderDetailScreen() {
     [order.order?.items],
   );
 
-  const sendMessage = async () => {
-    const body = messageDraft.trim();
-    if (!body || sending) return;
-    setSending(true);
-    try {
-      await chat.sendMessage(body);
-      setMessageDraft("");
-    } finally {
-      setSending(false);
-    }
-  };
-
   if (!orderId) {
     return (
       <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
@@ -155,7 +140,7 @@ export default function OrderDetailScreen() {
             <ActivityIndicator color="#FF4D4D" />
             <Text style={styles.mutedText}>Loading order...</Text>
           </View>
-        ) : order.error ? (
+        ) : order.error && !order.order ? (
           <View style={styles.centerState}>
             <Text style={styles.errorText}>{order.error}</Text>
             <TouchableOpacity style={styles.primaryButton} onPress={order.refetch}>
@@ -193,6 +178,13 @@ export default function OrderDetailScreen() {
                 </View>
               </View>
 
+              {order.error ? <View style={styles.refreshWarning}>
+                <Text accessibilityLiveRegion="polite" style={styles.refreshWarningText}>Couldn't refresh order. Showing the last available details.</Text>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry order refresh" accessibilityState={{ disabled: order.loading, busy: order.loading }}
+                  disabled={order.loading} onPress={order.refetch} style={styles.refreshRetry}>
+                  <Text style={styles.helpActionText}>Retry</Text>
+                </TouchableOpacity>
+              </View> : null}
               <OrderReorderAction order={order.order} />
               {feedbackEligible ? <View style={styles.feedbackActions}>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Help" style={styles.helpAction}
@@ -275,27 +267,6 @@ export default function OrderDetailScreen() {
               </View>
             </ScrollView>
 
-            <View style={styles.composer}>
-              <TextInput
-                style={styles.composerInput}
-                value={messageDraft}
-                onChangeText={setMessageDraft}
-                placeholder="Message the store"
-                placeholderTextColor="#999"
-                editable={!chat.isClosed}
-              />
-              <TouchableOpacity
-                style={[styles.sendButton, sending && styles.disabledButton]}
-                onPress={sendMessage}
-                disabled={sending || chat.isClosed}
-              >
-                {sending ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <Send size={18} color="#FFF" />
-                )}
-              </TouchableOpacity>
-            </View>
           </>
         ) : (
           <View style={styles.centerState}>
@@ -324,6 +295,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  refreshWarning: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#FFF0ED' },
+  refreshWarningText: { flex: 1, color: '#6B5A51', fontSize: 13, lineHeight: 19, paddingVertical: 10 },
+  refreshRetry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   feedbackActions: { flexDirection: 'row', gap: 10 },
   helpAction: { flex: 1, minHeight: 44, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 1,
     borderColor: '#FF4D4D', backgroundColor: '#FFF', flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center' },
@@ -516,37 +490,5 @@ const styles = StyleSheet.create({
   },
   messageTimeMine: {
     color: "rgba(255,255,255,0.78)",
-  },
-  composer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 26 : 14,
-    backgroundColor: "#FFF",
-    borderTopWidth: 1,
-    borderTopColor: "#EFEFEF",
-  },
-  composerInput: {
-    flex: 1,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#F6F6F6",
-    paddingHorizontal: 16,
-    color: "#1A1A1A",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  sendButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#FF4D4D",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  disabledButton: {
-    opacity: 0.65,
   },
 });

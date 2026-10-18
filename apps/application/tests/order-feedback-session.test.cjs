@@ -59,3 +59,40 @@ test.each(['logout', 'account', 'order', 'generation'])('%s clears authenticated
 test('unauthenticated session never fetches order detail', async () => {
   mockSession.authenticated = false; mockSession.user = null; await mount(); expect(global.fetch).not.toHaveBeenCalled(); expect(latest.order).toBeNull();
 });
+
+test('initial loading and initial network failure have no cached order', async () => {
+  const pending = deferred(); global.fetch.mockReturnValueOnce(pending.promise); await mount();
+  expect(latest.loading).toBe(true); expect(latest.order).toBeNull();
+  await act(async () => pending.resolve({ ok: false, status: 503, json: async () => ({ message: 'Unavailable' }) }));
+  expect(latest.loading).toBe(false); expect(latest.order).toBeNull(); expect(latest.error).toBe('Unavailable');
+});
+test.each(['network', 408, 429, 500, 503])('temporary %s refresh failure retains data until successful retry', async failure => {
+  await mount(); const previous = latest.order;
+  if (failure === 'network') global.fetch.mockRejectedValueOnce(new TypeError('Network request failed'));
+  else global.fetch.mockResolvedValueOnce({ ok: false, status: failure, json: async () => ({ message: 'Temporary failure' }) });
+  await act(async () => latest.refetch()); expect(latest.order).toBe(previous); expect(latest.error).toBeTruthy();
+  const warning = latest.error, pending = deferred(); global.fetch.mockReturnValueOnce(pending.promise);
+  await act(async () => latest.refetch()); expect(latest.order).toBe(previous); expect(latest.loading).toBe(true); expect(latest.error).toBe(warning);
+  await act(async () => pending.resolve(response({ ...previous, status: 'DELIVERED' })));
+  expect(latest.order.status).toBe('DELIVERED'); expect(latest.error).toBeNull(); expect(latest.loading).toBe(false);
+});
+test.each([401, 403, 404, 410])('%s discards cached private order, including non-JSON error responses', async status => {
+  await mount(); expect(latest.order).not.toBeNull();
+  global.fetch.mockResolvedValueOnce({ ok: false, status, json: async () => { throw new SyntaxError('Invalid JSON'); } });
+  await act(async () => latest.refetch()); expect(latest.order).toBeNull(); expect(latest.error).toBeTruthy();
+  global.fetch.mockRejectedValueOnce(new TypeError('Network request failed'));
+  await act(async () => latest.refetch()); expect(latest.order).toBeNull();
+});
+test('successful response with no order clears previously cached details', async () => {
+  await mount(); global.fetch.mockResolvedValueOnce(response(null)); await act(async () => latest.refetch());
+  expect(latest.order).toBeNull(); expect(latest.error).toBeNull();
+});
+test.each(['logout', 'account', 'order', 'generation', 'invalid-session'])('%s immediately hides cached data while a new request is pending', async change => {
+  await mount(); const pending = deferred(); global.fetch.mockReturnValue(pending.promise);
+  if (change === 'logout') mockSession = { ...mockSession, authenticated: false, user: null };
+  if (change === 'account') mockSession = { ...mockSession, user: { id: 'other', role: 'CUSTOMER' } };
+  if (change === 'order') orderId = 'order-b';
+  if (change === 'generation') mockGeneration++;
+  if (change === 'invalid-session') mockSession = { ...mockSession, loaded: false };
+  await rerender(); expect(latest.order).toBeNull();
+});

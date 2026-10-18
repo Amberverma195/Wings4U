@@ -1,7 +1,7 @@
 const React = require('react');
 const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
-let mockSession, mockOrder, mockOrderId, mockFocused, mockGeneration, renderer;
+let mockSession, mockOrder, mockOrderId, mockFocused, mockGeneration, mockOrderLoading, mockOrderError, renderer;
 jest.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator', Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
@@ -15,7 +15,7 @@ jest.mock('../src/context/session', () => ({ useSession: () => mockSession, with
 jest.mock('../src/lib/token-store', () => ({ getSessionGeneration: () => mockGeneration }));
 jest.mock('../src/lib/api', () => ({ apiFetch: jest.fn(), getApiErrorMessage: (body, fallback) => body?.errors?.[0]?.message ?? fallback,
   ApiRequestError: class extends Error { constructor(message, body, status) { super(message); this.status = status; } } }));
-jest.mock('../src/hooks/use-order-detail', () => ({ useOrderDetail: () => ({ order: mockOrder, refetch: mockRefetch, loading: false, error: null }) }));
+jest.mock('../src/hooks/use-order-detail', () => ({ useOrderDetail: () => ({ order: mockOrder, refetch: mockRefetch, loading: mockOrderLoading, error: mockOrderError }) }));
 const mockRefetch = jest.fn();
 const mockChatRefetch = jest.fn();
 const mockSendMessage = jest.fn();
@@ -45,14 +45,43 @@ const details = async () => { await selectFirst(); await tap('Continue'); };
 const enterDescription = async body => act(async () => input().props.onChangeText(body));
 const stars = () => renderer.root.findAllByType('TouchableOpacity').filter(node => node.props.accessibilityRole === 'radio');
 const submits = () => renderer.root.findAllByType('TouchableOpacity').filter(node => node.props.accessibilityLabel === 'Submit Review');
+const refreshWarning = "Couldn't refresh order. Showing the last available details.";
 beforeEach(() => {
-  jest.clearAllMocks(); mockFocused = true; mockGeneration = 1; mockOrderId = 'order';
+  jest.clearAllMocks(); mockFocused = true; mockGeneration = 1; mockOrderId = 'order'; mockOrderLoading = false; mockOrderError = null;
   mockSession = { loaded: true, authenticated: true, user: { id: 'customer', role: 'CUSTOMER' }, refresh: jest.fn(), clear: jest.fn() };
   mockOrder = { id: 'order', location_id: 'order-location', customer_user_id: 'customer', order_number: 1061, status: 'DELIVERED',
     fulfillment_type: 'DELIVERY', placed_at: '2026-10-01', final_payable_cents: 3000, items: [item('line-a', 1), item('line-b', 2)] };
   apiFetch.mockResolvedValue(response([]));
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
+
+test('initial order load shows loading, then full-screen error with Try again on failure', async () => {
+  mockOrder = null; mockOrderLoading = true; await mount(Screen);
+  expect(texts()).toContain('Loading order...'); expect(renderer.root.findAllByType('ScrollView')).toHaveLength(0);
+  mockOrderLoading = false; mockOrderError = 'Unable to load order'; await act(async () => renderer.update(React.createElement(Screen)));
+  expect(texts()).toContain('Unable to load order'); expect(texts()).toContain('Try again'); expect(texts()).not.toContain(refreshWarning);
+  const retry = renderer.root.findAllByType('TouchableOpacity').find(node => node.findAllByType('Text').some(text => text.children.join('') === 'Try again'));
+  await act(async () => retry.props.onPress()); expect(mockRefetch).toHaveBeenCalledTimes(1);
+});
+test('failed refresh keeps details with inline Retry; successful retry removes warning', async () => {
+  await mount(Screen); mockOrderLoading = true; await act(async () => renderer.update(React.createElement(Screen)));
+  expect(texts()).toContain('Details'); expect(texts()).not.toContain('Loading order...');
+  mockOrderLoading = false; mockOrderError = 'Network request failed'; await act(async () => renderer.update(React.createElement(Screen)));
+  expect(texts()).toEqual(expect.arrayContaining(['Details', 'Kitchen ticket', refreshWarning]));
+  expect(texts()).not.toContain('Try again'); await tap('Retry order refresh'); expect(mockRefetch).toHaveBeenCalledTimes(1);
+  mockOrderLoading = true; await act(async () => renderer.update(React.createElement(Screen)));
+  expect(byLabel('Retry order refresh').props.disabled).toBe(true); expect(texts()).toContain('Details');
+  mockOrderLoading = false; mockOrderError = null; mockOrder = { ...mockOrder, order_number: 1062 };
+  await act(async () => renderer.update(React.createElement(Screen)));
+  expect(texts()).not.toContain(refreshWarning); expect(byLabel('Retry order refresh')).toBeUndefined();
+  expect(texts()).toContain('Order #1062');
+});
+test('revoked order data shows full-screen error instead of stale details or inline warning', async () => {
+  await mount(Screen); mockOrder = null; mockOrderError = 'You do not have access to this order';
+  await act(async () => renderer.update(React.createElement(Screen)));
+  expect(texts()).not.toContain('Details'); expect(texts()).not.toContain(refreshWarning);
+  expect(texts()).toContain('You do not have access to this order'); expect(texts()).toContain('Try again');
+});
 
 test.each(['PICKED_UP', 'DELIVERED'])('%s shows both actions immediately after Reorder and before Details; existing sections remain', async status => {
   mockOrder.status = status; await mount(Screen);
@@ -247,7 +276,7 @@ test('ticket success requires a confirmed creation, and successful tickets canno
   apiFetch.mockResolvedValue(response({ id: 'ticket' })); const submit = byLabel('Submit Ticket').props.onPress; await act(async () => submit());
   await act(async () => submit()); expect(apiFetch).toHaveBeenCalledTimes(2); expect(texts()).toContain('Ticket Submitted!');
 });
-test('opening feedback preserves live order subscriptions, kitchen ticket, and chat sending', async () => {
+test('opening feedback preserves live order subscriptions, kitchen ticket, and chat history without a message composer', async () => {
   await mount(Screen);
   const socket = await require('../src/lib/realtime').createOrdersSocket.mock.results[0].value;
   const handler = event => socket.on.mock.calls.find(([name]) => name === event)[1];
@@ -256,8 +285,7 @@ test('opening feedback preserves live order subscriptions, kitchen ticket, and c
   await act(async () => { handler('order.status_changed')(); handler('chat.message')(); });
   expect(mockRefetch).toHaveBeenCalledTimes(1); expect(mockChatRefetch).toHaveBeenCalledTimes(1);
   expect(texts()).toContain('Kitchen ticket');
-  await act(async () => renderer.root.findByType('TextInput').props.onChangeText('  Thank you  '));
-  const send = renderer.root.findAllByType('TouchableOpacity').find(node => node.findAllByType('Send').length);
-  await act(async () => send.props.onPress()); expect(mockSendMessage).toHaveBeenCalledWith('Thank you');
-  expect(renderer.root.findByType('TextInput').props.value).toBe('');
+  expect(texts()).toContain('Chat');
+  expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+  expect(mockSendMessage).not.toHaveBeenCalled();
 });
