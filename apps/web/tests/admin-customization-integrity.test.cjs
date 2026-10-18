@@ -42,6 +42,26 @@ test('an off-recipe extra requires explicit item approval before it is sent', as
   expect(JSON.parse(request[1].body)).toMatchObject({ modifier_groups: [{ id: 'legacy' }], additional_ingredients: [{ name: 'Add Cheese', price_delta_cents: 100, matches_ingredient: '' }] });
 });
 
+test.each([false, true])('admin explicitly approves Bacon at 150 cents (new=%s)', async isNew => {
+  const changed = structuredClone(item);
+  changed.modifierGroups[0].modifierGroup.options = isNew ? [] : [{ id: 'bacon', name: 'Add Bacon', priceDeltaCents: 150, addonMatchNormalized: null }];
+  mockFetch.mockImplementation(async (url, options) => options ? {} : url.endsWith('/modifier-groups') ? [] : changed);
+  await mount();
+  if (isNew) {
+    await act(async () => renderer.root.findAllByType('button').find(node => node.children.includes('+ Add additional ingredient')).props.onClick());
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Additional ingredient 1 name' }).props.onChange({ target: { value: 'Add Bacon' } }));
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Additional ingredient 1 price in cents' }).props.onChange({ target: { value: '150' } }));
+  }
+  const match = renderer.root.findByProps({ 'aria-label': 'Additional ingredient 1 matching ingredient' });
+  expect(match.props.value).toBe('__unconfigured__');
+  expect(match.findAllByType('option').find(node => node.props.value === '__unconfigured__').children.join('')).toContain('not available to customers');
+  await act(async () => match.props.onChange({ target: { value: '' } }));
+  await save();
+  const payload = JSON.parse(mockFetch.mock.calls.find(([, options]) => options?.method === 'PUT')[1].body);
+  expect(payload.additional_ingredients).toEqual([{ ...(isNew ? {} : { id: 'bacon' }), name: 'Add Bacon', price_delta_cents: 150, matches_ingredient: '' }]);
+  expect(payload.removable_ingredients).toEqual(changed.removableIngredients);
+});
+
 test.each(['Add Avocado', 'Add Jalapeños'])('removing %s allows unchanged unconfigured ingredients and preserves their IDs', async name => {
   const changed = structuredClone(item);
   changed.modifierGroups[0].modifierGroup.options.push({ id: 'removed', name, priceDeltaCents: 150, addonMatchNormalized: null });

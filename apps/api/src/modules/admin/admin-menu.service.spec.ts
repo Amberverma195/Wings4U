@@ -220,6 +220,26 @@ describe('incremental item extras (mock transactions only)', () => {
       expect(f.options.find(o => o.id === 'unconfigured')!.addonMatchNormalized).toBeNull();
     } finally { normalize.mockRestore(); }
   });
+  it('approves existing off-recipe Bacon at 150 cents, preserves its ID and repeats safely', async () => {
+    const f = fixture();
+    Object.assign(f.options[2], { name: 'Add Bacon', priceDeltaCents: 150 });
+    const rows = f.rows(); rows[1].matches_ingredient = '';
+    await f.save(rows); await f.save(rows);
+    expect(f.options[2]).toMatchObject({ id: 'unconfigured', name: 'Add Bacon', priceDeltaCents: 150, addonMatchNormalized: '__always__' });
+    expect(f.tx.modifierOption.update).toHaveBeenCalledWith({ where: { id: 'unconfigured' }, data: {
+      name: 'Add Bacon', priceDeltaCents: 150, addonMatchNormalized: '__always__',
+    } });
+    expect(f.tx.modifierOption.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierGroup.create).not.toHaveBeenCalled();
+  });
+  it('creates a newly approved off-recipe Bacon with the configured price', async () => {
+    const f = fixture();
+    await f.save([...f.rows(), { id: undefined as any, name: 'Add Bacon', price_delta_cents: 150, matches_ingredient: '' }]);
+    expect(f.tx.modifierOption.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      name: 'Add Bacon', priceDeltaCents: 150, addonMatchNormalized: '__always__', modifierGroupId: 'extras',
+    }) });
+    expect(f.options[2].addonMatchNormalized).toBeNull();
+  });
   it.each([['Veggie Burger', 'Add Avocado'], ['Buffalo Chicken Wrap', 'Add Jalapeños']])('removes only %s / %s, preserving unconfigured extras and repeat saves', async (name, removed) => {
     const f = fixture(); f.item.name = name; f.options[0].name = removed;
     const unchanged = structuredClone(f.options.slice(1));

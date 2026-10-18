@@ -661,8 +661,11 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
               <div className={styles.formSection}>
                 <h3>Additional Ingredients</h3>
                 <p className={styles.formSectionHint}>
-                  Paid ingredients shown to customers. Optionally match an
-                  extra to a removable ingredient already listed above.
+                  Paid extras are separate from removable recipe ingredients. Match an
+                  included ingredient, or explicitly approve an off-recipe extra for
+                  this item. Extras requiring review are hidden from customers; a
+                  configured price alone does not make them available. Save to apply
+                  availability changes to the website and mobile menu.
                 </p>
                 <div className={styles.listEditor}>
                   <div
@@ -716,12 +719,12 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                           )
                         }
                       >
-                        <option value="__unconfigured__" disabled>Review ingredient mapping</option>
+                        <option value="__unconfigured__" disabled>Requires review / not available to customers</option>
                         {ingredient.matches_ingredient && ingredient.matches_ingredient !== '__unconfigured__' &&
                           !form.removable_ingredients.some(row => normalizeIngredientText(row.name) === ingredient.matches_ingredient) && (
                             <option value={ingredient.matches_ingredient}>Saved mapping: {ingredient.matches_ingredient}</option>
                           )}
-                        <option value="">Approved for this item (off recipe allowed)</option>
+                        <option value="">Approved paid extra for this item (off recipe allowed)</option>
                         {form.removable_ingredients
                           .filter((row) => row.name.trim())
                           .map((row, ingredientIndex) => (
@@ -729,7 +732,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                               key={`${row.name}-${ingredientIndex}`}
                               value={normalizeIngredientText(row.name)}
                             >
-                              Matches: {row.name}
+                              Matches included ingredient: {row.name}
                             </option>
                           ))}
                       </select>

@@ -97,6 +97,44 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: total }) }));
     }
   });
+  it.each(['cart', 'quote', 'checkout'].flatMap(path => ['valid', 'unconfigured', 'inactive', 'shared', 'unavailable'].map(problem => ({ path, menu: require('../../../../../packages/customization/test/buffalo-burger-fixture.cjs').buffaloBurger(true), problem }))))('$path validates explicit Buffalo burger Bacon approval ($problem)', async ({ path, menu, problem }) => {
+    const f = fixture();
+    Object.assign(f.item, { id: menu.id, slug: menu.slug, name: menu.name, basePriceCents: menu.base_price_cents,
+      removableIngredients: menu.removable_ingredients });
+    const mappings = menu.modifier_groups.map((g: any) => ({ menuItemId: menu.id, modifierGroupId: g.id, contextKey: g.context_key,
+      modifierGroup: { id: g.id, name: g.name, displayLabel: g.display_label, locationId: 'local', archivedAt: null,
+        contextKey: g.context_key, sortOrder: g.sort_order, minSelect: g.min_select, maxSelect: g.max_select,
+        selectionMode: g.selection_mode, isRequired: g.is_required, menuItems: [{ menuItemId: menu.id }],
+        options: g.options.map((o: any) => ({ id: o.id, modifierGroupId: g.id, name: o.name, isActive: o.is_active,
+          isDefault: o.is_default, priceDeltaCents: o.price_delta_cents, addonMatchNormalized: o.addon_match_normalized })) } }));
+    const addon = mappings.find((m: any) => m.contextKey === 'addon').modifierGroup.options.find((o: any) => o.name === 'Add Bacon');
+    if (problem === 'unconfigured') addon.addonMatchNormalized = null;
+    if (problem === 'inactive') addon.isActive = false;
+    if (problem === 'shared') mappings[0].modifierGroup.menuItems.push({ menuItemId: 'other-product' });
+    if (problem === 'unavailable') { addon.name = 'Add Avocado'; addon.addonMatchNormalized = null; }
+    Object.assign(f.item, { modifierGroups: mappings });
+    for (const key of Object.keys(f.payload)) delete f.payload[key];
+    Object.assign(f.payload, { builder_type: 'ITEM_CUSTOMIZATION', removed_ingredients: [] });
+    const selected = [addon];
+    f.selectionIds.push(...selected.map((o: any) => o.id));
+    f.db.menuItem.findMany.mockResolvedValue([f.item]);
+    f.db.menuItemModifierGroup.findMany.mockResolvedValue(mappings);
+    f.db.modifierOption.findMany.mockResolvedValue(mappings.flatMap((m: any) => m.modifierGroup.options.map((o: any) => ({ ...o, modifierGroup: m.modifierGroup }))));
+    f.db.modifierGroup.findMany.mockResolvedValue(mappings.map((m: any) => m.modifierGroup));
+    f.db.removableIngredient.findMany.mockResolvedValue(f.item.removableIngredients.map((row: any) => ({
+      ...row, menuItemId: menu.id, sortOrder: row.sort_order,
+    })) as never);
+    if (problem !== 'valid') {
+      await expect(f.run(path)).rejects.toThrow(); expect(f.db.order.create).not.toHaveBeenCalled(); return;
+    }
+    const total = 2 * (menu.base_price_cents + selected.reduce((sum: number, o: any) => sum + o.priceDeltaCents, 0));
+    if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: total });
+    else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: total });
+    else {
+      await expect(f.run(path)).rejects.toBe(stop);
+      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: total }) }));
+    }
+  });
   function wingFixture(combo = false) {
     const f = fixture();
     Object.assign(f.item, { id: 'wings-1.5lb', name: '1.5 Pound – 1 Flavour', slug: 'wings-1.5lb', builderType: combo ? 'WING_COMBO' : 'WINGS' });

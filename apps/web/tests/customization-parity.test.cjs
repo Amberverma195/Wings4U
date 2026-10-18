@@ -105,3 +105,20 @@ test.each(['stale', 'required', 'price-conflict'])('Add to Cart scrolls and focu
     await act(async () => renderer.unmount()); renderer = null;
   } finally { global.window = previousWindow; }
 });
+
+const { buffaloBurger } = require('../../../packages/customization/test/buffalo-burger-fixture.cjs');
+test.each([false, true])('web Buffalo burger requires explicit Bacon approval (%s)', async approved => {
+  const item = buffaloBurger(approved);
+  await act(async () => { renderer = create(React.createElement(ItemCustomizationOverlay, { item, onClose: jest.fn() })); });
+  const text = JSON.stringify(renderer.toJSON());
+  for (const name of ['Extra Sriracha Mayo', 'Extra Lettuce', 'Extra Red Onion', 'Extra Tomato']) expect(text).toContain(name);
+  expect(text.includes('Add Bacon')).toBe(approved);
+  expect(text).not.toMatch(/Add Avocado|Add Jalapenos/);
+  const inputs = renderer.root.findAllByType('input').filter(node => node.props.name === 'mod-' + item.modifier_groups[0].id);
+  expect(inputs).toHaveLength(approved ? 5 : 4);
+  if (!approved) return;
+  await act(async () => inputs[2].props.onChange());
+  await act(async () => mockSubmit());
+  const bacon = item.modifier_groups[0].options.find(o => o.name === 'Add Bacon');
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ modifier_selections: [expect.objectContaining({ modifier_option_id: bacon.id, price_delta_cents: 150 })] }));
+});
