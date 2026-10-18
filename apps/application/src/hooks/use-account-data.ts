@@ -152,10 +152,13 @@ function fulfilled<T>(result: PromiseSettledResult<T>, fallback: T): T {
 
 function useAccountDataState() {
   const session = useSession();
-  const userKey = session.authenticated ? session.user?.id ?? 'customer' : null;
+  const userKey = session.authenticated ? session.user?.id ?? null : null;
+  const currentUserKey = useRef(userKey);
+  currentUserKey.current = userKey;
   const generation = useRef(0);
   const inFlight = useRef<{ userKey: string | null; promise: Promise<void> } | null>(null);
-  const pageBusy = useRef(false);
+  const pageBusy = useRef<object | null>(null);
+  const ordersCursor = useRef<string | null>(null);
   const [data, setData] = useState<AccountData>(EMPTY_ACCOUNT_DATA);
   const [dataOwner, setDataOwner] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,11 +170,17 @@ function useAccountDataState() {
   const authedFetch = useCallback(
     async (path: string, init?: RequestInit & { locationId?: string }) =>
       withSilentRefresh(
-        () => apiFetch(path, init),
+        async () => {
+          if (!userKey || currentUserKey.current !== userKey) throw new Error('Account changed.');
+          const response = await apiFetch(path, init);
+          // An old 401 must not refresh/clear the newly signed-in customer's session.
+          if (currentUserKey.current !== userKey) throw new Error('Account changed.');
+          return response;
+        },
         session.refresh,
         session.clear,
       ),
-    [session.refresh, session.clear],
+    [session.refresh, session.clear, userKey],
   );
 
   const authedJson = useCallback(
@@ -189,8 +198,11 @@ function useAccountDataState() {
   const performLoad = useCallback(
     async (mode: "initial" | "refresh" = "refresh") => {
       const request = ++generation.current;
+      pageBusy.current = null;
+      setLoadingMoreOrders(false);
       if (!session.loaded) return;
-      if (!session.authenticated) {
+      if (!session.authenticated || !userKey) {
+        ordersCursor.current = null;
         setData(EMPTY_ACCOUNT_DATA);
         setLoading(false);
         setRefreshing(false);
@@ -224,7 +236,7 @@ function useAccountDataState() {
       ]);
 
       // A response from a previous customer must never repopulate shared state.
-      if (request !== generation.current) return;
+      if (request !== generation.current || currentUserKey.current !== userKey) return;
 
       const [
         walletResult,
@@ -255,6 +267,7 @@ function useAccountDataState() {
         next_cursor: null,
       });
 
+      ordersCursor.current = orders.next_cursor;
       setData({
         wallet: fulfilled<WalletSummary | null>(walletResult, null),
         walletLedger: walletLedger.entries,
@@ -300,35 +313,43 @@ function useAccountDataState() {
     setData(EMPTY_ACCOUNT_DATA);
     setLoading(true);
     setLoadingMoreOrders(false);
-    pageBusy.current = false;
+    pageBusy.current = null;
+    ordersCursor.current = null;
+    setError(null);
+    setSectionErrors({});
     inFlight.current = null;
     void load("initial");
-    return () => { generation.current++; };
+    return () => { generation.current++; pageBusy.current = null; ordersCursor.current = null; };
   }, [load]);
 
   const loadMoreOrders = useCallback(async () => {
-    const cursor = data.ordersNextCursor;
-    if (!session.authenticated || !cursor || loading || refreshing || pageBusy.current) return;
+    const cursor = ordersCursor.current;
+    if (!session.loaded || !userKey || currentUserKey.current !== userKey || dataOwner !== userKey ||
+      !cursor || loading || refreshing || inFlight.current || pageBusy.current) return;
     const request = generation.current;
-    pageBusy.current = true;
+    const pageRequest = {};
+    pageBusy.current = pageRequest;
     setLoadingMoreOrders(true);
     try {
       const page = await authedJson<OrdersPage>(`/api/v1/orders/customer?limit=20&cursor=${encodeURIComponent(cursor)}`, {
         locationId: DEFAULT_LOCATION_ID,
       });
-      if (request !== generation.current) return;
-      setData(previous => ({ ...previous,
-        orders: [...new Map([...previous.orders, ...page.orders].map(order => [order.id, order])).values()],
-        ordersNextCursor: page.next_cursor,
-      }));
+      if (request !== generation.current || currentUserKey.current !== userKey) return;
+      ordersCursor.current = page.next_cursor;
+      setData(previous => request !== generation.current || currentUserKey.current !== userKey ? previous : ({ ...previous,
+          orders: [...new Map([...previous.orders, ...page.orders].map(order => [order.id, order])).values()],
+          ordersNextCursor: page.next_cursor,
+        }));
       setSectionErrors(previous => ({ ...previous, orders: undefined }));
     } catch (error) {
-      if (request === generation.current) setSectionErrors(previous => ({ ...previous, orders: errorMessage(error) }));
+      if (request === generation.current && currentUserKey.current === userKey) setSectionErrors(previous => ({ ...previous, orders: errorMessage(error) }));
     } finally {
-      pageBusy.current = false;
-      setLoadingMoreOrders(false);
+      if (pageBusy.current === pageRequest) {
+        pageBusy.current = null;
+        setLoadingMoreOrders(false);
+      }
     }
-  }, [authedJson, data.ordersNextCursor, session.authenticated, loading, refreshing]);
+  }, [authedJson, dataOwner, session.loaded, userKey, loading, refreshing]);
 
   const saveAddress = useCallback(
     async (input: AddressInput, id?: string) => {

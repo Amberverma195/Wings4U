@@ -197,7 +197,11 @@ export async function assertBuilderCatalogValid(params: {
     const saladGroups = (params.catalogContext.mappings.get(salad.salad_menu_item_id as string) ?? [])
       .map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
     if (saladGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid salad catalogue configuration');
-    checkSelections([...saladIds], saladGroups);
+    // The Special includes a small salad; both customer builders submit only its
+    // add-ons. A standalone salad's required size is represented by the parent.
+    const includedSize = new Set(menuItem.slug === 'wings-4u-special'
+      ? saladGroups.filter(group => group.contextKey === 'size').map(group => group.id) : []);
+    checkSelections([...saladIds], saladGroups, includedSize);
   }
   checkSelections(params.modifierOptionIds.filter(id => !saladIds.has(id)), groups, represented);
   if (menuItem.builderType === 'WING_COMBO') {

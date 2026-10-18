@@ -37,8 +37,8 @@ const sheet = () => renderer.root.findByType('AuthSheet');
 beforeEach(async () => {
   jest.clearAllMocks(); mockFocused = true; mockParams = {};
   mockSession = { loaded: true, authenticated: true, user, needsProfileCompletion: false };
-  mockAccount = { loading: false, refreshing: false, error: null, refresh: jest.fn(), data: {
-    orders: [], promos: [], wingsLedger: [], wingsRewards: null, addresses: [], tickets: [],
+  mockAccount = { loading: false, refreshing: false, error: null, refresh: jest.fn(), sectionErrors: {}, loadingMoreOrders: false, loadMoreOrders: jest.fn(), data: {
+    orders: [], ordersNextCursor: null, promos: [], wingsLedger: [], wingsRewards: null, addresses: [], tickets: [],
   } };
   mockRouter.canGoBack.mockReturnValue(false);
   mockRouter.replace.mockImplementation(() => { mockFocused = false; });
@@ -141,4 +141,54 @@ test('Profile > Orders > Past puts one Reorder action below each eligible card a
   await act(async () => card.props.onPress());
   expect(mockRouter.push).toHaveBeenCalledWith('/orders/past');
   await tap('Active (1)'); expect(button('Reorder')).toBeUndefined();
+});
+
+const historyOrder = (id, status = 'DELIVERED') => ({ id: String(id), status, location_id: 'store', order_number: id,
+  fulfillment_type: 'PICKUP', placed_at: '2026-10-01T16:00:00Z', final_payable_cents: 1200 });
+test('Past can load older orders, keeps the selected filter, adds Reorder actions and ends pagination', async () => {
+  mockAccount.data.orders = Array.from({ length: 20 }, (_, i) => historyOrder(i + 1)); mockAccount.data.ordersNextCursor = 'page2';
+  await rerender(); await tap('Orders'); expect(button('Load More Orders')).toBeUndefined(); await tap('Past (20)');
+  expect(strings()).toContain('Counts show loaded orders. Older orders may be on the next pages.');
+  mockAccount.loadMoreOrders.mockImplementation(async () => {
+    mockAccount.data.orders = [...mockAccount.data.orders, historyOrder(21), historyOrder(22, 'PREPARING')]; mockAccount.data.ordersNextCursor = null;
+  });
+  await tap('Load More Orders'); await rerender();
+  expect(mockAccount.loadMoreOrders).toHaveBeenCalledTimes(1); expect(selected('Past (21)')).toBe(true);
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Reorder' })).toHaveLength(21);
+  expect(button('Load More Orders')).toBeUndefined();
+  const olderCard = renderer.root.findByProps({ accessibilityLabel: 'Order #21' });
+  expect(olderCard.findAllByProps({ accessibilityLabel: 'Reorder' })).toHaveLength(0);
+  await act(async () => olderCard.props.onPress()); expect(mockRouter.push).toHaveBeenCalledWith('/orders/21');
+  await tap('Active (1)'); expect(selected('Active (1)')).toBe(true); expect(strings()).toContain('Order #22');
+});
+test('an empty Past list with more mixed/active-only pages remains loadable and never claims no historical orders', async () => {
+  mockAccount.data.orders = [historyOrder(1, 'PREPARING')]; mockAccount.data.ordersNextCursor = 'page2';
+  await rerender(); await tap('Orders'); await tap('Past (0)');
+  expect(strings()).toContain('No past orders in the loaded pages. Load more orders to check older history.');
+  expect(strings()).not.toContain('No past orders'); expect(button('Load More Orders')).toBeDefined();
+  mockAccount.data.orders = [...mockAccount.data.orders, historyOrder(2, 'ACCEPTED')]; mockAccount.data.ordersNextCursor = 'page3';
+  await rerender(); expect(selected('Past (0)')).toBe(true); expect(button('Load More Orders')).toBeDefined();
+  mockAccount.data.orders = [...mockAccount.data.orders, historyOrder(3)]; await rerender();
+  expect(selected('Past (1)')).toBe(true); expect(renderer.root.findAllByProps({ accessibilityLabel: 'Reorder' })).toHaveLength(1);
+});
+test('pagination spinner and disabled button are visible while the next page loads', async () => {
+  mockAccount.data.ordersNextCursor = 'page2'; await rerender(); await tap('Orders'); await tap('Past (0)');
+  mockAccount.loadingMoreOrders = true; await rerender();
+  const loading = renderer.root.findByProps({ accessibilityLabel: 'Load More Orders' });
+  expect(loading.props.disabled).toBe(true); expect(loading.props.accessibilityState.busy).toBe(true);
+  expect(loading.findAllByType('ActivityIndicator')).toHaveLength(1); expect(strings()).toContain('Loading more orders...');
+});
+test('failed page leaves existing cards visible with a retry action; exhaustion removes the button', async () => {
+  mockAccount.data.orders = [historyOrder(1)]; mockAccount.data.ordersNextCursor = 'page2';
+  await rerender(); await tap('Orders'); await tap('Past (1)');
+  mockAccount.sectionErrors.orders = 'Unable to connect'; await rerender();
+  expect(strings()).toContain('Order #1'); expect(strings()).toContain('Unable to connect');
+  await tap('Load More Orders'); expect(mockAccount.loadMoreOrders).toHaveBeenCalledTimes(1);
+  mockAccount.data.ordersNextCursor = null; mockAccount.sectionErrors = {}; await rerender();
+  expect(button('Load More Orders')).toBeUndefined();
+});
+test('genuinely empty exhausted history shows No past orders; an initial load failure offers refresh retry', async () => {
+  await tap('Orders'); await tap('Past (0)'); expect(strings()).toContain('No past orders'); expect(button('Load More Orders')).toBeUndefined();
+  mockAccount.sectionErrors.orders = 'Offline'; await rerender();
+  expect(strings()).not.toContain('No past orders'); await tap('Try again'); expect(mockAccount.refresh).toHaveBeenCalledWith('refresh');
 });

@@ -299,7 +299,8 @@ export default function CartScreen() {
                           <Plus size={16} color="#1A1A1A" />
                         </TouchableOpacity>
                       </View>
-                      <TouchableOpacity accessibilityLabel={`Edit ${item.name}`} onPress={() => router.push({ pathname: '/(tabs)/menu', params: { editKey: item.key, ts: String(Date.now()) } })}>
+                      <View style={styles.itemActions}>
+                      <TouchableOpacity style={styles.editButton} accessibilityRole="button" accessibilityLabel={`Edit ${item.name}`} onPress={() => router.push({ pathname: '/(tabs)/menu', params: { editKey: item.key, ts: String(Date.now()) } })}>
                         <Text>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -309,6 +310,7 @@ export default function CartScreen() {
                       >
                         <Trash2 size={16} color="#FF4D4D" />
                       </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 );
@@ -610,6 +612,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  itemActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  editButton: { minHeight: 40, minWidth: 40, alignItems: 'center', justifyContent: 'center' },
   quantityControl: {
     flexDirection: "row",
     alignItems: "center",

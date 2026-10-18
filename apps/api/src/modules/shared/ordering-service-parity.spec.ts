@@ -86,6 +86,41 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     f.db.wingFlavour.findMany.mockResolvedValue([{ id: 'hot', name: 'Catalogue Hot', heatLevel: 'HOT', isPlain: false, isActive: true, archivedAt: null }] as never);
     return { ...f, groups };
   }
+  it.each(['quote', 'checkout', 'pos'].flatMap(path => ['valid', 'missing-addon', 'too-many-addons'].map(problem => ({ path, problem }))))(
+    '$path checks the website/mobile included-small salad payload ($problem)', async ({ path, problem }) => {
+    const f = wingFixture();
+    Object.assign(f.item, { id: 'special', slug: 'wings-4u-special' }); f.payload.weight_lb = 2;
+    for (const group of f.groups) group.menuItemId = 'special';
+    const saladGroup = (id: string, contextKey: string, options: any[], minSelect: number) => ({ menuItemId: 'salad', modifierGroupId: id, contextKey,
+      modifierGroup: { id, locationId: 'local', name: id, displayLabel: id, contextKey, archivedAt: null, minSelect, maxSelect: 1,
+        isRequired: minSelect > 0, selectionMode: 'SINGLE', options: options.map(option => ({ modifierGroupId: id, isActive: true, linkedFlavourId: null, priceDeltaCents: 0, ...option })) } });
+    const size = saladGroup('salad-size', 'size', [{ id: 'small', name: 'Small' }, { id: 'large', name: 'Large', priceDeltaCents: 400 }], 1);
+    const extras = saladGroup('salad-extras', 'addon', [{ id: 'croutons', name: 'Extra Croutons', priceDeltaCents: 50 }, { id: 'tomato', name: 'Extra Tomato', priceDeltaCents: 25 }], 0);
+    const salad = { ...f.item, id: 'salad', slug: 'caesar-salad', name: 'Caesar Salad', builderType: null,
+      category: { ...f.item.category, slug: 'salads' }, modifierGroups: [size, extras], removableIngredients: [] };
+    f.payload.salad_customization = { salad_menu_item_id: 'salad', salad_name: salad.name, salad_slug: salad.slug,
+      removed_ingredients: [], modifier_selections: [{ modifier_option_id: 'croutons', name: 'Extra Croutons', price_delta_cents: 50 }] };
+    f.selectionIds.push('croutons');
+    if (problem === 'missing-addon') { extras.modifierGroup.minSelect = 2; extras.modifierGroup.maxSelect = 2; extras.modifierGroup.selectionMode = 'MULTI'; }
+    if (problem === 'too-many-addons') {
+      f.selectionIds.push('tomato');
+      (f.payload.salad_customization as { modifier_selections: unknown[] }).modifier_selections.push({ modifier_option_id: 'tomato', name: 'Extra Tomato', price_delta_cents: 25 });
+    }
+    const mappings = [...f.groups, size, extras];
+    f.db.menuItem.findMany.mockResolvedValue([f.item, salad] as never);
+    f.db.menuItemModifierGroup.findMany.mockResolvedValue(mappings as never);
+    f.db.modifierOption.findMany.mockResolvedValue(mappings.flatMap(group => group.modifierGroup.options.map(option => ({ ...option, modifierGroup: group.modifierGroup }))) as never);
+    f.db.modifierGroup.findMany.mockResolvedValue(mappings.map(group => group.modifierGroup) as never);
+    if (problem !== 'valid') {
+      await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: 'Invalid selections for salad-extras' }) });
+      expect(f.db.order.create).not.toHaveBeenCalled(); return;
+    }
+    if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2800 });
+    else {
+      await expect(f.run(path)).rejects.toBe(stop);
+      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2800 }) }));
+    }
+  });
   it.each(['quote', 'checkout', 'pos'].flatMap(path => [true, false].flatMap(isAvailable =>
     ['NORMAL', 'LOW_STOCK', 'UNAVAILABLE'].flatMap(stockStatus => [false, true].map(archived => ({ path, isAvailable, stockStatus, archived }))))))(
     '$path enforces catalogue isAvailable=$isAvailable stock=$stockStatus archived=$archived before persistence',

@@ -478,6 +478,12 @@ function ProfileScreen() {
               pastOrders={pastOrders}
               visibleOrders={visibleOrders}
               onFilterChange={setOrderFilter}
+              hasMoreOrders={Boolean(account.data.ordersNextCursor)}
+              loadingMoreOrders={account.loadingMoreOrders}
+              paginationDisabled={account.loading || account.refreshing}
+              ordersError={account.sectionErrors?.orders ?? null}
+              onLoadMore={() => { void account.loadMoreOrders(); }}
+              onRetry={() => { void account.refresh('refresh'); }}
             />
           )}
 
@@ -1071,12 +1077,24 @@ function OrdersTab({
   pastOrders,
   visibleOrders,
   onFilterChange,
+  hasMoreOrders,
+  loadingMoreOrders,
+  paginationDisabled,
+  ordersError,
+  onLoadMore,
+  onRetry,
 }: {
   filter: OrderFilter;
   activeOrders: OrderSummary[];
   pastOrders: OrderSummary[];
   visibleOrders: OrderSummary[];
   onFilterChange: (filter: OrderFilter) => void;
+  hasMoreOrders: boolean;
+  loadingMoreOrders: boolean;
+  paginationDisabled: boolean;
+  ordersError: string | null;
+  onLoadMore: () => void;
+  onRetry: () => void;
 }) {
   return (
     <SectionCard title="Order history">
@@ -1099,11 +1117,24 @@ function OrdersTab({
         </TouchableOpacity>
       </View>
 
+      {hasMoreOrders ? <Text style={styles.orderPageNote}>Counts show loaded orders. Older orders may be on the next pages.</Text> : null}
       {visibleOrders.length === 0 ? (
-        <EmptyLine text={filter === 'active' ? 'No active orders' : 'No past orders'} />
+        <EmptyLine text={filter === 'active' ? 'No active orders' : hasMoreOrders
+          ? 'No past orders in the loaded pages. Load more orders to check older history.' : ordersError
+            ? 'Order history could not be loaded.' : 'No past orders'} />
       ) : (
         visibleOrders.map((order) => <OrderRow key={order.id} order={order} />)
       )}
+      {filter === 'past' ? <>
+        {ordersError ? <Text style={styles.errorText} accessibilityRole="alert">{ordersError}</Text> : null}
+        {hasMoreOrders ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load More Orders"
+          accessibilityState={{ disabled: loadingMoreOrders || paginationDisabled, busy: loadingMoreOrders }}
+          disabled={loadingMoreOrders || paginationDisabled} style={styles.loadMoreOrders} onPress={onLoadMore}>
+          {loadingMoreOrders ? <ActivityIndicator color="#FF4D4D" /> : null}
+          <Text style={styles.loadMoreOrdersText}>{loadingMoreOrders ? 'Loading more orders...' : 'Load More Orders'}</Text>
+        </TouchableOpacity> : ordersError ? <TouchableOpacity accessibilityRole="button" style={styles.loadMoreOrders}
+          disabled={paginationDisabled} onPress={onRetry}><Text style={styles.loadMoreOrdersText}>Try again</Text></TouchableOpacity> : null}
+      </> : null}
     </SectionCard>
   );
 }
@@ -2223,6 +2254,10 @@ const styles = StyleSheet.create({
   switchTextActive: {
     color: '#E53C3C',
   },
+  orderPageNote: { color: '#777777', fontSize: 12, lineHeight: 18, marginBottom: 8 },
+  loadMoreOrders: { minHeight: 48, marginTop: 12, paddingHorizontal: 18, paddingVertical: 12,
+    borderRadius: 12, backgroundColor: '#FFF0ED', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  loadMoreOrdersText: { color: '#E53C3C', fontSize: 14, fontWeight: '800' },
   formLabel: {
     color: '#6B5A51',
     fontSize: 12,
