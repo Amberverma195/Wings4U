@@ -90,7 +90,6 @@ describe('coupon schedules use restaurant-local server evaluation time', () => {
     Object.assign(f.promo, restriction([2]));
     const offers = await f.service.getActivePromos('store', 'customer');
     expect(offers).toHaveLength(1); expect(offers[0]).toMatchObject({ code: 'FIRSTCUSTOM', benefitSummary: 'Free delivery + $3.00 off' });
-    expect(offers[0].benefitSummary).not.toContain('10%');
   });
   it('recognizes a custom first-order code even when its schedule/status is unavailable, then rejects eligibility', async () => {
     const f = fixture(); Object.assign(f.firstRows[0], { ...restriction([2]), isActive: false });
