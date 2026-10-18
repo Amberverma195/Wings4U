@@ -11,8 +11,10 @@ export const ORDER_ISSUES: ReadonlyArray<{ value: SupportTicketType; label: stri
 ];
 
 export function canUseOrderFeedback(order: OrderDetail, session: SessionState): boolean {
-  return session.loaded && session.authenticated && session.user?.role === 'CUSTOMER' &&
-    session.user.id === order.customer_user_id &&
+  // Admins can also be the purchasing customer. RolesGuard permits this, while
+  // the support/review services still require the authenticated order owner.
+  return session.loaded && session.authenticated && Boolean(session.user && ['CUSTOMER', 'ADMIN'].includes(session.user.role)) &&
+    session.user?.id === order.customer_user_id &&
     (order.status === 'PICKED_UP' || order.status === 'DELIVERED');
 }
 

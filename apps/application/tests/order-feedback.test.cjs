@@ -76,6 +76,21 @@ test.each(['signed-out', 'staff', 'other-customer', 'not-loaded'])('%s cannot op
   if (change === 'not-loaded') mockSession.loaded = false;
   await mount(Screen); expect(byLabel('Help')).toBeUndefined(); expect(byLabel('Rate Your Order')).toBeUndefined();
 });
+test.each(['PICKED_UP', 'DELIVERED'])('admin purchasing their own %s order can use both feedback flows', async status => {
+  mockSession.user.role = 'ADMIN'; mockOrder.status = status; await mount(Screen);
+  expect(byLabel('Help')).toBeDefined(); expect(byLabel('Rate Your Order')).toBeDefined();
+  await tap('Help'); await details(); await enterDescription('An issue');
+  apiFetch.mockResolvedValueOnce(response({ id: 'ticket' })); await tap('Submit Ticket');
+  expect(texts()).toContain('Ticket Submitted!'); await tap('Close');
+  apiFetch.mockResolvedValueOnce(response([])); await tap('Rate Your Order');
+  await act(async () => stars()[4].props.onPress()); apiFetch.mockResolvedValueOnce(response({ ...review(), rating: 5 }));
+  await act(async () => submits()[0].props.onPress()); expect(texts()).toContain('Review submitted · 5 of 5 stars');
+});
+test.each(['different-owner', 'CANCELLED', 'READY', 'OUT_FOR_DELIVERY'])('admin feedback remains hidden for %s', async reason => {
+  mockSession.user.role = 'ADMIN';
+  if (reason === 'different-owner') mockOrder.customer_user_id = 'someone-else'; else mockOrder.status = reason;
+  await mount(Screen); expect(byLabel('Help')).toBeUndefined(); expect(byLabel('Rate Your Order')).toBeUndefined();
+});
 test('help always starts with item selection, including one-item orders; empty orders disable Continue', async () => {
   mockOrder.items = [item('line-a', 1)]; await mount();
   expect(texts()).toContain('Which item had an issue?'); expect(checkboxes()).toHaveLength(2);
