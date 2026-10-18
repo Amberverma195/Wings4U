@@ -114,6 +114,52 @@ export function customerCustomizationInstructions(text: string, itemName: string
   return parts.join(' | ');
 }
 
+/** Saved carts are persisted JSON, not trusted TypeScript objects. Keep every
+ * valid selection and flag malformed fields for explicit customer review. */
+export function inspectCustomizationDraft<T extends {
+  special_instructions?: unknown; quantity?: unknown; modifier_selections?: unknown;
+  removed_ingredients?: unknown; builder_payload?: unknown;
+}>(saved: T | null): { item: T | null; needsReview: boolean } {
+  if (!saved) return { item: null, needsReview: false };
+  let needsReview = false;
+  const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+  const rows = (value: unknown, valid: (row: Record<string, unknown>) => boolean, optional = false): Record<string, unknown>[] => {
+    if (value === undefined && optional) return [];
+    if (!Array.isArray(value)) { needsReview = true; return []; }
+    return value.filter(row => { const keep = record(row) && valid(row); if (!keep) needsReview = true; return keep; });
+  };
+  const removal = (row: Record<string, unknown>) => typeof row.id === 'string' && typeof row.name === 'string';
+  const modifier = (row: Record<string, unknown>) => typeof row.modifier_option_id === 'string' && typeof row.price_delta_cents === 'number' && Number.isFinite(row.price_delta_cents);
+  const notes = typeof saved.special_instructions === 'string' ? saved.special_instructions : '';
+  if (saved.special_instructions != null && typeof saved.special_instructions !== 'string') needsReview = true;
+  const quantity = typeof saved.quantity === 'number' && Number.isInteger(saved.quantity) && saved.quantity > 0 ? saved.quantity : 1;
+  if (quantity !== saved.quantity) needsReview = true;
+  const modifiers = rows(saved.modifier_selections, modifier);
+  const removed = rows(saved.removed_ingredients, removal, true);
+  let payload: Record<string, unknown> | undefined;
+  if (saved.builder_payload != null) {
+    if (!record(saved.builder_payload)) needsReview = true;
+    else {
+      payload = { ...saved.builder_payload };
+      if (payload.builder_type === 'LUNCH_SPECIAL') {
+        payload.removed_ingredients = rows(payload.removed_ingredients, removal);
+        payload.child_addons = rows(payload.child_addons, row => modifier(row) && typeof row.name === 'string');
+        if (typeof payload.child_menu_item_id !== 'string' || typeof payload.child_name !== 'string') needsReview = true;
+      } else if (payload.builder_type === 'ITEM_CUSTOMIZATION') {
+        payload.removed_ingredients = rows(payload.removed_ingredients, removal, true);
+        if (payload.side_pop_bundle != null && (!record(payload.side_pop_bundle) || typeof payload.side_pop_bundle.side_label !== 'string' || typeof payload.side_pop_bundle.pop_label !== 'string')) {
+          needsReview = true; delete payload.side_pop_bundle;
+        }
+      } else if (payload.builder_type === 'WINGS' || payload.builder_type === 'WING_COMBO') {
+        payload.flavour_slots = rows(payload.flavour_slots, row => typeof row.slot_no === 'number' && typeof row.wing_flavour_id === 'string');
+      } else { needsReview = true; payload = undefined; }
+    }
+  }
+  const effectiveRemoved = !Array.isArray(saved.removed_ingredients) && payload?.builder_type === 'ITEM_CUSTOMIZATION'
+    ? payload.removed_ingredients : removed;
+  return { item: { ...saved, special_instructions: notes, quantity, modifier_selections: modifiers, removed_ingredients: effectiveRemoved, builder_payload: payload } as T, needsReview };
+}
+
 export function validateSelections(groups: Group[], selections: Selections): string | null {
   for (const [groupId, ids] of Object.entries(selections)) {
     if (ids.length && !groups.some(group => group.id === groupId)) return 'Menu options changed. Please review your selections.';

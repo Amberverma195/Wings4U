@@ -12,7 +12,8 @@
     "pretest": "npm run build --workspace @wings4u/customization",
     "preandroid": "npm run build --workspace @wings4u/customization",
     "preios": "npm run build --workspace @wings4u/customization",
-    "preweb": "npm run build --workspace @wings4u/customization"
+    "preweb": "npm run build --workspace @wings4u/customization",
+    "test:metro-customization": "node tests/metro-customization-runtime.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

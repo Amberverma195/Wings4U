@@ -88,7 +88,20 @@ test('the builder refuses an unavailable item without mutating the cart', async 
 });
 
 const { product: sharedProduct } = require('../../../packages/customization/test/fixtures.cjs');
-test.each(['veggie-burger', 'chicken-burger', 'buffalo-chicken-wrap'])('mobile uses the identical web fixture for %s', async slug => {
+test.each([
+  { special_instructions: 42 },
+  { modifier_selections: null },
+  { builder_payload: { builder_type: 'LUNCH_SPECIAL', child_menu_item_id: 'veggie-burger', child_addons: {}, removed_ingredients: null } },
+])('malformed saved customization opens for explicit review instead of crashing: %j', async malformed => {
+  const item = sharedProduct();
+  const saved = { key: 'malformed', menu_item_id: item.id, base_price_cents: 999, quantity: 2,
+    special_instructions: 'Keep warm', modifier_selections: [], removed_ingredients: [], ...malformed };
+  await mount(item, saved);
+  await act(async () => submit().props.onPress());
+  expect(mockCart.replaceItem).not.toHaveBeenCalled();
+  expect(button('Review current choices')).toBeDefined();
+});
+test.each(['veggie-burger', 'chicken-burger', 'buffalo-chicken-wrap', 'chicken-tenders', 'caesar-salad'])('mobile uses the identical web fixture for %s', async slug => {
   await mount(sharedProduct(slug));
   expect(texts(renderer.root)).not.toContain('Add Avocado');
   expect(texts(renderer.root)).not.toContain('Add Jalapenos');
@@ -96,6 +109,29 @@ test.each(['veggie-burger', 'chicken-burger', 'buffalo-chicken-wrap'])('mobile u
   await act(async () => submit().props.onPress());
   expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ menu_item_id: slug,
     modifier_selections: [expect.objectContaining({ modifier_option_id: 'lettuce', price_delta_cents: 50 })] }));
+});
+
+test('review of a partially malformed saved cart preserves valid selections, quantity and customer notes', async () => {
+  const item = sharedProduct();
+  const saved = { key: 'partial', menu_item_id: item.id, base_price_cents: 999, quantity: 3,
+    special_instructions: 'Keep warm', removed_ingredients: [],
+    modifier_selections: [{ modifier_option_id: 'lettuce', price_delta_cents: 50 }, null] };
+  await mount(item, saved);
+  expect(renderer.root.findAllByType('TextInput').some(node => node.props.value === 'Keep warm')).toBe(true);
+  await act(async () => submit().props.onPress()); expect(mockCart.replaceItem).not.toHaveBeenCalled();
+  await act(async () => button('Review current choices').props.onPress());
+  await act(async () => submit().props.onPress());
+  expect(mockCart.replaceItem).toHaveBeenCalledWith('partial', expect.objectContaining({ quantity: 3, special_instructions: 'Keep warm',
+    modifier_selections: [expect.objectContaining({ modifier_option_id: 'lettuce', price_delta_cents: 50 })] }));
+});
+
+test('legacy ingredient removals stored only in the builder payload are preserved', async () => {
+  const item = sharedProduct();
+  const removed = [{ id: 'veggie-burger-tomato', name: 'Tomato' }];
+  await mount(item, { key: 'legacy', menu_item_id: item.id, base_price_cents: 999, quantity: 2,
+    special_instructions: 'Keep warm', modifier_selections: [], builder_payload: { builder_type: 'ITEM_CUSTOMIZATION', removed_ingredients: removed } });
+  await act(async () => submit().props.onPress());
+  expect(mockCart.replaceItem).toHaveBeenCalledWith('legacy', expect.objectContaining({ quantity: 2, special_instructions: 'Keep warm', removed_ingredients: removed }));
 });
 
 test('included checkboxes remove real ingredients for free and bundle is charged once in its payload', async () => {

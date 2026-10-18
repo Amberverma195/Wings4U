@@ -6,7 +6,7 @@ import {
   View,
 } from "react-native";
 import { MobileBuilderShell, StepCard, NotesInput, P } from './mobile-builder-shell';
-import { customizationCatalog, customerCustomizationInstructions, defaultSelections, validateSelections, modifierTotal as customizationTotal, maximumSelections, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_BUNDLE_PRICE_CENTS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from '@wings4u/customization';
+import { customizationCatalog, customerCustomizationInstructions, inspectCustomizationDraft, defaultSelections, validateSelections, modifierTotal as customizationTotal, maximumSelections, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_BUNDLE_PRICE_CENTS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from '@wings4u/customization';
 import { useCart } from "../context/cart";
 import type {
   BuilderMenuOption,
@@ -212,7 +212,9 @@ function addSpecialInstructions(
   return parts.join(" | ");
 }
 
-export function MenuItemBuilder({ item, visible, categories, onClose, editItem = null }: Props) {
+export function MenuItemBuilder({ item, visible, categories, onClose, editItem: rawEditItem = null }: Props) {
+  const draft = useMemo(() => inspectCustomizationDraft(rawEditItem), [rawEditItem]);
+  const editItem = draft.item;
   const cart = useCart();
   const initializedSession = useRef('');
   const initializedBuildable = useRef('');
@@ -324,7 +326,9 @@ export function MenuItemBuilder({ item, visible, categories, onClose, editItem =
   const childCatalog = selectedChild ? customizationCatalog(selectedChild, childSelections) : null;
   const childAddonGroups = childCatalog?.groups.filter(group => group.context_key === 'addon') ?? [];
   const bundleEligible = SIDE_POP_BUNDLE_SLUGS.has(item.slug);
-  const reviewMessage = !reviewed && editItem && !wingBuilder && (
+  const reviewMessage = !reviewed && draft.needsReview
+    ? 'Some saved customization details are invalid. Review the current choices and your notes before updating your cart.'
+    : !reviewed && editItem && !wingBuilder && (
     editItem.base_price_cents !== buildable.base_price_cents ||
     (editItem.builder_payload?.builder_type === 'ITEM_CUSTOMIZATION' && editItem.builder_payload.side_pop_bundle && (!bundleEligible || editItem.builder_payload.side_pop_bundle.price_cents !== SIDE_POP_BUNDLE_PRICE_CENTS)) ||
     editItem.modifier_selections.some(saved => !groups.some(group => group.options.some(option => option.id === saved.modifier_option_id && option.price_delta_cents === saved.price_delta_cents))) ||
