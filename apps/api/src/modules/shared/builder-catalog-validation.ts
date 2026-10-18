@@ -1,4 +1,4 @@
-import { embeddedSaladCatalog, customizationCatalog, dedicatedAddonScope, validateSelections } from "@wings4u/customization";
+import { embeddedSaladCatalog, customizationCatalog, dedicatedAddonScope, saladSlugForSelectionName, validateSelections } from "@wings4u/customization";
 import { UnprocessableEntityException } from '@nestjs/common';
 import type { Prisma, WingFlavour } from '@prisma/client';
 import { getLunchAddonOptionIds } from './pricing';
@@ -219,10 +219,27 @@ export async function assertBuilderCatalogValid(params: {
   const saladIds = new Set(
     ((payload.salad_customization as { modifier_selections?: Array<{ modifier_option_id: string }> } | undefined)?.modifier_selections ?? []).map(row => row.modifier_option_id),
   );
+  let selectedSaladSlug: string | null = null;
+  if (menuItem.slug === 'wings-4u-special') {
+    const saladGroups = groups.filter(group => group.contextKey === 'salad');
+    const selected = saladGroups.flatMap(group => group.options.filter(option => params.modifierOptionIds.includes(option.id)));
+    if (saladGroups.length !== 1 || selected.length !== 1 || !selected[0].isActive) reject('Invalid selections for included salad');
+    selectedSaladSlug = saladSlugForSelectionName(selected[0].name);
+    if (!selectedSaladSlug) reject('Invalid included salad choice');
+    if (!salad) reject('Required salad customization is missing');
+  }
   if (salad) {
     const child = params.catalogContext ? params.catalogContext.children.get(salad.salad_menu_item_id as string)
       : await db.menuItem.findFirst({ where: { id: salad.salad_menu_item_id as string, locationId }, include: childInclude });
     if (!child || child.locationId !== locationId || child.archivedAt) reject('Invalid salad product');
+    if (selectedSaladSlug) {
+      // (locationId, slug) is unique. Resolve identity using the authoritative
+      // parent option and database slug, never the client's salad name/slug.
+      if (child.id !== salad.salad_menu_item_id || child.slug !== selectedSaladSlug || child.category.slug !== 'salads' || child.isHidden) reject('Salad does not match the selected included salad');
+      if (child.category.isActive === false || child.category.archivedAt) reject('Included salad category is unavailable');
+      assertMenuItemOrderable({ menuItem: child, fulfillmentType: params.fulfillmentType, specialInstructions: params.specialInstructions });
+      if (!isMenuCategoryScheduledAt(child.category, context) || !isMenuItemScheduledAt(child, context)) reject('Included salad is unavailable at the selected time');
+    }
     const saladGroups = child.modifierGroups.map(row => ({ ...row.modifierGroup,
       sortOrder: row.sortOrder ?? row.modifierGroup.sortOrder, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
     if (saladGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid salad catalogue configuration');

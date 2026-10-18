@@ -31,6 +31,20 @@ export function normalizeIngredientText(value: string = ''): string {
     .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/** Established parent salad-option labels, shared by both clients and the API. */
+export function normalizeSaladSelection(value: string): string {
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+const SALAD_SELECTION_TO_SLUG: Readonly<Record<string, string>> = {
+  'garden salad': 'garden-salad', 'caesar salad': 'caesar-salad', 'greek salad': 'greek-salad',
+  'horiatiki salad': 'horiatiki-salad', 'buffalo chicken salad': 'buffalo-chicken-salad',
+};
+export function saladSlugForSelectionName(name: string): string | null {
+  return SALAD_SELECTION_TO_SLUG[normalizeSaladSelection(name)] ?? null;
+}
+export const WINGS_SPECIAL_SALAD_SIZE_LABEL = 'Small';
+
 export function inferOptionSizeScope(name: string, sizeNames: string[]): string | null {
   const words = ` ${normalizeIngredientText(name)} `;
   return [...sizeNames].sort((a, b) => b.length - a.length).find(size => words.includes(` ${size} `)) ?? null;
@@ -101,7 +115,7 @@ export function embeddedSaladCatalog<T extends Group>(item: Product & { modifier
     .filter(option => normalizeIngredientText(option.name) === 'small').map(option => option.id)]));
   const catalog = customizationCatalog(item, selections);
   return { ...catalog, groups: catalog.groups.filter(group => group.context_key === 'addon'),
-    supportsIncludedSize: sizes.length > 0 && sizes.every(group => selections[group.id].length === 1) };
+    supportsIncludedSize: sizes.length > 0 && sizes.every(group => selections[group.id].length === 1 && minimumSelections(group) <= 1 && maximumSelections(group) >= 1) };
 }
 
 export function initialCustomizationSelections(item: Product): Record<string, string[]> {

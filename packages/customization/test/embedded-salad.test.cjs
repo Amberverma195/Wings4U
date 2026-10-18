@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { salad, option, group } = require('./fixtures.cjs');
-const { customizationCatalog, embeddedSaladCatalog, validateSelections, modifierTotal, dedicatedAddonScope } = require('../dist/index.js');
+const { customizationCatalog, embeddedSaladCatalog, validateSelections, modifierTotal, dedicatedAddonScope, saladSlugForSelectionName } = require('../dist/index.js');
 
 for (const slug of ['caesar-salad', 'garden-salad', 'greek-salad']) {
   test(`${slug}: embedded and standalone Small have identical authorized extras and prices`, () => {
@@ -30,4 +30,20 @@ test('embedded duplicate extras charge once and conflicting prices require revie
 });
 test('a shared-group copy cannot create item approvals from formerly shared mappings', () => {
   assert.equal(dedicatedAddonScope('Salad extras [shared copy]', ['salad'], 'salad'), null);
+});
+
+test('parent salad mapping retains every established choice without keyword substitution', () => {
+  for (const [label, slug] of Object.entries({
+    'Garden Salad': 'garden-salad', 'Caesar Salad': 'caesar-salad', 'Greek Salad': 'greek-salad',
+    'Horiatiki Salad': 'horiatiki-salad', 'Buffalo Chicken Salad': 'buffalo-chicken-salad',
+  })) assert.equal(saladSlugForSelectionName(`  ${label.toUpperCase()}! `), slug);
+  for (const name of ['Garden Chicken Wrap', 'Caesar Burger', 'Chef Special', 'salad']) assert.equal(saladSlugForSelectionName(name), null);
+});
+test('included Small must also satisfy its size group selection constraints', () => {
+  const item = salad();
+  item.modifier_groups[0].max_select = 0;
+  assert.equal(embeddedSaladCatalog(item).supportsIncludedSize, false);
+  item.modifier_groups[0].max_select = 2;
+  item.modifier_groups[0].min_select = 2;
+  assert.equal(embeddedSaladCatalog(item).supportsIncludedSize, false);
 });

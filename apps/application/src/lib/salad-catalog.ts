@@ -6,28 +6,8 @@
  */
 import type { MenuItem } from './types';
 
-const SALAD_SELECTION_TO_SLUG: Record<string, string> = {
-  'garden salad': 'garden-salad',
-  'caesar salad': 'caesar-salad',
-  'greek salad': 'greek-salad',
-  'horiatiki salad': 'horiatiki-salad',
-  'buffalo chicken salad': 'buffalo-chicken-salad',
-};
-
-export function normalizeSaladSelection(value: string): string {
-  return value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-export function saladSlugForSelectionName(selectionName: string): string | null {
-  const normalized = normalizeSaladSelection(selectionName);
-  return SALAD_SELECTION_TO_SLUG[normalized] ?? null;
-}
+import { normalizeSaladSelection, saladSlugForSelectionName } from '@wings4u/customization';
+export { normalizeSaladSelection, saladSlugForSelectionName, WINGS_SPECIAL_SALAD_SIZE_LABEL } from '@wings4u/customization';
 
 export function findSaladMenuItemForSelection(
   saladItems: MenuItem[],
@@ -52,7 +32,6 @@ export function saladItemSupportsSize(
   );
 }
 
-export const WINGS_SPECIAL_SALAD_SIZE_LABEL = 'Small';
 
 export function normalizeSaladAddonDisplayLabel(
   displayLabel: string | undefined,

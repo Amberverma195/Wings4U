@@ -1,6 +1,6 @@
 const React = require('react');
 const { act, create } = require('react-test-renderer');
-const { product } = require('../../../packages/customization/test/fixtures.cjs');
+const { product, group, option } = require('../../../packages/customization/test/fixtures.cjs');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const mockCart = { addItem: jest.fn(), replaceItem: jest.fn() };
 let mockSubmit;
@@ -33,4 +33,55 @@ test('web editing an option removed by admin requires explicit review', async ()
   const review = renderer.root.findAllByType('button').find(node => node.children.includes('Review current choices'));
   await act(async () => review.props.onClick()); await act(async () => mockSubmit());
   expect(mockCart.replaceItem).toHaveBeenCalledWith('old', expect.objectContaining({ quantity: 2, special_instructions: 'Keep warm', modifier_selections: [] }));
+});
+
+test.each([false, true])('SINGLE selection can be cleared only when optional (required=%s)', async required => {
+  const item = product('tenders', { modifier_groups: [group('dip', [option('ranch', 'Ranch', { price_delta_cents: 125 })], {
+    context_key: 'dip', selection_mode: 'SINGLE', is_required: required, min_select: required ? 1 : 0, max_select: 1,
+  })] });
+  await act(async () => { renderer = create(React.createElement(ItemCustomizationOverlay, { item, onClose: jest.fn() })); });
+  const input = () => renderer.root.findAllByType('input').find(node => node.props.name === 'mod-dip');
+  expect(input().props.type).toBe(required ? 'radio' : 'checkbox');
+  await act(async () => input().props.onChange());
+  expect(renderer.root.findByType('main').props.totalCents).toBe(1124);
+  await act(async () => input().props.onChange());
+  expect(input().props.checked).toBe(required);
+  expect(renderer.root.findByType('main').props.totalCents).toBe(required ? 1124 : 999);
+  await act(async () => mockSubmit());
+  const selections = mockCart.addItem.mock.calls[0][0].modifier_selections;
+  expect(selections).toEqual(required ? [expect.objectContaining({ modifier_option_id: 'ranch', price_delta_cents: 125 })] : []);
+});
+
+test('optional SINGLE dropdown accepts its empty choice', async () => {
+  const item = product('tenders', { modifier_groups: [group('dip', Array.from({ length: 7 }, (_, i) => option('dip-' + i, 'Dip ' + i)), {
+    context_key: 'dip', selection_mode: 'SINGLE', max_select: 1,
+  })] });
+  await act(async () => { renderer = create(React.createElement(ItemCustomizationOverlay, { item, onClose: jest.fn() })); });
+  await act(async () => renderer.root.findByType('select').props.onChange({ target: { value: 'dip-0' } }));
+  await act(async () => renderer.root.findByType('select').props.onChange({ target: { value: '' } }));
+  await act(async () => mockSubmit());
+  expect(mockCart.addItem.mock.calls[0][0].modifier_selections).toEqual([]);
+});
+
+test.each(['stale', 'required', 'price-conflict'])('Add to Cart scrolls and focuses the visible %s validation alert', async problem => {
+  const item = product('tenders');
+  let editingLine;
+  if (problem === 'stale') editingLine = { key: 'saved', menu_item_id: item.id, base_price_cents: 999, quantity: 1,
+    modifier_selections: [{ modifier_option_id: 'avocado', price_delta_cents: 200 }], removed_ingredients: [] };
+  if (problem === 'required') item.modifier_groups = [group('dip', [option('ranch', 'Ranch')], { context_key: 'dip', is_required: true, min_select: 1 })];
+  if (problem === 'price-conflict') item.modifier_groups[0].options.push(option('lettuce-conflict', 'Extra Lettuce', { addon_match_normalized: 'lettuce', price_delta_cents: 100 }));
+  const alert = { scrollIntoView: jest.fn(), focus: jest.fn(), classList: { add: jest.fn(), remove: jest.fn() } };
+  const previousWindow = global.window; global.window = { setTimeout: jest.fn() };
+  try {
+    await act(async () => { renderer = create(React.createElement(ItemCustomizationOverlay, { item, editingLine, onClose: jest.fn() }), {
+      createNodeMock: element => element.type === 'section' && element.props.role === 'alert' ? alert : null,
+    }); });
+    await act(async () => mockSubmit());
+    expect(alert.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    expect(alert.focus).toHaveBeenCalledWith({ preventScroll: true });
+    const section = renderer.root.findAllByType('section').find(node => node.props.role === 'alert');
+    expect(section.props.tabIndex).toBe(-1); expect(section.props['aria-live']).toBe('assertive');
+    expect(mockCart.addItem).not.toHaveBeenCalled(); expect(mockCart.replaceItem).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount()); renderer = null;
+  } finally { global.window = previousWindow; }
 });

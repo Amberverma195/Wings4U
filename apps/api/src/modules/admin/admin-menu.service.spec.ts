@@ -1,4 +1,5 @@
 import { AdminMenuService } from "./admin-menu.service";
+import { customizationCatalog, dedicatedAddonScope, modifierTotal } from '@wings4u/customization';
 
 function createPrismaMock() {
   return {
@@ -232,6 +233,44 @@ describe('incremental item extras (mock transactions only)', () => {
       modifierGroupId: 'approved', name: 'Extra Cheese', addonMatchNormalized: '__always__', isActive: true,
     })] });
     expect(f.tx.modifierGroup.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'Veggie Burger Item Approved Extras' }) });
+  });
+  it('a mixed legacy shared-group copy preserves every unrelated record and cannot authorize __always__ extras', async () => {
+    const f = fixture(true);
+    f.options.push({ ...f.options[1], id: 'legacy-always', name: 'Add Chicken', addonMatchNormalized: '__always__', sortOrder: 12 });
+    f.options.push({ ...f.options[1], id: 'duplicate-looking', sortOrder: 13 });
+    f.options[3].addonMatchNormalized = '__always__';
+    const before = structuredClone(f.group);
+    await f.save();
+    expect(f.group).toEqual(before);
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.createMany).not.toHaveBeenCalled();
+    const copy = f.tx.modifierGroup.create.mock.calls[0][0].data;
+    const copiedOptions = f.tx.modifierOption.create.mock.calls.map(([args], i) => ({ id: `copied-${i}`, ...args.data }));
+    for (const original of before.options) {
+      expect(copiedOptions).toContainEqual(expect.objectContaining({ name: original.name, priceDeltaCents: original.priceDeltaCents,
+        addonMatchNormalized: original.addonMatchNormalized, sortOrder: original.sortOrder, isDefault: original.isDefault,
+        isActive: original.id === 'remove' ? false : original.isActive }));
+    }
+    const scope = dedicatedAddonScope(copy.name, ['burger'], 'burger');
+    expect(scope).toBeNull();
+    const catalog = customizationCatalog({ id: 'burger', removable_ingredients: [{ id: 'recipe', name: 'Lettuce' }], modifier_groups: [{
+      id: 'copy', name: copy.name, display_label: copy.displayLabel, context_key: 'addon', selection_mode: copy.selectionMode,
+      min_select: copy.minSelect, max_select: copy.maxSelect, is_required: copy.isRequired, sort_order: copy.sortOrder,
+      addon_scope_menu_item_id: scope, options: copiedOptions.filter(option => option.isActive).map(option => ({
+        id: option.id, name: option.name, price_delta_cents: option.priceDeltaCents, addon_match_normalized: option.addonMatchNormalized,
+        is_default: option.isDefault, sort_order: option.sortOrder,
+      })),
+    }] });
+    expect(catalog.groups[0].options.map(option => option.name)).toEqual(['Extra Lettuce']);
+    expect(modifierTotal(catalog.groups, { copy: catalog.groups[0].options.map(option => option.id) })).toBe(75);
+  });
+  it('does not copy an unchanged shared group or alter its option IDs', async () => {
+    const f = fixture(true), before = structuredClone(f.group);
+    await f.save([{ id: 'remove', name: f.options[0].name, price_delta_cents: 150, matches_ingredient: '__unconfigured__' }, ...f.rows()]);
+    expect(f.group).toEqual(before);
+    expect(f.tx.modifierGroup.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.create).not.toHaveBeenCalled();
+    expect(f.tx.modifierOption.update).not.toHaveBeenCalled();
   });
   it.each(['new', 'renamed', 'price', 'foreign', 'duplicate'])('rejects %s unconfigured or invalid rows before writing options', async change => {
     const f = fixture(), rows = f.rows();

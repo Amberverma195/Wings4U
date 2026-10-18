@@ -115,7 +115,7 @@ describe('read-only reorder using authoritative Cart Quote validation', () => {
   });
   it.each([
     ['wings-1lb', 1, false, 1], ['wings-1.5lb', 1.5, false, 1], ['wings-2.5lb', 2.5, false, 1],
-    ['combo-1.5lb', 1.5, true, 1], ['party-75-wings', 8, false, 5], ['party-100-wings', 11, false, 5], ['wings-4u-special', 2, false, 1],
+    ['combo-1.5lb', 1.5, true, 1], ['party-75-wings', 8, false, 5], ['party-100-wings', 11, false, 5],
   ])('restores %s from validated SKU and ordered flavour slots', async (slug, weight, combo, slots) => {
     const f = fixture(); f.wing(slug as string, weight as number, combo as boolean, slots as number);
     f.source.builderPayloadJson.extra_flavour = { wing_flavour_id: 'hot', flavour_name: 'Hot', placement: 'ON_SIDE' };
@@ -158,7 +158,9 @@ describe('read-only reorder using authoritative Cart Quote validation', () => {
     group(salad, 'salad-size', 'size', [{ id: 'small', name: 'Small' }, { id: 'large', name: 'Large', priceDeltaCents: 300 }]);
     if (family === 'wings-special') group(salad, 'salad-extras', 'addon', [{ id: 'extra-onion', addonMatchNormalized: 'onion', priceDeltaCents: 300 }], 0, 2);
     if (family === 'wings-special') {
-      f.catalog.push(salad); f.wing('wings-4u-special', 2); f.source.builderPayloadJson.salad_customization = {
+      salad.slug = 'garden-salad'; salad.category.slug = 'salads';
+      f.catalog.push(salad); f.wing('wings-4u-special', 2);
+      group(f.current, 'salad-picker', 'salad', [{ id: 'garden-choice', name: 'Garden Salad' }]); f.select('garden-choice'); f.source.builderPayloadJson.salad_customization = {
         salad_menu_item_id: 'salad', salad_name: 'Old Salad', salad_slug: 'old', removed_ingredients: [{ id: 'onion', name: 'Onion' }],
         modifier_selections: [{ modifier_option_id: 'extra-onion', name: 'Extra Onion', price_delta_cents: -1000 }],
       };

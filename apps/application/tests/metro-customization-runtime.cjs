@@ -59,7 +59,7 @@ async function main() {
 
   const entry = path.join(folder, 'entry.ts');
   fs.writeFileSync(entry, `import * as rules from '@wings4u/customization';
-    const names = ['customerCustomizationInstructions','customizationCatalog','embeddedSaladCatalog','defaultSelections','validateSelections','modifierTotal','maximumSelections','inspectCustomizationDraft'];
+    const names = ['customerCustomizationInstructions','customizationCatalog','embeddedSaladCatalog','saladSlugForSelectionName','normalizeSaladSelection','defaultSelections','validateSelections','modifierTotal','maximumSelections','inspectCustomizationDraft'];
     const missing = names.filter(name => typeof rules[name] !== 'function');
     if (missing.length) throw new Error('Missing runtime exports: ' + missing.join(','));
     globalThis.__customizationProbe = { missing, notes: rules.customerCustomizationInstructions('Keep warm', 'Burger'),

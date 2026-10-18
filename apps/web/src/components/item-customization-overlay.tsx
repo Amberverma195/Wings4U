@@ -21,7 +21,7 @@ import {
   builderSubmitLabel,
 } from "./builder-shared";
 
-import { customizationCatalog, initialCustomizationSelections, validateSelections, modifierTotal as customizationTotal, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from "@wings4u/customization";
+import { customizationCatalog, initialCustomizationSelections, minimumSelections, validateSelections, modifierTotal as customizationTotal, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from "@wings4u/customization";
 
 type Props = {
   item: MenuItem;
@@ -167,8 +167,9 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
         const set = new Set(next[group.id] ?? []);
 
         if (group.selection_mode === "SINGLE") {
+          const deselect = set.has(optionId) && minimumSelections(group) === 0;
           set.clear();
-          set.add(optionId);
+          if (!deselect && optionId) set.add(optionId);
         } else if (set.has(optionId)) {
           set.delete(optionId);
         } else {
@@ -209,6 +210,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     const node = sectionRefs.current.get(key);
     if (!node) return;
     node.scrollIntoView({ behavior: "smooth", block: "center" });
+    node.focus({ preventScroll: true });
     node.classList.add("builder-step-card-invalid");
     window.setTimeout(
       () => node.classList.remove("builder-step-card-invalid"),
@@ -234,6 +236,11 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
   const validationError = useMemo(() => validate(), [validate]);
   const isReadyToSubmit = validationError === null;
 
+  // Wait for the error section to mount before scrolling and focusing it.
+  useEffect(() => {
+    if (submitAttempted && validationError) scrollToSection(validationError);
+  }, [submitAttempted, validationError, scrollToSection]);
+
   // Auto-dismiss the validation banner once everything required is filled.
   useEffect(() => {
     if (submitAttempted && isReadyToSubmit) {
@@ -245,7 +252,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
     const invalidSection = validationError;
     if (invalidSection) {
       setSubmitAttempted(true);
-      scrollToSection(invalidSection);
+      if (submitAttempted) scrollToSection(invalidSection);
       return;
     }
 
@@ -315,7 +322,13 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
       submitLabel={builderSubmitLabel(Boolean(editingLine))}
       onSubmit={handleAdd}
     >
-      {catalogError || reviewMessage || bundleError ? <section className="builder-step-card" role="alert"><p>{catalogError || reviewMessage || bundleError}</p>{reviewMessage ? <button type="button" onClick={reviewCurrentChoices}>Review current choices</button> : null}</section> : null}
+      {catalogError || reviewMessage || bundleError || (submitAttempted && selectionError) ? (
+        <section ref={node => setSectionRef('catalog-review', node)} tabIndex={-1}
+          className="builder-step-card" role="alert" aria-live="assertive">
+          <p>{catalogError || reviewMessage || bundleError || selectionError}</p>
+          {reviewMessage ? <button type="button" onClick={reviewCurrentChoices}>Review current choices</button> : null}
+        </section>
+      ) : null}
       {sizeGroups.map((group) => (
         <section
           key={group.id}
@@ -419,7 +432,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                 value={selectedId}
                 onChange={(event) => {
                   const value = event.target.value;
-                  if (value) toggleSelection(group, value);
+                  if (value || minimumSelections(group) === 0) toggleSelection(group, value);
                 }}
               >
                 {!group.is_required || !selectedId ? (
@@ -439,7 +452,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                 {group.options.map((option) => {
                   const checked = selections[group.id]?.has(option.id) ?? false;
                   const type =
-                    group.selection_mode === "SINGLE" ? "radio" : "checkbox";
+                    group.selection_mode === "SINGLE" && minimumSelections(group) > 0 ? "radio" : "checkbox";
                   return (
                     <label key={option.id} className="builder-checkbox-row">
                       <input
@@ -503,7 +516,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
                       >
                           <input
                             type={
-                              group.selection_mode === "SINGLE"
+                              group.selection_mode === "SINGLE" && minimumSelections(group) > 0
                                 ? "radio"
                                 : "checkbox"
                             }
@@ -589,6 +602,7 @@ export function ItemCustomizationOverlay({ item, onClose, editingLine }: Props) 
       ) : null}
 
       <section
+        tabIndex={-1}
         className={`builder-step-card${submitAttempted && validationError === "special-instructions" ? " builder-step-card-invalid" : ""}`}
         ref={(node) => setSectionRef("special-instructions", node)}
       >
