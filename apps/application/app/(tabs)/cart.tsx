@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    // Keep the checkout action clear of the persistent bottom tab bar.
+    // Keep scroll content clear of the checkout dock above the tab bar.
     paddingBottom: 112,
   },
   emptyContent: {
@@ -811,7 +811,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 72,
+    bottom: 0,
     paddingHorizontal: 20,
     paddingVertical: 12,
     backgroundColor: "#FAFAFA",

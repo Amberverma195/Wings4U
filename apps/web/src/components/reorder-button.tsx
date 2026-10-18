@@ -9,50 +9,11 @@ import { useSession, withSilentRefresh } from "@/lib/session";
 import type {
   CartBuilderPayload,
   CartItem,
-  CartModifierSelection,
-  RemovedIngredientSelection,
 } from "@/lib/types";
 
-// Response from POST /api/v1/orders/:id/reorder. Shape matches
-// OrdersService.reorder() in apps/api.
-type ReorderItem = {
-  menu_item_id: string;
-  menu_item_slug: string | null;
-  name: string;
-  image_url: string | null;
-  base_price_cents: number;
-  quantity: number;
-  modifier_selections: CartModifierSelection[];
-  removed_ingredients: RemovedIngredientSelection[];
-  special_instructions: string;
-  builder_payload: Record<string, unknown> | null;
-};
-
-type ReorderDiff = {
-  skipped: Array<{
-    name: string;
-    reason:
-      | "unavailable"
-      | "archived"
-      | "location_mismatch"
-      | "required_group_missing";
-  }>;
-  modifier_changes: Array<{ name: string; dropped: string[] }>;
-  price_changes: Array<{ name: string; old_cents: number; new_cents: number }>;
-};
-
-type ReorderResponse = {
-  order_id: string;
-  location_id: string;
-  fulfillment_type_hint: string;
-  items: ReorderItem[];
-  diff: ReorderDiff;
-  all_unavailable: boolean;
-};
-
-const SKIP_REASON_COPY: Record<ReorderDiff["skipped"][number]["reason"], string> = {
-  unavailable: "currently unavailable",
-  archived: "no longer offered",
+import type { ReorderResponse } from "@wings4u/contracts";
+const SKIP_REASON_COPY = {
+  unavailable: "currently unavailable", archived: "no longer offered",
   location_mismatch: "not on this location's menu",
   required_group_missing: "requires options that are no longer available",
 };
@@ -241,7 +202,7 @@ function ReorderConfirmModal({
             <ul className="reorder-modal-list">
               {diff.skipped.map((s, i) => (
                 <li key={i}>
-                  {s.name} — {SKIP_REASON_COPY[s.reason]}
+                  {s.name} — {SKIP_REASON_COPY[s.reason]}{s.detail ? `. ${s.detail}` : ""}
                 </li>
               ))}
             </ul>
@@ -271,6 +232,15 @@ function ReorderConfirmModal({
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {!!diff.configuration_changes?.length && (
+          <div className="reorder-modal-section">
+            <strong>Configuration changes</strong>
+            <ul className="reorder-modal-list">{diff.configuration_changes.map((row, index) => (
+              <li key={index}>{row.name}: {row.changes.join(", ")}</li>
+            ))}</ul>
           </div>
         )}
 

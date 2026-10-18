@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { MessageCircle, RefreshCw, Send } from "lucide-react-native";
 import { useChat } from "../../src/hooks/use-chat";
 import { useOrderDetail } from "../../src/hooks/use-order-detail";
+import { OrderReorderAction } from "../../src/components/order-history";
 import { useSession } from "../../src/context/session";
 import { cents, orderStatusCustomerLabel, shortDate, shortTime } from "../../src/lib/format";
 import { createOrdersSocket, subscribeToChannels } from "../../src/lib/realtime";
@@ -182,6 +183,7 @@ export default function OrderDetailScreen() {
                 </View>
               </View>
 
+              <OrderReorderAction order={order.order} />
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Details</Text>
                 <InfoRow label="Placed" value={shortDate(order.order.placed_at)} />

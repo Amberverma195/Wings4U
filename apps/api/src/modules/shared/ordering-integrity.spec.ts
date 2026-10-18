@@ -207,8 +207,8 @@ describe('catalogue-backed builder validation', () => {
     await expect(assertBuilderCatalogValid(params)).rejects.toThrow();
   });
   it('preserves optional builders on ordinary items without catalogue reads', async () => {
-    const { params, db } = fixture(); params.menuItem = { ...item, builderType: null };
-    await expect(assertBuilderCatalogValid({ ...params, builderPayload: undefined })).resolves.toBeUndefined();
+    const { params, db } = fixture(); params.menuItem = { ...item, builderType: null, modifierGroups: [] };
+    await expect(assertBuilderCatalogValid({ ...params, builderPayload: undefined, modifierOptionIds: [] })).resolves.toBeUndefined();
     expect(db.menuItemModifierGroup.findMany).not.toHaveBeenCalled();
   });
 });

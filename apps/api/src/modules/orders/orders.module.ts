@@ -5,9 +5,10 @@ import { RefundModule } from "../refunds/refund.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
+import { CartModule } from "../cart/cart.module";
 
 @Module({
-  imports: [ChatModule, KdsModule, RefundModule, NotificationsModule],
+  imports: [ChatModule, KdsModule, RefundModule, NotificationsModule, CartModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

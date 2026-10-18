@@ -1,8 +1,16 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ACTIVE_STATUSES, type OrderSummary } from '../lib/types';
+import { ACTIVE_STATUSES, TERMINAL_STATUSES, type OrderSummary } from '../lib/types';
 import { SectionSwitch } from './section-switch';
+import { ReorderButton } from './reorder-button';
+import { useSession } from '../context/session';
+
+export function OrderReorderAction({ order }: { order: Pick<OrderSummary, 'id' | 'location_id' | 'status'> }) {
+  const session = useSession();
+  return session.loaded && session.authenticated && TERMINAL_STATUSES.has(order.status)
+    ? <ReorderButton orderId={order.id} locationId={order.location_id} /> : null;
+}
 
 export function OrderRow({ order }: { order: OrderSummary }) {
   const router = useRouter();
@@ -10,7 +18,7 @@ export function OrderRow({ order }: { order: OrderSummary }) {
   const date = new Date(order.placed_at).toLocaleDateString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
-  return <TouchableOpacity style={styles.row} accessibilityRole="button"
+  return <View><TouchableOpacity style={styles.row} accessibilityRole="button"
     accessibilityLabel={`Order #${order.order_number}, ${status}`}
     onPress={() => router.push(`/orders/${order.id}`)}>
     <View style={styles.main}>
@@ -18,7 +26,7 @@ export function OrderRow({ order }: { order: OrderSummary }) {
       <Text style={styles.meta}>{status} · {order.fulfillment_type.toLowerCase()} · {date}</Text>
     </View>
     <Text style={styles.amount}>${(order.final_payable_cents / 100).toFixed(2)}</Text>
-  </TouchableOpacity>;
+  </TouchableOpacity><OrderReorderAction order={order} /></View>;
 }
 
 export function OrderHistory({ orders }: { orders: OrderSummary[] }) {

@@ -5,6 +5,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { CartService } from "../cart/cart.service";
+import { previewReorder, type ReorderContext } from "./reorder-preview";
 import { TZDate } from "@date-fns/tz";
 import { addDays, startOfDay } from "date-fns";
 import { PrismaService } from "../../database/prisma.service";
@@ -213,6 +215,7 @@ export class OrdersService {
     private readonly refundService: RefundService,
     private readonly realtime: RealtimeGateway,
     private readonly orderStatusEmails: OrderStatusEmailService,
+    private readonly cartService: CartService,
   ) {}
 
   async listOrders(params: {
@@ -447,216 +450,8 @@ export class OrdersService {
     };
   }
 
-  // PRD §7 Reorder Button — Behaviour Rules.
-  // Revalidates each item at current state (NOT a blind clone of the snapshot):
-  //   available  → include at *current* price, with still-valid modifiers
-  //   unavailable / archived → skip, name listed in `skipped`
-  //   required modifier group missing → skip
-  //   modifiers dropped (option/group gone) → include, listed in `modifier_changes`
-  //   unit price changed → include, listed in `price_changes`
-  // Snapshot prices are for historical records, not reorders.
-  async reorder(orderId: string, userId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        orderItems: {
-          include: { modifiers: true, flavours: true },
-          orderBy: { lineNo: "asc" },
-        },
-      },
-    });
-
-    if (!order) {
-      throw new NotFoundException("Order not found");
-    }
-    if (order.customerUserId !== userId) {
-      throw new ForbiddenException("You do not have access to this order");
-    }
-
-    const sourceItems = order.orderItems;
-    const menuItemIds = Array.from(
-      new Set(sourceItems.map((i) => i.menuItemId).filter((v): v is string => !!v)),
-    );
-    const optionIds = Array.from(
-      new Set(
-        sourceItems.flatMap((i) =>
-          i.modifiers
-            .filter((m) => m.modifierKind !== "REMOVE_INGREDIENT" && m.modifierOptionId)
-            .map((m) => m.modifierOptionId as string),
-        ),
-      ),
-    );
-
-    const [menuItems, modifierOptions] = await Promise.all([
-      menuItemIds.length
-        ? this.prisma.menuItem.findMany({
-            where: { id: { in: menuItemIds }, locationId: order.locationId },
-            include: {
-              modifierGroups: { include: { modifierGroup: true } },
-              removableIngredients: true,
-            },
-          })
-        : Promise.resolve([]),
-      optionIds.length
-        ? this.prisma.modifierOption.findMany({
-            where: { id: { in: optionIds } },
-            include: { modifierGroup: true },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
-    const optionMap = new Map(modifierOptions.map((o) => [o.id, o]));
-
-    type SkipReason =
-      | "unavailable"
-      | "archived"
-      | "location_mismatch"
-      | "required_group_missing";
-
-    const skipped: Array<{ name: string; reason: SkipReason }> = [];
-    const modifierChanges: Array<{ name: string; dropped: string[] }> = [];
-    const priceChanges: Array<{ name: string; old_cents: number; new_cents: number }> = [];
-    const items: Array<{
-      menu_item_id: string;
-      menu_item_slug: string | null;
-      name: string;
-      image_url: string | null;
-      base_price_cents: number;
-      quantity: number;
-      modifier_selections: Array<{
-        modifier_option_id: string;
-        group_name: string;
-        option_name: string;
-        price_delta_cents: number;
-      }>;
-      removed_ingredients: Array<{ id: string; name: string }>;
-      special_instructions: string;
-      builder_payload: Record<string, unknown> | null;
-    }> = [];
-
-    for (const src of sourceItems) {
-      const displayName = src.productNameSnapshot;
-      if (!src.menuItemId) {
-        skipped.push({ name: displayName, reason: "archived" });
-        continue;
-      }
-      const current = menuItemMap.get(src.menuItemId);
-      if (!current) {
-        // Soft-deleted (missing from current location catalog) per PRD.
-        skipped.push({ name: displayName, reason: "location_mismatch" });
-        continue;
-      }
-      if (current.archivedAt || !current.isAvailable) {
-        skipped.push({
-          name: displayName,
-          reason: current.archivedAt ? "archived" : "unavailable",
-        });
-        continue;
-      }
-
-      const removedIngredients = src.modifiers
-        .filter((m) => m.modifierKind === "REMOVE_INGREDIENT")
-        .map((m) => ({ id: "", name: m.modifierNameSnapshot }));
-      // Remap removed-ingredient names onto the current item's removable
-      // ingredient ids so the cart/quote can validate them.
-      const removableByName = new Map(
-        current.removableIngredients.map((ri) => [ri.name.toLowerCase(), ri]),
-      );
-      const resolvedRemoved: Array<{ id: string; name: string }> = [];
-      const droppedRemovals: string[] = [];
-      for (const removed of removedIngredients) {
-        const match = removableByName.get(removed.name.toLowerCase());
-        if (match) resolvedRemoved.push({ id: match.id, name: match.name });
-        else droppedRemovals.push(removed.name);
-      }
-
-      const attachedGroupIds = new Set(
-        current.modifierGroups.map((mg) => mg.modifierGroupId),
-      );
-
-      const keptSelections: Array<{
-        modifier_option_id: string;
-        group_name: string;
-        option_name: string;
-        price_delta_cents: number;
-      }> = [];
-      const droppedMods: string[] = [...droppedRemovals];
-      for (const mod of src.modifiers) {
-        if (mod.modifierKind === "REMOVE_INGREDIENT") continue;
-        if (!mod.modifierOptionId) {
-          droppedMods.push(mod.modifierNameSnapshot);
-          continue;
-        }
-        const opt = optionMap.get(mod.modifierOptionId);
-        if (!opt || !opt.isActive || !attachedGroupIds.has(opt.modifierGroupId)) {
-          droppedMods.push(mod.modifierNameSnapshot);
-          continue;
-        }
-        keptSelections.push({
-          modifier_option_id: opt.id,
-          group_name: opt.modifierGroup.name,
-          option_name: opt.name,
-          price_delta_cents: opt.priceDeltaCents,
-        });
-      }
-
-      // If a currently-required group on the item has no kept selection, skip.
-      const requiredGroups = current.modifierGroups
-        .map((mg) => mg.modifierGroup)
-        .filter((g) => g.isRequired);
-      const satisfiedGroupIds = new Set(
-        keptSelections
-          .map((s) => optionMap.get(s.modifier_option_id)?.modifierGroupId)
-          .filter((v): v is string => !!v),
-      );
-      const unsatisfied = requiredGroups.filter((g) => !satisfiedGroupIds.has(g.id));
-      if (unsatisfied.length > 0) {
-        skipped.push({ name: displayName, reason: "required_group_missing" });
-        continue;
-      }
-
-      if (droppedMods.length > 0) {
-        modifierChanges.push({ name: displayName, dropped: droppedMods });
-      }
-
-      const newUnitPrice =
-        current.basePriceCents +
-        keptSelections.reduce((sum, s) => sum + s.price_delta_cents, 0);
-      if (newUnitPrice !== src.unitPriceCents) {
-        priceChanges.push({
-          name: displayName,
-          old_cents: src.unitPriceCents,
-          new_cents: newUnitPrice,
-        });
-      }
-
-      items.push({
-        menu_item_id: current.id,
-        menu_item_slug: current.slug,
-        name: current.name,
-        image_url: current.imageUrl,
-        base_price_cents: current.basePriceCents,
-        quantity: src.quantity,
-        modifier_selections: keptSelections,
-        removed_ingredients: resolvedRemoved,
-        special_instructions: src.specialInstructions ?? "",
-        builder_payload:
-          (src.builderPayloadJson as Record<string, unknown> | null) ?? null,
-      });
-    }
-
-    return {
-      order_id: order.id,
-      location_id: order.locationId,
-      fulfillment_type_hint: order.fulfillmentType,
-      items,
-      diff: {
-        skipped,
-        modifier_changes: modifierChanges,
-        price_changes: priceChanges,
-      },
-      all_unavailable: items.length === 0,
-    };
+  /** Preview only; current Cart Quote validators remain authoritative. */
+  async reorder(orderId: string, userId: string, context: ReorderContext = {}, scopedLocationId?: string) {
+    return previewReorder(this.prisma, this.cartService, orderId, userId, context, scopedLocationId);
   }
 }

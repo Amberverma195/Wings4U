@@ -181,7 +181,20 @@ export function cartItemKey(
     .map((selection) => selection.id)
     .sort()
     .join(",");
-  const payload = builderPayload ? JSON.stringify(builderPayload) : "";
+  // Catalogue labels/prices and JSON property order do not define a configuration.
+  // Array order still matters for flavour slots, sides and drinks.
+  const canonical = (value: unknown, field?: string): unknown => {
+    if (Array.isArray(value)) {
+      const entries = value.map(entry => canonical(entry));
+      return ['child_addons', 'removed_ingredients', 'modifier_selections'].includes(field ?? '')
+        ? entries.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))) : entries;
+    }
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
+      .filter(([key, entry]) => entry !== undefined && !['name', 'flavour_name', 'child_name', 'child_slug', 'salad_name', 'salad_slug', 'price_cents', 'price_delta_cents'].includes(key))
+      .sort(([left], [right]) => left.localeCompare(right)).map(([key, entry]) => [key, canonical(entry, key)]));
+    return value;
+  };
+  const payload = builderPayload ? JSON.stringify(canonical(builderPayload)) : "";
   return `${menuItemId}|${modifierIds}|${removedIds}|${specialInstructions.trim()}|${payload}`;
 }
 
@@ -434,14 +447,17 @@ export function CartProvider({
     );
 
     setItems((prev) => {
-      const existing = prev.find((item) => item.key === key);
+      const existing = prev.find((item) => cartItemKey(item.menu_item_id, item.modifier_selections,
+        item.special_instructions, normalizeRemovedIngredients(item), item.builder_payload) === key);
       if (existing) {
         return prev.map((item) =>
-          item.key === key
+          item.key === existing.key
             ? {
                 ...item,
+                ...incoming,
+                key: item.key,
                 quantity: item.quantity + incoming.quantity,
-                image_url: item.image_url ?? incoming.image_url ?? null,
+                image_url: incoming.image_url ?? item.image_url ?? null,
               }
             : item,
         );

@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { IsOptional, IsString, Matches } from "class-validator";
+import { IsIn, IsISO8601, IsOptional, IsString, Matches } from "class-validator";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -20,6 +20,16 @@ class CancelOrderDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+class ReorderContextDto {
+  @IsOptional()
+  @IsIn(["PICKUP", "DELIVERY"])
+  fulfillment_type?: "PICKUP" | "DELIVERY";
+
+  @IsOptional()
+  @IsISO8601()
+  scheduled_for?: string;
 }
 
 class ListOrdersQueryDto {
@@ -123,7 +133,7 @@ export class OrdersController {
   // the customer confirms before the cart is populated.
   @Post(":id/reorder")
   @Roles("CUSTOMER")
-  async reorder(@Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
-    return this.ordersService.reorder(id, req.user!.userId);
+  async reorder(@Param("id", ParseUUIDPipe) id: string, @Req() req: Request, @Body() body: ReorderContextDto) {
+    return this.ordersService.reorder(id, req.user!.userId, body ?? {}, req.locationId);
   }
 }

@@ -26,7 +26,7 @@ export async function loadBuilderCatalogContext(params: {
   db: Prisma.TransactionClient; locationId: string; menuItems: ValidationMenuItem[];
   builderPayloads: Array<Record<string, unknown> | undefined>;
 }): Promise<BuilderCatalogContext> {
-  const ids = params.menuItems.filter(item => item.builderType === 'WINGS' || item.builderType === 'WING_COMBO' ||
+  const ids = params.menuItems.filter(item => item.modifierGroups.length > 0 || item.builderType === 'WINGS' || item.builderType === 'WING_COMBO' ||
     ['lunch-burger', 'lunch-wrap'].includes(item.slug ?? '')).map(item => item.id);
   const childIds = [...new Set(params.builderPayloads.flatMap(payload => payload?.builder_type === 'LUNCH_SPECIAL' &&
     typeof payload.child_menu_item_id === 'string' && payload.child_menu_item_id.trim() ? [payload.child_menu_item_id] : []))];
@@ -61,7 +61,7 @@ export async function assertBuilderCatalogValid(params: {
   const { db, locationId, menuItem, builderPayload: payload, context } = params;
   const wings = menuItem.builderType === 'WINGS' || menuItem.builderType === 'WING_COMBO';
   const lunch = payload?.builder_type === 'LUNCH_SPECIAL';
-  if (!wings && !lunch) return;
+  if (!wings && !lunch && !menuItem.modifierGroups.length && !params.modifierOptionIds.length) return;
 
   const mappings = params.catalogContext ? params.catalogContext.mappings.get(menuItem.id) ?? [] : await db.menuItemModifierGroup.findMany({
     where: { menuItemId: menuItem.id }, orderBy: [{ sortOrder: 'asc' }, { modifierGroupId: 'asc' }],
@@ -85,6 +85,11 @@ export async function assertBuilderCatalogValid(params: {
     }
   };
 
+  if (!wings && !lunch) {
+    checkSelections(params.modifierOptionIds, groups);
+    return;
+  }
+
   if (lunch) {
     // Established by both lunch builders: burgers for lunch-burger, wraps for lunch-wrap.
     const categorySlug = menuItem.slug === 'lunch-burger' ? 'burgers' : menuItem.slug === 'lunch-wrap' ? 'wraps' : null;
@@ -101,7 +106,7 @@ export async function assertBuilderCatalogValid(params: {
     if (!isMenuCategoryScheduledAt(child.category, context) || !isMenuItemScheduledAt(child, context)) reject('Lunch child is unavailable at the selected time');
     const childGroups = child.modifierGroups.map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
     if (childGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid lunch child catalogue configuration');
-    checkSelections(getLunchAddonOptionIds(payload), childGroups.filter(group => group.contextKey === 'addon' || /extras/i.test(group.name)));
+    checkSelections(getLunchAddonOptionIds(payload), childGroups);
     const removed = payload.removed_ingredients;
     if (removed !== undefined) {
       if (!Array.isArray(removed)) reject('Invalid ingredient removals');
@@ -188,6 +193,12 @@ export async function assertBuilderCatalogValid(params: {
   const saladIds = new Set(
     ((payload.salad_customization as { modifier_selections?: Array<{ modifier_option_id: string }> } | undefined)?.modifier_selections ?? []).map(row => row.modifier_option_id),
   );
+  if (salad && params.catalogContext) {
+    const saladGroups = (params.catalogContext.mappings.get(salad.salad_menu_item_id as string) ?? [])
+      .map(row => ({ ...row.modifierGroup, contextKey: row.contextKey ?? row.modifierGroup.contextKey }));
+    if (saladGroups.some(group => group.locationId !== locationId || group.archivedAt)) reject('Invalid salad catalogue configuration');
+    checkSelections([...saladIds], saladGroups);
+  }
   checkSelections(params.modifierOptionIds.filter(id => !saladIds.has(id)), groups, represented);
   if (menuItem.builderType === 'WING_COMBO') {
     for (const [key, field] of [['side', 'side_selections'], ['drink', 'drink_selections']] as const) {

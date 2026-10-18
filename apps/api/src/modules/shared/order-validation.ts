@@ -57,6 +57,11 @@ export function getScheduleContext(
   referenceDate: Date,
   timezone: string,
 ): ScheduleContext {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(referenceDate);
+  } catch {
+    throw new UnprocessableEntityException('The restaurant ordering time could not be verified. Please contact the store.');
+  }
   const local = getLocationLocalDate(referenceDate, timezone);
   return {
     timezone,
@@ -140,6 +145,18 @@ export function throwScheduleViolations(params: {
     }),
     422,
   );
+}
+
+export function assertScheduledOrderingTime(scheduledFor: string | undefined, settings: {
+  busyModeEnabled: boolean; busyModePrepTimeMinutes: number | null; defaultPrepTimeMinutes: number;
+}) {
+  if (!scheduledFor) return;
+  const lead = settings.busyModeEnabled && settings.busyModePrepTimeMinutes
+    ? settings.busyModePrepTimeMinutes : settings.defaultPrepTimeMinutes;
+  const time = Date.parse(scheduledFor);
+  if (!Number.isFinite(time) || time < Date.now() + lead * 60_000) {
+    throw new UnprocessableEntityException({ message: `Scheduled time must be at least ${lead} minutes from now`, field: 'scheduled_for' });
+  }
 }
 
 export function assertMenuItemOrderable(params: {

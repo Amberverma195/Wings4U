@@ -1,3 +1,4 @@
+import { OrderReorderAction } from '../../src/components/order-history';
 import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1395,7 +1396,7 @@ function SectionCard({
 function OrderRow({ order }: { order: OrderSummary }) {
   const router = useRouter();
   return (
-    <TouchableOpacity style={styles.orderRow} onPress={() => router.push(`/orders/${order.id}`)}>
+    <View><TouchableOpacity style={styles.orderRow} accessibilityRole="button" accessibilityLabel={`Order #${order.order_number}`} onPress={() => router.push(`/orders/${order.id}`)}>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>Order #{order.order_number}</Text>
         <Text style={styles.rowMeta}>
@@ -1403,7 +1404,7 @@ function OrderRow({ order }: { order: OrderSummary }) {
         </Text>
       </View>
       <Text style={styles.amount}>{cents(order.final_payable_cents)}</Text>
-    </TouchableOpacity>
+    </TouchableOpacity><OrderReorderAction order={order} /></View>
   );
 }
 

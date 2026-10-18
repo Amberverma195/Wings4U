@@ -24,6 +24,7 @@ import {
   assertBuilderPayloadValid,
   assertLocationOpenForFulfillment,
   assertMenuItemOrderable,
+  assertScheduledOrderingTime,
   assertModifierOptionAllowedForItem,
   assertWingFlavoursOrderable,
   collectScheduleViolation,
@@ -79,20 +80,13 @@ export class CartService {
     private readonly deliveryQuoteVerifier: DeliveryQuoteVerifierService,
   ) {}
 
-  async computeQuote(
-    locationId: string,
-    fulfillmentType: "PICKUP" | "DELIVERY",
-    items: CartItemInput[],
-    promoCode?: string,
-    driverTipCents = 0,
-    walletAppliedCents = 0,
-    scheduledFor?: string,
-    userId?: string,
-    applyWingsReward?: boolean,
-    deliveryQuoteToken?: string,
-    addressSnapshotJson?: Record<string, unknown>,
-    requireExactDeliveryQuote = false,
-  ) {
+  /** Shared read-only item preflight for quotes and historical reorders. No financial benefits or writes. */
+  async validateItems(locationId: string, fulfillmentType: "PICKUP" | "DELIVERY", items: CartItemInput[], scheduledFor?: string) {
+    for (const item of items) {
+      if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) {
+        throw new UnprocessableEntityException("Item quantity must be a positive integer");
+      }
+    }
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
     });
@@ -101,6 +95,8 @@ export class CartService {
     }
 
     const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!location || !location.isActive) throw new UnprocessableEntityException('This location is not accepting orders');
+    assertScheduledOrderingTime(scheduledFor, settings);
 
     const saladMenuItemIds = items
       .map((item) => getSaladCustomization(item.builder_payload)?.saladMenuItemId ?? null)
@@ -360,6 +356,26 @@ export class CartService {
       lunchScheduleViolationIds,
       timezone,
     });
+
+    return { settings, timezone, menuItemMap, optionMap, wingFlavourMap, catalogContext, lineDetails, itemSubtotalCents };
+  }
+
+  async computeQuote(
+    locationId: string,
+    fulfillmentType: "PICKUP" | "DELIVERY",
+    items: CartItemInput[],
+    promoCode?: string,
+    driverTipCents = 0,
+    walletAppliedCents = 0,
+    scheduledFor?: string,
+    userId?: string,
+    applyWingsReward?: boolean,
+    deliveryQuoteToken?: string,
+    addressSnapshotJson?: Record<string, unknown>,
+    requireExactDeliveryQuote = false,
+  ) {
+    const { settings, menuItemMap, lineDetails, itemSubtotalCents } =
+      await this.validateItems(locationId, fulfillmentType, items, scheduledFor);
 
     let deliveryFeeCents = 0;
     let deliveryFeeStatedCents = 0;

@@ -21,7 +21,7 @@ jest.mock('../src/lib/saved-cart-api', () => ({
 }));
 
 const api = require('../src/lib/saved-cart-api');
-const { CartProvider, useCart } = require('../src/context/cart');
+const { CartProvider, useCart, cartItemKey } = require('../src/context/cart');
 
 const item = {
   key: 'wings', menu_item_id: 'wings', menu_item_slug: 'wings', name: 'Wings',
@@ -101,4 +101,15 @@ test('signing out during a merge prevents stale items from returning', async () 
   });
   expect(cart.isCartHydrating).toBe(false);
   expect(cart.items).toHaveLength(0);
+});
+
+test('reorder configurations merge deterministically with saved lines and refresh current prices', async () => {
+  const first = { builder_type: 'ITEM_CUSTOMIZATION', removed_ingredients: [], side_pop_bundle: { price_cents: 499, side_label: 'Fries', pop_label: 'Pepsi' } };
+  const second = { side_pop_bundle: { pop_label: 'Pepsi', side_label: 'Fries', price_cents: 499 }, removed_ingredients: [], builder_type: 'ITEM_CUSTOMIZATION' };
+  expect(cartItemKey('burger', [], '', [], first)).toBe(cartItemKey('burger', [], '', [], second));
+  await act(async () => cart.addItem({ ...item, menu_item_id: 'burger', key: undefined, base_price_cents: 1400, builder_payload: first }));
+  await act(async () => cart.addItem({ ...item, menu_item_id: 'burger', key: undefined, base_price_cents: 1600, quantity: 2, builder_payload: second }));
+  expect(cart.items.filter(row => row.menu_item_id === 'burger')).toHaveLength(1);
+  expect(cart.items.find(row => row.menu_item_id === 'burger')).toMatchObject({ quantity: 3, base_price_cents: 1600 });
+  expect(cart.items.find(row => row.menu_item_id === 'wings')).toMatchObject({ quantity: 1 });
 });

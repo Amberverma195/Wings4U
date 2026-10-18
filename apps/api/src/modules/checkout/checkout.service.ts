@@ -60,6 +60,7 @@ import {
   assertBuilderPayloadValid,
   assertLocationOpenForFulfillment,
   assertMenuItemOrderable,
+  assertScheduledOrderingTime,
   assertModifierOptionAllowedForItem,
   assertWingFlavoursOrderable,
   collectScheduleViolation,
@@ -541,21 +542,7 @@ export class CheckoutService {
 
       // PRD §8: minimum lead time. Scheduled orders cannot be placed for a
       // time earlier than now + default prep time (busy-mode aware).
-      if (params.scheduledFor) {
-        const minLeadMinutes =
-          settings.busyModeEnabled && settings.busyModePrepTimeMinutes
-            ? settings.busyModePrepTimeMinutes
-            : settings.defaultPrepTimeMinutes;
-        const earliestAllowed = new Date(
-          Date.now() + minLeadMinutes * 60 * 1000,
-        );
-        if (scheduledReference < earliestAllowed) {
-          throw new UnprocessableEntityException({
-            message: `Scheduled time must be at least ${minLeadMinutes} minutes from now`,
-            field: "scheduled_for",
-          });
-        }
-      }
+      assertScheduledOrderingTime(params.scheduledFor, settings);
 
       const saladMenuItemIds = params.items
         .map((item) => getSaladCustomization(item.builderPayload)?.saladMenuItemId ?? null)

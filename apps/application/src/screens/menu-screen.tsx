@@ -640,6 +640,14 @@ function MenuItemCard({
   categorySlug: string;
   onPress: () => void;
 }) {
+  const cart = useCart();
+  const cartItemIds = new Set([item.id, ...(item.weight_options ?? []).map(option => option.menu_item_id),
+    ...(item.combo_options ?? []).map(option => option.menu_item_id)]);
+  const cartLines = cart.items.filter(line => cartItemIds.has(line.menu_item_id));
+  const quantityInCart = cartLines.reduce((total, line) => total + line.quantity, 0);
+  const lastLine = cartLines[cartLines.length - 1];
+  const hasStartingPrice = (isWingBuilderItem(item) || isComboBuilderItem(item)) &&
+    Boolean(item.weight_options?.length || item.combo_options?.length);
   const isUnavailable = item.stock_status === 'UNAVAILABLE';
   const isLowStock = item.stock_status === 'LOW_STOCK';
   const hasImage = Boolean(item.image_url);
@@ -696,13 +704,39 @@ function MenuItemCard({
           </Text>
         ) : null}
 
-        <View style={styles.itemMeta}>
-          <Text style={[styles.itemPrice, isUnavailable && styles.itemPriceUnavailable]}>
+        <View style={[styles.itemMeta, hasStartingPrice && styles.itemMetaStartingPrice]}>
+          <View style={styles.itemPriceRow}>
+          <Text style={[styles.itemPrice, hasStartingPrice && styles.itemStartingPrice, isUnavailable && styles.itemPriceUnavailable]}>
             {isUnavailable ? 'UNAVAILABLE' : priceLabel}
           </Text>
-          <View style={styles.itemAction}>
-            <Text style={styles.itemActionText}>{item.builder_type ? 'Customize' : 'Add to cart'}</Text>
+          {quantityInCart > 0 && !isUnavailable ? (
+            <View style={styles.itemQuantity}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove one ${details.name}`}
+                style={styles.itemQuantityButton}
+                onPress={event => {
+                  event.stopPropagation();
+                  if (lastLine.quantity === 1) cart.removeItem(lastLine.key);
+                  else cart.updateQuantity(lastLine.key, lastLine.quantity - 1);
+                }}>
+                <Text style={styles.itemQuantityText}>−</Text>
+              </TouchableOpacity>
+              <Text style={styles.itemQuantityText}>{quantityInCart}</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Add one ${details.name}`}
+                style={styles.itemQuantityButton}
+                onPress={event => {
+                  event.stopPropagation();
+                  cart.updateQuantity(lastLine.key, lastLine.quantity + 1);
+                }}>
+                <Text style={styles.itemQuantityText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           </View>
+          {quantityInCart === 0 && !isUnavailable ? (
+            <View style={styles.itemAction}>
+              <Text style={styles.itemActionText}>Add to cart</Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </TouchableOpacity>
@@ -1163,6 +1197,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  itemMetaStartingPrice: { flexDirection: 'column', alignItems: 'stretch', gap: 8 },
+  itemPriceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 },
+  itemStartingPrice: { fontSize: 15 },
+  itemQuantity: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  itemQuantityButton: { minWidth: 24, minHeight: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#FFF0ED' },
+  itemQuantityText: { fontSize: 13, fontWeight: '800', color: '#E53C3C' },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',

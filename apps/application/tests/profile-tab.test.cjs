@@ -18,6 +18,8 @@ jest.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('lucide-react-native', () => Object.fromEntries(['Check', 'CheckCircle2', 'Copy', 'CreditCard', 'Home', 'LifeBuoy', 'LogOut', 'Mail', 'MapPin', 'Pencil', 'Phone', 'Plus', 'Save', 'Ticket', 'Trash2', 'User', 'X'].map(name => [name, name])));
 jest.mock('../src/context/session', () => ({ useSession: () => mockSession }));
+jest.mock('../src/context/cart', () => ({ useCart: () => ({ items: [], locationId: 'store', fulfillmentType: 'PICKUP', scheduledFor: null, isCartHydrated: true }) }));
+jest.mock('../src/lib/api', () => ({ apiFetch: jest.fn(), getApiErrorMessage: () => 'Unable to reorder' }));
 jest.mock('../src/hooks/use-auth', () => ({ useAuth: () => mockAuth }));
 jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => mockAccount }));
 jest.mock('../src/components/auth-sheet', () => ({ AuthSheet: 'AuthSheet' }));
@@ -123,4 +125,20 @@ test('inactive Profile cannot force navigation on sign-out or override the activ
 test('an already signed-in customer with an incomplete profile still lands on the profile form', async () => {
   mockSession = { ...mockSession, needsProfileCompletion: true }; await rerender();
   expect(selected('Profile')).toBe(true);
+});
+
+test('Profile > Orders > Past puts one Reorder action below each eligible card and keeps Active unchanged', async () => {
+  const order = (id, status) => ({ id, status, location_id: 'original-store', order_number: id === 'past' ? 42 : 43,
+    fulfillment_type: 'PICKUP', placed_at: '2026-10-01T16:00:00Z', final_payable_cents: 1200 });
+  mockAccount.data.orders = [order('past', 'PICKED_UP'), order('active', 'PREPARING')];
+  await rerender(); await tap('Orders');
+  expect(button('Reorder')).toBeUndefined();
+  await tap('Past (1)');
+  const card = renderer.root.findByProps({ accessibilityLabel: 'Order #42' });
+  expect(card.findAllByProps({ accessibilityLabel: 'Reorder' })).toHaveLength(0);
+  const action = renderer.root.findByProps({ accessibilityLabel: 'Reorder' });
+  expect(action).toBeDefined();
+  await act(async () => card.props.onPress());
+  expect(mockRouter.push).toHaveBeenCalledWith('/orders/past');
+  await tap('Active (1)'); expect(button('Reorder')).toBeUndefined();
 });

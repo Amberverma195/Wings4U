@@ -5,6 +5,7 @@ let mockParams = {};
 let mockMenuResult;
 const mockRouter = { navigate: jest.fn() };
 const mockCart = { fulfillmentType: 'PICKUP', locationId: 'store', scheduledFor: null, items: [], addItem: jest.fn(),
+  updateQuantity: jest.fn(), removeItem: jest.fn(),
   setFulfillmentType: jest.fn(), setDriverTipPercent: jest.fn() };
 jest.mock('expo-router', () => ({ useIsFocused: () => true, useRouter: () => mockRouter, useLocalSearchParams: () => mockParams }));
 jest.mock('expo-image', () => ({ Image: 'Image' }));
@@ -60,6 +61,47 @@ beforeEach(() => {
   mockMenuResult = { menu, loading: false, error: null, refetch: jest.fn(), loadedReloadKey: undefined };
   global.requestAnimationFrame = fn => { fn(); return 1; };
   global.cancelAnimationFrame = jest.fn();
+});
+
+test.each([
+  ['wings', 'WINGS', 'weight_options'],
+  ['wing-combos', 'WING_COMBO', 'combo_options'],
+])('%s cards show Add to cart below the starting price and count configured cart lines', async (slug, builderType, optionsKey) => {
+  const product = { ...item(slug), builder_type: builderType,
+    [optionsKey]: [{ menu_item_id: 'size-one' }, { menu_item_id: 'size-two' }] };
+  mockMenuResult.menu = { categories: [{ id: slug, slug, name: slug, sort_order: 1, items: [product] }] };
+  await mount(false);
+  const card = () => renderer.root.find(node => node.type?.name === 'MenuItemCard');
+  const texts = () => card().findAllByType('Text').map(node => node.props.children);
+  expect(texts()).toContain('From $9.99');
+  expect(texts()).toContain('Add to cart');
+  expect(texts()).not.toContain('Customize');
+  const action = card().findAllByType('Text').find(node => node.props.children === 'Add to cart');
+  expect(action.parent.parent.props.style[1]).toMatchObject({ flexDirection: 'column' });
+  mockCart.items = [
+    { key: 'first', menu_item_id: 'size-one', quantity: 2 },
+    { key: 'last', menu_item_id: 'size-two', quantity: 1 },
+    { key: 'unrelated', menu_item_id: 'burger', quantity: 8 },
+  ];
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic: false })));
+  expect(texts()).toContain(3);
+  expect(texts()).not.toContain('Add to cart');
+  const event = { stopPropagation: jest.fn() };
+  await act(async () => card().findByProps({ accessibilityLabel: `Add one ${slug}` }).props.onPress(event));
+  expect(mockCart.updateQuantity).toHaveBeenLastCalledWith('last', 2);
+  await act(async () => card().findByProps({ accessibilityLabel: `Remove one ${slug}` }).props.onPress(event));
+  expect(mockCart.removeItem).toHaveBeenLastCalledWith('last');
+  expect(event.stopPropagation).toHaveBeenCalledTimes(2);
+  expect(builder().props.visible).toBe(false);
+});
+
+test('fixed-price cards keep price and Add to cart on one row', async () => {
+  mockMenuResult.menu = { categories: [menu.categories[3]] };
+  await mount(false);
+  const card = renderer.root.findAll(node => node.type?.name === 'MenuItemCard')[0];
+  const action = card.findAllByType('Text').find(node => node.props.children === 'Add to cart');
+  expect(action.parent.parent.props.style[0]).toMatchObject({ flexDirection: 'row' });
+  expect(action.parent.parent.props.style[1]).toBe(false);
 });
 
 test('Cart edit waits for the fresh menu and preserves the selected line and quantity', async () => {
@@ -247,7 +289,8 @@ test('Menu cards use the local category image fallback and keep the product acti
   const productImage = renderer.root.findAllByType('Image').find(node => node.props.contentFit === 'contain');
   expect(productImage.props.source).toBe(categoryImageForSlug('wings'));
   expect(productImage.props.contentFit).toBe('contain');
-  expect(shownNames()).toContain('Customize');
+  expect(shownNames()).toContain('Add to cart');
+  expect(shownNames()).not.toContain('Customize');
   const productCard = renderer.root.findAllByType('TouchableOpacity').find(node => Array.isArray(node.props.style) && node.props.style[0]?.borderColor === '#F0E2D9');
   expect(productCard).toBeDefined();
 });
