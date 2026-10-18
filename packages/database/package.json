@@ -5,6 +5,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
+    "test:menu-safety": "node --import tsx --test test/menu-preservation.test.mjs",
+    "typecheck:menu-tools": "tsc -p tsconfig.menu-tools.json",
     "test:addresses": "node --test test/customer-address-identity.test.mjs",
     "test:address-cleanup-review": "node --test test/address-cleanup.test.mjs",
     "build": "tsc -p tsconfig.json",

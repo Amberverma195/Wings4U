@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { requireSafeDestructiveTarget } from "../production-database-guard.cjs";
 
 type HeatLevel = "MILD" | "MEDIUM" | "HOT" | "DRY_RUB" | "PLAIN";
 
@@ -58,6 +59,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 
 loadEnv({ path: path.resolve(scriptDir, "../../../.env"), quiet: true });
 loadEnv({ path: path.resolve(scriptDir, "../.env"), override: false, quiet: true });
+
+// Reset confirmation is not permission to touch a hosted/production database.
+requireSafeDestructiveTarget("the menu replacement import");
 
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 

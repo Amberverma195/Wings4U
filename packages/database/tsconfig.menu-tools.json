@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true },
+  "include": [
+    "prisma/seed.ts", "prisma/seed-catalog.ts", "prisma/import-menu.ts", "prisma/normalize-menu-legacy-sizes.ts",
+    "prisma/sync-builder-config.ts", "prisma/builder-sync-plan.ts", "prisma/builder-defaults.ts"
+  ]
+}

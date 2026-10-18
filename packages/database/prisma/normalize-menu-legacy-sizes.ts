@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { requireSafeDestructiveTarget } from "../production-database-guard.cjs";
 
 type SourceMenu = {
   categories: Array<{
@@ -42,6 +43,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 
 loadEnv({ path: path.resolve(scriptDir, "../../../.env"), quiet: true });
 loadEnv({ path: path.resolve(scriptDir, "../.env"), override: false, quiet: true });
+
+// Legacy conversion deletes/recreates products and size modifiers.
+requireSafeDestructiveTarget("the legacy menu size conversion");
 
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
