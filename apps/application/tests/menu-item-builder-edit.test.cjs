@@ -203,3 +203,19 @@ test('lunch edit restores child, removals, extras and customer notes without dup
   expect(mockCart.replaceItem).toHaveBeenCalledWith(saved.key, expect.objectContaining({ quantity: 2,
     special_instructions: saved.special_instructions, builder_payload: saved.builder_payload }));
 });
+
+const { buffaloBurger } = require('../../../packages/customization/test/buffalo-burger-fixture.cjs');
+test.each([false, true])('mobile Buffalo burger requires explicit Bacon approval (%s)', async approved => {
+  const item = buffaloBurger(approved);
+  await mount(item);
+  const text = texts(renderer.root);
+  for (const name of ['Extra Sriracha Mayo', 'Extra Lettuce', 'Extra Red Onion', 'Extra Tomato']) expect(text).toContain(name);
+  expect(text.includes('Add Bacon')).toBe(approved);
+  expect(text).not.toMatch(/Add Avocado|Add Jalapenos/);
+  if (!approved) return;
+  const choice = renderer.root.findAllByType('TouchableOpacity').find(node => texts(node).startsWith('Add Bacon'));
+  await act(async () => choice.props.onPress());
+  await act(async () => submit().props.onPress());
+  const bacon = item.modifier_groups[0].options.find(o => o.name === 'Add Bacon');
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({ modifier_selections: [expect.objectContaining({ modifier_option_id: bacon.id, price_delta_cents: 150 })] }));
+});
