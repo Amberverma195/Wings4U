@@ -15,6 +15,7 @@ jest.mock('../src/context/cart', () => ({ useCart: () => mockCart }));
 jest.mock('../src/context/session', () => ({ useSession: () => mockSession }));
 jest.mock('../src/context/order-setup', () => ({ useOrderSetup: () => mockSetup }));
 jest.mock('../src/components/order-setup-summary', () => ({ OrderSetupSummary: 'OrderSetupSummary' }));
+jest.mock('../src/components/auth-sheet', () => ({ AuthSheet: 'AuthSheet' }));
 const mockPromo = { promoCode: null, applyWingsReward: false };
 jest.mock('../src/context/promo', () => ({ usePromo: () => mockPromo }));
 jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => ({ data: { promos: [], wingsRewards: mockRewards } }) }));
@@ -49,6 +50,23 @@ beforeEach(() => {
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 const mount = async () => act(async () => { renderer = create(React.createElement(CartTab)); });
+
+test.each([
+  [401, {}, 'Authentication failed', 'Sign in'],
+  [422, { field: 'fulfillment_type' }, 'Minimum subtotal for delivery is $20.00', 'Add more items'],
+])('pricing failure %s offers the correct recovery destination', async (status, row, message, label) => {
+  apiJson.mockRejectedValue(Object.assign(new Error(message), { status, body: { errors: [{ ...row, message }] } }));
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(button('Review order details')).toBeUndefined();
+  await act(async () => button(label).props.onPress());
+  if (label === 'Sign in') {
+    expect(renderer.root.findByType('AuthSheet').props.visible).toBe(true);
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  } else {
+    expect(mockRouter.push).toHaveBeenCalledWith('/(tabs)/menu');
+  }
+  expect(mockSetup.openOrderSetup).not.toHaveBeenCalled();
+});
 
 test('quantity buttons announce and apply the correct change', async () => {
   await mount();

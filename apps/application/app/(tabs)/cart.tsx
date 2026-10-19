@@ -1,5 +1,5 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -21,6 +21,7 @@ import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation
 import { usePromo } from "../../src/context/promo";
 import { useCartPricing } from "../../src/hooks/use-cart-pricing";
 import { CartCoupons } from "../../src/components/cart-coupons";
+import { AuthSheet } from "../../src/components/auth-sheet";
 import {
   promoDiscountRows,
   wingsRewardBlockedReason,
@@ -77,6 +78,7 @@ function itemDetails(item: CartItem): string[] {
 
 export default function CartScreen() {
   const router = useRouter();
+  const [authVisible, setAuthVisible] = useState(false);
   const cart = useCart();
   const focused = useIsFocused();
   const orderSetup = useOrderSetup();
@@ -246,13 +248,19 @@ export default function CartScreen() {
               {quoteError ? (
                 <View><Text accessibilityRole="alert" style={styles.quoteError}>{quoteError}</Text>
                   {pricing.recovery === 'retry' ? <TouchableOpacity accessibilityRole="button" onPress={pricing.refresh}><Text style={{ color: '#30241F' }}>Retry pricing</Text></TouchableOpacity> :
+                    pricing.recovery === 'sign_in' ? <TouchableOpacity accessibilityRole="button" onPress={() => setAuthVisible(true)}><Text style={{ color: '#30241F' }}>Sign in</Text></TouchableOpacity> :
+                    pricing.recovery === 'add_items' ? <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/(tabs)/menu')}><Text style={{ color: '#30241F' }}>Add more items</Text></TouchableOpacity> :
                     pricing.recovery === 'time' || pricing.recovery === 'delivery' || pricing.recovery === 'review' ?
                       <TouchableOpacity accessibilityRole="button" onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={{ color: '#30241F' }}>{pricing.recovery === 'time' ? 'Change order time' : 'Review order details'}</Text></TouchableOpacity> : null}</View>
               ) : null}
               {checkout.error && checkout.error !== quoteError ? <View>
                 <Text style={styles.quoteError} accessibilityRole="alert">{checkout.error}</Text>
                 {cartPricingRecovery(new Error(checkout.error)) === 'time' ?
-                  <TouchableOpacity accessibilityRole="button" onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={{ color: '#30241F' }}>Change order time</Text></TouchableOpacity> : null}
+                  <TouchableOpacity accessibilityRole="button" onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={{ color: '#30241F' }}>Change order time</Text></TouchableOpacity> :
+                  cartPricingRecovery(new Error(checkout.error)) === 'sign_in' ?
+                    <TouchableOpacity accessibilityRole="button" onPress={() => setAuthVisible(true)}><Text style={{ color: '#30241F' }}>Sign in</Text></TouchableOpacity> :
+                  cartPricingRecovery(new Error(checkout.error)) === 'add_items' ?
+                    <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/(tabs)/menu')}><Text style={{ color: '#30241F' }}>Add more items</Text></TouchableOpacity> : null}
               </View> : null}
             </View>
 
@@ -283,6 +291,7 @@ export default function CartScreen() {
           </TouchableOpacity>
         </View>
       ) : null}
+      <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} onComplete={pricing.refresh} />
     </SafeAreaView>
   );
 }
