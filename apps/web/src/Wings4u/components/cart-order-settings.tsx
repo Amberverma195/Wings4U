@@ -97,6 +97,8 @@ export function CartOrderSettings({ menu }: Props) {
   const [draftFulfillmentType, setDraftFulfillmentType] =
     useState<FulfillmentType>(fulfillmentType);
   const [draftDateKey, setDraftDateKey] = useState(() => getSelectedDateKey(scheduledFor));
+  const [pickupScheduleRevision, setPickupScheduleRevision] = useState(0);
+  const [pickupScheduleNotice, setPickupScheduleNotice] = useState<string | null>(null);
   const [draftTimeValue, setDraftTimeValue] = useState(() => scheduledFor ?? "ASAP");
   const [deliveryAddressError, setDeliveryAddressError] = useState<string | null>(null);
   const hasSelectedDeliveryAddress = hasCompleteDeliveryAddress(deliveryAddress);
@@ -118,7 +120,7 @@ export function CartOrderSettings({ menu }: Props) {
   const draftDateOptions = useMemo(
     () =>
       buildScheduleDateOptions(draftFulfillmentType, schedulingHours, menu?.location.timezone),
-    [draftFulfillmentType, menu?.location.timezone, schedulingHours],
+    [draftFulfillmentType, menu?.location.timezone, schedulingHours, pickupScheduleRevision],
   );
 
   const draftTimeOptions = useMemo(
@@ -127,10 +129,11 @@ export function CartOrderSettings({ menu }: Props) {
         fulfillmentType: draftFulfillmentType,
         selectedDateKey: draftDateKey,
         config: schedulingConfig,
+        pickupLeadMinutes: menu?.location.estimated_prep_minutes,
         hours: schedulingHours,
         timezone: menu?.location.timezone,
       }),
-    [draftDateKey, draftFulfillmentType, menu?.location.timezone, schedulingConfig, schedulingHours],
+    [draftDateKey, draftFulfillmentType, menu?.location.timezone, menu?.location.estimated_prep_minutes, schedulingConfig, schedulingHours, pickupScheduleRevision],
   );
 
   const syncDraftOrderSettings = useCallback(() => {
@@ -244,6 +247,7 @@ export function CartOrderSettings({ menu }: Props) {
 
   const toggleOrderSettings = useCallback(() => {
     if (!orderSettingsOpen) {
+      setPickupScheduleNotice(null);
       syncDraftOrderSettings();
       setOrderSettingsOpen(true);
       return;
@@ -257,6 +261,19 @@ export function CartOrderSettings({ menu }: Props) {
       showDeliveryAddressError();
       return;
     }
+
+    if (draftFulfillmentType === "PICKUP") {
+      const current = buildScheduleTimeOptions({ fulfillmentType: "PICKUP", selectedDateKey: draftDateKey,
+        config: schedulingConfig, hours: schedulingHours, timezone: menu?.location.timezone,
+        pickupLeadMinutes: menu?.location.estimated_prep_minutes });
+      if (!current.some(option => option.value === draftTimeValue)) {
+        setPickupScheduleRevision(value => value + 1);
+        setPickupScheduleNotice("Pickup availability changed. Please choose an available time.");
+        setDraftTimeValue(current[0]?.value ?? "ASAP");
+        return;
+      }
+    }
+    setPickupScheduleNotice(null);
 
     const nextScheduledFor = draftTimeValue === "ASAP" ? null : draftTimeValue;
     const fulfillmentChanged = draftFulfillmentType !== fulfillmentType;
@@ -277,6 +294,11 @@ export function CartOrderSettings({ menu }: Props) {
     dismissOrderSettings,
     draftFulfillmentType,
     draftTimeValue,
+    draftDateKey,
+    schedulingConfig,
+    schedulingHours,
+    menu?.location.timezone,
+    menu?.location.estimated_prep_minutes,
     deliveryUnavailable,
     fulfillmentType,
     hasSelectedDeliveryAddress,
@@ -373,6 +395,9 @@ export function CartOrderSettings({ menu }: Props) {
             </p>
           ) : null}
 
+          {draftFulfillmentType === "PICKUP" && pickupScheduleNotice && (
+            <p className="wk-order-settings-restriction-note" role="alert">{pickupScheduleNotice}</p>
+          )}
           <div className="wk-order-settings-grid">
             <div className="wk-order-settings-field">
               <span className="wk-order-settings-field-label">Date</span>

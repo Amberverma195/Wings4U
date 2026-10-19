@@ -1,6 +1,7 @@
 "use client";
 
 import type { FulfillmentType, LocationServiceHours } from "./types";
+import { PICKUP_ETA_MIN_MINUTES, PICKUP_ETA_MAX_MINUTES, PICKUP_ETA_RANGE } from "./pickup-eta";
 
 export type TimingWindow = {
   minMinutes: number;
@@ -35,8 +36,10 @@ const SLOT_INTERVAL_MINUTES = 15;
 const FALLBACK_TIME_FROM = "11:00";
 const FALLBACK_TIME_TO = "23:00";
 
+const PICKUP_TIMING_WINDOW = Object.freeze({ minMinutes: PICKUP_ETA_MIN_MINUTES, maxMinutes: PICKUP_ETA_MAX_MINUTES });
+
 export const DEFAULT_SCHEDULING_CONFIG: SchedulingConfig = {
-  pickup: { minMinutes: 30, maxMinutes: 40 },
+  pickup: PICKUP_TIMING_WINDOW,
   delivery: { minMinutes: 40, maxMinutes: 60 },
 };
 
@@ -198,9 +201,7 @@ export function normalizeSchedulingConfig(value: unknown): SchedulingConfig {
     return DEFAULT_SCHEDULING_CONFIG;
   }
 
-  const pickup = isTimingWindow(value.pickup)
-    ? value.pickup
-    : DEFAULT_SCHEDULING_CONFIG.pickup;
+  const pickup = PICKUP_TIMING_WINDOW;
   const delivery = isTimingWindow(value.delivery)
     ? value.delivery
     : DEFAULT_SCHEDULING_CONFIG.delivery;
@@ -212,6 +213,7 @@ export function getTimingWindow(
   config: SchedulingConfig,
   fulfillmentType: FulfillmentType,
 ): TimingWindow {
+  if (fulfillmentType === "PICKUP") return PICKUP_TIMING_WINDOW;
   const candidate =
     fulfillmentType === "DELIVERY" ? config.delivery : config.pickup;
   return isTimingWindow(candidate)
@@ -223,6 +225,7 @@ export function formatEtaLabel(
   fulfillmentType: FulfillmentType,
   config: SchedulingConfig,
 ): string {
+  if (fulfillmentType === "PICKUP") return `ASAP (${PICKUP_ETA_RANGE} min)`;
   const window = getTimingWindow(config, fulfillmentType);
   if (window.minMinutes === window.maxMinutes) {
     return `ASAP (~${window.minMinutes} min)`;
@@ -270,6 +273,7 @@ export function buildScheduleDateOptions(
   timezone?: string,
   now = new Date(),
 ): ScheduleDateOption[] {
+  if (fulfillmentType === "PICKUP") return buildPickupDateOptions(hours, timezone, now);
   const sourceHours = getHoursForType(fulfillmentType, hours);
   const todayKey = getDateKey(now);
   const availableDays = new Set(
@@ -303,7 +307,11 @@ export function buildScheduleTimeOptions(params: {
   hours?: SchedulingHours;
   timezone?: string;
   now?: Date;
+  /** Catalog's effective kitchen prep (including busy mode), never the ad range.
+   * Unknown while loading/failing: offer no explicit pickup slots. */
+  pickupLeadMinutes?: number;
 }): ScheduleTimeOption[] {
+  if (params.fulfillmentType === "PICKUP") return buildPickupTimeOptions(params);
   const {
     fulfillmentType,
     selectedDateKey,
@@ -354,6 +362,75 @@ export function buildScheduleTimeOptions(params: {
     }
   }
 
+  return options;
+}
+
+// Pickup slot calculation uses the restaurant's clock, not the browser's zone.
+const pickupClockFormatters = new Map<string, Intl.DateTimeFormat>();
+function pickupClock(date: Date, timezone = "America/Toronto") {
+  let formatter = pickupClockFormatters.get(timezone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    });
+    pickupClockFormatters.set(timezone, formatter);
+  }
+  const parts = Object.fromEntries(formatter.formatToParts(date).map(part => [part.type, part.value]));
+  return { dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+}
+
+function pickupInstant(dateKey: string, minutes: number, timezone?: string): Date | null {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const desired = Date.UTC(year, month - 1, day) + minutes * 60_000;
+  let instant = new Date(desired);
+  for (let pass = 0; pass < 3; pass++) {
+    const clock = pickupClock(instant, timezone);
+    const projected = Date.parse(`${clock.dateKey}T00:00:00Z`) + clock.minutes * 60_000;
+    instant = new Date(instant.getTime() + desired - projected);
+  }
+  const clock = pickupClock(instant, timezone);
+  // Skip nonexistent local times during a spring DST transition.
+  return clock.dateKey === dateKey && clock.minutes === minutes ? instant : null;
+}
+
+function buildPickupDateOptions(hours: SchedulingHours | undefined, timezone: string | undefined, now: Date): ScheduleDateOption[] {
+  const today = pickupClock(now, timezone).dateKey;
+  const source = getHoursForType("PICKUP", hours);
+  return Array.from({ length: DAYS_AHEAD }, (_, offset) => {
+    const day = new Date(`${today}T12:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + offset);
+    const value = day.toISOString().slice(0, 10);
+    return { value, dayOfWeek: day.getUTCDay(), isToday: offset === 0 };
+  }).filter(day => source.some(slot => hourTouchesDay(slot, day.dayOfWeek)))
+    .map(day => ({ ...day, label: formatDateOptionLabel(pickupInstant(day.value, 12 * 60, timezone)!, day.isToday, timezone ?? "America/Toronto") }));
+}
+
+function buildPickupTimeOptions(params: {
+  selectedDateKey: string; hours?: SchedulingHours; timezone?: string; now?: Date; pickupLeadMinutes?: number;
+}): ScheduleTimeOption[] {
+  const now = params.now ?? new Date();
+  const clock = pickupClock(now, params.timezone);
+  const day = new Date(`${params.selectedDateKey}T12:00:00Z`).getUTCDay();
+  const segments = getHoursForType("PICKUP", params.hours).flatMap(slot => getWindowSegmentsForDay(slot, day))
+    .sort((a, b) => a.startMinutes - b.startMinutes);
+  const options: ScheduleTimeOption[] = [];
+  if (clock.dateKey === params.selectedDateKey && segments.some(segment => clock.minutes >= segment.startMinutes && clock.minutes < segment.endMinutes)) {
+    options.push({ value: "ASAP", label: `ASAP (${PICKUP_ETA_RANGE} min)` });
+  }
+  const lead = params.pickupLeadMinutes;
+  if (typeof lead !== "number" || !Number.isFinite(lead) || lead < 0) return options;
+  const earliest = now.getTime() + lead * 60_000;
+  const formatter = getTimeFormatter(params.timezone ?? "America/Toronto");
+  for (const segment of segments) {
+    for (let minutes = segment.startMinutes; minutes <= segment.endMinutes - SLOT_INTERVAL_MINUTES; minutes += SLOT_INTERVAL_MINUTES) {
+      const instant = pickupInstant(params.selectedDateKey, minutes, params.timezone);
+      if (!instant || instant.getTime() < earliest) continue;
+      const value = instant.toISOString();
+      if (!options.some(option => option.value === value)) options.push({ value, label: formatter.format(instant) });
+    }
+  }
   return options;
 }
 

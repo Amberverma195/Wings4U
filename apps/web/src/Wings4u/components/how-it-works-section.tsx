@@ -1,5 +1,7 @@
 "use client";
 
+import { PICKUP_ETA_RANGE_ASCII } from "@/lib/pickup-eta";
+
 import { useEffect, useRef, useState } from "react";
 
 type Step = {
@@ -29,7 +31,7 @@ const STEPS: Step[] = [
     num: "03",
     icon: "\u{1F6CD}\uFE0F",
     title: "GRAB OR GET IT DELIVERED",
-    desc: "Walk in and grab it hot, or we'll bring it to your door. Pickup in 15-25 minutes. Delivery available.",
+    desc: `Walk in and grab it hot, or we'll bring it to your door. Pickup in ${PICKUP_ETA_RANGE_ASCII} minutes. Delivery available.`,
     arrow: false,
   },
 ];

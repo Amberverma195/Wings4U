@@ -1,5 +1,7 @@
 "use client";
 
+import { PICKUP_ETA_RANGE } from "@/lib/pickup-eta";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson } from "@/lib/api";
 import { useCart } from "@/lib/cart";
@@ -113,7 +115,7 @@ export function MenuClient() {
         <p className="surface-muted" style={{ margin: 0 }}>
           {menu.location.is_open ? "Open" : "Closed"}
           {menu.location.busy_mode && " | Busy mode"}
-          {" | "}~{menu.location.estimated_prep_minutes} min
+          {" | "}{cart.fulfillmentType === "PICKUP" ? PICKUP_ETA_RANGE : `~${menu.location.estimated_prep_minutes}`} min
           {cart.fulfillmentType === "DELIVERY" &&
             ` | Delivery from ${cents(menu.location.delivery_fee_cents)}`}
         </p>

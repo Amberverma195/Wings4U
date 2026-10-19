@@ -1,5 +1,7 @@
 "use client";
 
+import { PICKUP_ETA_RANGE } from "@/lib/pickup-eta";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { apiJson } from "@/lib/api";
 import {
@@ -126,6 +128,8 @@ export function OrderMethodModal({
     initialScheduledFor ?? "ASAP",
   );
   const [schedulingConfig, setSchedulingConfig] = useState(DEFAULT_SCHEDULING_CONFIG);
+  const [pickupScheduleRevision, setPickupScheduleRevision] = useState(0);
+  const [schedulingLeadMinutes, setSchedulingLeadMinutes] = useState<number | undefined>(undefined);
   const [schedulingHours, setSchedulingHours] = useState<SchedulingHours | undefined>(
     undefined,
   );
@@ -192,6 +196,7 @@ export function OrderMethodModal({
 
     async function loadSchedulingContext() {
       setScheduleLoading(true);
+      setSchedulingLeadMinutes(undefined);
       setScheduleNotice(null);
 
       try {
@@ -218,6 +223,7 @@ export function OrderMethodModal({
             },
           }),
         );
+        setSchedulingLeadMinutes(response.data.location.estimated_prep_minutes);
         setSchedulingHours({
           pickup: response.data.location.pickup_hours,
           delivery: response.data.location.delivery_hours,
@@ -293,7 +299,7 @@ export function OrderMethodModal({
   const scheduleDateOptions = useMemo(
     () =>
       buildScheduleDateOptions(method, schedulingHours, scheduleTimezone),
-    [method, schedulingHours, scheduleTimezone],
+    [method, schedulingHours, scheduleTimezone, pickupScheduleRevision],
   );
 
   const scheduleTimeOptions = useMemo(
@@ -302,10 +308,11 @@ export function OrderMethodModal({
         fulfillmentType: method,
         selectedDateKey: scheduleDateKey,
         config: schedulingConfig,
+        pickupLeadMinutes: schedulingLeadMinutes,
         hours: schedulingHours,
         timezone: scheduleTimezone,
       }),
-    [method, scheduleDateKey, schedulingConfig, schedulingHours, scheduleTimezone],
+    [method, scheduleDateKey, schedulingConfig, schedulingHours, scheduleTimezone, schedulingLeadMinutes, pickupScheduleRevision],
   );
 
   useEffect(() => {
@@ -359,6 +366,17 @@ export function OrderMethodModal({
     }
 
     if (step === "schedule") {
+      if (continueDisabled) return;
+      if (method === "PICKUP") {
+        const current = buildScheduleTimeOptions({ fulfillmentType: "PICKUP", selectedDateKey: scheduleDateKey,
+          config: schedulingConfig, hours: schedulingHours, timezone: scheduleTimezone, pickupLeadMinutes: schedulingLeadMinutes });
+        if (!current.some(option => option.value === scheduleTimeValue)) {
+          setPickupScheduleRevision(value => value + 1);
+          setScheduleNotice("Pickup availability changed. Please choose an available time.");
+          setScheduleTimeValue(getInitialTimeValue(null, current));
+          return;
+        }
+      }
       if (method === "DELIVERY") {
         setAddressError(null);
         setStep("address");
@@ -484,7 +502,7 @@ export function OrderMethodModal({
                 </div>
                 <div className="wk-method-tags">
                   <span className="wk-method-tag">FREE</span>
-                  <span className="wk-method-tag">15-20 MIN</span>
+                  <span className="wk-method-tag">{PICKUP_ETA_RANGE} MIN</span>
                 </div>
                 <div className="wk-method-option-name">PICKUP</div>
                 <div className="wk-method-option-desc">

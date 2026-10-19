@@ -1,5 +1,7 @@
 "use client";
 
+import { PICKUP_ETA_RANGE_ASCII } from "@/lib/pickup-eta";
+
 import Link from "next/link";
 
 export function OrderCtaSection() {
@@ -16,7 +18,7 @@ export function OrderCtaSection() {
             <span className="order-cta-badge-ico" aria-hidden="true">
               {"\u{1F6CD}\uFE0F"}
             </span>
-            PICKUP IN 15-25 MIN
+            PICKUP IN {PICKUP_ETA_RANGE_ASCII} MIN
           </li>
           <li className="order-cta-badge">
             <span className="order-cta-badge-ico" aria-hidden="true">

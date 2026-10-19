@@ -258,6 +258,8 @@ export function MenuPage({
   const [draftDateKey, setDraftDateKey] = useState(() =>
     getSelectedDateKey(scheduledFor),
   );
+  const [pickupScheduleRevision, setPickupScheduleRevision] = useState(0);
+  const [pickupScheduleNotice, setPickupScheduleNotice] = useState<string | null>(null);
   const [draftTimeValue, setDraftTimeValue] = useState(() =>
     scheduledFor ?? "ASAP",
   );
@@ -318,7 +320,7 @@ export function MenuPage({
         schedulingHours,
         menu?.location.timezone,
       ),
-    [draftFulfillmentType, menu?.location.timezone, schedulingHours],
+    [draftFulfillmentType, menu?.location.timezone, schedulingHours, pickupScheduleRevision],
   );
   const draftTimeOptions = useMemo(
     () =>
@@ -326,10 +328,11 @@ export function MenuPage({
         fulfillmentType: draftFulfillmentType,
         selectedDateKey: draftDateKey,
         config: schedulingConfig,
+        pickupLeadMinutes: menu?.location.estimated_prep_minutes,
         hours: schedulingHours,
         timezone: menu?.location.timezone,
       }),
-    [draftDateKey, draftFulfillmentType, menu?.location.timezone, schedulingConfig, schedulingHours],
+    [draftDateKey, draftFulfillmentType, menu?.location.timezone, menu?.location.estimated_prep_minutes, schedulingConfig, schedulingHours, pickupScheduleRevision],
   );
   const scheduleDateLabel = formatScheduleDateLabel(
     scheduledFor,
@@ -836,6 +839,7 @@ export function MenuPage({
     if (isCommittingFulfillment) return;
 
     if (!orderSettingsOpen) {
+      setPickupScheduleNotice(null);
       syncDraftOrderSettings();
       setOrderSettingsOpen(true);
       return;
@@ -849,6 +853,19 @@ export function MenuPage({
       showDeliveryAddressError();
       return;
     }
+
+    if (draftFulfillmentType === "PICKUP") {
+      const current = buildScheduleTimeOptions({ fulfillmentType: "PICKUP", selectedDateKey: draftDateKey,
+        config: schedulingConfig, hours: schedulingHours, timezone: menu?.location.timezone,
+        pickupLeadMinutes: menu?.location.estimated_prep_minutes });
+      if (!current.some(option => option.value === draftTimeValue)) {
+        setPickupScheduleRevision(value => value + 1);
+        setPickupScheduleNotice("Pickup availability changed. Please choose an available time.");
+        setDraftTimeValue(current[0]?.value ?? "ASAP");
+        return;
+      }
+    }
+    setPickupScheduleNotice(null);
 
     const nextScheduledFor = draftTimeValue === "ASAP" ? null : draftTimeValue;
     const fulfillmentChanged =
@@ -885,6 +902,11 @@ export function MenuPage({
     committedFulfillmentType,
     dismissOrderSettings,
     draftTimeValue,
+    draftDateKey,
+    schedulingConfig,
+    schedulingHours,
+    menu?.location.timezone,
+    menu?.location.estimated_prep_minutes,
     draftFulfillmentType,
     deliveryUnavailable,
     hasSelectedDeliveryAddress,
@@ -1256,6 +1278,9 @@ export function MenuPage({
                   </p>
                 ) : null}
 
+                {draftFulfillmentType === "PICKUP" && pickupScheduleNotice && (
+                  <p className="wk-order-settings-restriction-note" role="alert">{pickupScheduleNotice}</p>
+                )}
                 <div className="wk-order-settings-grid">
                   <div className="wk-order-settings-field">
                     <span className="wk-order-settings-field-label">Date</span>
