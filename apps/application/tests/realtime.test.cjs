@@ -13,7 +13,11 @@ test('connects to the /ws gateway over websocket with the token only in the hand
   createOrdersSocket();
   const [origin, options] = io.mock.calls[0];
   expect(origin).toBe('https://api.example.com');
-  expect(options).toMatchObject({ path: '/ws', transports: ['websocket'], autoConnect: false, forceNew: true, reconnection: true });
+  expect(options).toMatchObject({
+    path: '/ws', transports: ['websocket'], autoConnect: false, forceNew: true,
+    reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 500, reconnectionDelayMax: 5000,
+  });
+  expect(options.tryAllTransports).toBeUndefined();
   expect(options.extraHeaders).toBeUndefined();
   expect(options.query).toBeUndefined();
   expect(options.withCredentials).toBeUndefined();

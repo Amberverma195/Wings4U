@@ -1,7 +1,7 @@
 const { createFakeSocket } = require('./fake-socket.cjs');
 const {
   startOrderRealtime, ORDER_REFRESH_EVENTS, CHAT_REFRESH_EVENTS, SUBSCRIBE_ACK_TIMEOUT_MS,
-  MAX_RECOVERY_ATTEMPTS, RECOVERY_BASE_DELAY_MS, REFRESH_COALESCE_MS,
+  MAX_RECOVERY_ATTEMPTS, MAX_CONNECTS_WITHOUT_LIVE, RECOVERY_BASE_DELAY_MS, REFRESH_COALESCE_MS,
 } = require('../src/lib/order-realtime');
 
 const ORDER = 'order:order-1';
@@ -199,20 +199,48 @@ test('repeated connection errors show unavailable while socket.io keeps retrying
   expect(statuses.at(-1)).toBe('live');
 });
 
-test('resume refetches a live order, or reconnects immediately with fresh credentials', async () => {
+test('resume refetches a live order without reconnecting', () => {
   const { fake, options, handle } = startLive();
   handle.resume();
   expect(options.onOrderChanged).toHaveBeenCalledTimes(1);
   expect(options.onChatChanged).toHaveBeenCalledTimes(1);
   expect(fake.socket.connect).toHaveBeenCalledTimes(1);
+});
 
+test('repeated foreground events cannot shortcut an in-progress authentication backoff', async () => {
+  const { fake, options, handle } = start();
+  fake.serverConnect();
   fake.serverDisconnect('io server disconnect');
-  handle.resume();
-  await jest.advanceTimersByTimeAsync(0);
+  for (let i = 0; i < 20; i += 1) handle.resume();
+  await jest.advanceTimersByTimeAsync(RECOVERY_BASE_DELAY_MS - 1);
+  expect(options.refreshSession).not.toHaveBeenCalled();
+  expect(fake.socket.connect).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(1);
   expect(options.refreshSession).toHaveBeenCalledTimes(1);
   expect(fake.socket.connect).toHaveBeenCalledTimes(2);
-  await jest.advanceTimersByTimeAsync(60_000);
-  expect(fake.socket.connect).toHaveBeenCalledTimes(2);
+});
+
+test('after recovery is exhausted, resume restarts it once with fresh credentials', async () => {
+  const { fake, statuses, options, handle } = start();
+  fake.serverConnect();
+  for (let attempt = 0; attempt <= MAX_RECOVERY_ATTEMPTS; attempt += 1) {
+    fake.serverDisconnect('io server disconnect');
+    await jest.advanceTimersByTimeAsync(60_000);
+    fake.serverConnect();
+  }
+  fake.serverDisconnect('io server disconnect');
+  expect(statuses.at(-1)).toBe('unavailable');
+  const refreshes = options.refreshSession.mock.calls.length;
+  const connects = fake.socket.connect.mock.calls.length;
+
+  handle.resume();
+  await jest.advanceTimersByTimeAsync(0);
+  expect(statuses.at(-1)).toBe('connecting');
+  expect(options.refreshSession).toHaveBeenCalledTimes(refreshes + 1);
+  expect(fake.socket.connect).toHaveBeenCalledTimes(connects + 1);
+  fake.serverConnect();
+  fake.ackAll();
+  expect(statuses.at(-1)).toBe('live');
 });
 
 test('stop removes every listener once, disconnects, and ignores late acknowledgements and events', async () => {
@@ -234,12 +262,93 @@ test('stop removes every listener once, disconnects, and ignores late acknowledg
   expect(fake.socket.connect).toHaveBeenCalledTimes(1);
 });
 
-test('a socket that cannot be created reports unavailable', () => {
-  const onStatus = jest.fn();
+test('a socket that could not be created is created again by resume and can go live', () => {
+  const fake = createFakeSocket();
+  const createSocket = jest.fn()
+    .mockImplementationOnce(() => { throw new Error('origin missing'); })
+    .mockImplementationOnce(() => { throw new Error('still missing'); })
+    .mockImplementation(() => fake.socket);
+  const statuses = [];
+  const onOrderChanged = jest.fn();
+  const handle = startOrderRealtime({
+    orderId: 'order-1', createSocket, refreshSession: jest.fn(),
+    onStatus: status => statuses.push(status), onOrderChanged, onChatChanged: jest.fn(),
+  });
+  expect(statuses).toEqual(['unavailable']);
+
+  handle.resume();
+  expect(createSocket).toHaveBeenCalledTimes(2);
+  expect(statuses).toEqual(['unavailable']);
+
+  handle.resume();
+  expect(createSocket).toHaveBeenCalledTimes(3);
+  expect(fake.socket.connect).toHaveBeenCalledTimes(1);
+  fake.serverConnect();
+  fake.ackAll();
+  expect(statuses).toEqual(['unavailable', 'connecting', 'live']);
+  expect(onOrderChanged).toHaveBeenCalledTimes(1);
+
+  handle.stop();
+  expect(fake.listenerCount()).toBe(0);
+});
+
+test('stop before any socket exists is safe', () => {
   const handle = startOrderRealtime({
     orderId: 'order-1', createSocket: () => { throw new Error('origin missing'); }, refreshSession: jest.fn(),
-    onStatus, onOrderChanged: jest.fn(), onChatChanged: jest.fn(),
+    onStatus: jest.fn(), onOrderChanged: jest.fn(), onChatChanged: jest.fn(),
   });
-  expect(onStatus).toHaveBeenCalledWith('unavailable');
-  expect(() => { handle.resume(); handle.stop(); }).not.toThrow();
+  handle.stop();
+  expect(() => handle.resume()).not.toThrow();
+});
+
+describe('transport reconnection versus bounded recovery', () => {
+  test('a long network outage never stops socket.io reconnection and recovers when the network returns', async () => {
+    const { fake, statuses, options } = start();
+    for (let i = 0; i < 200; i += 1) {
+      fake.connectError();
+      await jest.advanceTimersByTimeAsync(5_000);
+    }
+    expect(statuses.at(-1)).toBe('unavailable');
+    expect(fake.socket.disconnect).not.toHaveBeenCalled();
+    expect(options.refreshSession).not.toHaveBeenCalled();
+
+    fake.serverConnect();
+    fake.ackAll();
+    expect(statuses.at(-1)).toBe('live');
+  });
+
+  test('intermittent drops after going live keep recovering indefinitely', () => {
+    const { fake, statuses } = start();
+    for (let i = 0; i < 3 * MAX_CONNECTS_WITHOUT_LIVE; i += 1) {
+      fake.serverConnect();
+      fake.ackAll();
+      expect(statuses.at(-1)).toBe('live');
+      fake.serverDisconnect('transport close');
+    }
+    expect(fake.socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  test('connections that open but never go live stop socket.io reconnection after a bounded number', async () => {
+    const { fake, statuses, options, handle } = start();
+    for (let i = 1; i < MAX_CONNECTS_WITHOUT_LIVE; i += 1) {
+      fake.serverConnect();
+      fake.serverDisconnect('transport close');
+      expect(fake.socket.disconnect).not.toHaveBeenCalled();
+    }
+    fake.serverConnect();
+    fake.serverDisconnect('transport close');
+    expect(fake.socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(statuses.at(-1)).toBe('unavailable');
+
+    await jest.advanceTimersByTimeAsync(60 * 60_000);
+    expect(fake.socket.connect).toHaveBeenCalledTimes(1);
+    expect(options.refreshSession).not.toHaveBeenCalled();
+
+    handle.resume();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(fake.socket.connect).toHaveBeenCalledTimes(2);
+    fake.serverConnect();
+    fake.ackAll();
+    expect(statuses.at(-1)).toBe('live');
+  });
 });

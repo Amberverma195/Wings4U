@@ -11,7 +11,17 @@ import { io, type Socket } from "socket.io-client";
 import { getRealtimeOrigin } from "./env";
 import { getAccessToken } from "./token-store";
 
-/** Build a not-yet-connected Socket.IO client for the `/ws` gateway. */
+/**
+ * Build a not-yet-connected Socket.IO client for the `/ws` gateway.
+ *
+ * WebSocket only, deliberately: socket.io-client never falls back to polling
+ * unless `tryAllTransports` is set, so listing "polling" alone changes
+ * nothing. Where WebSockets are blocked the order screen reports live updates
+ * unavailable and keeps refreshing over HTTP (see CONFIGURATION.md).
+ *
+ * `reconnection` handles network outages without an attempt limit; the order
+ * realtime controller bounds authentication and subscription recovery.
+ */
 export function createOrdersSocket(): Socket {
   return io(getRealtimeOrigin(), {
     path: "/ws",

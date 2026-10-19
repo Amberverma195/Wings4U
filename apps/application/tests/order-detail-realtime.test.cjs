@@ -159,6 +159,19 @@ test('returning to the foreground refetches the live order and chat', async () =
   expect(gets(CHAT_PATH)).toBe(chats + 1);
 });
 
+test('Retry recovers when the live-update socket could not be created', async () => {
+  createOrdersSocket.mockImplementationOnce(() => { throw new Error('Realtime origin unavailable'); });
+  await mount();
+  expect(texts()).toEqual(expect.arrayContaining(['Order placed', 'Live updates unavailable']));
+  expect(sockets).toHaveLength(0);
+
+  await tap('Retry live updates');
+  expect(createOrdersSocket).toHaveBeenCalledTimes(2);
+  expect(sockets[0].socket.connect).toHaveBeenCalledTimes(1);
+  await act(async () => { sockets[0].serverConnect(); sockets[0].ackAll(); });
+  expect(texts()).toContain('Live updates connected');
+});
+
 test('while live updates are unavailable the order keeps refreshing, and Retry reconnects', async () => {
   await mount();
   const socket = sockets[0];

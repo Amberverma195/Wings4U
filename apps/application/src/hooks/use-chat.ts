@@ -77,12 +77,22 @@ export function useChat(orderId: string | null): UseChatResult {
     async (body: string) => {
       if (!orderId) return;
       try {
-        await apiFetch(`/api/v1/orders/${orderId}/chat`, {
-          method: "POST",
-          locationId: DEFAULT_LOCATION_ID,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message_body: body }),
-        });
+        // A 401 is rejected by the auth guard before anything is stored, so
+        // the single retry after a silent refresh cannot duplicate a message.
+        const response = await withSilentRefresh(
+          () => apiFetch(`/api/v1/orders/${orderId}/chat`, {
+            method: "POST",
+            locationId: DEFAULT_LOCATION_ID,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_body: body }),
+          }),
+          sessionRefresh,
+          sessionClear,
+        );
+        if (!response.ok) {
+          const envelope = await response.json().catch(() => null);
+          throw new Error(describeApiFailure(response.status, envelope, "Message was not sent."));
+        }
         // Refetch to get the new message + any system messages
         refetch();
       } catch (err) {
@@ -90,7 +100,7 @@ export function useChat(orderId: string | null): UseChatResult {
         throw err;
       }
     },
-    [orderId, refetch]
+    [orderId, refetch, sessionRefresh, sessionClear]
   );
 
   return {

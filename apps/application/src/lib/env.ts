@@ -22,23 +22,26 @@ const DEV_API_PORT = "3001";
  * Base URL for `/api/v1/*` JSON calls.
  *
  * Release builds require a public HTTPS origin from app.config.js.
- * Development retains the emulator override, configured LAN origin, then platform fallback.
+ * Development precedence: an explicit `EXPO_PUBLIC_API_ORIGIN`, then the
+ * Android emulator's host loopback, then the default LAN origin from
+ * app.json, then the platform fallback.
  */
 export function getApiBase(): string {
-  const production = !__DEV__ || Constants.expoConfig?.extra?.environment === 'production';
+  const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
+  const production = !__DEV__ || extra?.environment === 'production';
+  const configured = typeof extra?.apiOrigin === "string" ? extra.apiOrigin.trim() : "";
   if (production) {
-    const origin = Constants.expoConfig?.extra?.apiOrigin;
-    if (typeof origin !== 'string' || !origin.trim()) throw new Error('Production mobile API origin is not configured.');
-    return validateApiOrigin(origin, true);
+    if (!configured) throw new Error('Production mobile API origin is not configured.');
+    return validateApiOrigin(configured, true);
+  }
+  if (configured && extra?.apiOriginExplicit === true) {
+    return validateApiOrigin(configured, false);
   }
   if (__DEV__ && Platform.OS === "android" && !isDevice) {
     return `http://10.0.2.2:${DEV_API_PORT}`;
   }
-  const explicit =
-    (Constants.expoConfig?.extra as Record<string, unknown> | undefined)
-      ?.apiOrigin;
-  if (typeof explicit === "string" && explicit.trim()) {
-    return validateApiOrigin(explicit.trim(), false);
+  if (configured) {
+    return validateApiOrigin(configured, false);
   }
   // Dev fallback
   return `http://${DEV_HOST}:${DEV_API_PORT}`;
