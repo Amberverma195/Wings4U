@@ -17,6 +17,7 @@ import { issueAffectsLine } from "../../src/lib/cart-validation";
 import { cartPricingRecovery } from "../../src/lib/cart-pricing-error";
 import { useCart } from "../../src/context/cart";
 import { useOrderSetup } from "../../src/context/order-setup";
+import { OrderSetupSummary } from "../../src/components/order-setup-summary";
 import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
 import { usePromo } from "../../src/context/promo";
 import { useCartPricing } from "../../src/hooks/use-cart-pricing";
@@ -132,9 +133,11 @@ export default function CartScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.section}>
-              <Text accessibilityRole="header" style={styles.orderTitle}>Your Order</Text>
+            <View style={styles.orderHeaderRow}>
               <Text style={styles.itemCount}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
+              <View style={styles.orderDetailsBar}><OrderSetupSummary singleLine /></View>
+            </View>
+            <View style={styles.section}>
               {cart.items.map((item, itemIndex) => {
                 const details = itemDetails(item);
                 const pricedLine = quote?.lines?.[itemIndex];
@@ -334,8 +337,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#30241F",
   },
-  orderTitle: { fontSize: 28, fontWeight: '700', fontFamily: Platform?.OS === 'ios' ? 'Georgia' : 'serif', color: '#30241F' },
-  itemCount: { marginTop: 4, marginBottom: 16, color: '#75665C', fontSize: 14 },
+  orderHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  orderDetailsBar: { flex: 4, minWidth: 0, backgroundColor: '#FFF0EA', borderRadius: 14, borderWidth: 1, borderColor: '#EFE4DE', paddingHorizontal: 10 },
+  itemCount: { flex: 1, color: '#30241F', fontSize: 16, fontWeight: '700' },
   itemImage: { width: 64, height: 64, borderRadius: 12 },
   tipLabel: { fontSize: 14, fontWeight: '700', marginBottom: 10, color: '#30241F' },
   tipRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },

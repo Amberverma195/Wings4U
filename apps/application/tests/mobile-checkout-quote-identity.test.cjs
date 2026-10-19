@@ -14,7 +14,7 @@ const mockInitSheet = jest.fn(), mockPresentSheet = jest.fn();
 jest.mock('@stripe/stripe-react-native', () => ({ initStripe: jest.fn(), useStripe: () => ({ initPaymentSheet: mockInitSheet, presentPaymentSheet: mockPresentSheet }) }));
 jest.mock('../src/components/auth-sheet', () => ({ AuthSheet: 'AuthSheet' }));
 jest.mock('../src/components/checkout-entry-guard', () => ({ CheckoutEntryGuard: ({ children }) => children }));
-jest.mock('../src/components/order-setup-summary', () => ({ OrderSetupSummary: () => null }));
+jest.mock('../src/components/order-setup-summary', () => ({ OrderSetupSummary: 'OrderSetupSummary' }));
 jest.mock('../src/context/cart', () => ({ useCart: () => mockCart }));
 jest.mock('../src/context/order-setup', () => ({ useOrderSetup: () => mockSetup }));
 jest.mock('../src/context/promo', () => ({ usePromo: () => mockPromo }));
@@ -160,12 +160,34 @@ const confirmedQuote = request => ({ ...quote(request), tax_cents: 117, delivery
   lines: request.items.map(item => ({ ...item, line_total_cents: 1000 * item.quantity })) });
 const quoteRequests = () => apiJson.mock.calls.filter(call => call[0] === '/api/v1/cart/quote');
 const noSubmission = () => expect(apiFetch.mock.calls.some(call => /\/checkout$|payment-intent/.test(call[0]))).toBe(false);
-const footerText = () => text(renderer.root.findAllByType('Text').find(node => ['Order total', 'Previous total'].includes(text(node))).parent);
+const pricingStatusText = () => text(renderer.root.findAllByProps({ accessibilityLabel: 'Checkout pricing status' })[0]);
+
+test('checkout footer shows only Place order; prices remain in the Total card', async () => {
+  await settle();
+  const footer = renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent;
+  expect(footer.findAllByType('Text').map(node => text(node))).toEqual(['Place order']);
+  expect(text(renderer.toJSON())).not.toContain('Order total');
+  expect(text(renderer.toJSON())).not.toContain('Previous total');
+  expect(summary('Payable')).toBe('$10.00');
+});
+
+test('checkout omits coupons, tip controls and notes while retaining selections made in Cart', async () => {
+  mockCart = { ...mockCart, driverTipPercent: 10 };
+  mockPromo = { ...mockPromo, promoCode: 'SAVE' };
+  await rerender(); await settle();
+  const output = text(renderer.toJSON());
+  for (const label of ['See coupons & rewards', 'Add a tip', 'Order notes (optional)', 'Notes']) expect(output).not.toContain(label);
+  expect(renderer.root.findAll(node => node.type?.name === 'CartCoupons')).toHaveLength(0);
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Tip 10%' })).toHaveLength(0);
+  expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+  expect(JSON.parse(quoteRequests().at(-1)[1].body)).toMatchObject({ promo_code: 'SAVE', driver_tip_cents: 100 });
+  expect(summary('Tip')).toBe('$1.00');
+});
 
 test('entering checkout with an existing cart immediately shows item estimates and a loading final total', async () => {
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Estimated item price for Burger' }))).toBe('$10.00');
   expect(summary('Estimated subtotal')).toBe('$10.00'); expect(summary('Tax')).toBe('—');
-  expect(footerText()).toContain('Confirming delivery fee'); expect(footerText()).not.toMatch(/\$|Awaiting quote/);
+  expect(pricingStatusText()).toContain('Confirming delivery fee'); expect(pricingStatusText()).not.toMatch(/\$|Awaiting quote/);
   expect(text(renderer.toJSON())).not.toContain('Awaiting quote'); expect(text(renderer.toJSON())).not.toContain('$0.00');
   expect(place().props.disabled).toBe(true);
   await act(async () => place().props.onPress()); noSubmission();
@@ -176,7 +198,7 @@ test('entering checkout with an existing cart immediately shows item estimates a
   await settle();
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Item price for Burger' }))).toBe('$12.00');
   expect(summary('Estimated subtotal')).toBeUndefined(); expect(summary('Subtotal')).toBe('$12.00');
-  expect(footerText()).toContain('$16.92'); expect(footerText()).not.toContain('Confirming');
+  expect(summary('Payable')).toBe('$16.92'); expect(pricingStatusText()).toBe('');
   expect(place().props.disabled).toBe(false);
 });
 
@@ -190,7 +212,7 @@ test.each([
 ])('initial %s prices match the Cart helper before checkout quoting', async (_kind, changes, expected) => {
   mockCart = { ...mockCart, items: [{ ...mockCart.items[0], ...changes, quantity: 2 }] }; await rerender();
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Estimated item price for Burger' }))).toBe(expected);
-  expect(summary('Estimated subtotal')).toBe(expected); expect(footerText()).not.toContain(expected);
+  expect(summary('Estimated subtotal')).toBe(expected); expect(pricingStatusText()).not.toContain(expected);
   expect(place().props.disabled).toBe(true); expect(quoteRequests()).toHaveLength(0);
   await act(async () => place().props.onPress()); noSubmission();
 });
@@ -205,11 +227,13 @@ test.each([false, true])('coupon %s application/removal retains labeled previous
   let release;
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? new Promise(resolve => { release = () => resolve({ data: priced(JSON.parse(init.body)) }); }) : original(url, init));
   mockPromo = { ...mockPromo, promoCode: removing ? null : 'SAVE' }; await rerender();
-  expect(footerText()).toContain(`Previous total${removing ? '$15.92' : '$16.92'}`);
+  expect(summary('Payable')).toBe(removing ? '$15.92' : '$16.92');
+  expect(text(renderer.toJSON())).toContain('Previous prices. Your new total is being confirmed.');
   expect(summary('Promo code (SAVE)')).toBe(removing ? '-$1.00' : undefined);
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
   await tick(250); await act(async () => release());
-  expect(footerText()).toContain(`Order total${removing ? '$16.92' : '$15.92'}`);
+  expect(summary('Payable')).toBe(removing ? '$16.92' : '$15.92');
+  expect(text(renderer.toJSON())).not.toContain('Previous prices.');
   expect(summary('Promo code (SAVE)')).toBe(removing ? undefined : '-$1.00');
   expect(place().props.disabled).toBe(false);
 });
@@ -219,18 +243,18 @@ test('failed refreshing prices stop the loading indicator, drop previous totals 
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? Promise.reject(new Error('Network unavailable')) : original(url, init));
   mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender();
-  expect(footerText()).toContain('Previous total'); await settle();
+  expect(text(renderer.toJSON())).toContain('Previous prices.'); await settle();
   expect(text(renderer.toJSON())).toContain('Network unavailable');
-  expect(footerText()).toContain('Total unavailable'); expect(footerText()).not.toContain('$');
+  expect(pricingStatusText()).toContain('Total unavailable'); expect(pricingStatusText()).not.toContain('$');
   expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
   expect(place().props.disabled).toBe(true); noSubmission();
   apiJson.mockImplementation(original); await act(async () => button('Retry pricing').props.onPress()); await settle();
-  expect(footerText()).toContain('Order total$11.00'); expect(place().props.disabled).toBe(false);
+  expect(summary('Payable')).toBe('$11.00'); expect(place().props.disabled).toBe(false);
 });
 
 test('invalidated order details show a blocked state instead of an indefinite loading indicator', async () => {
   await settle(); mockSetup.confirmed = false; mockSetup.getConfirmedSetup = () => null; await rerender();
-  expect(footerText()).toContain('Review order details'); expect(footerText()).not.toContain('$');
+  expect(pricingStatusText()).toContain('Review order details'); expect(pricingStatusText()).not.toContain('$');
   expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
 });
@@ -264,7 +288,6 @@ test.each(['quantity', 'modifier', 'builder', 'removed ingredient', 'fulfillment
     if (compatibleDisplay) {
       expect(summary('Subtotal')).toBe('$10.00'); expect(summary('Tax')).toBe('$1.17');
       expect(summary('Payable')).toBe('$16.92'); expect(summary('Delivery')).toBe('$6.75');
-      expect(text(renderer.toJSON())).toContain('Previous total');
       expect(text(renderer.toJSON())).toContain('Previous prices. Your new total is being confirmed.');
     } else {
       expect(summary('Subtotal')).toBeUndefined(); expect(summary('Estimated subtotal')).toBeDefined();
@@ -274,7 +297,6 @@ test.each(['quantity', 'modifier', 'builder', 'removed ingredient', 'fulfillment
     expect(renderer.root.findAll(node => node.type?.name === 'SummaryRow' && node.props.discount)).toHaveLength(0);
     if (change === 'tip') expect(summary('Tip')).toBeUndefined(); // Previous server quote had no tip.
     expect(place().props.disabled).toBe(true);
-    expect(renderer.root.findAll(node => node.type?.name === 'CartCoupons')[0].props.quote).toBeNull();
     await act(async () => place().props.onPress()); noSubmission();
     await settle(); expect(quoteRequests()).toHaveLength(previousCount + 1);
     expect(place().props.disabled).toBe(true);
@@ -292,12 +314,12 @@ test('returning to a previous tip can reuse its display prices but never its old
   });
   mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender(); await tick(250);
   mockCart = { ...mockCart, driverTipPercent: 'none' }; await rerender(); await tick(250);
-  expect(footerText()).toContain('Previous total$10.00'); expect(place().props.disabled).toBe(true);
+  expect(summary('Payable')).toBe('$10.00'); expect(text(renderer.toJSON())).toContain('Previous prices.'); expect(place().props.disabled).toBe(true);
   await act(async () => place().props.onPress()); noSubmission();
   await act(async () => releases.get(100)());
-  expect(footerText()).toContain('Previous total$10.00'); expect(place().props.disabled).toBe(true);
+  expect(summary('Payable')).toBe('$10.00'); expect(text(renderer.toJSON())).toContain('Previous prices.'); expect(place().props.disabled).toBe(true);
   await act(async () => releases.get(0)());
-  expect(footerText()).toContain('Order total$12.00'); expect(place().props.disabled).toBe(false);
+  expect(summary('Payable')).toBe('$12.00'); expect(text(renderer.toJSON())).not.toContain('Previous prices.'); expect(place().props.disabled).toBe(false);
 });
 
 test('removing a tip keeps the previous breakdown consistent until the new total is confirmed', async () => {
@@ -307,10 +329,10 @@ test('removing a tip keeps the previous breakdown consistent until the new total
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
     ? new Promise(resolve => { release = () => resolve({ data: quote(JSON.parse(init.body)) }); }) : original(url, init));
   mockCart = { ...mockCart, driverTipPercent: 'none' }; await rerender();
-  expect(summary('Tip')).toBe('$1.00'); expect(footerText()).toContain('Previous total$11.00');
+  expect(summary('Tip')).toBe('$1.00'); expect(summary('Payable')).toBe('$11.00'); expect(text(renderer.toJSON())).toContain('Previous prices.');
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
   await tick(250); await act(async () => release());
-  expect(summary('Tip')).toBeUndefined(); expect(footerText()).toContain('Order total$10.00');
+  expect(summary('Tip')).toBeUndefined(); expect(summary('Payable')).toBe('$10.00'); expect(text(renderer.toJSON())).not.toContain('Previous prices.');
   expect(place().props.disabled).toBe(false);
 });
 
@@ -430,7 +452,8 @@ test('None clears a previously selected handoff, and address changes use order s
   await settle(); await act(async () => button('Leave at door').props.onPress());
   await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Delivery handoff: None' }).props.onPress());
   await act(async () => button('Change Address').props.onPress()); expect(mockSetup.openOrderSetup).toHaveBeenCalledWith('DELIVERY');
-  await act(async () => button('Change Order Details').props.onPress()); expect(mockSetup.openOrderSetup).toHaveBeenLastCalledWith('DELIVERY');
+  expect(button('Change Order Details')).toBeUndefined();
+  expect(renderer.root.findByType('OrderSetupSummary').props).toMatchObject({ singleLine: true, readOnly: true });
   await act(async () => button('Back to Cart').props.onPress()); expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)/cart');
   await act(async () => place().props.onPress());
   expect(JSON.parse(apiFetch.mock.calls.find(call => call[0] === '/api/v1/checkout')[1].body)).not.toHaveProperty('contactless_pref');

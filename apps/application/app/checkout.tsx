@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -21,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
-  MessageSquareText,
   ShoppingBag,
   Wallet,
 } from "lucide-react-native";
@@ -53,7 +51,6 @@ import {
   quotePromoParams,
   wingsRewardBlockedReason,
 } from "../src/lib/promo-selection";
-import { CartCoupons } from "../src/components/cart-coupons";
 import { requestCartQuote } from "../src/lib/cart-quote";
 import { calculateCartSubtotal, getCartItemSubtotal } from "../src/lib/wing-builder-logic";
 import type {
@@ -148,7 +145,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const [pricingRetry, setPricingRetry] = useState(0);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
   const [promoNotice, setPromoNotice] = useState<string | null>(null);
-  const [orderNotes, setOrderNotes] = useState("");
   const [contactlessPref, setContactlessPref] = useState<
     "" | "HAND_TO_ME" | "LEAVE_AT_DOOR" | "CALL_ON_ARRIVAL" | "TEXT_ON_ARRIVAL"
   >("");
@@ -556,7 +552,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     };
     if (cart.scheduledFor) payload.scheduled_for = cart.scheduledFor;
     if (tipCents > 0) payload.driver_tip_cents = tipCents;
-    if (orderNotes.trim()) payload.special_instructions = orderNotes.trim();
     if (cart.fulfillmentType === 'DELIVERY' && contactlessPref) payload.contactless_pref = contactlessPref;
     if (cart.fulfillmentType === "DELIVERY") {
       payload.address_snapshot_json = deliveryAddress;
@@ -741,7 +736,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     deliveryQuoteReady,
     initPaymentSheet,
     line1,
-    orderNotes,
     postalCode,
     presentPaymentSheet,
     promo,
@@ -804,8 +798,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
               <Text accessibilityRole="header" style={styles.pageTitle}>CHECKOUT</Text>
               <Text style={styles.pageSubtitle}>A few details, then the good stuff.</Text>
               <View style={styles.orderDetailsBar}>
-                <OrderSetupSummary />
-                <TouchableOpacity accessibilityRole="button" style={styles.detailToggle} onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={styles.deliveryActionText}>Change Order Details</Text></TouchableOpacity>
+                <OrderSetupSummary singleLine readOnly />
               </View>
 
               <Section title="Your order">
@@ -837,40 +830,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                     </View>
                   );
                 })}
-              </Section>
-
-              <CartCoupons cartTheme quote={currentQuote} contextKey={quoteKey}
-                disabled={submitting || promo.hydrated === false}
-                requestSelection={async selection => {
-                  if (!deliveryQuoteReady) throw new Error('Confirm your delivery address and fee before applying an offer.');
-                  return quoteSelection(selection);
-                }} />
-              <Section title="Add a tip">
-                <View style={styles.tipRow}>
-                  {(["none", 10, 15, 20] as const).map((tip) => {
-                    const active = cart.driverTipPercent === tip;
-                    return (
-                      <TouchableOpacity
-                        key={String(tip)}
-                        accessibilityRole="button"
-                        accessibilityLabel={tip === 'none' ? 'No tip' : `Tip ${tip}%`}
-                        accessibilityState={{ selected: active }}
-                        disabled={submitting}
-                        style={[styles.tipButton, active && styles.tipButtonActive]}
-                        onPress={() => cart.setDriverTipPercent(tip)}
-                      >
-                        <Text
-                          style={[
-                            styles.tipButtonText,
-                            active && styles.tipButtonTextActive,
-                          ]}
-                        >
-                          {tip === "none" ? "None" : `${tip}%`}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
               </Section>
 
               {cart.fulfillmentType === "DELIVERY" ? (
@@ -951,47 +910,11 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                 </Section>
               ) : null}
 
-              <Section title="Notes">
-                <View style={styles.inputWithIcon}>
-                  <MessageSquareText size={18} color="#E53C3C" />
-                  <TextInput
-                    style={[styles.input, styles.notesInput]}
-                    value={orderNotes}
-                    onChangeText={setOrderNotes}
-                    accessibilityLabel="Order notes (optional)"
-                    editable={!submitting}
-                    placeholder="Order notes (optional)"
-                    placeholderTextColor="#999"
-                    multiline
-                  />
-                </View>
-              </Section>
-
-              <Section title="Payment">
-                {paymentOptions.map((option) => {
-                  const active = paymentMethod === option.value;
-                  const iconColor = active ? "#E53C3C" : "#75665C";
-                  return (
-                    <PaymentOption
-                      key={option.value}
-                      title={option.title}
-                      detail={option.detail}
-                      icon={
-                        option.value === "CARD_ON_DELIVERY" ? (
-                          <CreditCard size={20} color={iconColor} />
-                        ) : (
-                          <Wallet size={20} color={iconColor} />
-                        )
-                      }
-                      active={active}
-                      disabled={submitting}
-                      onPress={() => setPaymentMethod(option.value)}
-                    />
-                  );
-                })}
-              </Section>
-
               <Section title="Total">
+                {!displayQuote ? <View accessibilityLabel="Checkout pricing status" accessibilityLiveRegion="polite" style={styles.totalStatus}>
+                  {!pricingFailed && detailsReady ? <ActivityIndicator accessibilityLabel={totalStatus} color="#E53C3C" size="small" /> : null}
+                  <Text style={[styles.deliveryStatusText, styles.totalStatusText]}>{totalStatus}</Text>
+                </View> : null}
                 {displayOnly ? <Text accessibilityLiveRegion="polite" style={styles.lineMeta}>Previous prices. Your new total is being confirmed.</Text> : null}
                 <SummaryRow label={displayQuote ? 'Subtotal' : 'Estimated subtotal'} value={displayQuote ? cents(displayQuote.item_subtotal_cents) : provisionalPrice(provisionalSubtotal)} />
                 {displayDiscountRows.map((row) => (
@@ -1051,18 +974,34 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                 {submitError ? <Text accessibilityRole="alert" style={styles.errorText}>{submitError}</Text> : null}
               </Section>
 
+              <Section title="Payment">
+                {paymentOptions.map((option) => {
+                  const active = paymentMethod === option.value;
+                  const iconColor = active ? "#E53C3C" : "#75665C";
+                  return (
+                    <PaymentOption
+                      key={option.value}
+                      title={option.title}
+                      detail={option.detail}
+                      icon={
+                        option.value === "CARD_ON_DELIVERY" ? (
+                          <CreditCard size={20} color={iconColor} />
+                        ) : (
+                          <Wallet size={20} color={iconColor} />
+                        )
+                      }
+                      active={active}
+                      disabled={submitting}
+                      onPress={() => setPaymentMethod(option.value)}
+                    />
+                  );
+                })}
+              </Section>
+
             </>
           )}
         </ScrollView>
         {cart.items.length > 0 && <View style={styles.checkoutDock}>
-          <View style={styles.dockSummary}>
-            <Text style={styles.summaryLabel}>{displayOnly ? 'Previous total' : 'Order total'}</Text>
-            {displayQuote ? <Text style={styles.dockTotal}>{cents(displayQuote.final_payable_cents)}</Text> :
-              <View accessibilityLiveRegion="polite" style={styles.totalStatus}>
-                {!pricingFailed && detailsReady ? <ActivityIndicator accessibilityLabel={totalStatus} color="#E53C3C" size="small" /> : null}
-                <Text style={[styles.deliveryStatusText, styles.totalStatusText]}>{totalStatus}</Text>
-              </View>}
-          </View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'} accessibilityState={{ disabled: placeDisabled, busy: submitting }}
             style={[styles.placeButton, placeDisabled && styles.disabledButton]} onPress={placeOrder} disabled={placeDisabled}>
             {submitting ? <><ActivityIndicator color="#FFFFFF" /><Text style={styles.placeButtonText}>Placing order...</Text></> : <Text style={styles.placeButtonText}>{paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'}</Text>}
@@ -1184,8 +1123,6 @@ const styles = StyleSheet.create({
   addressCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   fieldLabel: { color: '#75665C', fontSize: 13, marginTop: 16, fontWeight: '600' },
   checkoutDock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EFE4DE' },
-  dockSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', maxWidth: 608, alignSelf: 'center' },
-  dockTotal: { flexShrink: 1, color: '#E53C3C', fontSize: 22, fontWeight: '800' },
   totalStatus: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   totalStatusText: { flexShrink: 1, marginTop: 0 },
   emptyState: {
@@ -1242,28 +1179,6 @@ const styles = StyleSheet.create({
     textAlign: "right",    color: "#E53C3C",
     fontSize: 14,
     fontWeight: "900",
-  },
-  inputWithIcon: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    backgroundColor: "#F6EEE9",
-    borderWidth: 1,
-    borderColor: "#EFE4DE",
-    paddingHorizontal: 12,
-  },
-  input: {
-    flex: 1,
-    marginLeft: 10,
-    color: "#30241F",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  notesInput: {
-    minHeight: 82,
-    textAlignVertical: "top",
-    paddingTop: 14,
   },
   rowGap: {
     flexDirection: "row",
@@ -1460,32 +1375,6 @@ const styles = StyleSheet.create({
   },
   discountValue: {
     color: "#16A34A",
-  },
-  tipRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  tipButton: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "#EFE4DE",
-  },
-  tipButtonActive: {
-    borderColor: "#E53C3C",
-    backgroundColor: "rgba(255,77,77,0.08)",
-  },
-  tipButtonText: {
-    color: "#75665C",
-    fontWeight: "800",
-    fontSize: 13,
-  },
-  tipButtonTextActive: {
-    color: "#E53C3C",
   },
   primaryButton: {
     backgroundColor: "#E53C3C",
