@@ -359,6 +359,7 @@ test.each([false, true])('authentication resumes only with a fresh matching tota
   mockCart = { ...mockCart, fulfillmentType: 'PICKUP' }; mockSession = { ...mockSession, authenticated: false };
   await rerender(); await settle(); await act(async () => place().props.onPress());
   expect(renderer.root.findByType('AuthSheet').props.visible).toBe(true); noSubmission();
+  expect(renderer.root.findByType('AuthSheet').props.initialStep).toBe('login');
   mockSession = { ...mockSession, authenticated: true, user: { id: 'signed-in' } };
   const original = apiJson.getMockImplementation();
   let release;
@@ -380,6 +381,66 @@ test('dismissing login cancels pending submission', async () => {
   await rerender(); await settle(); await act(async () => place().props.onPress());
   await act(async () => renderer.root.findByType('AuthSheet').props.onClose());
   mockSession = { ...mockSession, authenticated: true }; await rerender(); await settle(); noSubmission();
+});
+
+test('a stale authenticated session opens login for 401 recovery and reprices without auto-submitting', async () => {
+  mockSession.refresh = jest.fn(async () => false);
+  mockSession.clear = jest.fn();
+  mockPromo.promoCode = 'SAVE';
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
+    ? Promise.reject(Object.assign(new Error('Authentication failed'), { status: 401 })) : original(url, init));
+  const items = mockCart.items, address = mockSetup.deliveryAddress;
+  await rerender(); await settle();
+  expect(mockSession.authenticated).toBe(true);
+  expect(mockSession.refresh).toHaveBeenCalledTimes(1);
+  await act(async () => button('Sign in').props.onPress());
+  expect(renderer.root.findByType('AuthSheet').props).toMatchObject({ visible: true, initialStep: 'login' });
+  // The entry point stays login even if profile flags change during recovery.
+  mockSession = { ...mockSession, needsProfileCompletion: true }; await rerender();
+  expect(renderer.root.findByType('AuthSheet').props.initialStep).toBe('login');
+  mockSession = { ...mockSession, needsProfileCompletion: false };
+  const requestsBeforeAuth = quoteRequests().length;
+  apiJson.mockImplementation(original);
+  await act(async () => { const sheet = renderer.root.findByType('AuthSheet'); sheet.props.onComplete(); sheet.props.onClose(); });
+  expect(quoteRequests()).toHaveLength(requestsBeforeAuth);
+  expect(place().props.disabled).toBe(true);
+  await settle();
+  expect(quoteRequests()).toHaveLength(requestsBeforeAuth + 1);
+  expect(summary('Payable')).toBe('$10.00'); expect(place().props.disabled).toBe(false);
+  expect(mockCart.items).toBe(items); expect(mockSetup.deliveryAddress).toBe(address);
+  expect(mockPromo.promoCode).toBe('SAVE'); expect(mockPromo.applyWingsReward).toBe(false);
+  expect(mockCart.clear).not.toHaveBeenCalled(); expect(mockPromo.clearAll).not.toHaveBeenCalled();
+  expect(mockPromo.clearPromoCode).not.toHaveBeenCalled(); expect(mockSetup.setDeliveryAddress).not.toHaveBeenCalled();
+  expect(mockSession.clear).not.toHaveBeenCalled(); noSubmission();
+});
+
+test('closing 401 recovery neither clears the session/reward nor submits or starts a retry loop', async () => {
+  mockSession.refresh = jest.fn(async () => true); mockSession.clear = jest.fn();
+  mockPromo.applyWingsReward = true;
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
+    ? Promise.reject(Object.assign(new Error('Authentication failed'), { status: 401 })) : original(url, init));
+  await rerender(); await settle();
+  expect(mockSession.refresh).toHaveBeenCalledTimes(1); expect(quoteRequests()).toHaveLength(2);
+  await act(async () => button('Sign in').props.onPress());
+  expect(renderer.root.findByType('AuthSheet').props.initialStep).toBe('login');
+  await act(async () => renderer.root.findByType('AuthSheet').props.onClose()); await tick(10000);
+  expect(renderer.root.findByType('AuthSheet').props.visible).toBe(false);
+  expect(quoteRequests()).toHaveLength(2); expect(mockSession.clear).not.toHaveBeenCalled();
+  expect(mockPromo.applyWingsReward).toBe(true); expect(mockPromo.clearAll).not.toHaveBeenCalled(); noSubmission();
+});
+
+test('legitimate incomplete profiles still enter profile completion and resume through fresh validation', async () => {
+  mockSession = { ...mockSession, needsProfileCompletion: true };
+  await rerender(); await settle(); await act(async () => place().props.onPress());
+  expect(renderer.root.findByType('AuthSheet').props).toMatchObject({ visible: true, initialStep: 'profile' }); noSubmission();
+  const requestsBeforeAuth = quoteRequests().length;
+  mockSession = { ...mockSession, needsProfileCompletion: false };
+  await act(async () => { const sheet = renderer.root.findByType('AuthSheet'); sheet.props.onComplete(); sheet.props.onClose(); });
+  await settle();
+  expect(quoteRequests().length).toBeGreaterThanOrEqual(requestsBeforeAuth + 2);
+  expect(apiFetch.mock.calls.filter(call => call[0] === '/api/v1/checkout')).toHaveLength(1);
 });
 
 test('lunch availability rejection and network pricing failure block orders and allow retry', async () => {

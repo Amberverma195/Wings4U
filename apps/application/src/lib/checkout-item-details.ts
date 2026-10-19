@@ -19,7 +19,7 @@ export function checkoutItemDetails(item: CartItem): string[] {
     const salad = payload.salad_customization;
     if (salad) {
       details.push(`Salad: ${salad.salad_name}`);
-      details.push(...(salad.removed_ingredients ?? []).map(row => `Salad: No ${row.name}`));
+      details.push(...new Set((salad.removed_ingredients ?? []).map(row => `Salad: No ${row.name}`)));
       details.push(...(salad.modifier_selections ?? []).map(row => `Salad: ${row.name}`));
     }
   }
@@ -30,9 +30,13 @@ export function checkoutItemDetails(item: CartItem): string[] {
   if (payload?.builder_type === 'ITEM_CUSTOMIZATION' && payload.side_pop_bundle) {
     details.push(`Combo: ${payload.side_pop_bundle.side_label} & ${payload.side_pop_bundle.pop_label}`);
   }
-  details.push(...item.modifier_selections.map(row => `${row.group_name ? `${row.group_name}: ` : ''}${row.option_name}`));
-  details.push(...(item.removed_ingredients ?? []).map(row => `No ${row.name}`));
-  if (payload && 'removed_ingredients' in payload) details.push(...(payload.removed_ingredients ?? []).map(row => `No ${row.name}`));
+  // Suppress descriptions mirrored between builder and cart data, while keeping
+  // repeated choices within a source (including ordered flavour/combo slots).
+  const builderDetails = new Set(details);
+  details.push(...item.modifier_selections.map(row => `${row.group_name ? `${row.group_name}: ` : ''}${row.option_name}`)
+    .filter(detail => !builderDetails.has(detail)));
+  const removals = [...(item.removed_ingredients ?? []), ...(payload && 'removed_ingredients' in payload ? payload.removed_ingredients ?? [] : [])];
+  details.push(...new Set(removals.map(row => `No ${row.name}`)));
   if (item.special_instructions.trim()) details.push(`Instructions: ${item.special_instructions.trim()}`);
-  return [...new Set(details)];
+  return details;
 }

@@ -151,6 +151,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
+  const [authInitialStep, setAuthInitialStep] = useState<'login' | 'profile'>('login');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
     defaultCollectionPreference("PICKUP"),
   );
@@ -518,6 +519,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
       authCompletedRef.current = false;
       pendingAuthReview.current = { key: authReviewKey, total: currentQuote!.final_payable_cents };
       pendingSubmitRef.current = true;
+      setAuthInitialStep(session.authenticated && session.needsProfileCompletion ? 'profile' : 'login');
       setAuthVisible(true);
       return;
     }
@@ -752,7 +754,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
       <StatusBar style="dark" />
       <AuthSheet
         visible={authVisible}
-        initialStep={session.authenticated ? "profile" : "login"}
+        initialStep={authInitialStep}
         onComplete={() => {
           authCompletedRef.current = true;
           setPricingRetry(value => value + 1);
@@ -1015,7 +1017,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                 {quoteError ? <Text accessibilityRole="alert" style={styles.errorText}>{quoteError}</Text> : null}
                 {quoteError ? <View style={styles.deliveryActions}>
                   <TouchableOpacity style={styles.deliveryActionButton} accessibilityRole="button" onPress={() => {
-                    if (recovery === 'sign_in') { pendingSubmitRef.current = false; setAuthVisible(true); }
+                    if (recovery === 'sign_in') { pendingSubmitRef.current = false; authCompletedRef.current = false; setAuthInitialStep('login'); setAuthVisible(true); }
                     else if (recovery === 'add_items') router.push('/(tabs)/menu');
                     else if (['time', 'delivery', 'review'].includes(recovery)) orderSetup.openOrderSetup(cart.fulfillmentType);
                     else if (recovery === 'items') router.push('/(tabs)/cart');
