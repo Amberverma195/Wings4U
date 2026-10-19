@@ -63,5 +63,6 @@ test('keeps both repeated clock times distinct across the fall DST change', () =
   const repeated = slots.filter(s => s.label.startsWith('1:30'));
   expect(repeated).toHaveLength(2);
   expect(repeated.map(s => s.value)).toEqual(['2026-11-01T05:30:00.000Z', '2026-11-01T06:30:00.000Z']);
-  expect(repeated[0].label).not.toBe(repeated[1].label);
+  expect(repeated[0].label).toBe(repeated[1].label);
+  expect(slots.every(slot => !/\b(EDT|EST)\b/.test(slot.label))).toBe(true);
 });

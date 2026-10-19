@@ -328,12 +328,68 @@ test.each(['NO_WINGS_IN_CART', 'NOT_ENOUGH_STAMPS', 'NOT_SIGNED_IN', 'applied'])
   expect(mockRewards.available_stamps).toBe(8);
 });
 
-test.each(['none', 10, 15, 20])('cart tip %s invalidates the old total and requotes for pickup', async tip => {
+test.each(['none', 10, 15, 20])('cart tip %s invalidates authoritative pricing and requotes for pickup', async tip => {
   await mount(); await act(async () => jest.advanceTimersByTime(250));
   await press(tip === 'none' ? 'No tip' : `Tip ${tip}%`); await rerender();
   await act(async () => jest.advanceTimersByTime(250));
   expect(mockCart.setDriverTipPercent).toHaveBeenCalledWith(tip);
   expect(JSON.parse(quoteCalls().at(-1)[1].body).driver_tip_cents).toBe(tip === 'none' ? 0 : 1000 * tip / 100);
+});
+
+const summaryAmount = label => {
+  const node = renderer.root.findAllByType('Text').find(node => textOf(node) === label);
+  return node ? textOf(node.parent.findAllByType('Text').at(-1)) : undefined;
+};
+test('tip refresh keeps the entire server breakdown visible and sends only the latest tip', async () => {
+  mockCart.fulfillmentType = 'DELIVERY';
+  const original = apiJson.getMockImplementation();
+  const priced = tip => ({ item_subtotal_cents: 1000, tax_cents: 83 + tip, delivery_fee_cents: 675, delivery_fee_stated_cents: 675,
+    delivery_fee_is_estimate: true, driver_tip_cents: tip, final_payable_cents: 1758 + 2 * tip,
+    applied_promo_code: 'AUTO', promo_discount_cents: 100, lines: [{ menu_item_id: 'wings', quantity: 1, line_total_cents: 1000 }] });
+  apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: priced(JSON.parse(init.body).driver_tip_cents) } : original(url, init));
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(summaryAmount('Tax')).toBe('$0.83'); expect(summaryAmount('Estimated total')).toBe('$17.58');
+  let release;
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? new Promise(resolve => { release = () => resolve({ data: priced(JSON.parse(init.body).driver_tip_cents) }); }) : original(url, init));
+  await press('Tip 20%'); await rerender();
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Tip 20%' }).props.accessibilityState.selected).toBe(true);
+  expect(summaryAmount('Tax')).toBe('$0.83'); expect(summaryAmount('Estimated total')).toBe('$17.58');
+  expect(summaryAmount('Promo code (AUTO)')).toBe('-$1.00'); expect(screenText()).not.toContain('Updating?');
+  expect(screenText()).not.toContain('...'); expect(screenText()).toContain('Previous amounts shown');
+  const coupons = renderer.root.findAll(node => node.type?.name === 'CartCoupons')[0];
+  expect(coupons.props.quote).toBeNull();
+  await act(async () => jest.advanceTimersByTime(250)); await act(async () => release());
+  expect(summaryAmount('Tax')).toBe('$2.83'); expect(summaryAmount('Tip')).toBe('$2.00'); expect(summaryAmount('Estimated total')).toBe('$21.58');
+  expect(summaryAmount('Delivery fee')).toBe('From $5 — calculated at checkout'); expect(screenText()).not.toContain('Previous amounts shown');
+});
+
+test.each(['PICKUP', 'DELIVERY'])('closed-store %s errors offer order setup instead of generic pricing retry', async type => {
+  mockCart.fulfillmentType = type;
+  const message = `The store is not open for ${type.toLowerCase()} at the selected time.`;
+  apiJson.mockRejectedValue(Object.assign(new Error(message), { status: 422, body: { errors: [{ field: 'scheduled_for', message }] } }));
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(screenText()).toContain(message); expect(button('Retry pricing')).toBeUndefined(); expect(summaryAmount('Tax')).toBe('Unavailable');
+  await act(async () => button('Change order time').props.onPress()); expect(mockSetup.openOrderSetup).toHaveBeenCalledWith(type);
+  expect(mockRouter.push).not.toHaveBeenCalled(); expect(mockCart.scheduledFor).toBeNull();
+});
+test('temporary failures retain a visible retry action and can recover', async () => {
+  apiJson.mockRejectedValueOnce(new Error('Network unavailable')); await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(button('Retry pricing')).toBeDefined(); expect(screenText()).toContain('Network unavailable');
+  expect(summaryAmount('Tax')).toBe('Unavailable'); expect(summaryAmount('Est. Subtotal')).toBe('$10.00');
+  await act(async () => button('Retry pricing').props.onPress()); await act(async () => jest.advanceTimersByTime(250));
+  expect(summaryAmount('Tax')).toBe('$1.30'); expect(button('Retry pricing')).toBeUndefined();
+});
+test('a retained tip quote cannot bypass fresh checkout validation while pricing is pending', async () => {
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  const original = apiJson.getMockImplementation(); let rejectQuote;
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? new Promise((_resolve, reject) => { rejectQuote = reject; }) : original(url, init));
+  await press('Tip 10%'); await rerender(); expect(summaryAmount('Tax')).toBe('$1.30');
+  let submitting; await act(async () => { submitting = button('Checkout').props.onPress(); });
+  expect(mockSetup.ensureOrderSetup).toHaveBeenCalledTimes(1);
+  expect(mockRouter.push).not.toHaveBeenCalled(); expect(mockSetup.markCheckoutValidated).not.toHaveBeenCalled();
+  await act(async () => { rejectQuote(new Error('The store is not open for pickup at the selected time.')); await submitting; });
+  expect(mockRouter.push).not.toHaveBeenCalled(); expect(mockSetup.markCheckoutValidated).not.toHaveBeenCalled();
+  await act(async () => button('Change order time').props.onPress()); expect(mockSetup.openOrderSetup).toHaveBeenCalledWith('PICKUP');
 });
 
 test('unknown pricing does not claim zero tax, free delivery or a confirmed total', async () => {
