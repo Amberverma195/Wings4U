@@ -171,7 +171,11 @@ export function AuthSheet({
       const result = await auth.signup(fullName, phone, email, password, confirmation);
       if (!visibleRef.current) return;
       setEmail(result.email ?? normalizeEmail(email));
-      changeStep('verify-email'); startCooldown();
+      changeStep('verify-email');
+      const retry = result.retry_after_seconds;
+      const wait = typeof retry === 'number' && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry) : 30;
+      startCooldown(result.otp_sent === false ? wait : Math.max(30, wait));
+      if (result.otp_sent === false) setLocalError("We couldn't confirm your verification email. If a code arrives, you can still use it. You can request another code below when available.");
     } else if (step === 'verify-email') {
       validateOtp(code);
       const result = await auth.verifyEmail(email, code);

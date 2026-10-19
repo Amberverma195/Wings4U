@@ -585,6 +585,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const resetCooldown = useResendCooldown(step.name === "reset-verify");
   const startResetResendCooldown = resetCooldown.start;
   const startSignupResendCooldown = signupCooldown.start;
+  const resetSignupResendCooldown = signupCooldown.reset;
   const resendInFlight = useRef(false);
   const [resendNotice, setResendNotice] = useState("");
   const [resetResendLocked, setResetResendLocked] = useState(false);
@@ -660,19 +661,25 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           confirm_password: confirmPassword,
         }),
       });
-      const body = (await res.json()) as ApiEnvelope<{ email: string }>;
+      const body = (await res.json()) as ApiEnvelope<{ email: string; otp_sent?: boolean; retry_after_seconds?: number }>;
       if (!res.ok) {
         setError(body.errors?.[0]?.message ?? "Sign up failed");
         return;
       }
-      startSignupResendCooldown();
+      const retry = body.data?.retry_after_seconds;
+      const wait = typeof retry === "number" && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry) : 30;
+      resetSignupResendCooldown();
+      startSignupResendCooldown(body.data?.otp_sent === false ? wait : Math.max(30, wait));
+      setResendNotice(body.data?.otp_sent === false
+        ? "We couldn't confirm your verification email. If a code arrives, you can still use it. You can request another code below when available."
+        : "");
       setStep({ name: "verify-email", email: body.data?.email ?? trimmedEmail });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setBusyAction(null);
     }
-  }, [fullName, phone, email, password, confirmPassword, fail, startSignupResendCooldown]);
+  }, [fullName, phone, email, password, confirmPassword, fail, startSignupResendCooldown, resetSignupResendCooldown]);
 
   /* ---------------------------------------------------------------- */
   /*  Signup: verify email OTP                                        */

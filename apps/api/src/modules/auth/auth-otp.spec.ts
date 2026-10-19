@@ -17,6 +17,12 @@ describe("email OTP issuance and private resend acknowledgements", () => {
   const purpose = "EMAIL_VERIFY";
   const hash = (value: string) => createHash("sha256").update(value).digest("hex");
   const issue = () => service.issueEmailOtp("identity", purpose, email);
+  const signup = () => {
+    prisma.userIdentity.findUnique = jest.fn(async () => null);
+    prisma.userIdentity.findFirst.mockResolvedValue(null);
+    prisma.$transaction.mockResolvedValueOnce("identity");
+    return service.signupWithPassword({ fullName: "Fictional Customer", phone: "5195550123", email, password: "Example123!" });
+  };
   const matches = (record: any, where: any) => record.userIdentityId === where.userIdentityId && record.purpose === where.purpose &&
     (!where.createdAt || record.createdAt > where.createdAt.gt) &&
     (where.consumedAt !== null || record.consumedAt === null) && (!where.expiresAt || record.expiresAt > where.expiresAt.gt);
@@ -32,6 +38,7 @@ describe("email OTP issuance and private resend acknowledgements", () => {
     const otp = {
       findFirst: jest.fn(async ({ where }: any) => records.filter(record => matches(record, where)).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null),
       count: jest.fn(async ({ where }: any) => records.filter(record => matches(record, where)).length),
+      findMany: jest.fn(async ({ where }: any) => records.filter(record => record.userIdentityId === where.userIdentityId && record.purpose === where.purpose)),
       create: jest.fn(async ({ data }: any) => {
         const record = { id: String(records.length + 1), createdAt: new Date(), consumedAt: null, attemptCount: 0, ...data };
         records.push(record); return record;
@@ -144,10 +151,80 @@ describe("email OTP issuance and private resend acknowledgements", () => {
     prisma.$transaction.mockResolvedValueOnce("identity");
     sender.send.mockRejectedValueOnce(new OtpDeliveryError("provider_rejected", false, 422));
     const result = await service.signupWithPassword({ fullName: "Fictional Customer", phone: "5195550123", email, password: "Example123!" });
-    expect(result).toMatchObject({ otpSent: false, email });
+    expect(result).toMatchObject({ otpSent: false, email, retryAfterSeconds: 0 });
     expect(records).toHaveLength(0);
     prisma.userIdentity.findFirst.mockResolvedValue({ id: "identity", isVerified: false });
     await service.processVerificationResend(email); expect(sender.send).toHaveBeenCalledTimes(2);
+  });
+  it("returns the normal cooldown for an accepted initial email", async () => {
+    expect(await signup()).toMatchObject({ otpSent: true, retryAfterSeconds: 30 });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+  });
+  it("only establishes a session after verifying the delivered recovery code", async () => {
+    sender.send.mockRejectedValueOnce(new OtpDeliveryError("provider_rejected", false, 422));
+    const session = { user: { id: "user", role: "CUSTOMER", displayName: "Fictional Customer" }, accessToken: "test-access" };
+    const createSession = jest.spyOn(service, "createSessionTokens").mockResolvedValue(session);
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 0 });
+    expect(createSession).not.toHaveBeenCalled();
+    await issue(); const code = sender.send.mock.calls[1][1];
+    prisma.userIdentity.findFirst.mockResolvedValue({ id: "identity", userId: "user", user: { ...session.user, firstName: "Fictional" } });
+    prisma.userIdentity.update = jest.fn(async () => ({}));
+    jest.spyOn(service, "findPrimaryPhone").mockResolvedValue(undefined);
+    expect(await service.verifyEmailOtp(email, code)).toMatchObject({ accessToken: "test-access" });
+    expect(createSession).toHaveBeenCalledTimes(1);
+  });
+  it.each(["provider_timeout", "provider_network", "provider_ambiguous"])("retained code after %s returns the actual remaining cooldown", async outcome => {
+    sender.send.mockImplementationOnce(async () => {
+      jest.advanceTimersByTime(11000);
+      throw new OtpDeliveryError(outcome as any, true);
+    });
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 19 });
+    expect(records).toHaveLength(1);
+    await expect(issue()).rejects.toThrow("wait 19 seconds"); expect(sender.send).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(19000); await issue(); expect(sender.send).toHaveBeenCalledTimes(2);
+    await service.consumeEmailOtp("identity", purpose, sender.send.mock.calls[1][1]);
+  });
+  it("permits immediate recovery when persistence failed and no code or send limit remains", async () => {
+    prisma.authOtpCode.create.mockRejectedValueOnce(new Error("storage failed"));
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 0 });
+    expect(sender.send).not.toHaveBeenCalled();
+    await issue(); expect(sender.send).toHaveBeenCalledTimes(1);
+  });
+  it("requires a conservative wait when cleanup or retry-state lookup is uncertain", async () => {
+    sender.send.mockRejectedValueOnce(new OtpDeliveryError("provider_rejected", false, 422));
+    prisma.authOtpCode.delete.mockRejectedValueOnce(new Error("cleanup failed"));
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 30 });
+    prisma.authOtpCode.findMany.mockRejectedValueOnce(new Error("lookup failed"));
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 30 });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+  });
+  it("returns an existing cooldown and full send-window wait without extra emails", async () => {
+    await issue(); jest.advanceTimersByTime(7000);
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 23 });
+    jest.advanceTimersByTime(23000);
+    for (let i = 0; i < 4; i++) { await issue(); jest.advanceTimersByTime(30000); }
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 750 });
+    expect(sender.send).toHaveBeenCalledTimes(5);
+  });
+  it("honors active-code limits even for records outside the send window", async () => {
+    records = Array.from({ length: 5 }, (_, index) => ({ userIdentityId: "identity", purpose,
+      createdAt: new Date(Date.now() - 960000), consumedAt: null, expiresAt: new Date(Date.now() + (index + 1) * 20000) }));
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 20 });
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+  it("does not offer immediate retry while another issuance transaction holds the lock", async () => {
+    locked = true;
+    expect(await signup()).toMatchObject({ otpSent: false, retryAfterSeconds: 30 });
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+  it("includes the recovery delay only in initial signup, without provider or OTP details", async () => {
+    const controller = new AuthController(service, {} as any);
+    jest.spyOn(controller as any, "enforceSignupDeviceLimit").mockResolvedValue(undefined);
+    jest.spyOn(service, "signupWithPassword").mockResolvedValue({ otpSent: false, email, expiresInSeconds: 300, retryAfterSeconds: 0 });
+    expect(await controller.signup({ full_name: "Fictional Customer", phone: "5195550123", email,
+      password: "Example123!", confirm_password: "Example123!" }, {} as any, {} as any)).toEqual({
+      otp_sent: false, email, expires_in_seconds: 300, retry_after_seconds: 0,
+    });
   });
   it.each(["cooldown", "window", "rejection", "network", "storage"])("keeps %s failures private in the public acknowledgement", async outcome => {
     if (outcome === "cooldown") await issue();

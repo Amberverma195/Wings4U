@@ -79,7 +79,7 @@ test('successful password login reports completion once for the Profile tab hand
 });
 
 test('registration completes only after verification, preserving the Profile tab handoff', async () => {
-  auth.signup.mockResolvedValue({ email: 'user@example.com', otp_sent: false });
+  auth.signup.mockResolvedValue({ email: 'user@example.com', otp_sent: true, retry_after_seconds: 30 });
   auth.verifyEmail.mockResolvedValue({ needs_profile_completion: false });
   await tap('No account? Sign up');
   await type('Full name', 'Wing Fan'); await type('Phone number', '5195550123');
@@ -91,6 +91,29 @@ test('registration completes only after verification, preserving the Profile tab
   await type('Verification code', '123456'); await tap('Verify');
   expect(auth.verifyEmail).toHaveBeenCalledWith('user@example.com', '123456');
   expect(onComplete).toHaveBeenCalledTimes(1);
+});
+
+test.each([0, 19, 30, 750])('failed initial email recovers using server retry %ss without repeating signup', async retry => {
+  auth.signup.mockResolvedValue({ email: 'user@example.com', otp_sent: false, retry_after_seconds: retry });
+  auth.resendVerification.mockResolvedValue({ request_accepted: true });
+  await tap('No account? Sign up');
+  await type('Full name', 'Wing Fan'); await type('Phone number', '5195550123'); await type('Email address', 'user@example.com');
+  await type('Password', 'SafeWings1!'); await type('Confirm password', 'SafeWings1!'); await tap('Sign up');
+  const label = retry ? `Resend in ${retry}s` : 'Resend code';
+  expect(button(label).props.disabled).toBe(retry > 0);
+  expect(renderer.root.findAllByType('Text').some(node => node.children.join('').includes("We couldn't confirm your verification email"))).toBe(true);
+  expect(onComplete).not.toHaveBeenCalled();
+  await type('Verification code', '123456'); expect(button('Verify').props.disabled).toBe(false);
+  await act(async () => renderer.update(React.createElement(AuthSheet, { visible: true, onClose: jest.fn(), onComplete })));
+  expect(button(label).props.disabled).toBe(retry > 0);
+  if (retry) {
+    await act(async () => jest.advanceTimersByTime(1000)); expect(button(`Resend in ${retry - 1}s`)).toBeDefined();
+    await act(async () => jest.advanceTimersByTime((retry - 1) * 1000));
+  }
+  const click = button('Resend code').props.onPress;
+  await act(async () => { await Promise.all([click(), click()]); });
+  expect(auth.resendVerification).toHaveBeenCalledTimes(1); expect(auth.signup).toHaveBeenCalledTimes(1);
+  expect(button('Resend in 30s').props.disabled).toBe(true); expect(onComplete).not.toHaveBeenCalled();
 });
 
 test('login keeps the completion form open until the required profile fields are saved', async () => {

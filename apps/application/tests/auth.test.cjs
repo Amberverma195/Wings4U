@@ -128,3 +128,12 @@ test('preserves rate-limit messages and retry timing', async () => {
     await expect(auth.requestPasswordReset('person@example.com')).rejects.toMatchObject({ status: 429, retrySeconds: 45 });
   });
 });
+
+test.each([[true, 30], [false, 0], [false, 19]])('signup preserves delivery/retry metadata (%s, %ss) without a session', async (sent, retry) => {
+  const data = { email: 'person@example.com', otp_sent: sent, retry_after_seconds: retry };
+  apiFetch.mockResolvedValue(response(data));
+  await act(async () => {
+    expect(await auth.signup('Fictional Customer', '5195550123', 'person@example.com', 'Strong123!', 'Strong123!')).toEqual(data);
+  });
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled(); expect(session.refresh).not.toHaveBeenCalled();
+});

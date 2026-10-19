@@ -392,6 +392,7 @@ export class AuthController {
     });
     return {
       otp_sent: result.otpSent,
+      retry_after_seconds: result.retryAfterSeconds,
       email: result.email,
       expires_in_seconds: result.expiresInSeconds,
     };

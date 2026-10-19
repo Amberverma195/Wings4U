@@ -134,7 +134,7 @@ export function useAuth() {
     validateNewPassword(password, confirmation);
     const normalizedPhone = normalizeLoginIdentifier(phone);
     if (!normalizedPhone.startsWith('+1')) throw new Error('Please enter a valid 10 digit phone number');
-    return authPost<{ email: string }>('/api/v1/auth/signup', {
+    return authPost<{ email: string; otp_sent?: boolean; retry_after_seconds?: number }>('/api/v1/auth/signup', {
       full_name: normalizeFullName(name), phone: normalizedPhone, email: normalizeEmail(email),
       password, confirm_password: confirmation,
     }, 'Sign up failed');

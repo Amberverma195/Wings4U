@@ -281,6 +281,35 @@ export class AuthService {
     return OTP_TTL_SECONDS;
   }
 
+  /** Retry hint only for the account-creation response, never anonymous resend. */
+  private async emailOtpRetryAfterSeconds(userIdentityId: string, purpose: string): Promise<number> {
+    const now = Date.now();
+    try {
+      const records = await this.prisma.authOtpCode.findMany({
+        where: { userIdentityId, purpose, OR: [
+          { createdAt: { gt: new Date(now - OTP_SEND_WINDOW_SECONDS * 1000) } },
+          { consumedAt: null, expiresAt: { gt: new Date(now) } },
+        ] },
+        select: { createdAt: true, consumedAt: true, expiresAt: true },
+        orderBy: { createdAt: "desc" },
+      });
+      const sent = records.map(record => record.createdAt.getTime())
+        .filter(createdAt => createdAt > now - OTP_SEND_WINDOW_SECONDS * 1000).sort((a, b) => b - a);
+      const active = records.filter(record => !record.consumedAt && record.expiresAt.getTime() > now)
+        .map(record => record.expiresAt.getTime()).sort((a, b) => b - a);
+      const availableAt = Math.max(now,
+        sent.length ? sent[0] + OTP_RESEND_COOLDOWN_SECONDS * 1000 : now,
+        sent.length >= MAX_OTP_SENDS_PER_WINDOW ? sent[MAX_OTP_SENDS_PER_WINDOW - 1] + OTP_SEND_WINDOW_SECONDS * 1000 : now,
+        active.length >= MAX_ACTIVE_OTP_CODES ? active[MAX_ACTIVE_OTP_CODES - 1] : now);
+      return Math.ceil((availableAt - now) / 1000);
+    } catch {
+      // An uncertain storage/commit or cleanup result must never promise an
+      // immediate retry. Issuance still rechecks every limit under its lock.
+      this.reportOtp("retry_state_lookup_failure", purpose, userIdentityId);
+      return OTP_RESEND_COOLDOWN_SECONDS;
+    }
+  }
+
   /** Verify and consume an email OTP for an identity+purpose. */
   private async consumeEmailOtp(
     userIdentityId: string,
@@ -323,7 +352,7 @@ export class AuthService {
     phone: string;
     email: string;
     password: string;
-  }): Promise<{ otpSent: boolean; email: string; expiresInSeconds: number }> {
+  }): Promise<{ otpSent: boolean; email: string; expiresInSeconds: number; retryAfterSeconds: number }> {
     const fullName = parseFullNameInput(input.fullName);
     const phoneE164 = parseNanpPhoneInput(input.phone);
     const email = parseEmailInput(input.email);
@@ -399,11 +428,14 @@ export class AuthService {
 
     try {
       const expiresInSeconds = await this.issueEmailOtp(emailIdentityId, EMAIL_VERIFY_PURPOSE, email);
-      return { otpSent: true, email, expiresInSeconds };
-    } catch {
+      return { otpSent: true, email, expiresInSeconds, retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+    } catch (error) {
       // The account already exists: allow verification/resend recovery instead
       // of trapping the customer on a signup form that now rejects duplicates.
-      return { otpSent: false, email, expiresInSeconds: OTP_TTL_SECONDS };
+      const retryAfterSeconds = Math.max(
+        error instanceof OtpIssueError && error.outcome === "concurrent_suppression" ? OTP_RESEND_COOLDOWN_SECONDS : 0,
+        await this.emailOtpRetryAfterSeconds(emailIdentityId, EMAIL_VERIFY_PURPOSE));
+      return { otpSent: false, email, expiresInSeconds: OTP_TTL_SECONDS, retryAfterSeconds };
     }
   }
 

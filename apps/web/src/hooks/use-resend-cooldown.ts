@@ -14,6 +14,11 @@ export function useResendCooldown(active: boolean) {
     setNow(current);
   }, []);
   const seconds = active ? Math.max(0, Math.ceil((availableAt - now) / 1000)) : 0;
+  const reset = useCallback(() => {
+    deadline.current = 0;
+    setAvailableAt(0);
+    setNow(Date.now());
+  }, []);
   useEffect(() => {
     if (!active || availableAt <= Date.now()) return;
     const timer = window.setInterval(() => {
@@ -23,5 +28,5 @@ export function useResendCooldown(active: boolean) {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [active, availableAt]);
-  return { seconds, start, isCoolingDown: () => deadline.current > Date.now() };
+  return { seconds, start, reset, isCoolingDown: () => deadline.current > Date.now() };
 }

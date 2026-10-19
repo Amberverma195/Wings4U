@@ -29,7 +29,7 @@ beforeEach(() => {
     clearInterval: id => { intervals.delete(id); clearInterval(id); },
     sessionStorage: { getItem: () => null, setItem: jest.fn(), removeItem: jest.fn() } };
   apiFetch.mockImplementation(async url => url.endsWith('/login') ? response({ needs_email_verification: true, email: 'fictional@example.com' })
-    : response({ email: 'fictional@example.com', delivery_email: 'fictional@example.com', request_accepted: true, retry_after_seconds: 30 }));
+    : response({ email: 'fictional@example.com', otp_sent: true, delivery_email: 'fictional@example.com', request_accepted: true, retry_after_seconds: 30 }));
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); delete global.window; });
 
@@ -85,4 +85,25 @@ test('failed network attempts still prevent rapid repeated requests', async () =
   await signup(); await tick(30000); apiFetch.mockRejectedValueOnce(new Error('Network unavailable'));
   await act(async () => resend().props.onClick()); expect(text(resend())).toBe('Resend in 30s');
   expect(text(renderer.toJSON())).toContain('Network unavailable');
+});
+
+test.each([0, 19, 30, 750])('failed initial delivery uses server retry %ss and permits verification', async retry => {
+  apiFetch.mockResolvedValueOnce(response({ email: 'fictional@example.com', otp_sent: false, retry_after_seconds: retry }));
+  await signup();
+  expect(text(renderer.toJSON())).toContain("We couldn't confirm your verification email");
+  expect(resend().props.disabled).toBe(retry > 0);
+  expect(text(resend())).toBe(retry ? `Resend in ${retry}s` : 'Resend code');
+  await type('Code', '123456'); expect(button('Verify').props.disabled).toBe(false);
+  await act(async () => renderer.update(React.createElement(CustomerAuth, { mode: 'signup' })));
+  expect(text(resend())).toBe(retry ? `Resend in ${retry}s` : 'Resend code');
+  if (retry) { await tick(1000); expect(text(resend())).toBe(`Resend in ${retry - 1}s`); await tick((retry - 1) * 1000); }
+  const click = resend().props.onClick;
+  await act(async () => { await Promise.all([click(), click()]); });
+  expect(apiFetch.mock.calls.filter(call => call[0].endsWith('/resend'))).toHaveLength(1);
+  expect(apiFetch.mock.calls.filter(call => call[0].endsWith('/signup'))).toHaveLength(1);
+  expect(text(resend())).toBe('Resend in 30s'); expect(mockSession.refresh).not.toHaveBeenCalled();
+});
+test.each([undefined, -1, '0'])('unknown retry hint %s does not enable an unsafe immediate resend', async retry => {
+  apiFetch.mockResolvedValueOnce(response({ email: 'fictional@example.com', otp_sent: false, retry_after_seconds: retry }));
+  await signup(); expect(text(resend())).toBe('Resend in 30s');
 });
