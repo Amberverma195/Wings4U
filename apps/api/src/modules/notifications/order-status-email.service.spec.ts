@@ -89,4 +89,26 @@ describe("OrderStatusEmailService", () => {
       new OrderStatusEmailService().send(order, "DELIVERED"),
     ).resolves.toBe(false);
   });
+
+  it("does not submit email without an API key", async () => {
+    delete process.env.RESEND_API_KEY;
+    expect(await new OrderStatusEmailService().send(order, "ACCEPTED")).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves the default sender and request timeout", async () => {
+    delete process.env.RESEND_FROM;
+    await new OrderStatusEmailService().send(order, "ACCEPTED");
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body).from).toBe("Wings 4 U <no-reply@wings4ulondon.ca>");
+    expect(init.method).toBe("POST"); expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("returns false on a provider timeout without retrying or changing the key", async () => {
+    (global.fetch as jest.Mock).mockRejectedValue(new Error("timeout"));
+    expect(await new OrderStatusEmailService().send(order, "PICKED_UP")).toBe(false);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect((global.fetch as jest.Mock).mock.calls[0][1].headers["Idempotency-Key"])
+      .toBe(`order-status/picked_up/${order.id}`);
+  });
 });

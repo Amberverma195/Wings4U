@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { renderBrandedEmail } from "./email-brand-template";
 
 export type OrderEmailStatus =
   | "ACCEPTED"
@@ -21,48 +22,46 @@ type RenderedEmail = {
   html: string;
 };
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function renderEmail(
+export function renderEmail(
   order: OrderEmailDetails,
   status: OrderEmailStatus,
 ): RenderedEmail {
   const orderLabel = `Order #${String(order.orderNumber)}`;
   const customerName = order.customerNameSnapshot.trim();
-  const greeting = customerName ? `Hi ${customerName},` : "Hi there,";
+  const greeting = status === "CANCELLED"
+    ? (customerName ? `Hello, ${customerName}.` : "Hello,")
+    : `Hello, ${customerName || "fellow wing lover"}! 🍗`;
 
   const content: Record<
     OrderEmailStatus,
-    { subject: string; headline: string; message: string }
+    { subject: string; headline: string; highlight: string; message: string; closing?: string }
   > = {
     ACCEPTED: {
       subject: `${orderLabel} accepted | Wings 4 U`,
-      headline: `${orderLabel} has been accepted`,
+      headline: `Your order #${String(order.orderNumber)} has been accepted!`,
+      highlight: "Your order is being prepared.",
       message:
-        "Thanks for ordering from Wings 4 U. Our kitchen has started preparing your order.",
+        "Thanks for ordering from Wings 4 U! Our kitchen has started preparing your order.",
     },
     PICKED_UP: {
       subject: `${orderLabel} picked up | Wings 4 U`,
-      headline: `${orderLabel} has been picked up`,
+      headline: `Your order #${String(order.orderNumber)} has been picked up!`,
+      highlight: "Enjoy your meal! 🍗",
       message:
-        "Thank you for choosing Wings 4 U. We hope you enjoy every bite.",
+        "Thank you for choosing Wings 4 U. We hope you enjoy every bite!",
+      closing: "We can't wait to serve you again.",
     },
     DELIVERED: {
       subject: `${orderLabel} delivered | Wings 4 U`,
-      headline: `${orderLabel} has been delivered`,
+      headline: `Your order #${String(order.orderNumber)} has been delivered!`,
+      highlight: "Your order has arrived!",
       message:
         "Thanks for inviting Wings 4 U to your table. We hope everything arrived hot, fresh, and delicious.",
     },
     CANCELLED: {
       subject: `${orderLabel} cancelled | Wings 4 U`,
       headline: `${orderLabel} has been cancelled`,
+      highlight: "Order cancelled",
       message:
         order.cancellationSource === "CUSTOMER_SELF"
           ? "Your cancellation is confirmed."
@@ -72,25 +71,16 @@ function renderEmail(
   const selected = content[status];
   const cancellationReason =
     status === "CANCELLED" ? order.cancellationReason?.trim() : null;
-  const reasonText = cancellationReason
-    ? `\n\nReason: ${cancellationReason}`
-    : "";
-  const reasonHtml = cancellationReason
-    ? `<p style="margin:14px 0 0;font-size:15px;line-height:1.5;"><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>`
-    : "";
+  const paragraphs = [selected.message, ...(selected.closing ? [selected.closing] : [])];
 
   return {
     subject: selected.subject,
-    text: `${greeting}\n\n${selected.message}${reasonText}`,
-    html: `
-      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
-        <h2 style="margin:0 0 8px;color:#e85d04;">Wings 4 U</h2>
-        <h1 style="margin:0 0 20px;font-size:24px;line-height:1.25;">${escapeHtml(selected.headline)}</h1>
-        <p style="margin:0 0 14px;font-size:15px;line-height:1.5;">${escapeHtml(greeting)}</p>
-        <p style="margin:0;font-size:15px;line-height:1.5;">${escapeHtml(selected.message)}</p>
-        ${reasonHtml}
-      </div>
-    `,
+    text: [greeting, selected.headline, selected.highlight, ...paragraphs,
+      ...(cancellationReason ? [`Reason: ${cancellationReason}`] : []),
+      "See you soon,\nThe Wings 4 U Team ❤️"].join("\n\n"),
+    html: renderBrandedEmail({ greeting, headline: selected.headline, highlight: selected.highlight, paragraphs,
+      ...(cancellationReason ? { detail: { label: "Reason", value: cancellationReason } } : {}),
+    }),
   };
 }
 
