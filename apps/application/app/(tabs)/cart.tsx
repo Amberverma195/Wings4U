@@ -111,13 +111,13 @@ export default function CartScreen() {
       >
         {cart.isCartHydrating ? (
           <View style={styles.centerState}>
-            <ActivityIndicator color="#F97316" />
+            <ActivityIndicator color="#E53C3C" />
             <Text style={styles.centerText}>Loading cart...</Text>
           </View>
         ) : cart.items.length === 0 ? (
           <View style={styles.centerState}>
             <View style={styles.emptyIcon}>
-              <ShoppingBag size={32} color="#F97316" />
+              <ShoppingBag size={32} color="#E53C3C" />
             </View>
             <Text style={styles.emptyTitle}>Your cart is empty</Text>
             <TouchableOpacity
@@ -165,7 +165,7 @@ export default function CartScreen() {
                             cart.updateQuantity(item.key, item.quantity - 1)
                           }
                         >
-                          <Minus size={16} color="#1A1A1A" />
+                          <Minus size={16} color="#30241F" />
                         </TouchableOpacity>
                         <Text style={styles.quantityText}>{item.quantity}</Text>
                         <TouchableOpacity
@@ -175,19 +175,19 @@ export default function CartScreen() {
                             cart.updateQuantity(item.key, item.quantity + 1)
                           }
                         >
-                          <Plus size={16} color="#1A1A1A" />
+                          <Plus size={16} color="#30241F" />
                         </TouchableOpacity>
                       </View>
                       <View style={styles.itemActions}>
                       <TouchableOpacity style={styles.editButton} accessibilityRole="button" accessibilityLabel={`Edit ${item.name}`} onPress={() => router.push({ pathname: '/(tabs)/menu', params: { editKey: item.key, ts: String(Date.now()) } })}>
-                        <Text>Edit</Text>
+                        <Text style={{ color: '#30241F' }}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         accessibilityLabel={`Remove ${item.name}`}
                         style={styles.removeButton}
                         onPress={() => cart.removeItem(item.key)}
                       >
-                        <Trash2 size={16} color="#F97316" />
+                        <Trash2 size={16} color="#E53C3C" />
                       </TouchableOpacity>
                       </View>
                     </View>
@@ -198,7 +198,7 @@ export default function CartScreen() {
 
             <View style={styles.summary}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>Order Summary</Text>
-              <CartCoupons active={focused} quote={quote} requestSelection={pricing.requestSelection} onValidated={pricing.acceptSelection} disabled={cart.isCartHydrating || promo.hydrated === false} />
+              <CartCoupons cartTheme active={focused} quote={quote} requestSelection={pricing.requestSelection} onValidated={pricing.acceptSelection} disabled={cart.isCartHydrating || promo.hydrated === false} />
               <Text style={styles.tipLabel}>{cart.fulfillmentType === 'DELIVERY' ? 'Add a tip for your driver' : 'Add a tip'}</Text>
               <View style={styles.tipRow}>{(['none', 10, 15, 20] as const).map(tip => <TouchableOpacity key={String(tip)} accessibilityRole="button"
                 accessibilityLabel={tip === 'none' ? 'No tip' : 'Tip ' + tip + '%'} accessibilityState={{ selected: cart.driverTipPercent === tip }}
@@ -245,7 +245,7 @@ export default function CartScreen() {
               </View>
               {quoteError ? (
                 <View><Text accessibilityRole="alert" style={styles.quoteError}>{quoteError}</Text>
-                  <TouchableOpacity accessibilityRole="button" onPress={pricing.refresh}><Text>Retry pricing</Text></TouchableOpacity></View>
+                  <TouchableOpacity accessibilityRole="button" onPress={pricing.refresh}><Text style={{ color: '#30241F' }}>Retry pricing</Text></TouchableOpacity></View>
               ) : null}
               {checkout.error && checkout.error !== quoteError ? <Text style={styles.quoteError} accessibilityRole="alert">{checkout.error}</Text> : null}
             </View>
@@ -284,7 +284,7 @@ export default function CartScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8c676",
+    backgroundColor: "#FFF9F5",
   },
   scroll: {
     flex: 1,
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   centerText: {
-    color: "#666",
+    color: "#75665C",
     fontWeight: "600",
   },
   emptyIcon: {
@@ -313,21 +313,21 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(249,115,22,0.1)",
+    backgroundColor: "#FFF0EA",
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#1A1A1A",
+    color: "#30241F",
   },
-  orderTitle: { fontSize: 28, fontWeight: '700', fontFamily: Platform?.OS === 'ios' ? 'Georgia' : 'serif', color: '#111827' },
-  itemCount: { marginTop: 4, marginBottom: 16, color: '#666', fontSize: 14 },
+  orderTitle: { fontSize: 28, fontWeight: '700', fontFamily: Platform?.OS === 'ios' ? 'Georgia' : 'serif', color: '#30241F' },
+  itemCount: { marginTop: 4, marginBottom: 16, color: '#75665C', fontSize: 14 },
   itemImage: { width: 64, height: 64, borderRadius: 12 },
-  tipLabel: { fontSize: 14, fontWeight: '700', marginBottom: 10, color: '#30251E' },
+  tipLabel: { fontSize: 14, fontWeight: '700', marginBottom: 10, color: '#30241F' },
   tipRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  tipButton: { flex: 1, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#E5E5E5' },
-  tipActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
-  tipText: { fontWeight: '700', color: '#444' }, tipActiveText: { fontWeight: '800', color: '#FFF' },
+  tipButton: { flex: 1, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F6EEE9', borderWidth: 1, borderColor: '#EBDDD5' },
+  tipActive: { backgroundColor: '#E53C3C', borderColor: '#E53C3C' },
+  tipText: { fontWeight: '700', color: '#30241F' }, tipActiveText: { fontWeight: '800', color: '#FFF' },
   section: {
     marginTop: 18,
   },
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform?.OS === 'ios' ? 'Georgia' : 'serif',
     fontSize: 22,
     fontWeight: "800",
-    color: "#1A1A1A",
+    color: "#30241F",
     marginBottom: 10,
   },
   cartLine: {
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#F1F1F1",
+    borderColor: "#EFE4DE",
   },
   cartLineTop: {
     flexDirection: "row",
@@ -355,18 +355,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   itemName: {
-    color: "#0C0300",
+    color: "#30241F",
     fontSize: 16,
     fontWeight: "800",
   },
   itemDetails: {
     marginTop: 5,
-    color: "#6b7280",
+    color: "#75665C",
     fontSize: 13,
     lineHeight: 19,
   },
   itemPrice: {
-    color: "#EA580C",
+    color: "#E53C3C",
     fontSize: 20,
     fontWeight: "800",
   },
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   quantityControl: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F6F6F6",
+    backgroundColor: "#F6EEE9",
     borderRadius: 999,
     padding: 4,
   },
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   quantityText: {
     minWidth: 34,
     textAlign: "center",
-    color: "#1A1A1A",
+    color: "#30241F",
     fontWeight: "800",
     fontSize: 14,
   },
@@ -406,11 +406,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(249,115,22,0.08)",
+    backgroundColor: "#FFF0EA",
   },
   promoNotice: {
-    color: "#B45309",
-    backgroundColor: "rgba(245,158,11,0.1)",
+    color: "#75665C",
+    backgroundColor: "#FFF0EA",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#F1F1F1",
+    borderColor: "#EFE4DE",
   },
   summaryRow: {
     flexDirection: "row",
@@ -436,13 +436,13 @@ const styles = StyleSheet.create({
   summaryLabel: {
     flex: 1,
     paddingRight: 12,
-    color: "#666",
+    color: "#75665C",
     fontSize: 14,
     fontWeight: "600",
   },
   summaryValue: {
     maxWidth: '65%', textAlign: 'right', flexShrink: 1,
-    color: "#1A1A1A",
+    color: "#30241F",
     fontSize: 14,
     fontWeight: "800",
   },
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: "#EFEFEF",
+    backgroundColor: "#EFE4DE",
     marginVertical: 6,
   },
   totalRow: {
@@ -467,12 +467,12 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     fontSize: 18,
     fontWeight: "900",
-    color: "#1A1A1A",
+    color: "#30241F",
   },
   totalValue: {
     fontSize: 20,
     fontWeight: "900",
-    color: "#F97316",
+    color: "#E53C3C",
   },
   quoteError: {
     marginTop: 12,
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   primaryButton: {
-    backgroundColor: "#F97316",
+    backgroundColor: "#E53C3C",
     paddingHorizontal: 28,
     paddingVertical: 13,
     borderRadius: 12,
@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F97316",
+    backgroundColor: "#E53C3C",
   },
   checkoutButtonInline: {
     display: "none",
@@ -511,9 +511,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: "#f8c676",
+    backgroundColor: "#FFF9F5",
     borderTopWidth: 1,
-    borderTopColor: "#EEEEEE",
+    borderTopColor: "#EFE4DE",
   },
   checkoutButtonDisabled: {
     opacity: 0.55,

@@ -19,9 +19,10 @@ type Props = {
   disabled?: boolean;
   contextKey?: string;
   active?: boolean;
+  cartTheme?: boolean;
 };
 
-export function CartCoupons({ quote, requestSelection, onValidated, disabled, contextKey: extraContext = '', active = true }: Props) {
+export function CartCoupons({ quote, requestSelection, onValidated, disabled, contextKey: extraContext = '', active = true, cartTheme = false }: Props) {
   const cart = useCart(), promo = usePromo(), session = useSession(), account = useAccountData(), router = useRouter();
   const [open, setOpen] = useState(false), [missingItem, setMissingItem] = useState(false);
   const [promotions, setPromotions] = useState<ActivePromo[]>([]);
@@ -102,8 +103,8 @@ export function CartCoupons({ quote, requestSelection, onValidated, disabled, co
   const clear = () => { attempt.current++; locked.current = false; setBusy(null); setError(null); promo.clearAll(); };
   return <>
     <TouchableOpacity accessibilityRole="button" accessibilityLabel="See coupons & rewards" disabled={disabled}
-      style={s.entry} onPress={() => { visible.current = true; setOpen(true); void refresh(); }}>
-      <Text style={s.entryText}>{rewardApplied ? '1lb of wings free · Applied' : 'See coupons & rewards'}</Text><Text style={s.action}>→</Text>
+      style={[s.entry, cartTheme && s.cartEntry]} onPress={() => { visible.current = true; setOpen(true); void refresh(); }}>
+      <Text style={[s.entryText, cartTheme && s.cartEntryText]}>{rewardApplied ? '1lb of wings free · Applied' : 'See coupons & rewards'}</Text><Text style={[s.action, cartTheme && s.cartEntryAccent]}>→</Text>
     </TouchableOpacity>
     <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
       <View style={s.overlay}><Pressable accessibilityLabel="Dismiss coupons" accessibilityRole="button" style={s.backdrop} onPress={close} />
@@ -152,6 +153,9 @@ export function CartCoupons({ quote, requestSelection, onValidated, disabled, co
 }
 
 const s = StyleSheet.create({
+  cartEntry: { backgroundColor: '#FFF0EA', borderColor: 'rgba(229,60,60,0.3)' },
+  cartEntryText: { color: '#30241F' },
+  cartEntryAccent: { color: '#E53C3C' },
   entry: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderWidth: 1, borderColor: 'rgba(249,115,22,0.3)', backgroundColor: '#FFF7ED', borderRadius: 12, marginVertical: 12, minHeight: 48 },
   entryText: { flex: 1, fontSize: 15, fontWeight: '700', color: '#30251E' }, action: { fontSize: 14, fontWeight: '800', color: '#F97316' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
