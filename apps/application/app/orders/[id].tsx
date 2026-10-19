@@ -1,7 +1,8 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -22,9 +23,13 @@ import { canUseOrderFeedback } from "../../src/lib/order-feedback";
 import { getSessionGeneration } from "../../src/lib/token-store";
 import { useSession } from "../../src/context/session";
 import { cents, orderStatusCustomerLabel, shortTime, statusEventWhenLine } from "../../src/lib/format";
-import { createOrdersSocket, subscribeToChannels } from "../../src/lib/realtime";
+import { createOrdersSocket } from "../../src/lib/realtime";
+import { startOrderRealtime, type OrderRealtimeHandle, type OrderRealtimeStatus } from "../../src/lib/order-realtime";
 import { ACTIVE_STATUSES } from "../../src/lib/types";
 import type { ChatMessage, OrderDetail } from "../../src/lib/types";
+
+/** Background refresh while live updates are not confirmed. */
+const FALLBACK_REFRESH_MS = 30_000;
 
 function paramToString(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -57,7 +62,10 @@ export default function OrderDetailScreen() {
   useEffect(() => setHistoryOpen(false), [orderId]);
   const liveOrder = focused && order.order?.id === orderId && ACTIVE_STATUSES.has(order.order.status);
   const history = useMemo(() => order.order ? statusHistory(order.order) : [], [order.order]);
-  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<OrderRealtimeStatus>("connecting");
+  const realtimeRef = useRef<OrderRealtimeHandle | null>(null);
+  const sessionGeneration = getSessionGeneration();
+  const sessionRefresh = session.refresh;
   const [feedback, setFeedback] = useState<{ kind: 'help' | 'review'; context: string } | null>(null);
   const feedbackContext = JSON.stringify([orderId, order.order?.location_id, session.user?.id, getSessionGeneration(), focused]);
   useEffect(() => { setFeedback(null); }, [feedbackContext]);
@@ -68,54 +76,37 @@ export default function OrderDetailScreen() {
 
   useEffect(() => {
     if (!orderId || !liveOrder) return;
-    let disposed = false;
-    let cleanup: (() => void) | null = null;
-
-    void (async () => {
-      const socket = await createOrdersSocket();
-      if (disposed) { socket.disconnect(); return; }
-
-      const refreshOrder = () => orderRefetch();
-      const refreshChat = () => chatRefetch();
-      socket.on("connect", () => setRealtimeConnected(true));
-      socket.on("disconnect", () => setRealtimeConnected(false));
-      socket.on("order.placed", refreshOrder);
-      socket.on("order.accepted", refreshOrder);
-      socket.on("order.status_changed", refreshOrder);
-      socket.on("order.cancelled", refreshOrder);
-      socket.on("order.driver_assigned", refreshOrder);
-      socket.on("order.delivery_started", refreshOrder);
-      socket.on("order.eta_updated", refreshOrder);
-      socket.on("chat.message", refreshChat);
-      socket.on("chat.read", refreshChat);
-
-      const unsubscribe = subscribeToChannels(socket, [
-        `order:${orderId}`,
-        `chat:${orderId}`,
-      ]);
-      socket.connect();
-
-      cleanup = () => {
-        unsubscribe();
-        socket.off("order.placed", refreshOrder);
-        socket.off("order.accepted", refreshOrder);
-        socket.off("order.status_changed", refreshOrder);
-        socket.off("order.cancelled", refreshOrder);
-        socket.off("order.driver_assigned", refreshOrder);
-        socket.off("order.delivery_started", refreshOrder);
-        socket.off("order.eta_updated", refreshOrder);
-        socket.off("chat.message", refreshChat);
-        socket.off("chat.read", refreshChat);
-        socket.disconnect();
-      };
-    })();
-
+    setRealtimeStatus("connecting");
+    const realtime = startOrderRealtime({
+      orderId,
+      createSocket: createOrdersSocket,
+      refreshSession: sessionRefresh,
+      onStatus: setRealtimeStatus,
+      onOrderChanged: orderRefetch,
+      onChatChanged: chatRefetch,
+    });
+    realtimeRef.current = realtime;
     return () => {
-      disposed = true;
-      cleanup?.();
-      setRealtimeConnected(false);
+      realtime.stop();
+      if (realtimeRef.current === realtime) realtimeRef.current = null;
     };
-  }, [chatRefetch, orderId, orderRefetch, liveOrder]);
+  }, [chatRefetch, orderId, orderRefetch, liveOrder, sessionGeneration, sessionRefresh]);
+
+  useEffect(() => {
+    if (!liveOrder) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") realtimeRef.current?.resume();
+    });
+    return () => subscription.remove();
+  }, [liveOrder]);
+
+  useEffect(() => {
+    if (!liveOrder || realtimeStatus === "live") return;
+    const timer = setInterval(() => {
+      if (AppState.currentState === "active") orderRefetch();
+    }, FALLBACK_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [liveOrder, orderRefetch, realtimeStatus]);
 
   if (!orderId) {
     return (
@@ -168,17 +159,26 @@ export default function OrderDetailScreen() {
                   <View
                     style={[
                       styles.statusDot,
-                      realtimeConnected && styles.statusDotConnected,
+                      realtimeStatus === "live" && styles.statusDotConnected,
+                      realtimeStatus === "unavailable" && styles.statusDotUnavailable,
                     ]}
                   />
                   <Text style={styles.realtimeText}>
-                    {realtimeConnected ? "Live updates connected" : "Connecting live updates"}
+                    {realtimeStatus === "live" ? "Live updates connected"
+                      : realtimeStatus === "unavailable" ? "Live updates unavailable" : "Connecting live updates"}
                   </Text>
+                  {realtimeStatus === "unavailable" ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry live updates"
+                    onPress={() => realtimeRef.current?.resume()} style={styles.realtimeRetry}>
+                    <Text style={styles.realtimeRetryText}>Retry</Text>
+                  </TouchableOpacity> : null}
                 </View> : null}
               </View>
 
               {order.error ? <View style={styles.refreshWarning}>
-                <Text accessibilityLiveRegion="polite" style={styles.refreshWarningText}>Couldn't refresh order. Showing the last available details.</Text>
+                <View style={styles.refreshWarningBody}>
+                  <Text accessibilityLiveRegion="polite" style={styles.refreshWarningText}>Couldn't refresh order. Showing the last available details.</Text>
+                  <Text style={styles.refreshWarningDetail}>{order.error}</Text>
+                </View>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry order refresh" accessibilityState={{ disabled: order.loading, busy: order.loading }}
                   disabled={order.loading} onPress={order.refetch} style={styles.refreshRetry}>
                   <Text style={styles.helpActionText}>Retry</Text>
@@ -309,7 +309,9 @@ const styles = StyleSheet.create({
   timelineDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FF4D4D', alignItems: 'center', justifyContent: 'center' },
   statusHistory: { marginHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   refreshWarning: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#FFF0ED' },
-  refreshWarningText: { flex: 1, color: '#6B5A51', fontSize: 13, lineHeight: 19, paddingVertical: 10 },
+  refreshWarningBody: { flex: 1, paddingVertical: 10 },
+  refreshWarningText: { color: '#6B5A51', fontSize: 13, lineHeight: 19 },
+  refreshWarningDetail: { marginTop: 2, color: '#8A776D', fontSize: 11, lineHeight: 16 },
   refreshRetry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   feedbackActions: { flexDirection: 'row', gap: 10 },
   helpAction: { flex: 1, minHeight: 44, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 1,
@@ -403,10 +405,23 @@ const styles = StyleSheet.create({
   statusDotConnected: {
     backgroundColor: "#22C55E",
   },
+  statusDotUnavailable: {
+    backgroundColor: "#9CA3AF",
+  },
   realtimeText: {
     color: "#DDD",
     fontSize: 12,
     fontWeight: "800",
+  },
+  realtimeRetry: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  realtimeRetryText: {
+    color: "#FFB3B3",
+    fontSize: 12,
+    fontWeight: "900",
   },
   section: {
     marginTop: 16,

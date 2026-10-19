@@ -167,6 +167,24 @@ export function getApiErrorMessage(
   return fallback;
 }
 
+/**
+ * Server message plus the HTTP status, error code and request id, so a failed
+ * request can be matched to API logs. Never includes headers or request data.
+ */
+export function describeApiFailure(status: number, body: unknown, fallback: string): string {
+  const envelope = body && typeof body === "object"
+    ? (body as { errors?: Array<{ code?: unknown }>; meta?: { request_id?: unknown } })
+    : null;
+  const code = envelope?.errors?.[0]?.code;
+  const requestId = envelope?.meta?.request_id;
+  const details = [
+    `HTTP ${status}`,
+    typeof code === "string" ? code : null,
+    typeof requestId === "string" ? `ref ${requestId}` : null,
+  ].filter(Boolean).join(" · ");
+  return `${getApiErrorMessage(body, fallback)} (${details})`;
+}
+
 export type { ApiEnvelope, ApiErrorBody };
 
 export class ApiRequestError extends Error {

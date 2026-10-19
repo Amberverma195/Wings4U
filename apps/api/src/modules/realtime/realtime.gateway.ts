@@ -92,6 +92,12 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   return cookies;
 }
 
+function describeError(error: unknown): { name: string; code?: string } {
+  if (!(error instanceof Error)) return { name: "UnknownError" };
+  const code = (error as { code?: unknown }).code;
+  return { name: error.name, ...(typeof code === "string" ? { code } : {}) };
+}
+
 function isTerminalOrderEvent(
   event: RealtimeEventName,
   payload: Record<string, unknown>,
@@ -125,6 +131,9 @@ export class RealtimeGateway
   private readonly drainChecksInFlight = new Set<string>();
   private readonly drainRecheckRequested = new Set<string>();
   private readonly closingLocations = new Map<string, Promise<void>>();
+  // Nest dispatches messages without awaiting handleConnection, so the first
+  // subscribe can arrive while the handshake credentials are still validating.
+  private readonly handshakeAuthentications = new WeakMap<Socket, Promise<boolean>>();
 
   constructor(
     private readonly sessionValidator: SessionValidator,
@@ -143,13 +152,33 @@ export class RealtimeGateway
   /* ------------------------------------------------------------------ */
 
   async handleConnection(socket: Socket): Promise<void> {
+    const authentication = this.authenticateHandshake(socket).catch(
+      (error: unknown) => {
+        this.logger.error(
+          JSON.stringify({
+            event: "realtime.handshake_validation_failed",
+            socket_id: socket.id,
+            error: describeError(error),
+          }),
+        );
+        // Closing only the transport keeps the client's automatic reconnect
+        // backoff; a server-side disconnect would require a manual reconnect.
+        socket.conn.close();
+        return false;
+      },
+    );
+    this.handshakeAuthentications.set(socket, authentication);
+    await authentication;
+  }
+
+  private async authenticateHandshake(socket: Socket): Promise<boolean> {
     const cookieHeader = socket.handshake.headers.cookie;
     const accessToken = this.readHandshakeAccessToken(socket);
     if (!cookieHeader && !accessToken) {
       this.logger.warn(`Connection rejected - no auth credentials (${socket.id})`);
       socket.emit("error", { message: "Authentication required" });
       socket.disconnect(true);
-      return;
+      return false;
     }
 
     const cookies = cookieHeader ? parseCookies(cookieHeader) : {};
@@ -159,11 +188,14 @@ export class RealtimeGateway
       preferredStationSurface,
       accessToken,
     );
+    if (!socket.connected) {
+      return false;
+    }
     if (!resolved) {
       this.logger.warn(`Connection rejected - no valid auth session (${socket.id})`);
       socket.emit("error", { message: "Invalid or expired session" });
       socket.disconnect(true);
-      return;
+      return false;
     }
 
     socket.data.accessToken = resolved.accessToken;
@@ -181,6 +213,7 @@ export class RealtimeGateway
     this.logger.log(
       `Client connected: ${socket.id} (user=${resolved.user.userId}, role=${resolved.user.role})`,
     );
+    return true;
   }
 
   handleDisconnect(socket: Socket): void {
@@ -236,6 +269,35 @@ export class RealtimeGateway
     @ConnectedSocket() socket: Socket,
   ): Promise<{ subscribed: boolean; channel: string; error?: string }> {
     const channel = typeof data?.channel === "string" ? data.channel : "";
+    try {
+      return await this.subscribeSocket(channel, socket);
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          event: "realtime.subscribe_failed",
+          socket_id: socket.id,
+          channel_prefix: CHANNEL_PATTERN.exec(channel)?.[1] ?? null,
+          error: describeError(error),
+        }),
+      );
+      return {
+        subscribed: false,
+        channel,
+        error: "Subscription temporarily unavailable",
+      };
+    }
+  }
+
+  private async subscribeSocket(
+    channel: string,
+    socket: Socket,
+  ): Promise<{ subscribed: boolean; channel: string; error?: string }> {
+    const handshakeAccepted =
+      (await this.handshakeAuthentications.get(socket)) ?? true;
+    if (!handshakeAccepted) {
+      return { subscribed: false, channel, error: "Not authenticated" };
+    }
+
     const user = await this.revalidateSocketUser(socket);
     if (!user) {
       return { subscribed: false, channel, error: "Not authenticated" };

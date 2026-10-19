@@ -6,7 +6,8 @@
  *   await apiFetch(`/api/v1/orders/${orderId}/chat`, { method: "POST", body: ... });
  */
 import { useCallback, useEffect, useState } from "react";
-import { apiJson, apiFetch } from "../lib/api";
+import { apiFetch, describeApiFailure } from "../lib/api";
+import { useSession, withSilentRefresh } from "../context/session";
 import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { ChatResponse, ChatMessage } from "../lib/types";
 
@@ -21,6 +22,9 @@ export type UseChatResult = {
 };
 
 export function useChat(orderId: string | null): UseChatResult {
+  const session = useSession();
+  const sessionRefresh = session.refresh;
+  const sessionClear = session.clear;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isClosed, setIsClosed] = useState(false);
@@ -43,11 +47,14 @@ export function useChat(orderId: string | null): UseChatResult {
 
     void (async () => {
       try {
-        const envelope = await apiJson<ChatResponse>(
-          `/api/v1/orders/${orderId}/chat`,
-          { locationId: DEFAULT_LOCATION_ID },
+        const response = await withSilentRefresh(
+          () => apiFetch(`/api/v1/orders/${orderId}/chat`, { locationId: DEFAULT_LOCATION_ID }),
+          sessionRefresh,
+          sessionClear,
         );
-        if (!cancelled && envelope.data) {
+        const envelope = await response.json().catch(() => null) as { data?: ChatResponse | null } | null;
+        if (!response.ok) throw new Error(describeApiFailure(response.status, envelope, "Unable to load chat."));
+        if (!cancelled && envelope?.data) {
           setMessages(envelope.data.messages);
           setConversationId(envelope.data.conversation_id);
           setIsClosed(envelope.data.is_closed);
@@ -64,7 +71,7 @@ export function useChat(orderId: string | null): UseChatResult {
     return () => {
       cancelled = true;
     };
-  }, [orderId, nonce]);
+  }, [orderId, nonce, sessionRefresh, sessionClear]);
 
   const sendMessage = useCallback(
     async (body: string) => {
