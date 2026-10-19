@@ -323,14 +323,31 @@ test('successful grant updates summary and history while preserving loaded order
   expect(JSON.parse(request.body)).toEqual({ stamps: 2, reason: 'SERVICE_RECOVERY', request_id: expect.stringMatching(/^[a-f0-9-]{36}$/) });
 });
 
-test('provider failure is separate from grant success, and notification retry cannot regrant stamps', async () => {
-  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve(response({ ...granted, email: { status: 'FAILED', message: 'Email provider unavailable.', retryable: true } }))
-    : path.endsWith('/email/retry') ? Promise.resolve(response(granted.email)) : defaultFetch(path));
+test.each(['FAILED', 'SKIPPED', 'PENDING', 'UNKNOWN'])('email %s stays outside the stamp success box without a retry button', async status => {
+  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve(response({ ...granted,
+    email: { status, message: 'Private provider diagnostics', retryable: true } })) : defaultFetch(path));
   await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(); await submitGrant();
-  expect(text()).toContain('Stamps were added successfully'); expect(text()).toContain('Email provider unavailable.');
-  await tap('Retry notification email');
-  expect(text()).toContain('accepted by the email provider'); expect(grantCalls()).toHaveLength(1);
-  expect(apiFetch.mock.calls.some(([path]) => path.endsWith(`/${granted.grant_id}/email/retry`))).toBe(true);
+  const success = renderer.root.findByProps({ className: 'admin-customer-grant-result' });
+  expect(textOf(success)).toBe("2 stamps added to Brown's account.");
+  expect(success.findAllByType('button')).toHaveLength(0);
+  expect(textOf(customerDialog())).toContain(`Email notification: ${status.toLowerCase()}. Provider acceptance has not been confirmed.`);
+  expect(text()).not.toContain('The customer has been notified via email.');
+  expect(text()).not.toContain('Private provider diagnostics');
+  expect(button('Retry notification email')).toBeUndefined();
+  expect(grantCalls()).toHaveLength(1);
+  expect(apiFetch.mock.calls.some(([path]) => path.endsWith('/email/retry'))).toBe(false);
+});
+
+test.each([1, 3])('accepted notification shows clean success with %i stamps', async count => {
+  apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve(response({ ...granted, stamps_granted: count })) : defaultFetch(path));
+  await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(); await submitGrant();
+  const success = renderer.root.findByProps({ className: 'admin-customer-grant-result' });
+  expect(success.findAllByType('p').map(textOf)).toEqual([
+    `${count} ${count === 1 ? 'stamp' : 'stamps'} added to Brown's account.`,
+    'The customer has been notified via email.',
+  ]);
+  expect(success.findAllByType('button')).toHaveLength(0);
+  expect(text()).not.toContain('Provider acceptance has not been confirmed');
 });
 
 test('uncertain grant retry retains its UUID and prevents double submission, including after cancel/reopen', async () => {

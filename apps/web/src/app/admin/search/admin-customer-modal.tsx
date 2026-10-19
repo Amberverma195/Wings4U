@@ -5,8 +5,6 @@ import { formatCents, formatDateTime } from "../admin-api";
 import { useAdminDialog } from "../use-admin-dialog";
 import { useAdminCustomer } from "./use-admin-customer";
 import { AdminStampGrantDialog } from "./admin-stamp-grant-dialog";
-import { adminApiFetch } from "../admin-api";
-import { useSession, withSilentRefresh } from "@/lib/session";
 import type { AdminStampGrantResult } from "../../../../../api/src/modules/admin/admin-customers.dto";
 
 export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended, returnFocusTo, orderLoading, orderError, onDismissOrder }: {
@@ -23,9 +21,6 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
   const [stampsExpanded, setStampsExpanded] = useState(false);
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantResult, setGrantResult] = useState<AdminStampGrantResult | null>(null);
-  const [emailRetrying, setEmailRetrying] = useState(false);
-  const emailInFlight = useRef(false);
-  const session = useSession();
   const { profile, orders, stamps, applyGrant, refreshStamps } = useAdminCustomer(customerId, ordersExpanded);
   const dialogRef = useRef<HTMLDivElement>(null);
   const orderFocus = useRef<HTMLButtonElement | null>(null);
@@ -41,20 +36,7 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
   const name = customer?.display_name?.trim() || [customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || "Customer profile";
   const summary = stamps.data?.summary;
   const fullCard = !!summary && summary.available_stamps >= summary.stamps_per_reward;
-  const grantDisabled = stamps.loading || !summary || fullCard || orderLoading || emailRetrying;
-  const retryEmail = async () => {
-    if (!grantResult || emailInFlight.current) return;
-    emailInFlight.current = true; setEmailRetrying(true);
-    try {
-      const res = await withSilentRefresh(() => adminApiFetch(`/api/v1/admin/customers/${customerId}/stamps/${grantResult.grant_id}/email/retry`, { method: "POST" }), session.refresh, session.clear);
-      const body = await res.json().catch(() => null);
-      if (!res.ok || !body?.data) throw new Error(body?.errors?.[0]?.message ?? "Unable to check the notification email. Please try again.");
-      setGrantResult(previous => previous && { ...previous, email: body.data });
-    } catch (error) {
-      setGrantResult(previous => previous && { ...previous, email: { status: "UNKNOWN", retryable: true,
-        message: error instanceof Error ? error.message : "Unable to check the notification email." } });
-    } finally { emailInFlight.current = false; setEmailRetrying(false); }
-  };
+  const grantDisabled = stamps.loading || !summary || fullCard || orderLoading;
 
   return <>
     <AdminStampGrantDialog open={grantOpen && !suspended} customerId={customerId} name={name}
@@ -121,11 +103,11 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
             <p className="surface-muted">Balances and stamp history apply to the customer&apos;s whole account.</p>
             {grantResult && <div role="status" className="admin-customer-grant-result">
               <p><strong>{grantResult.stamps_granted} {grantResult.stamps_granted === 1 ? "stamp" : "stamps"} added to {name}&apos;s account.</strong></p>
-              {grantResult.email.status !== "SENT" && <p>Stamps were added successfully, but the notification email has not been confirmed.</p>}
-              <p>{grantResult.email.message}</p>
-              {grantResult.email.retryable && <button type="button" className="btn-secondary" disabled={emailRetrying} onClick={() => void retryEmail()}>
-                {emailRetrying ? "Checking notification..." : "Retry notification email"}</button>}
+              {grantResult.email.status === "SENT" && <p>The customer has been notified via email.</p>}
             </div>}
+            {grantResult && grantResult.email.status !== "SENT" && <p role="status" className="surface-muted">
+              Email notification: {grantResult.email.status.toLowerCase()}. Provider acceptance has not been confirmed.
+            </p>}
             {stamps.loading && !stamps.data && <p role="status">Loading Wings rewards...</p>}
             <ResourceError error={stamps.error} retry={stamps.retry} />
             {stamps.data && <>

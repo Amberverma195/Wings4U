@@ -1,10 +1,15 @@
 import { StampGrantEmailService, renderStampGrantEmail, stampOrderUrl } from "./stamp-grant-email.service";
 
 const GRANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const emailIdentity = (emailNormalized: string | null = "tina@example.com", isVerified = true) => ({
+  provider: "EMAIL", isPrimary: false, isVerified, emailNormalized,
+});
 function fixture() {
   const row: any = { grantId: GRANT, status: "PENDING", payloadJson: null, firstAttemptAt: null, leaseUntil: null, attemptToken: null,
     grant: { customerUserId: "customer", deltaStamps: 2, balanceAfterStamps: 6 } };
-  let customer: any = { displayName: '<Tina & "Brown">', identities: [{ emailNormalized: "tina@example.com" }] };
+  let customer: any = { displayName: '<Tina & "Brown">', identities: [
+    { provider: "PHONE_OTP", isPrimary: true, isVerified: true, emailNormalized: null }, emailIdentity(),
+  ] };
   const prisma: any = {
     wingsStampGrantEmail: {
       findUniqueOrThrow: jest.fn(async () => structuredClone(row)),
@@ -15,7 +20,14 @@ function fixture() {
         Object.assign(row, data); return { count: 1 };
       }),
     },
-    user: { findFirst: jest.fn(async () => customer) },
+    user: { findFirst: jest.fn(async ({ select }: any) => {
+      if (!customer) return null;
+      const { where, take } = select.identities;
+      return { ...customer, identities: customer.identities.filter((identity: any) =>
+        Object.entries(where).every(([key, value]) =>
+          key === "emailNormalized" ? identity[key] != null : identity[key] === value),
+      ).slice(0, take) };
+    }) },
   };
   return { row, prisma, service: new StampGrantEmailService(prisma), customer: (value: any) => { customer = value; } };
 }
@@ -30,11 +42,11 @@ describe("Stamp grant transactional email", () => {
   });
   afterEach(() => { global.fetch = originalFetch; process.env = { ...env }; });
 
-  it("uses only the current verified primary email, escaped name, public ordering URL and grant-specific key", async () => {
+  it("uses a verified nonprimary email with a primary phone, escaped name, public ordering URL and grant-specific key", async () => {
     const s = fixture(); const result = await s.service.send(GRANT);
     expect(result.status).toBe("SENT");
     expect(s.prisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "customer", role: "CUSTOMER", isActive: true, archivedAt: null },
-      select: expect.objectContaining({ identities: expect.objectContaining({ where: { isPrimary: true, isVerified: true, emailNormalized: { not: null } } }) }) }));
+      select: expect.objectContaining({ identities: expect.objectContaining({ where: { provider: "EMAIL", isVerified: true, emailNormalized: { not: null } } }) }) }));
     const [url, request] = (global.fetch as jest.Mock).mock.calls[0];
     expect(url).toBe("https://api.resend.com/emails");
     expect(request.headers["Idempotency-Key"]).toBe(`stamp-grant/${GRANT}`);
@@ -47,18 +59,30 @@ describe("Stamp grant transactional email", () => {
     expect(s.row.sentAt).toBeInstanceOf(Date); expect(s.row.providerEmailId).toBe("email-one");
     await s.service.send(GRANT); expect(global.fetch).toHaveBeenCalledTimes(1);
   });
-  it.each([null, { displayName: "Tina", identities: [] }])("missing or unverified primary email skips safely", async customer => {
+  it.each([null, { displayName: "Tina", identities: [] },
+    { displayName: "Tina", identities: [emailIdentity("tina@example.com", false)] },
+    { displayName: "Tina", identities: [emailIdentity(null)] },
+    { displayName: "Tina", identities: [{ ...emailIdentity(), provider: "PHONE_OTP", isPrimary: true }] },
+  ])("missing, unverified or non-EMAIL identities skip safely", async customer => {
     const s = fixture(); s.customer(customer);
     expect((await s.service.send(GRANT)).status).toBe("SKIPPED"); expect(global.fetch).not.toHaveBeenCalled();
     expect(s.row.status).toBe("SKIPPED");
+  });
+  it("uses the current verified email after a contact change before submission", async () => {
+    const s = fixture();
+    s.customer({ displayName: "Tina", identities: [emailIdentity("current@example.com")] });
+    expect((await s.service.send(GRANT)).status).toBe("SENT");
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body).to).toEqual(["current@example.com"]);
   });
   it("persists provider failures and reuses the same frozen request on retry", async () => {
     const s = fixture();
     (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 503 });
     expect((await s.service.send(GRANT)).status).toBe("FAILED");
+    expect(s.row.status).toBe("FAILED"); expect(s.row.lastError).toContain("503");
+    expect(s.row.sentAt).toBeUndefined();
     const first = (global.fetch as jest.Mock).mock.calls[0][1];
     process.env.RESEND_FROM = "Changed <other@example.com>";
-    s.customer({ displayName: "Changed name", identities: [{ emailNormalized: "tina@example.com" }] });
+    s.customer({ displayName: "Changed name", identities: [emailIdentity()] });
     expect((await s.service.send(GRANT)).status).toBe("SENT");
     expect((global.fetch as jest.Mock).mock.calls[1][1].body).toBe(first.body);
     expect((global.fetch as jest.Mock).mock.calls[1][1].headers["Idempotency-Key"]).toBe(first.headers["Idempotency-Key"]);
@@ -67,7 +91,12 @@ describe("Stamp grant transactional email", () => {
   it("a network timeout reports uncertainty and an explicit retry uses the same key", async () => {
     const s = fixture(); (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("timeout"));
     expect(await s.service.send(GRANT)).toEqual(expect.objectContaining({ status: "UNKNOWN", retryable: true }));
+    expect(s.row.status).toBe("UNKNOWN"); expect(s.row.lastError).toContain("did not confirm");
+    expect(s.row.sentAt).toBeUndefined();
     expect((await s.service.send(GRANT)).status).toBe("SENT");
+    const requests = (global.fetch as jest.Mock).mock.calls.map(call => call[1]);
+    expect(requests[1].headers["Idempotency-Key"]).toBe(requests[0].headers["Idempotency-Key"]);
+    expect(requests[1].body).toBe(requests[0].body);
   });
   it("parallel workers use one delivery lease", async () => {
     const s = fixture(); await Promise.all([s.service.send(GRANT), s.service.send(GRANT)]);
@@ -80,7 +109,7 @@ describe("Stamp grant transactional email", () => {
   it("does not send to a formerly verified email after the contact changes", async () => {
     const s = fixture(); (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("timeout"));
     await s.service.send(GRANT);
-    s.customer({ displayName: "Tina", identities: [{ emailNormalized: "new@example.com" }] });
+    s.customer({ displayName: "Tina", identities: [emailIdentity("new@example.com")] });
     expect((await s.service.send(GRANT)).status).toBe("SKIPPED"); expect(global.fetch).toHaveBeenCalledTimes(1);
   });
   it("stops uncertain retries before the provider idempotency window expires", async () => {

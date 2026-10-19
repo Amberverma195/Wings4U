@@ -90,11 +90,11 @@ export class StampGrantEmailService {
     }
     const customer = await this.prisma.user.findFirst({
       where: { id: record.grant.customerUserId, role: "CUSTOMER", isActive: true, archivedAt: null },
-      select: { displayName: true, identities: { where: { isPrimary: true, isVerified: true, emailNormalized: { not: null } },
+      select: { displayName: true, identities: { where: { provider: "EMAIL", isVerified: true, emailNormalized: { not: null } },
         orderBy: [{ verifiedAt: "desc" }, { id: "asc" }], take: 1, select: { emailNormalized: true } } },
     });
     const recipient = customer?.identities[0]?.emailNormalized;
-    if (!recipient) return finish(result("SKIPPED", "No current verified primary email is available.", !record.firstAttemptAt));
+    if (!recipient) return finish(result("SKIPPED", "No current verified email is available.", !record.firstAttemptAt));
     const apiKey = process.env.RESEND_API_KEY?.trim();
     const from = process.env.RESEND_FROM?.trim();
     if (!apiKey || !from) return finish(result("SKIPPED", "Notification email is not configured.", true));
