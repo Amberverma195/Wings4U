@@ -65,24 +65,29 @@ test('pickup has no delivery fee row', async () => {
   await mount(); await act(async () => jest.advanceTimersByTime(250));
   expect(renderedText(renderer.toJSON())).not.toContain('Delivery fee');
 });
-test.each(['pending', 'estimated', 'confirmed', 'coupon', 'threshold'])('cart delivery fee presentation: %s', async mode => {
+test.each(['pending', 'unavailable', 'estimated', 'confirmed', 'coupon', 'threshold', 'waived-zero'])('cart delivery fee presentation: %s', async mode => {
   mockCart.fulfillmentType = 'DELIVERY';
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation(async (url, init) => {
     if (url !== '/api/v1/cart/quote') return original(url, init);
     if (mode === 'pending') return new Promise(() => {});
+    if (mode === 'unavailable') throw new Error('Quote unavailable');
     return { data: { item_subtotal_cents: 1000, tax_cents: 130, final_payable_cents: 1905, lines: [],
-      delivery_fee_cents: mode === 'coupon' || mode === 'threshold' ? 0 : 775, delivery_fee_stated_cents: 775,
-      delivery_fee_waived: mode === 'coupon' || mode === 'threshold', delivery_fee_is_estimate: mode !== 'confirmed',
+      delivery_fee_cents: ['coupon', 'threshold', 'waived-zero'].includes(mode) ? 0 : 775,
+      delivery_fee_stated_cents: mode === 'waived-zero' ? 0 : 775,
+      delivery_fee_waived: ['coupon', 'threshold', 'waived-zero'].includes(mode), delivery_fee_is_estimate: mode !== 'confirmed',
       applied_promo_code: mode === 'coupon' ? 'FREEDEL' : undefined } };
   });
   await mount(); await act(async () => jest.advanceTimersByTime(250));
   const output = renderedText(renderer.toJSON());
-  if (mode === 'pending' || mode === 'estimated') {
+  expect(output).not.toContain('$7.75');
+  if (mode === 'pending' || mode === 'unavailable') {
+    expect(output).not.toContain('Delivery fee');
+    expect(output).not.toContain('Free');
+  } else if (['estimated', 'confirmed', 'waived-zero'].includes(mode)) {
     expect(output).toContain('From $5 — calculated at checkout');
-    expect(output).not.toContain('$7.75');
-  } else if (mode === 'confirmed') expect(output).toContain('$7.75');
-  else {
+    expect(output).not.toContain('Free');
+  } else {
     expect(output).toContain('From $5 Free');
     expect(renderer.root.findAllByType('Text').some(node => node.props.style?.textDecorationLine === 'line-through')).toBe(true);
   }
@@ -333,7 +338,7 @@ test.each(['none', 10, 15, 20])('cart tip %s invalidates the old total and requo
 
 test('unknown pricing does not claim zero tax, free delivery or a confirmed total', async () => {
   mockCart.fulfillmentType = 'DELIVERY'; apiJson.mockImplementation(() => new Promise(() => {}));
-  await mount(); expect(screenText()).toContain('From $5 — calculated at checkout'); expect(screenText()).not.toContain('Free');
+  await mount(); expect(screenText()).not.toContain('Delivery fee'); expect(screenText()).not.toContain('Free');
   expect(screenText()).toContain('Est. Subtotal');
 });
 
