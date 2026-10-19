@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { formatPhoneForDisplay, toE164 } from "@/lib/phone";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
+import { useResendCooldown } from "@/hooks/use-resend-cooldown";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -49,7 +50,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_HINT =
   "Password must be at least 8 characters and include a letter, a number, and a special character.";
 const LOGIN_PASSWORD_STEP_STORAGE_KEY = "w4u_login_identifier_pending";
-const PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 30;
 
 function getPasswordChecks(value: string) {
   return [
@@ -510,7 +510,9 @@ function ResendButton({
         className="wk-otp-resend"
         disabled={disabled}
         onClick={onClick}
-        aria-label="Resend verification code"
+        aria-label={label}
+        aria-disabled={disabled}
+        aria-busy={sending}
       >
         <span className="wk-otp-resend-icon" aria-hidden>
           <svg
@@ -579,34 +581,21 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const busy = busyAction !== null;
   const [shaking, setShaking] = useState(false);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [resetResendAvailableAt, setResetResendAvailableAt] = useState(0);
+  const signupCooldown = useResendCooldown(step.name === "verify-email");
+  const resetCooldown = useResendCooldown(step.name === "reset-verify");
+  const startResetResendCooldown = resetCooldown.start;
+  const startSignupResendCooldown = signupCooldown.start;
+  const resetSignupResendCooldown = signupCooldown.reset;
+  const resendInFlight = useRef(false);
+  const [resendNotice, setResendNotice] = useState("");
   const [resetResendLocked, setResetResendLocked] = useState(false);
-  const resetResendCooldownSeconds =
-    step.name === "reset-verify"
-      ? Math.max(0, Math.ceil((resetResendAvailableAt - nowMs) / 1000))
-      : 0;
+  const resetResendCooldownSeconds = resetCooldown.seconds;
 
   const triggerShake = useCallback(() => {
     setShaking(true);
     clearTimeout(shakeTimer.current);
     shakeTimer.current = setTimeout(() => setShaking(false), 450);
   }, []);
-
-  const startResetResendCooldown = useCallback(
-    (seconds = PASSWORD_RESET_RESEND_COOLDOWN_SECONDS) => {
-      const now = Date.now();
-      setNowMs(now);
-      setResetResendAvailableAt(now + seconds * 1000);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (resetResendCooldownSeconds <= 0) return;
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [resetResendCooldownSeconds]);
 
   const shakeStyle = shaking ? { animation: "wkBtnShake 0.4s ease" } : {};
 
@@ -672,18 +661,25 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           confirm_password: confirmPassword,
         }),
       });
-      const body = (await res.json()) as ApiEnvelope<{ email: string }>;
+      const body = (await res.json()) as ApiEnvelope<{ email: string; otp_sent?: boolean; retry_after_seconds?: number }>;
       if (!res.ok) {
         setError(body.errors?.[0]?.message ?? "Sign up failed");
         return;
       }
+      const retry = body.data?.retry_after_seconds;
+      const wait = typeof retry === "number" && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry) : 30;
+      resetSignupResendCooldown();
+      startSignupResendCooldown(body.data?.otp_sent === false ? wait : Math.max(30, wait));
+      setResendNotice(body.data?.otp_sent === false
+        ? "We couldn't confirm your verification email. If a code arrives, you can still use it. You can request another code below when available."
+        : "");
       setStep({ name: "verify-email", email: body.data?.email ?? trimmedEmail });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setBusyAction(null);
     }
-  }, [fullName, phone, email, password, confirmPassword, fail]);
+  }, [fullName, phone, email, password, confirmPassword, fail, startSignupResendCooldown, resetSignupResendCooldown]);
 
   /* ---------------------------------------------------------------- */
   /*  Signup: verify email OTP                                        */
@@ -773,9 +769,10 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         fail(message);
         return;
       }
-      // Correct password but the email was never verified: the server emailed a
-      // fresh code and withheld the session. Route to email verification.
+      // Correct password but unverified email: verification was requested,
+      // and the server withheld the session. Route to email verification.
       if (body.data?.needs_email_verification) {
+        startSignupResendCooldown();
         setOtpCode("");
         clearPendingLoginIdentifier();
         setStep({ name: "verify-email", email: body.data.email ?? "" });
@@ -788,7 +785,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } finally {
       setBusyAction(null);
     }
-  }, [step, loginPassword, finishAuth, fail]);
+  }, [step, loginPassword, finishAuth, fail, startSignupResendCooldown]);
 
   /* ---------------------------------------------------------------- */
   /*  Password reset                                                  */
@@ -870,11 +867,14 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   /* ---------------------------------------------------------------- */
 
   const handleResend = useCallback(async () => {
+    if (resendInFlight.current || busy) return;
+    if (step.name !== "verify-email" && step.name !== "reset-verify") return;
+    const cooldown = step.name === "verify-email" ? signupCooldown : resetCooldown;
+    if (cooldown.isCoolingDown() || (step.name === "reset-verify" && resetResendLocked)) return;
+    resendInFlight.current = true;
+    cooldown.start();
     setError("");
-    if (step.name === "reset-verify") {
-      if (resetResendLocked || resetResendCooldownSeconds > 0) return;
-      startResetResendCooldown();
-    }
+    setResendNotice("");
     setBusyAction("resend");
     try {
       if (step.name === "verify-email") {
@@ -883,8 +883,14 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: step.email }),
         });
-        const body = (await res.json()) as ApiEnvelope<unknown>;
+        const body = (await res.json()) as ApiEnvelope<{ retry_after_seconds?: number }>;
+        const header = res.headers.get("Retry-After");
+        const retry = header ? Number(header) || Math.ceil((Date.parse(header) - Date.now()) / 1000) : 0;
+        const wait = Math.max(30, Number.isFinite(retry) ? retry : 0, body.data?.retry_after_seconds ?? 0,
+          parseCooldownSeconds(body.errors?.[0]?.message ?? "") ?? 0);
+        cooldown.start(wait);
         if (!res.ok) setError(body.errors?.[0]?.message ?? "Resend failed");
+        else setResendNotice("If verification is needed and a code can be sent, check your inbox and spam folder.");
       } else if (step.name === "reset-verify") {
         const res = await apiFetch("/api/v1/auth/password-reset/request", {
           method: "POST",
@@ -892,6 +898,8 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           body: JSON.stringify({ identifier: step.identifier }),
         });
         const body = (await res.json()) as ApiEnvelope<{ delivery_email?: string }>;
+        const retry = Number(res.headers.get("Retry-After"));
+        if (Number.isFinite(retry) && retry > 0) cooldown.start(retry);
         if (!res.ok) {
           const message = body.errors?.[0]?.message ?? "Resend failed";
           const waitSeconds = parseCooldownSeconds(message);
@@ -912,6 +920,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
+      resendInFlight.current = false;
       setBusyAction(null);
     }
   }, [
@@ -919,6 +928,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     resetResendCooldownSeconds,
     resetResendLocked,
     startResetResendCooldown,
+    signupCooldown,
+    resetCooldown,
+    busy,
   ]);
 
   /* ---------------------------------------------------------------- */
@@ -1221,7 +1233,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       <div style={s.container}>
         <AuthHeading>Verify your email</AuthHeading>
         <p style={s.subtitle}>
-          We sent a code to <span style={s.subtitleStrong}>{step.email}</span>
+          Check <span style={s.subtitleStrong}>{step.email}</span> for your verification code. If a code can be sent, it may take a moment to arrive. You can also check your spam folder.
         </p>
 
         <form
@@ -1262,9 +1274,11 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           <ResendButton
             busy={busy}
             sending={busyAction === "resend"}
+            cooldownSeconds={signupCooldown.seconds}
             onClick={handleResend}
           />
         )}
+        {resendNotice && <p role="status" style={s.subtitle}>{resendNotice}</p>}
       </div>
     );
   }

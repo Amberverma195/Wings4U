@@ -6,7 +6,16 @@
  * the message.
  */
 
-export type OtpSendResult = { provider: "local" };
+import { renderBrandedEmail } from "../notifications/email-brand-template";
+
+export type OtpSendResult = { provider: "local" | "resend" };
+
+export class OtpDeliveryError extends Error {
+  constructor(public readonly outcome: "provider_rejected" | "provider_timeout" | "provider_network" | "provider_ambiguous",
+    public readonly ambiguous: boolean, public readonly status?: number) {
+    super("Verification email could not be confirmed. Please try again later.");
+  }
+}
 
 export interface OtpSender {
   send(recipient: string, otp: string): Promise<OtpSendResult>;
@@ -31,17 +40,16 @@ function looksLikeEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function otpEmailHtml(otp: string): string {
-  return `
-    <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
-      <h2 style="margin: 0 0 12px; color: #ff6a00;">Wings 4 U</h2>
-      <p style="margin: 0 0 16px; font-size: 15px;">Use this verification code to continue:</p>
-      <div style="font-size: 32px; font-weight: 700; letter-spacing: 8px; padding: 16px 0; text-align: center; background: #f6f3ee; border-radius: 8px;">
-        ${otp}
-      </div>
-      <p style="margin: 16px 0 0; font-size: 13px; color: #666;">This code expires in 5 minutes. If you didn't request it, you can ignore this email.</p>
-    </div>
-  `;
+export function otpEmailHtml(otp: string): string {
+  return renderBrandedEmail({ greeting: "Hello!", headline: "Verify your email address",
+    highlight: otp, highlightIsCode: true,
+    paragraphs: ["Use this verification code to continue. This code expires in 5 minutes.",
+      "If you didn't request this code, you can ignore this email. Never share your code with anyone."],
+  });
+}
+
+export function otpEmailText(otp: string): string {
+  return `Wings 4 U\n\nVerify your email address\n\n${otp}\n\nUse this verification code to continue. This code expires in 5 minutes.\n\nIf you didn't request this code, you can ignore this email. Never share your code with anyone.\n\nSee you soon,\nThe Wings 4 U Team`;
 }
 
 /**
@@ -64,27 +72,35 @@ export class ResendEmailOtpSender implements OtpSender {
       throw new Error("Email OTP recipient must be a valid email address");
     }
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: this.from,
-        to: [recipient],
-        subject: "Your Wings 4 U verification code",
-        html: otpEmailHtml(otp),
-        text: `Your Wings 4 U verification code is ${otp}. It expires in 5 minutes.`,
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Resend email send failed (${response.status}): ${text}`);
+    let response: Response;
+    try {
+      response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: this.from,
+          to: [recipient],
+          subject: "Your Wings 4 U verification code",
+          html: otpEmailHtml(otp),
+          text: otpEmailText(otp),
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (error) {
+      const name = (error as Error)?.name;
+      throw new OtpDeliveryError(name === "TimeoutError" || name === "AbortError" ? "provider_timeout" : "provider_network", true);
     }
 
-    return { provider: "local" };
+    if (!response.ok) {
+      const ambiguous = response.status >= 500 || response.status === 408;
+      throw new OtpDeliveryError(ambiguous ? "provider_ambiguous" : "provider_rejected", ambiguous, response.status);
+    }
+
+    // Acceptance by Resend is not confirmation of inbox delivery.
+    return { provider: "resend" };
   }
 }
 

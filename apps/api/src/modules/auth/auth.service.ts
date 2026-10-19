@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -21,7 +22,7 @@ import {
 import { resolveLocationRef } from "../../common/utils/location-ref";
 import { isAllowedStoreIp } from "../../common/utils/store-ip";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
-import { createOtpSender, OtpSender } from "./otp-sender";
+import { createOtpSender, OtpDeliveryError, OtpSender } from "./otp-sender";
 
 const JWT_SECRET = getJwtSecret();
 const ACCESS_TOKEN_TTL = 900; // 15 minutes
@@ -33,6 +34,10 @@ const MAX_OTP_SENDS_PER_WINDOW = 5; // max code sends per identity + purpose
 const OTP_SEND_WINDOW_SECONDS = 15 * 60;
 const MAX_ACTIVE_OTP_CODES = 5; // max unconsumed/unexpired codes per identity + purpose
 const PROFILE_CONTACT_CHANGE_COOLDOWN_DAYS = 7;
+
+class OtpIssueError extends UnauthorizedException {
+  constructor(readonly outcome: string, message: string) { super(message); }
+}
 
 // Email OTP purposes (stored in AuthOtpCode.purpose).
 const EMAIL_VERIFY_PURPOSE = "EMAIL_VERIFY";
@@ -144,6 +149,12 @@ interface ProfileContactChangeVerifyResult extends ProfileUpdateResult {
 @Injectable()
 export class AuthService {
   private readonly otpSender: OtpSender;
+  private readonly logger = new Logger(AuthService.name);
+
+  private reportOtp(outcome: string, purpose: string, identityId?: string): void {
+    // No email, OTP, hash, provider body, or exception message in diagnostics.
+    this.logger.log({ event: "email_otp", outcome, purpose, identityId });
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -187,56 +198,116 @@ export class AuthService {
     email: string,
     metadata: { pendingEmailNormalized?: string; pendingPhoneE164?: string } = {},
   ): Promise<number> {
-    const now = new Date();
-    const cooldownCutoff = new Date(now.getTime() - OTP_RESEND_COOLDOWN_SECONDS * 1000);
-    const sendWindowCutoff = new Date(now.getTime() - OTP_SEND_WINDOW_SECONDS * 1000);
-
-    const recentCode = await this.prisma.authOtpCode.findFirst({
-      where: { userIdentityId, purpose, createdAt: { gt: cooldownCutoff } },
-      orderBy: { createdAt: "desc" },
-    });
-    if (recentCode) {
-      const waitSeconds = Math.ceil(
-        (recentCode.createdAt.getTime() + OTP_RESEND_COOLDOWN_SECONDS * 1000 - now.getTime()) / 1000,
-      );
-      throw new UnauthorizedException(
-        `Please wait ${waitSeconds} seconds before requesting another code`,
-      );
-    }
-
-    const sendCount = await this.prisma.authOtpCode.count({
-      where: { userIdentityId, purpose, createdAt: { gt: sendWindowCutoff } },
-    });
-    if (sendCount >= MAX_OTP_SENDS_PER_WINDOW) {
-      throw new UnauthorizedException(
-        "Too many verification codes requested. Please wait before requesting another code.",
-      );
-    }
-
-    const activeCount = await this.prisma.authOtpCode.count({
-      where: { userIdentityId, purpose, consumedAt: null, expiresAt: { gt: now } },
-    });
-    if (activeCount >= MAX_ACTIVE_OTP_CODES) {
-      throw new UnauthorizedException(
-        "Too many active codes — please wait for the current code to expire",
-      );
-    }
-
     const otp = generateOtp();
-    await this.otpSender.send(email, otp);
+    let record: { id: string };
+    try {
+      record = await this.prisma.$transaction(async tx => {
+        // Serialize eligibility + durable creation across API processes. No network
+        // calls inside the transaction, and no schema or Redis dependency.
+        const [lock] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
+          SELECT pg_try_advisory_xact_lock(hashtextextended(${`email-otp:${userIdentityId}:${purpose}`}, 0)) AS acquired`;
+        if (!lock?.acquired) throw new OtpIssueError("concurrent_suppression", "Please wait before requesting another code");
+        const now = new Date();
+        const cooldownCutoff = new Date(now.getTime() - OTP_RESEND_COOLDOWN_SECONDS * 1000);
+        const sendWindowCutoff = new Date(now.getTime() - OTP_SEND_WINDOW_SECONDS * 1000);
 
-    await this.prisma.authOtpCode.create({
-      data: {
-        userIdentityId,
-        otpHash: sha256(otp),
-        purpose,
-        expiresAt: new Date(Date.now() + OTP_TTL_SECONDS * 1000),
-        pendingEmailNormalized: metadata.pendingEmailNormalized,
-        pendingPhoneE164: metadata.pendingPhoneE164,
-      },
-    });
+        const recentCode = await tx.authOtpCode.findFirst({
+          where: { userIdentityId, purpose, createdAt: { gt: cooldownCutoff } },
+          orderBy: { createdAt: "desc" },
+        });
+        if (recentCode) {
+          const waitSeconds = Math.ceil(
+            (recentCode.createdAt.getTime() + OTP_RESEND_COOLDOWN_SECONDS * 1000 - now.getTime()) / 1000,
+          );
+          throw new OtpIssueError("cooldown_suppression",
+            `Please wait ${waitSeconds} seconds before requesting another code`,
+          );
+        }
+
+        const sendCount = await tx.authOtpCode.count({
+          where: { userIdentityId, purpose, createdAt: { gt: sendWindowCutoff } },
+        });
+        if (sendCount >= MAX_OTP_SENDS_PER_WINDOW) {
+          throw new OtpIssueError("window_limit",
+            "Too many verification codes requested. Please wait before requesting another code.",
+          );
+        }
+
+        const activeCount = await tx.authOtpCode.count({
+          where: { userIdentityId, purpose, consumedAt: null, expiresAt: { gt: now } },
+        });
+        if (activeCount >= MAX_ACTIVE_OTP_CODES) {
+          throw new OtpIssueError("active_code_limit",
+            "Too many active codes — please wait for the current code to expire",
+          );
+        }
+
+        return tx.authOtpCode.create({
+          data: {
+            userIdentityId,
+            otpHash: sha256(otp),
+            purpose,
+            expiresAt: new Date(Date.now() + OTP_TTL_SECONDS * 1000),
+            pendingEmailNormalized: metadata.pendingEmailNormalized,
+            pendingPhoneE164: metadata.pendingPhoneE164,
+          },
+        });
+      });
+    } catch (error) {
+      this.reportOtp(error instanceof OtpIssueError ? error.outcome : "storage_failure", purpose, userIdentityId);
+      if (error instanceof OtpIssueError) throw error;
+      throw new UnauthorizedException("Verification code could not be created. Please try again later.");
+    }
+
+    // The hash is committed before any provider attempt. Even an ambiguous
+    // timeout/5xx can deliver a code, so retain it and never retry automatically.
+    try {
+      await this.otpSender.send(email, otp);
+      this.reportOtp("provider_accepted", purpose, userIdentityId);
+    } catch (error) {
+      const delivery = error instanceof OtpDeliveryError ? error : new OtpDeliveryError("provider_network", true);
+      this.reportOtp(delivery.outcome, purpose, userIdentityId);
+      if (!delivery.ambiguous) {
+        try {
+          // Restore the previous working code after a definitive rejection.
+          await this.prisma.authOtpCode.delete({ where: { id: record.id } });
+        } catch {
+          this.reportOtp("rejected_code_cleanup_failure", purpose, userIdentityId);
+        }
+      }
+      throw new UnauthorizedException("Verification email could not be confirmed. Please try again later.");
+    }
 
     return OTP_TTL_SECONDS;
+  }
+
+  /** Retry hint only for the account-creation response, never anonymous resend. */
+  private async emailOtpRetryAfterSeconds(userIdentityId: string, purpose: string): Promise<number> {
+    const now = Date.now();
+    try {
+      const records = await this.prisma.authOtpCode.findMany({
+        where: { userIdentityId, purpose, OR: [
+          { createdAt: { gt: new Date(now - OTP_SEND_WINDOW_SECONDS * 1000) } },
+          { consumedAt: null, expiresAt: { gt: new Date(now) } },
+        ] },
+        select: { createdAt: true, consumedAt: true, expiresAt: true },
+        orderBy: { createdAt: "desc" },
+      });
+      const sent = records.map(record => record.createdAt.getTime())
+        .filter(createdAt => createdAt > now - OTP_SEND_WINDOW_SECONDS * 1000).sort((a, b) => b - a);
+      const active = records.filter(record => !record.consumedAt && record.expiresAt.getTime() > now)
+        .map(record => record.expiresAt.getTime()).sort((a, b) => b - a);
+      const availableAt = Math.max(now,
+        sent.length ? sent[0] + OTP_RESEND_COOLDOWN_SECONDS * 1000 : now,
+        sent.length >= MAX_OTP_SENDS_PER_WINDOW ? sent[MAX_OTP_SENDS_PER_WINDOW - 1] + OTP_SEND_WINDOW_SECONDS * 1000 : now,
+        active.length >= MAX_ACTIVE_OTP_CODES ? active[MAX_ACTIVE_OTP_CODES - 1] : now);
+      return Math.ceil((availableAt - now) / 1000);
+    } catch {
+      // An uncertain storage/commit or cleanup result must never promise an
+      // immediate retry. Issuance still rechecks every limit under its lock.
+      this.reportOtp("retry_state_lookup_failure", purpose, userIdentityId);
+      return OTP_RESEND_COOLDOWN_SECONDS;
+    }
   }
 
   /** Verify and consume an email OTP for an identity+purpose. */
@@ -247,11 +318,11 @@ export class AuthService {
   ): Promise<void> {
     const now = new Date();
     const record = await this.prisma.authOtpCode.findFirst({
-      where: { userIdentityId, purpose, consumedAt: null, expiresAt: { gt: now } },
+      where: { userIdentityId, purpose },
       orderBy: { createdAt: "desc" },
     });
 
-    if (!record) {
+    if (!record || record.consumedAt || record.expiresAt <= now) {
       throw new UnauthorizedException("No valid code found — it may have expired");
     }
     if (record.attemptCount >= MAX_OTP_ATTEMPTS) {
@@ -281,7 +352,7 @@ export class AuthService {
     phone: string;
     email: string;
     password: string;
-  }): Promise<{ otpSent: true; email: string; expiresInSeconds: number }> {
+  }): Promise<{ otpSent: boolean; email: string; expiresInSeconds: number; retryAfterSeconds: number }> {
     const fullName = parseFullNameInput(input.fullName);
     const phoneE164 = parseNanpPhoneInput(input.phone);
     const email = parseEmailInput(input.email);
@@ -355,12 +426,17 @@ export class AuthService {
       return created.id;
     });
 
-    const expiresInSeconds = await this.issueEmailOtp(
-      emailIdentityId,
-      EMAIL_VERIFY_PURPOSE,
-      email,
-    );
-    return { otpSent: true, email, expiresInSeconds };
+    try {
+      const expiresInSeconds = await this.issueEmailOtp(emailIdentityId, EMAIL_VERIFY_PURPOSE, email);
+      return { otpSent: true, email, expiresInSeconds, retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+    } catch (error) {
+      // The account already exists: allow verification/resend recovery instead
+      // of trapping the customer on a signup form that now rejects duplicates.
+      const retryAfterSeconds = Math.max(
+        error instanceof OtpIssueError && error.outcome === "concurrent_suppression" ? OTP_RESEND_COOLDOWN_SECONDS : 0,
+        await this.emailOtpRetryAfterSeconds(emailIdentityId, EMAIL_VERIFY_PURPOSE));
+      return { otpSent: false, email, expiresInSeconds: OTP_TTL_SECONDS, retryAfterSeconds };
+    }
   }
 
   /** Step 2 of signup: verify the email OTP and issue session tokens. */
@@ -446,7 +522,7 @@ export class AuthService {
           emailIdentity.emailNormalized,
         );
       } catch {
-        /* cooldown / active-code limits — ignore, keep the response uniform */
+        // issueEmailOtp records the precise outcome; no session is issued.
       }
       return { kind: "email_unverified", email: emailIdentity.emailNormalized };
     }
@@ -468,15 +544,28 @@ export class AuthService {
    */
   async resendEmailVerification(emailRaw: string): Promise<void> {
     const email = parseEmailInput(emailRaw);
+    // Acknowledge before identity lookup or delivery. Provider latency and
+    // identity-specific limits must not become an account-enumeration oracle.
+    setImmediate(() => {
+      void this.processVerificationResend(email).catch(() => {
+        this.reportOtp("identity_lookup_failure", EMAIL_VERIFY_PURPOSE);
+      });
+    });
+  }
+
+  private async processVerificationResend(email: string): Promise<void> {
     const identity = await this.prisma.userIdentity.findFirst({
       where: { emailNormalized: email, provider: "EMAIL" },
       select: { id: true, isVerified: true },
     });
-    if (!identity || identity.isVerified) return;
+    if (!identity || identity.isVerified) {
+      this.reportOtp(identity ? "already_verified" : "unknown_identity", EMAIL_VERIFY_PURPOSE);
+      return;
+    }
     try {
       await this.issueEmailOtp(identity.id, EMAIL_VERIFY_PURPOSE, email);
     } catch {
-      /* throttle limits — swallow to keep the response uniform */
+      // issueEmailOtp already recorded a safe, structured outcome.
     }
   }
 

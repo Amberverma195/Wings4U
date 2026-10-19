@@ -25,6 +25,13 @@ const response = (data, status = 200, message) => ({
   ok: status >= 200 && status < 300, status,
   headers: new Headers(), json: async () => ({ data, errors: message ? [{ message }] : null }),
 });
+
+test('private resend acknowledgement needs no delivery flag and never establishes a session', async () => {
+  apiFetch.mockResolvedValue(response({ request_accepted: true, retry_after_seconds: 30 }));
+  await act(async () => { await auth.resendVerification('person@example.com'); });
+  expect(apiFetch.mock.calls[0][0]).toBe('/api/v1/auth/signup/resend');
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled(); expect(session.refresh).not.toHaveBeenCalled();
+});
 let auth;
 let renderer;
 function Probe() { auth = useAuth(); return null; }
@@ -120,4 +127,13 @@ test('preserves rate-limit messages and retry timing', async () => {
   await act(async () => {
     await expect(auth.requestPasswordReset('person@example.com')).rejects.toMatchObject({ status: 429, retrySeconds: 45 });
   });
+});
+
+test.each([[true, 30], [false, 0], [false, 19]])('signup preserves delivery/retry metadata (%s, %ss) without a session', async (sent, retry) => {
+  const data = { email: 'person@example.com', otp_sent: sent, retry_after_seconds: retry };
+  apiFetch.mockResolvedValue(response(data));
+  await act(async () => {
+    expect(await auth.signup('Fictional Customer', '5195550123', 'person@example.com', 'Strong123!', 'Strong123!')).toEqual(data);
+  });
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled(); expect(session.refresh).not.toHaveBeenCalled();
 });

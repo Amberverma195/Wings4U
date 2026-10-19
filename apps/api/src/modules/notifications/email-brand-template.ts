@@ -9,6 +9,7 @@ type BrandedEmailContent = {
   greeting: string;
   headline: string;
   highlight: string;
+  highlightIsCode?: boolean;
   paragraphs: string[];
   detail?: { label: string; value: string };
 };
@@ -27,7 +28,7 @@ export function renderBrandedEmail(content: BrandedEmailContent): string {
           <p style="${paragraphStyle}">${escapeHtml(content.greeting)}</p>
           <h1 style="margin:0 0 20px;font-size:24px;line-height:1.3;color:#983315;overflow-wrap:break-word;word-wrap:break-word;">${escapeHtml(content.headline)}</h1>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;margin:0 0 20px;">
-            <tr><td bgcolor="#fce9d5" style="padding:16px;background:#fce9d5;color:#30251e;border-radius:10px;font-size:20px;line-height:1.5;font-weight:bold;overflow-wrap:break-word;word-wrap:break-word;">${escapeHtml(content.highlight)}</td></tr>
+            <tr><td bgcolor="#fce9d5" style="padding:16px;background:#fce9d5;color:#30251e;border-radius:10px;font-size:20px;line-height:1.5;font-weight:bold;overflow-wrap:break-word;word-wrap:break-word;${content.highlightIsCode ? "text-align:center;font-size:32px;letter-spacing:4px;font-family:Consolas,monospace;" : ""}">${escapeHtml(content.highlight)}</td></tr>
           </table>
           ${content.paragraphs.map(value => `<p style="${paragraphStyle}">${escapeHtml(value)}</p>`).join("\n          ")}
           ${content.detail ? `<p style="${paragraphStyle}"><strong>${escapeHtml(content.detail.label)}:</strong> ${escapeHtml(content.detail.value)}</p>` : ""}

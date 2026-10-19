@@ -227,11 +227,11 @@ export default function CartScreen() {
                   {quoteLoading ? "Updating?" : quote ? formatPrice(quote.tax_cents) : "Calculated at checkout"}
                 </Text>
               </View>
-              {cart.fulfillmentType === 'DELIVERY' ? <View style={styles.summaryRow}>
+              {quote && cart.fulfillmentType === 'DELIVERY' ? <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery fee</Text>
-                <Text style={styles.summaryValue}>{quote?.delivery_fee_waived ? <>
-                  {quote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: 'line-through' }}>From $5 </Text> : null}Free
-                </> : !quote || quote.delivery_fee_is_estimate ? 'From $5 — calculated at checkout' : formatPrice(quote.delivery_fee_cents)}</Text>
+                <Text style={styles.summaryValue}>{quote.delivery_fee_waived && quote.delivery_fee_stated_cents > 0 ? <>
+                  <Text style={{ textDecorationLine: 'line-through', opacity: 0.65 }}>From $5</Text>{' '}Free
+                </> : 'From $5 — calculated at checkout'}</Text>
               </View> : null}
               {quote && quote.driver_tip_cents > 0 ? <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Tip</Text><Text style={styles.summaryValue}>{formatPrice(quote.driver_tip_cents)}</Text></View> : null}
               <View style={styles.divider} />
