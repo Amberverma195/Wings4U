@@ -25,6 +25,13 @@ const response = (data, status = 200, message) => ({
   ok: status >= 200 && status < 300, status,
   headers: new Headers(), json: async () => ({ data, errors: message ? [{ message }] : null }),
 });
+
+test('private resend acknowledgement needs no delivery flag and never establishes a session', async () => {
+  apiFetch.mockResolvedValue(response({ request_accepted: true, retry_after_seconds: 30 }));
+  await act(async () => { await auth.resendVerification('person@example.com'); });
+  expect(apiFetch.mock.calls[0][0]).toBe('/api/v1/auth/signup/resend');
+  expect(tokens.setSessionTokens).not.toHaveBeenCalled(); expect(session.refresh).not.toHaveBeenCalled();
+});
 let auth;
 let renderer;
 function Probe() { auth = useAuth(); return null; }

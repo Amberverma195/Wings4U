@@ -473,7 +473,7 @@ export class AuthController {
       body.password,
     );
     // Correct password but the account's email isn't verified yet: do NOT
-    // issue a session. A fresh verification code has been emailed; the client
+    // issue a session. Verification delivery was requested; the client
     // routes the user to the email-verification step.
     if (result.kind === "email_unverified") {
       return { needs_email_verification: true, email: result.email };
@@ -493,9 +493,17 @@ export class AuthController {
   @Public()
   @Post("signup/resend")
   @HttpCode(HttpStatus.OK)
-  async resendSignupVerification(@Body() body: ResendVerificationDto) {
+  async resendSignupVerification(@Body() body: ResendVerificationDto,
+    @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // Public IP limit only: never expose an identity-specific retry period.
+    const limit = await this.rateLimiter.check(`auth:signup:resend:${extractClientIp(req)}`, 30, 15 * 60_000);
+    if (!limit.allowed) {
+      res.setHeader("Retry-After", String(Math.max(1, Math.ceil((limit.resetAtMs - Date.now()) / 1000))));
+      throw new HttpException("Too many requests. Please try again later.", HttpStatus.TOO_MANY_REQUESTS);
+    }
     await this.authService.resendEmailVerification(body.email);
-    return { otp_sent: true };
+    return { request_accepted: true, retry_after_seconds: 30,
+      message: "If verification is needed and a code can be sent, check your inbox and spam folder." };
   }
 
   /** Password reset step 1: email an OTP if the account (and its email) exist. */

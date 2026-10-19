@@ -279,7 +279,7 @@ export function AuthSheet({
             </>}
 
             {isCodeStep && <>
-              <Text style={s.subtitle}>We sent a code to {step === 'verify-email' ? email : deliveryEmail}.</Text>
+              <Text style={s.subtitle}>{step === 'verify-email' ? `Check ${email} for your verification code. If a code can be sent, check your inbox and spam folder.` : `We sent a code to ${deliveryEmail}.`}</Text>
               <Field key={step} label="Verification code" value={code}
                 onChangeText={value => { setCode(value.replace(/\D/g, '').slice(0, 6)); clearMessages(); }}
                 placeholder="Code" maxLength={6} keyboardType="number-pad"

@@ -79,13 +79,15 @@ test('successful password login reports completion once for the Profile tab hand
 });
 
 test('registration completes only after verification, preserving the Profile tab handoff', async () => {
-  auth.signup.mockResolvedValue({ email: 'user@example.com' });
+  auth.signup.mockResolvedValue({ email: 'user@example.com', otp_sent: false });
   auth.verifyEmail.mockResolvedValue({ needs_profile_completion: false });
   await tap('No account? Sign up');
   await type('Full name', 'Wing Fan'); await type('Phone number', '5195550123');
   await type('Email address', 'user@example.com');
   await type('Password', 'SafeWings1!'); await type('Confirm password', 'SafeWings1!'); await tap('Sign up');
   expect(onComplete).not.toHaveBeenCalled();
+  expect(button('Resend in 30s').props.disabled).toBe(true);
+  expect(renderer.root.findAllByType('Text').some(node => node.children.join('').includes('If a code can be sent'))).toBe(true);
   await type('Verification code', '123456'); await tap('Verify');
   expect(auth.verifyEmail).toHaveBeenCalledWith('user@example.com', '123456');
   expect(onComplete).toHaveBeenCalledTimes(1);
