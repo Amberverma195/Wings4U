@@ -52,7 +52,7 @@ import {
   wingsRewardBlockedReason,
 } from "../src/lib/promo-selection";
 import { requestCartQuote } from "../src/lib/cart-quote";
-import { calculateCartSubtotal, getCartItemSubtotal } from "../src/lib/wing-builder-logic";
+import { getCartItemSubtotal } from "../src/lib/wing-builder-logic";
 import type {
   CartItem,
   CartQuoteResponse,
@@ -491,11 +491,12 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const pricingFailed = Boolean(quoteError || deliveryQuoteError);
   const displayQuote = !detailsReady ? null : currentQuote ?? (session.loaded && promo.hydrated !== false && !pricingFailed &&
     deliveryQuoteReady && lastDisplayPrice?.key === displayPriceKey ? lastDisplayPrice.quote : null);
-  const displayOnly = Boolean(displayQuote && !currentQuote);
-  const provisionalSubtotal = useMemo(() => calculateCartSubtotal(cart.items), [cart.items]);
-  const displayDiscountRows = useMemo(() => promoDiscountRows(displayQuote), [displayQuote]);
-  const totalStatus = pricingFailed ? 'Total unavailable' : !detailsReady ? 'Review order details' :
-    cart.fulfillmentType === 'DELIVERY' && !deliveryQuoteReady ? 'Confirming delivery fee' : 'Confirming total';
+  const confirmedTotalQuote = detailsReady && !pricingBlock ? currentQuote : null;
+  const confirmedDiscountRows = useMemo(() => promoDiscountRows(confirmedTotalQuote), [confirmedTotalQuote]);
+  // Normal pricing latency is not an error. Keep real failures visible even
+  // when the complete Total card is hidden.
+  const pricingNotice = currentQuote ? pricingBlock : null;
+  const visibleSubmitError = submitError === 'Wait for the order total to be confirmed before placing the order.' ? null : submitError;
   const paymentOptions = customerPaymentOptions(cart.fulfillmentType);
 
   useEffect(() => {
@@ -910,56 +911,29 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                 </Section>
               ) : null}
 
-              <Section title="Total">
-                {!displayQuote ? <View accessibilityLabel="Checkout pricing status" accessibilityLiveRegion="polite" style={styles.totalStatus}>
-                  {!pricingFailed && detailsReady ? <ActivityIndicator accessibilityLabel={totalStatus} color="#E53C3C" size="small" /> : null}
-                  <Text style={[styles.deliveryStatusText, styles.totalStatusText]}>{totalStatus}</Text>
-                </View> : null}
-                {displayOnly ? <Text accessibilityLiveRegion="polite" style={styles.lineMeta}>Previous prices. Your new total is being confirmed.</Text> : null}
-                <SummaryRow label={displayQuote ? 'Subtotal' : 'Estimated subtotal'} value={displayQuote ? cents(displayQuote.item_subtotal_cents) : provisionalPrice(provisionalSubtotal)} />
-                {displayDiscountRows.map((row) => (
-                  <SummaryRow
-                    key={row.key}
-                    label={row.label}
-                    value={`-${cents(row.amountCents)}`}
-                    discount
-                  />
-                ))}
-                <SummaryRow label="Tax" value={displayQuote ? cents(displayQuote.tax_cents) : '—'} />
-                {cart.fulfillmentType === "DELIVERY" ? (
-                  <SummaryRow
-                    label="Delivery"
-                    value={
-                      !displayQuote
-                        ? (deliveryQuoteStatus === 'error' ? 'Unavailable' : '—')
-                        : displayQuote.delivery_fee_waived
-                          ? <>{displayQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: "line-through" }}>{cents(displayQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
-                          : cents(displayQuote.delivery_fee_cents)
-                    }
-                  />
-                ) : null}
-                {(displayQuote ? displayQuote.driver_tip_cents > 0 : cart.driverTipPercent !== 'none') ? (
-                  <SummaryRow
-                    label="Tip"
-                    value={displayQuote ? cents(displayQuote.driver_tip_cents) : '—'}
-                  />
-                ) : null}
+              {confirmedTotalQuote ? <Section title="Total">
+                <SummaryRow label="Subtotal" value={cents(confirmedTotalQuote.item_subtotal_cents)} />
+                {confirmedDiscountRows.map(row => <SummaryRow key={row.key} label={row.label} value={`-${cents(row.amountCents)}`} discount />)}
+                <SummaryRow label="Tax" value={cents(confirmedTotalQuote.tax_cents)} />
+                {cart.fulfillmentType === 'DELIVERY' ? <SummaryRow label="Delivery" value={confirmedTotalQuote.delivery_fee_waived
+                  ? <>{confirmedTotalQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: 'line-through' }}>{cents(confirmedTotalQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
+                  : cents(confirmedTotalQuote.delivery_fee_cents)} /> : null}
+                {confirmedTotalQuote.driver_tip_cents > 0 ? <SummaryRow label="Tip" value={cents(confirmedTotalQuote.driver_tip_cents)} /> : null}
                 <View style={styles.divider} />
-                <SummaryRow
-                  label="Payable"
-                  value={displayQuote ? cents(displayQuote.final_payable_cents) : pricingFailed ? 'Unavailable' : '—'}
-                  total
-                />
+                <SummaryRow label="Payable" value={cents(confirmedTotalQuote.final_payable_cents)} total />
+              </Section> : null}
+
+              {rewardBlockedReason || promoNotice || pricingNotice || quoteError || visibleSubmitError ? <View>
                 {rewardBlockedReason ? (
                   <Text style={styles.noticeText}>{rewardBlockedReason}</Text>
                 ) : null}
                 {promoNotice ? (
                   <Text style={styles.noticeText}>{promoNotice}</Text>
                 ) : null}
-                {pricingBlock &&
-                pricingBlock !== quoteError &&
-                pricingBlock !== rewardBlockedReason ? (
-                  <Text style={styles.noticeText}>{pricingBlock}</Text>
+                {pricingNotice &&
+                pricingNotice !== quoteError &&
+                pricingNotice !== rewardBlockedReason ? (
+                  <Text style={styles.noticeText}>{pricingNotice}</Text>
                 ) : null}
                 {quoteError ? <Text accessibilityRole="alert" style={styles.errorText}>{quoteError}</Text> : null}
                 {quoteError ? <View style={styles.deliveryActions}>
@@ -971,8 +945,8 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                     else { setQuoteError(null); setPricingRetry(value => value + 1); }
                   }}><Text style={styles.deliveryActionText}>{recovery === 'sign_in' ? 'Sign in' : recovery === 'add_items' ? 'Add more items' : ['time', 'delivery', 'review'].includes(recovery) ? 'Change Order Details' : recovery === 'items' ? 'Review cart items' : 'Retry pricing'}</Text></TouchableOpacity>
                 </View> : null}
-                {submitError ? <Text accessibilityRole="alert" style={styles.errorText}>{submitError}</Text> : null}
-              </Section>
+                {visibleSubmitError ? <Text accessibilityRole="alert" style={styles.errorText}>{visibleSubmitError}</Text> : null}
+              </View> : null}
 
               <Section title="Payment">
                 {paymentOptions.map((option) => {
@@ -1002,6 +976,10 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
           )}
         </ScrollView>
         {cart.items.length > 0 && <View style={styles.checkoutDock}>
+          {confirmedTotalQuote ? <View style={styles.dockSummary}>
+            <Text style={styles.summaryLabel}>Order total</Text>
+            <Text style={styles.dockTotal}>{cents(confirmedTotalQuote.final_payable_cents)}</Text>
+          </View> : null}
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'} accessibilityState={{ disabled: placeDisabled, busy: submitting }}
             style={[styles.placeButton, placeDisabled && styles.disabledButton]} onPress={placeOrder} disabled={placeDisabled}>
             {submitting ? <><ActivityIndicator color="#FFFFFF" /><Text style={styles.placeButtonText}>Placing order...</Text></> : <Text style={styles.placeButtonText}>{paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'}</Text>}
@@ -1123,8 +1101,8 @@ const styles = StyleSheet.create({
   addressCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   fieldLabel: { color: '#75665C', fontSize: 13, marginTop: 16, fontWeight: '600' },
   checkoutDock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EFE4DE' },
-  totalStatus: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  totalStatusText: { flexShrink: 1, marginTop: 0 },
+  dockSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', maxWidth: 608, alignSelf: 'center' },
+  dockTotal: { flexShrink: 1, color: '#E53C3C', fontSize: 22, fontWeight: '800' },
   emptyState: {
     minHeight: 420,
     alignItems: "center",

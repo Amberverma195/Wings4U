@@ -81,7 +81,7 @@ test('ignores an obsolete cart quote after quantity, tip and promotion change', 
   const original = apiJson.getMockImplementation(); let release;
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' && !release ? new Promise(resolve => { release = resolve; }) : original(url, init));
   await tick(350); await tick(250);
-  expect(summary('Payable')).toBe('—');
+  expectTotalsHidden();
   mockCart = { ...mockCart, items: [{ ...mockCart.items[0], quantity: 2 }], driverTipPercent: 10 };
   mockPromo = { ...mockPromo, promoCode: 'NEW' }; await rerender();
   expect(place().props.disabled).toBe(true); await settle();
@@ -160,13 +160,20 @@ const confirmedQuote = request => ({ ...quote(request), tax_cents: 117, delivery
   lines: request.items.map(item => ({ ...item, line_total_cents: 1000 * item.quantity })) });
 const quoteRequests = () => apiJson.mock.calls.filter(call => call[0] === '/api/v1/cart/quote');
 const noSubmission = () => expect(apiFetch.mock.calls.some(call => /\/checkout$|payment-intent/.test(call[0]))).toBe(false);
-const pricingStatusText = () => text(renderer.root.findAllByProps({ accessibilityLabel: 'Checkout pricing status' })[0]);
+const expectTotalsHidden = () => {
+  expect(renderer.root.findAll(node => node.type?.name === 'Section' && node.props.title === 'Total')).toHaveLength(0);
+  expect(renderer.root.findAll(node => node.type?.name === 'SummaryRow')).toHaveLength(0);
+  const output = text(renderer.toJSON());
+  for (const label of ['Order total', 'Confirming total', 'Awaiting quote', 'Previous prices.', 'Wait for the order total to be confirmed before placing the order.']) expect(output).not.toContain(label);
+  expect(place().props.disabled).toBe(true);
+};
 
-test('checkout footer shows only Place order; prices remain in the Total card', async () => {
+test('checkout footer shows its total only after the complete Total card is ready', async () => {
+  expectTotalsHidden();
+  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent)).toBe('Place order');
   await settle();
   const footer = renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent;
-  expect(footer.findAllByType('Text').map(node => text(node))).toEqual(['Place order']);
-  expect(text(renderer.toJSON())).not.toContain('Order total');
+  expect(footer.findAllByType('Text').map(node => text(node))).toEqual(['Order total', '$10.00', 'Place order']);
   expect(text(renderer.toJSON())).not.toContain('Previous total');
   expect(summary('Payable')).toBe('$10.00');
 });
@@ -184,13 +191,13 @@ test('checkout omits coupons, tip controls and notes while retaining selections 
   expect(summary('Tip')).toBe('$1.00');
 });
 
-test('entering checkout with an existing cart immediately shows item estimates and a loading final total', async () => {
+test.each(['PICKUP', 'DELIVERY'])('entering %s checkout keeps items visible and hides totals until complete pricing arrives', async type => {
+  mockCart = { ...mockCart, fulfillmentType: type }; await rerender();
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Estimated item price for Burger' }))).toBe('$10.00');
-  expect(summary('Estimated subtotal')).toBe('$10.00'); expect(summary('Tax')).toBe('—');
-  expect(pricingStatusText()).toContain('Confirming delivery fee'); expect(pricingStatusText()).not.toMatch(/\$|Awaiting quote/);
+  expectTotalsHidden();
   expect(text(renderer.toJSON())).not.toContain('Awaiting quote'); expect(text(renderer.toJSON())).not.toContain('$0.00');
   expect(place().props.disabled).toBe(true);
-  await act(async () => place().props.onPress()); noSubmission();
+  await act(async () => place().props.onPress()); noSubmission(); expectTotalsHidden();
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: {
     ...confirmedQuote(JSON.parse(init.body)), item_subtotal_cents: 1200, lines: [{ menu_item_id: 'burger', quantity: 1, line_total_cents: 1200 }],
@@ -198,7 +205,9 @@ test('entering checkout with an existing cart immediately shows item estimates a
   await settle();
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Item price for Burger' }))).toBe('$12.00');
   expect(summary('Estimated subtotal')).toBeUndefined(); expect(summary('Subtotal')).toBe('$12.00');
-  expect(summary('Payable')).toBe('$16.92'); expect(pricingStatusText()).toBe('');
+  expect(summary('Payable')).toBe('$16.92'); expect(summary('Tax')).toBe('$1.17');
+  expect(text(renderer.toJSON())).not.toContain('Wait for the order total to be confirmed before placing the order.');
+  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent)).toContain('Order total$16.92');
   expect(place().props.disabled).toBe(false);
 });
 
@@ -212,12 +221,12 @@ test.each([
 ])('initial %s prices match the Cart helper before checkout quoting', async (_kind, changes, expected) => {
   mockCart = { ...mockCart, items: [{ ...mockCart.items[0], ...changes, quantity: 2 }] }; await rerender();
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Estimated item price for Burger' }))).toBe(expected);
-  expect(summary('Estimated subtotal')).toBe(expected); expect(pricingStatusText()).not.toContain(expected);
+  expectTotalsHidden();
   expect(place().props.disabled).toBe(true); expect(quoteRequests()).toHaveLength(0);
   await act(async () => place().props.onPress()); noSubmission();
 });
 
-test.each([false, true])('coupon %s application/removal retains labeled previous prices but cannot submit', async removing => {
+test.each([false, true])('coupon %s application/removal hides totals until the fresh selection is confirmed', async removing => {
   mockPromo = { ...mockPromo, promoCode: removing ? 'SAVE' : null };
   const original = apiJson.getMockImplementation();
   const priced = request => ({ ...confirmedQuote(request), applied_promo_code: request.promo_code,
@@ -227,9 +236,8 @@ test.each([false, true])('coupon %s application/removal retains labeled previous
   let release;
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? new Promise(resolve => { release = () => resolve({ data: priced(JSON.parse(init.body)) }); }) : original(url, init));
   mockPromo = { ...mockPromo, promoCode: removing ? null : 'SAVE' }; await rerender();
-  expect(summary('Payable')).toBe(removing ? '$15.92' : '$16.92');
-  expect(text(renderer.toJSON())).toContain('Previous prices. Your new total is being confirmed.');
-  expect(summary('Promo code (SAVE)')).toBe(removing ? '-$1.00' : undefined);
+  expectTotalsHidden();
+  expect(summary('Promo code (SAVE)')).toBeUndefined();
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
   await tick(250); await act(async () => release());
   expect(summary('Payable')).toBe(removing ? '$16.92' : '$15.92');
@@ -238,29 +246,29 @@ test.each([false, true])('coupon %s application/removal retains labeled previous
   expect(place().props.disabled).toBe(false);
 });
 
-test('failed refreshing prices stop the loading indicator, drop previous totals and recover on retry', async () => {
+test('failed refreshing prices keep totals hidden and expose a working retry', async () => {
   await settle();
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? Promise.reject(new Error('Network unavailable')) : original(url, init));
   mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender();
-  expect(text(renderer.toJSON())).toContain('Previous prices.'); await settle();
+  expectTotalsHidden(); await settle();
   expect(text(renderer.toJSON())).toContain('Network unavailable');
-  expect(pricingStatusText()).toContain('Total unavailable'); expect(pricingStatusText()).not.toContain('$');
+  expectTotalsHidden();
   expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
   expect(place().props.disabled).toBe(true); noSubmission();
   apiJson.mockImplementation(original); await act(async () => button('Retry pricing').props.onPress()); await settle();
   expect(summary('Payable')).toBe('$11.00'); expect(place().props.disabled).toBe(false);
 });
 
-test('invalidated order details show a blocked state instead of an indefinite loading indicator', async () => {
+test('invalidated order details hide totals and prevent submission', async () => {
   await settle(); mockSetup.confirmed = false; mockSetup.getConfirmedSetup = () => null; await rerender();
-  expect(pricingStatusText()).toContain('Review order details'); expect(pricingStatusText()).not.toContain('$');
+  expectTotalsHidden();
   expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
 });
 
 test.each(['quantity', 'modifier', 'builder', 'removed ingredient', 'fulfillment', 'address', 'location', 'schedule', 'coupon', 'reward', 'tip', 'customer'])(
-  '%s changes invalidate authority; only selection changes retain clearly marked display prices', async change => {
+  '%s changes hide old totals and block submission until fresh pricing is confirmed', async change => {
     const original = apiJson.getMockImplementation();
     apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: confirmedQuote(JSON.parse(init.body)) } : original(url, init));
     await settle();
@@ -284,16 +292,8 @@ test.each(['quantity', 'modifier', 'builder', 'removed ingredient', 'fulfillment
     if (change === 'tip') mockCart = { ...mockCart, driverTipPercent: 10 };
     if (change === 'customer') mockSession = { ...mockSession, user: { id: 'customer-b' } };
     await rerender();
-    const compatibleDisplay = ['coupon', 'reward', 'tip'].includes(change);
-    if (compatibleDisplay) {
-      expect(summary('Subtotal')).toBe('$10.00'); expect(summary('Tax')).toBe('$1.17');
-      expect(summary('Payable')).toBe('$16.92'); expect(summary('Delivery')).toBe('$6.75');
-      expect(text(renderer.toJSON())).toContain('Previous prices. Your new total is being confirmed.');
-    } else {
-      expect(summary('Subtotal')).toBeUndefined(); expect(summary('Estimated subtotal')).toBeDefined();
-      for (const label of ['Tax', 'Payable']) expect(summary(label)).toBe('—');
-      expect(text(renderer.toJSON())).not.toContain('$16.92'); expect(summary('Delivery')).not.toBe('$6.75');
-    }
+    expectTotalsHidden();
+    expect(text(renderer.toJSON())).not.toContain('$16.92');
     expect(renderer.root.findAll(node => node.type?.name === 'SummaryRow' && node.props.discount)).toHaveLength(0);
     if (change === 'tip') expect(summary('Tip')).toBeUndefined(); // Previous server quote had no tip.
     expect(place().props.disabled).toBe(true);
@@ -314,22 +314,22 @@ test('returning to a previous tip can reuse its display prices but never its old
   });
   mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender(); await tick(250);
   mockCart = { ...mockCart, driverTipPercent: 'none' }; await rerender(); await tick(250);
-  expect(summary('Payable')).toBe('$10.00'); expect(text(renderer.toJSON())).toContain('Previous prices.'); expect(place().props.disabled).toBe(true);
+  expectTotalsHidden(); expect(place().props.disabled).toBe(true);
   await act(async () => place().props.onPress()); noSubmission();
   await act(async () => releases.get(100)());
-  expect(summary('Payable')).toBe('$10.00'); expect(text(renderer.toJSON())).toContain('Previous prices.'); expect(place().props.disabled).toBe(true);
+  expectTotalsHidden(); expect(place().props.disabled).toBe(true);
   await act(async () => releases.get(0)());
   expect(summary('Payable')).toBe('$12.00'); expect(text(renderer.toJSON())).not.toContain('Previous prices.'); expect(place().props.disabled).toBe(false);
 });
 
-test('removing a tip keeps the previous breakdown consistent until the new total is confirmed', async () => {
+test('removing a tip hides the previous breakdown until the new total is confirmed', async () => {
   mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender(); await settle();
   expect(summary('Tip')).toBe('$1.00');
   const original = apiJson.getMockImplementation(); let release;
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
     ? new Promise(resolve => { release = () => resolve({ data: quote(JSON.parse(init.body)) }); }) : original(url, init));
   mockCart = { ...mockCart, driverTipPercent: 'none' }; await rerender();
-  expect(summary('Tip')).toBe('$1.00'); expect(summary('Payable')).toBe('$11.00'); expect(text(renderer.toJSON())).toContain('Previous prices.');
+  expectTotalsHidden();
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
   await tick(250); await act(async () => release());
   expect(summary('Tip')).toBeUndefined(); expect(summary('Payable')).toBe('$10.00'); expect(text(renderer.toJSON())).not.toContain('Previous prices.');
@@ -361,8 +361,8 @@ test('expired delivery token hides confirmed prices until a fresh token and cart
   let release;
   apiFetch.mockImplementation((url) => url === '/api/v1/delivery/quote' ? new Promise(resolve => { release = resolve; }) : response(null, false));
   await tick(600000); await tick(350);
-  expect(summary('Estimated subtotal')).toBe('$10.00'); expect(summary('Payable')).toBe('—');
-  expect(text(renderer.toJSON())).toContain('Confirming delivery fee'); expect(place().props.disabled).toBe(true);
+  expectTotalsHidden();
+  expectTotalsHidden(); expect(place().props.disabled).toBe(true);
   await act(async () => place().props.onPress()); noSubmission();
   await act(async () => release(response({ delivery_quote_token: 'renewed', expires_at: new Date(Date.now() + 600000).toISOString() })));
   await settle(); expect(place().props.disabled).toBe(false);
@@ -373,8 +373,8 @@ test.each(['expired', 'invalid expiry', 'missing token'])('a delivery response w
   apiFetch.mockResolvedValue(response({ delivery_quote_token: mode === 'missing token' ? '' : 'invalid',
     expires_at: mode === 'invalid expiry' ? 'invalid' : new Date(Date.now() + (mode === 'expired' ? -1 : 600000)).toISOString() }));
   await settle(); await tick(10000);
-  expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBe('Unavailable');
-  expect(summary('Delivery')).toBe('Unavailable'); expect(text(renderer.toJSON())).toContain('invalid or expired');
+  expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBeUndefined();
+  expect(summary('Delivery')).toBeUndefined(); expect(text(renderer.toJSON())).toContain('invalid or expired');
   expect(apiFetch.mock.calls.filter(call => call[0] === '/api/v1/delivery/quote')).toHaveLength(1);
   expect(quoteRequests()).toHaveLength(0); await act(async () => place().props.onPress()); noSubmission();
 });
@@ -384,7 +384,7 @@ test('an estimated cart fee cannot confirm checkout even with a delivery token',
   apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote'
     ? { data: { ...confirmedQuote(JSON.parse(init.body)), delivery_fee_is_estimate: true } } : original(url, init));
   await settle(); expect(place().props.disabled).toBe(true);
-  expect(summary('Payable')).toBe('Unavailable'); expect(summary('Delivery')).not.toBe('$6.75');
+  expect(summary('Payable')).toBeUndefined(); expect(summary('Delivery')).not.toBe('$6.75');
   await act(async () => place().props.onPress()); noSubmission();
 });
 
@@ -393,7 +393,7 @@ test.each(['DELIVERY_QUOTE_EXPIRED', 'INVALID_DELIVERY_QUOTE'])('server rejectio
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
     ? Promise.reject(Object.assign(new Error('Delivery token rejected'), { body: { errors: [{ code, message: 'Delivery token rejected' }] } })) : original(url, init));
   await settle();
-  expect(summary('Payable')).toBe('Unavailable'); expect(summary('Delivery')).toBe('Unavailable');
+  expect(summary('Payable')).toBeUndefined(); expect(summary('Delivery')).toBeUndefined();
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
   expect(quoteRequests()).toHaveLength(1);
   apiJson.mockImplementation(original);
@@ -651,6 +651,6 @@ test.each(['missing lines', 'missing price', 'wrong item', 'invalid tax'])('an i
     if (problem === 'invalid tax') invalid.tax_cents = NaN;
     return { data: invalid };
   });
-  await settle(); expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBe('Unavailable');
+  await settle(); expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBeUndefined();
   expect(text(renderer.toJSON())).toContain('could not be confirmed'); noSubmission();
 });
