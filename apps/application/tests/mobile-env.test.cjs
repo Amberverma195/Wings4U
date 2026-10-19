@@ -1,9 +1,10 @@
 let mockExtra;
+const mockPlatform = { OS: 'ios' };
 jest.mock('expo-constants', () => ({ __esModule: true, default: { get expoConfig() { return { extra: mockExtra }; } } }));
-jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+jest.mock('react-native', () => ({ Platform: mockPlatform }));
 const { getApiBase, getRealtimeOrigin } = require('../src/lib/env');
 const previousDev = global.__DEV__;
-beforeEach(() => { mockExtra = {}; });
+beforeEach(() => { mockExtra = {}; mockPlatform.OS = 'ios'; });
 afterEach(() => { global.__DEV__ = previousDev; });
 test('release runtime cannot fall back to a local development origin', () => {
   global.__DEV__ = false;
@@ -16,4 +17,13 @@ test('release REST and realtime can share the website backend', () => {
 });
 test('local iOS simulator fallback still works', () => {
   global.__DEV__ = true; expect(getApiBase()).toBe('http://127.0.0.1:3001');
+});
+test('Android emulator retains its development loopback override', () => {
+  global.__DEV__ = true; mockPlatform.OS = 'android'; mockExtra.apiOrigin = 'http://192.168.1.50:3001';
+  expect(getApiBase()).toBe('http://10.0.2.2:3001');
+});
+test('production environment cannot use the Android emulator override', () => {
+  global.__DEV__ = true; mockPlatform.OS = 'android';
+  mockExtra = { environment: 'production', apiOrigin: 'https://api.example.com' };
+  expect(getApiBase()).toBe('https://api.example.com');
 });

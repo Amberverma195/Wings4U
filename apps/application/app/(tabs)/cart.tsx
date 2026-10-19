@@ -160,7 +160,7 @@ export default function CartScreen() {
                       <View style={styles.quantityControl}>
                         <TouchableOpacity
                           style={styles.iconButton}
-                          accessibilityRole="button" accessibilityLabel={`Increase ${item.name} quantity`}
+                          accessibilityRole="button" accessibilityLabel={`Decrease ${item.name} quantity`}
                           onPress={() =>
                             cart.updateQuantity(item.key, item.quantity - 1)
                           }
@@ -170,6 +170,7 @@ export default function CartScreen() {
                         <Text style={styles.quantityText}>{item.quantity}</Text>
                         <TouchableOpacity
                           style={styles.iconButton}
+                          accessibilityRole="button" accessibilityLabel={`Increase ${item.name} quantity`}
                           onPress={() =>
                             cart.updateQuantity(item.key, item.quantity + 1)
                           }
@@ -228,8 +229,9 @@ export default function CartScreen() {
               </View>
               {cart.fulfillmentType === 'DELIVERY' ? <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery fee</Text>
-                <Text style={styles.summaryValue}>{!quote ? 'Calculated at checkout' : quote.delivery_fee_waived ? 'Free' :
-                  formatPrice(quote.delivery_fee_cents) + (quote.delivery_fee_is_estimate ? ' estimated ? confirmed at checkout' : '')}</Text>
+                <Text style={styles.summaryValue}>{quote?.delivery_fee_waived ? <>
+                  {quote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: 'line-through' }}>From $5 </Text> : null}Free
+                </> : !quote || quote.delivery_fee_is_estimate ? 'From $5 — calculated at checkout' : formatPrice(quote.delivery_fee_cents)}</Text>
               </View> : null}
               {quote && quote.driver_tip_cents > 0 ? <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Tip</Text><Text style={styles.summaryValue}>{formatPrice(quote.driver_tip_cents)}</Text></View> : null}
               <View style={styles.divider} />

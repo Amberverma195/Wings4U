@@ -50,6 +50,44 @@ beforeEach(() => {
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 const mount = async () => act(async () => { renderer = create(React.createElement(CartTab)); });
 
+test('quantity buttons announce and apply the correct change', async () => {
+  await mount();
+  const decrease = renderer.root.findByProps({ accessibilityLabel: 'Decrease Wings quantity' });
+  const increase = renderer.root.findByProps({ accessibilityLabel: 'Increase Wings quantity' });
+  expect(decrease.props.accessibilityRole).toBe('button');
+  expect(increase.props.accessibilityRole).toBe('button');
+  await act(async () => { decrease.props.onPress(); increase.props.onPress(); });
+  expect(mockCart.updateQuantity.mock.calls).toEqual([['wings', 0], ['wings', 2]]);
+});
+
+const renderedText = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(renderedText).join('') : node?.children ? node.children.map(renderedText).join('') : '';
+test('pickup has no delivery fee row', async () => {
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(renderedText(renderer.toJSON())).not.toContain('Delivery fee');
+});
+test.each(['pending', 'estimated', 'confirmed', 'coupon', 'threshold'])('cart delivery fee presentation: %s', async mode => {
+  mockCart.fulfillmentType = 'DELIVERY';
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation(async (url, init) => {
+    if (url !== '/api/v1/cart/quote') return original(url, init);
+    if (mode === 'pending') return new Promise(() => {});
+    return { data: { item_subtotal_cents: 1000, tax_cents: 130, final_payable_cents: 1905, lines: [],
+      delivery_fee_cents: mode === 'coupon' || mode === 'threshold' ? 0 : 775, delivery_fee_stated_cents: 775,
+      delivery_fee_waived: mode === 'coupon' || mode === 'threshold', delivery_fee_is_estimate: mode !== 'confirmed',
+      applied_promo_code: mode === 'coupon' ? 'FREEDEL' : undefined } };
+  });
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  const output = renderedText(renderer.toJSON());
+  if (mode === 'pending' || mode === 'estimated') {
+    expect(output).toContain('From $5 — calculated at checkout');
+    expect(output).not.toContain('$7.75');
+  } else if (mode === 'confirmed') expect(output).toContain('$7.75');
+  else {
+    expect(output).toContain('From $5 Free');
+    expect(renderer.root.findAllByType('Text').some(node => node.props.style?.textDecorationLine === 'line-through')).toBe(true);
+  }
+});
+
 test.each([false, true])('guest/authenticated Cart still prices its items and opens the stack checkout (authenticated: %s)', async authenticated => {
   mockSession.authenticated = authenticated;
   mockCart.scheduledFor = '2026-10-18T17:00:00.000Z';
@@ -295,7 +333,7 @@ test.each(['none', 10, 15, 20])('cart tip %s invalidates the old total and requo
 
 test('unknown pricing does not claim zero tax, free delivery or a confirmed total', async () => {
   mockCart.fulfillmentType = 'DELIVERY'; apiJson.mockImplementation(() => new Promise(() => {}));
-  await mount(); expect(screenText()).toContain('Calculated at checkout'); expect(screenText()).not.toContain('Free');
+  await mount(); expect(screenText()).toContain('From $5 — calculated at checkout'); expect(screenText()).not.toContain('Free');
   expect(screenText()).toContain('Est. Subtotal');
 });
 

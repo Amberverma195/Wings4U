@@ -54,11 +54,6 @@ import type {
   CartQuoteResponse,
   CheckoutResponse,
 } from "../src/lib/types";
-import {
-  calculateCartSubtotal,
-  calculateDeliveryTipCents,
-  getCartItemUnitPrice,
-} from "../src/lib/wing-builder-logic";
 
 const FIXED_DELIVERY_CITY = "London";
 const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
@@ -93,10 +88,6 @@ type DeliveryQuoteStatus = "idle" | "loading" | "ready" | "error";
 
 const CANADIAN_POSTAL_CODE_RE =
   /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i;
-
-function cartItemUnitCents(item: CartItem): number {
-  return getCartItemUnitPrice(item);
-}
 
 function cartItemDetails(item: CartItem): string[] {
   const details = [
@@ -202,17 +193,6 @@ function CheckoutScreenContent() {
     paymentIntentId: string;
   } | null>(null);
 
-  const subtotal = useMemo(
-    () => calculateCartSubtotal(cart.items),
-    [cart.items],
-  );
-
-  const subtotalForTip = quote?.item_subtotal_cents ?? subtotal;
-  const tipCents = useMemo(
-    () => calculateDeliveryTipCents(subtotalForTip, cart.driverTipPercent, cart.fulfillmentType),
-    [cart.driverTipPercent, cart.fulfillmentType, subtotalForTip],
-  );
-
   const deliveryAddress = useMemo(
     () => ({
       line1: normalizeAddressText(line1),
@@ -226,11 +206,13 @@ function CheckoutScreenContent() {
     CANADIAN_POSTAL_CODE_RE.test(deliveryAddress.postal_code);
   const deliveryContextKey = JSON.stringify({
     locationId: cart.locationId, fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor,
+    customer: session.authenticated ? session.user?.id ?? "authenticated" : "guest",
     address: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : null,
   });
   const deliveryQuoteReady =
     cart.fulfillmentType !== "DELIVERY" ||
-    (deliveryQuoteStatus === "ready" && deliveryQuote !== null && pricedDeliveryKey === deliveryContextKey);
+    (deliveryQuoteStatus === "ready" && deliveryQuote !== null && pricedDeliveryKey === deliveryContextKey &&
+      Number.isFinite(Date.parse(deliveryQuote.expires_at)) && Date.parse(deliveryQuote.expires_at) > Date.now());
 
   const quoteKey = useMemo(
     () =>
@@ -240,8 +222,9 @@ function CheckoutScreenContent() {
         items: checkoutItems(cart.items),
         fulfillmentType: cart.fulfillmentType,
         scheduledFor: cart.scheduledFor,
-        tipCents,
-        deliveryQuoteToken: deliveryQuote?.delivery_quote_token ?? null,
+        // Key the selection, not a tip derived from the previous server subtotal.
+        driverTipPercent: cart.driverTipPercent,
+        deliveryQuoteToken: cart.fulfillmentType === "DELIVERY" && deliveryQuoteReady ? deliveryQuote?.delivery_quote_token : null,
         deliveryAddress: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : null,
         promoCode: promo.promoCode,
         applyWingsReward: promo.applyWingsReward,
@@ -255,7 +238,8 @@ function CheckoutScreenContent() {
       cart.scheduledFor,
       deliveryAddress,
       deliveryQuote?.delivery_quote_token,
-      tipCents,
+      deliveryQuoteReady,
+      cart.driverTipPercent,
       promo.promoCode,
       promo.applyWingsReward,
     ],
@@ -277,6 +261,9 @@ function CheckoutScreenContent() {
       ...selection, deliveryQuoteToken: cart.fulfillmentType === 'DELIVERY' ? deliveryQuote?.delivery_quote_token : undefined,
       deliveryAddress: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : undefined }, request);
     if (latestCheckoutKey.current !== start) throw new Error('Your cart or account changed. Please review your total again.');
+    if (cart.fulfillmentType === 'DELIVERY' && priced.delivery_fee_is_estimate) {
+      throw new Error('Wait for the exact delivery fee to be confirmed before placing the order.');
+    }
     return priced;
   };
 
@@ -361,6 +348,9 @@ function CheckoutScreenContent() {
             );
             return;
           }
+          if (!body.data.delivery_quote_token || !Number.isFinite(Date.parse(body.data.expires_at)) || Date.parse(body.data.expires_at) <= Date.now()) {
+            throw new Error('Delivery quote is invalid or expired. Retry to confirm the delivery fee.');
+          }
           setDeliveryQuote(body.data);
           setPricedDeliveryKey(deliveryContextKey);
           setDeliveryQuoteStatus("ready");
@@ -438,6 +428,12 @@ function CheckoutScreenContent() {
           if (!cancelled) {
             const message =
               cause instanceof Error ? cause.message : "Unable to quote order";
+            const code = getApiErrorCode((cause as { body?: unknown })?.body);
+            if (code === 'DELIVERY_QUOTE_EXPIRED' || code === 'INVALID_DELIVERY_QUOTE') {
+              setDeliveryQuote(null);
+              setDeliveryQuoteStatus("error");
+              setDeliveryQuoteError(message);
+            }
             // Drop a server-rejected promo and re-quote without it (mirrors web).
             if (isPromoRejectedQuoteError(message) && promo.promoCode) {
               promo.clearPromoCode();
@@ -465,20 +461,21 @@ function CheckoutScreenContent() {
     deliveryQuoteStatus,
     promo,
     quoteKey,
-    tipCents,
   ]);
 
-  const currentQuote = pricedQuoteKey === quoteKey ? quote : null;
+  const currentQuote = pricedQuoteKey === quoteKey && deliveryQuoteReady && !quoteLoading && !quoteError &&
+    !(cart.fulfillmentType === 'DELIVERY' && quote?.delivery_fee_is_estimate) &&
+    promo.hydrated !== false && session.loaded !== false ? quote : null;
+  const tipCents = currentQuote?.driver_tip_cents ?? 0;
   const discountRows = useMemo(() => promoDiscountRows(currentQuote), [currentQuote]);
-  const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, quote);
-  const payableCents = quote?.final_payable_cents ?? subtotal;
+  const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, currentQuote);
   const onlinePaymentsEnabled = Boolean(
     stripeConfig?.online_payments_enabled && stripeConfig.configured,
   );
   const pricingBlock = checkoutPricingBlock({
     quoteIsCurrent: pricedQuoteKey === quoteKey && promo.hydrated !== false && session.loaded !== false,
     quoteLoading,
-    quote,
+    quote: currentQuote,
     quoteError,
     promoCode: promo.promoCode,
     rewardBlockedReason,
@@ -511,7 +508,7 @@ function CheckoutScreenContent() {
         setSubmitError("Enter your delivery address before placing the order.");
         return;
       }
-      if (!deliveryQuoteReady || !deliveryQuote || !quote) {
+      if (!deliveryQuoteReady || !deliveryQuote || !currentQuote) {
         setSubmitError(
           deliveryQuoteError ??
             "Wait for the delivery fee to be confirmed before placing the order.",
@@ -576,7 +573,7 @@ function CheckoutScreenContent() {
       const block = checkoutPricingBlock({ quoteLoading: false, quote: freshQuote, quoteError: null,
         promoCode: promo.promoCode, rewardBlockedReason: wingsRewardBlockedReason(promo.applyWingsReward, freshQuote) });
       if (block) { setQuote(freshQuote); setPricedQuoteKey(quoteKey); throw new Error(block); }
-      if (freshQuote.final_payable_cents !== quote?.final_payable_cents || freshQuote.driver_tip_cents !== quote?.driver_tip_cents) {
+      if (freshQuote.final_payable_cents !== currentQuote?.final_payable_cents || freshQuote.driver_tip_cents !== currentQuote?.driver_tip_cents) {
         setQuote(freshQuote); setPricedQuoteKey(quoteKey);
         throw new Error('Your order total changed. Please review the updated total before placing your order.');
       }
@@ -725,7 +722,7 @@ function CheckoutScreenContent() {
     postalCode,
     presentPaymentSheet,
     promo,
-    quote,
+    currentQuote,
     router,
     session,
     onlinePaymentsEnabled,
@@ -774,8 +771,9 @@ function CheckoutScreenContent() {
               </View>
 
               <Section title="Order">
-                {cart.items.map((item) => {
+                {cart.items.map((item, index) => {
                   const details = cartItemDetails(item);
+                  const line = currentQuote?.lines[index];
                   return (
                     <View key={item.key} style={styles.lineRow}>
                       <View style={styles.lineMain}>
@@ -789,14 +787,14 @@ function CheckoutScreenContent() {
                         ) : null}
                       </View>
                       <Text style={styles.linePrice}>
-                        {cents(cartItemUnitCents(item) * item.quantity)}
+                        {line && Number.isFinite(line.line_total_cents) ? cents(line.line_total_cents) : "Awaiting quote"}
                       </Text>
                     </View>
                   );
                 })}
               </Section>
 
-              <CartCoupons quote={pricedQuoteKey === quoteKey ? quote : null} contextKey={quoteKey}
+              <CartCoupons quote={currentQuote} contextKey={quoteKey}
                 disabled={submitting || promo.hydrated === false}
                 requestSelection={async selection => {
                   if (!deliveryQuoteReady) throw new Error('Confirm your delivery address and fee before applying an offer.');
@@ -949,7 +947,7 @@ function CheckoutScreenContent() {
               </Section>
 
               <Section title="Total">
-                <SummaryRow label="Subtotal" value={cents(quote?.item_subtotal_cents ?? subtotal)} />
+                <SummaryRow label="Subtotal" value={currentQuote ? cents(currentQuote.item_subtotal_cents) : "Awaiting quote"} />
                 {discountRows.map((row) => (
                   <SummaryRow
                     key={row.key}
@@ -964,9 +962,9 @@ function CheckoutScreenContent() {
                     label="Delivery"
                     value={
                       !currentQuote
-                        ? "Awaiting quote"
+                        ? (deliveryQuoteStatus === "error" ? "Unavailable" : "Updating delivery fee…")
                         : currentQuote.delivery_fee_waived
-                          ? "Free"
+                          ? <>{currentQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: "line-through" }}>{cents(currentQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
                           : cents(currentQuote.delivery_fee_cents)
                     }
                   />
@@ -1094,7 +1092,7 @@ function SummaryRow({
   discount,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   total?: boolean;
   discount?: boolean;
 }) {

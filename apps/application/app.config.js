@@ -2,6 +2,10 @@ const { validateApiOrigin } = require('./config/api-origin.cjs');
 
 module.exports = ({ config }) => {
   const profile = process.env.EAS_BUILD_PROFILE;
+  const release = (profile && profile !== 'development') || (!profile && process.env.NODE_ENV === 'production');
+  if (release && process.env.MOBILE_APP_ENV === 'development') {
+    throw new Error('MOBILE_APP_ENV=development conflicts with this release build. Production and preview builds require production API configuration.');
+  }
   const environment = process.env.MOBILE_APP_ENV ||
     (profile ? (profile === 'development' ? 'development' : 'production') : process.env.NODE_ENV === 'production' ? 'production' : 'development');
   if (!['development', 'production'].includes(environment)) throw new Error('MOBILE_APP_ENV must be development or production.');
