@@ -35,7 +35,7 @@ export function CheckoutEntryGuard({ children }: { children: ReactNode }) {
   }, [focused, setup.ready, cart.isCartHydrated, checkout.approved, checkout.cancel, retry]);
   if ((entered || checkout.approved) && setup.confirmed) return <>{children}</>;
   return <View style={styles.screen}>
-    {checkout.busy || !setup.ready || !cart.isCartHydrated ? <ActivityIndicator color="#FF4D4D" /> : null}
+    {checkout.busy || !setup.ready || !cart.isCartHydrated ? <ActivityIndicator color="#E53C3C" /> : null}
     <Text style={styles.message} accessibilityLiveRegion="polite">{checkout.error ?? 'Confirm your order details and total before checkout.'}</Text>
     <Pressable onPress={() => void retry()} disabled={checkout.busy || !setup.ready || !cart.isCartHydrated}
       accessibilityRole="button" style={styles.button}><Text style={styles.buttonText}>{setup.confirmed ? 'Try again' : 'Confirm order details'}</Text></Pressable>
@@ -45,9 +45,9 @@ export function CheckoutEntryGuard({ children }: { children: ReactNode }) {
   </View>;
 }
 const styles = StyleSheet.create({
-  screen: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16, backgroundColor: '#FAFAFA' },
-  message: { fontSize: 14, lineHeight: 21, textAlign: 'center', color: '#6C5142' },
-  button: { backgroundColor: '#FF4D4D', borderRadius: 12, padding: 14, minHeight: 48 },
+  screen: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16, backgroundColor: '#FFF9F5' },
+  message: { fontSize: 14, lineHeight: 21, textAlign: 'center', color: '#75665C' },
+  button: { backgroundColor: '#E53C3C', borderRadius: 12, padding: 14, minHeight: 48 },
   buttonText: { color: '#FFF', fontWeight: '700' },
   back: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
 });

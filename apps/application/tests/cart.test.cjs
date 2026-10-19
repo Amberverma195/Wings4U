@@ -41,6 +41,15 @@ function Probe() {
 }
 const tree = () => React.createElement(CartProvider, null, React.createElement(Probe));
 
+test('checkout cart cleanup removes the saved cart and local draft and resets selections', async () => {
+  await act(async () => { cart.setDriverTipPercent(15); cart.setScheduledFor('2026-10-20T17:00:00Z'); });
+  const storage = require('@react-native-async-storage/async-storage'); storage.removeItem.mockClear();
+  await act(async () => cart.clear());
+  expect(cart.items).toEqual([]); expect(cart.driverTipPercent).toBe('none'); expect(cart.scheduledFor).toBeNull();
+  expect(api.deleteSavedCart).toHaveBeenCalledWith('location');
+  expect(storage.removeItem).toHaveBeenCalledWith('wings4u.mobile-cart-draft-v1:location');
+});
+
 beforeEach(async () => {
   jest.useFakeTimers();
   jest.clearAllMocks();

@@ -17,6 +17,9 @@ import { useRouter } from "expo-router";
 import { initStripe, useStripe } from "@stripe/stripe-react-native";
 import {
   CreditCard,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   MapPin,
   MessageSquareText,
   ShoppingBag,
@@ -25,6 +28,9 @@ import {
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AuthSheet } from "../src/components/auth-sheet";
 import { CheckoutEntryGuard } from "../src/components/checkout-entry-guard";
+import { CheckoutConfirmation } from "../src/components/checkout-confirmation";
+import { checkoutItemDetails } from "../src/lib/checkout-item-details";
+import { cartPricingRecovery } from "../src/lib/cart-pricing-error";
 import { useCart } from "../src/context/cart";
 import { useOrderSetup } from "../src/context/order-setup";
 import { OrderSetupSummary } from "../src/components/order-setup-summary";
@@ -89,33 +95,6 @@ type DeliveryQuoteStatus = "idle" | "loading" | "ready" | "error";
 const CANADIAN_POSTAL_CODE_RE =
   /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i;
 
-function cartItemDetails(item: CartItem): string[] {
-  const details = [
-    ...item.modifier_selections.map((selection) => selection.option_name),
-    ...(item.removed_ingredients ?? []).map((ingredient) => `No ${ingredient.name}`),
-  ];
-  const payload = item.builder_payload;
-  if (payload?.builder_type === "WINGS" || payload?.builder_type === "WING_COMBO") {
-    const wingParts = (payload.flavour_slots ?? []).map((slot) => slot.flavour_name);
-    if (payload.extra_flavour) wingParts.push(`Extra: ${payload.extra_flavour.flavour_name}`);
-    if (payload.salad_customization?.salad_name) {
-      wingParts.push(`Salad: ${payload.salad_customization.salad_name}`);
-      for (const r of payload.salad_customization.removed_ingredients ?? []) {
-        wingParts.push(`No ${r.name}`);
-      }
-    }
-    details.unshift(...wingParts);
-  }
-  if (payload?.builder_type === "LUNCH_SPECIAL") {
-    details.unshift(payload.child_name);
-  }
-  if (payload?.builder_type === "ITEM_CUSTOMIZATION" && payload.side_pop_bundle) {
-    details.push(`Combo: ${payload.side_pop_bundle.side_label} & ${payload.side_pop_bundle.pop_label}`);
-  }
-  if (item.special_instructions.trim()) details.push(item.special_instructions.trim());
-  return details;
-}
-
 function checkoutItems(items: CartItem[]) {
   return items.map((item) => ({
     menu_item_id: item.menu_item_id,
@@ -142,10 +121,12 @@ function getApiErrorCode(body: unknown): string | null {
 }
 
 export default function CheckoutScreen() {
-  return <CheckoutEntryGuard><CheckoutScreenContent /></CheckoutEntryGuard>;
+  const [completedOrder, setCompletedOrder] = useState<CheckoutResponse | null>(null);
+  if (completedOrder) return <CheckoutConfirmation order={completedOrder} />;
+  return <CheckoutEntryGuard><CheckoutScreenContent onSuccess={setCompletedOrder} /></CheckoutEntryGuard>;
 }
 
-function CheckoutScreenContent() {
+function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutResponse) => void }) {
   const router = useRouter();
   const cart = useCart();
   const orderSetup = useOrderSetup();
@@ -156,7 +137,10 @@ function CheckoutScreenContent() {
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [pricedQuoteKey, setPricedQuoteKey] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteRecovery, setQuoteRecovery] = useState<ReturnType<typeof cartPricingRecovery>>('retry');
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [pricingRetry, setPricingRetry] = useState(0);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
   const [promoNotice, setPromoNotice] = useState<string | null>(null);
   const [orderNotes, setOrderNotes] = useState("");
   const [contactlessPref, setContactlessPref] = useState<
@@ -164,8 +148,6 @@ function CheckoutScreenContent() {
   >("");
   const line1 = orderSetup.deliveryAddress?.line1 ?? "";
   const postalCode = orderSetup.deliveryAddress?.postal_code ?? "";
-  const setLine1 = (value: string) => orderSetup.setDeliveryAddress({ line1: value, city: FIXED_DELIVERY_CITY, postal_code: postalCode });
-  const setPostalCode = (value: string) => orderSetup.setDeliveryAddress({ line1, city: FIXED_DELIVERY_CITY, postal_code: value });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
@@ -184,6 +166,8 @@ function CheckoutScreenContent() {
   );
   const [deliveryQuoteRetryNonce, setDeliveryQuoteRetryNonce] = useState(0);
   const pendingSubmitRef = useRef(false);
+  const authCompletedRef = useRef(false);
+  const pendingAuthReview = useRef<{ key: string; total: number } | null>(null);
   const checkoutAttemptRef = useRef<{
     fingerprint: string;
     idempotencyKey: string;
@@ -246,6 +230,9 @@ function CheckoutScreenContent() {
   );
   const latestCheckoutKey = useRef(quoteKey);
   latestCheckoutKey.current = quoteKey;
+  const authReviewKey = JSON.stringify({ locationId: cart.locationId, items: checkoutItems(cart.items),
+    fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor, deliveryAddress,
+    driverTipPercent: cart.driverTipPercent, promoCode: promo.promoCode, applyWingsReward: promo.applyWingsReward });
   const quoteSelection = async (selection: { promoCode: string | null; applyWingsReward: boolean }) => {
     const start = quoteKey;
     const request: typeof apiJson = async (path, init) => {
@@ -261,6 +248,14 @@ function CheckoutScreenContent() {
       ...selection, deliveryQuoteToken: cart.fulfillmentType === 'DELIVERY' ? deliveryQuote?.delivery_quote_token : undefined,
       deliveryAddress: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : undefined }, request);
     if (latestCheckoutKey.current !== start) throw new Error('Your cart or account changed. Please review your total again.');
+    const validAmount = (value: number) => Number.isSafeInteger(value) && value >= 0;
+    if (![priced.item_subtotal_cents, priced.tax_cents, priced.driver_tip_cents, priced.final_payable_cents].every(validAmount) ||
+      !Array.isArray(priced.lines) || priced.lines.length !== cart.items.length ||
+      priced.lines.some((line, index) => line.menu_item_id !== cart.items[index].menu_item_id ||
+        line.quantity !== cart.items[index].quantity || !validAmount(line.line_total_cents)) ||
+      (cart.fulfillmentType === 'DELIVERY' && !validAmount(priced.delivery_fee_cents))) {
+      throw new Error('The order total could not be confirmed. Please retry pricing.');
+    }
     if (cart.fulfillmentType === 'DELIVERY' && priced.delivery_fee_is_estimate) {
       throw new Error('Wait for the exact delivery fee to be confirmed before placing the order.');
     }
@@ -441,6 +436,7 @@ function CheckoutScreenContent() {
             } else {
               setQuote(null);
               setQuoteError(message);
+              setQuoteRecovery(cartPricingRecovery(cause));
             }
           }
         } finally {
@@ -461,6 +457,7 @@ function CheckoutScreenContent() {
     deliveryQuoteStatus,
     promo,
     quoteKey,
+    pricingRetry,
   ]);
 
   const currentQuote = pricedQuoteKey === quoteKey && deliveryQuoteReady && !quoteLoading && !quoteError &&
@@ -515,13 +512,11 @@ function CheckoutScreenContent() {
         );
         return;
       }
-      if (!contactlessPref) {
-        setSubmitError("Choose a delivery handoff preference.");
-        return;
-      }
     }
 
     if (!session.authenticated || session.needsProfileCompletion) {
+      authCompletedRef.current = false;
+      pendingAuthReview.current = { key: authReviewKey, total: currentQuote!.final_payable_cents };
       pendingSubmitRef.current = true;
       setAuthVisible(true);
       return;
@@ -538,7 +533,7 @@ function CheckoutScreenContent() {
     if (cart.scheduledFor) payload.scheduled_for = cart.scheduledFor;
     if (tipCents > 0) payload.driver_tip_cents = tipCents;
     if (orderNotes.trim()) payload.special_instructions = orderNotes.trim();
-    if (contactlessPref) payload.contactless_pref = contactlessPref;
+    if (cart.fulfillmentType === 'DELIVERY' && contactlessPref) payload.contactless_pref = contactlessPref;
     if (cart.fulfillmentType === "DELIVERY") {
       payload.address_snapshot_json = deliveryAddress;
       payload.delivery_quote_token = deliveryQuote!.delivery_quote_token;
@@ -675,7 +670,7 @@ function CheckoutScreenContent() {
       const body = (await res.json().catch(() => null)) as
         | ApiEnvelope<CheckoutResponse>
         | null;
-      if (!res.ok || !body?.data) {
+      if (!res.ok || !body?.data?.id) {
         const errorCode = getApiErrorCode(body);
         if (
           errorCode === "DELIVERY_QUOTE_EXPIRED" ||
@@ -687,6 +682,9 @@ function CheckoutScreenContent() {
         throw new Error(getApiErrorMessage(body, `Checkout failed (${res.status})`));
       }
       const order = body.data;
+      // Confirmation lives above the entry guard: clearing a scheduled cart may
+      // invalidate setup, but must never hide a successfully created order.
+      onSuccess(order);
       checkoutAttemptRef.current = null;
       paidIntentRef.current = null;
       // Clear the applied promo/reward and refresh rewards + wallet so the
@@ -694,7 +692,6 @@ function CheckoutScreenContent() {
       promo.clearAll();
       void account.refresh("refresh");
       cart.clear();
-      router.replace(`/orders/${order.id}`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to place order";
       const code = getApiErrorCode((cause as { body?: unknown })?.body);
@@ -709,6 +706,8 @@ function CheckoutScreenContent() {
     }
   }, [
     account,
+    authReviewKey,
+    onSuccess,
     orderSetup,
     cart,
     contactlessPref,
@@ -735,30 +734,39 @@ function CheckoutScreenContent() {
 
   useEffect(() => {
     if (!pendingSubmitRef.current) return;
-    if (!session.authenticated || session.needsProfileCompletion) return;
+    if (authVisible || !session.authenticated || session.needsProfileCompletion || !currentQuote || pricingBlock || !orderSetup.getConfirmedSetup()) return;
     pendingSubmitRef.current = false;
+    if (pendingAuthReview.current?.key !== authReviewKey || pendingAuthReview.current?.total !== currentQuote.final_payable_cents) {
+      setSubmitError('Your order changed after sign-in. Please review the details and total before placing your order.');
+      return;
+    }
     void placeOrder();
-  }, [placeOrder, session.authenticated, session.needsProfileCompletion]);
+  }, [placeOrder, session.authenticated, session.needsProfileCompletion, currentQuote, pricingBlock, orderSetup, authVisible, authReviewKey]);
+
+  const placeDisabled = submitting || Boolean(pricingBlock) || !orderSetup.ready || !orderSetup.confirmed ||
+    cart.isCartHydrating || !cart.isCartHydrated || (cart.fulfillmentType === 'DELIVERY' && !deliveryQuoteReady);
+  const recovery = quoteRecovery;
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.container}>
+    <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.container}>
       <StatusBar style="dark" />
       <AuthSheet
         visible={authVisible}
         initialStep={session.authenticated ? "profile" : "login"}
         onComplete={() => {
-          pendingSubmitRef.current = true;
+          authCompletedRef.current = true;
+          setPricingRetry(value => value + 1);
         }}
-        onClose={() => setAuthVisible(false)}
+        onClose={() => { if (!authCompletedRef.current) pendingSubmitRef.current = false; authCompletedRef.current = false; setAuthVisible(false); }}
       />
       <KeyboardAvoidingView
         style={styles.keyboard}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {cart.items.length === 0 ? (
             <View style={styles.emptyState}>
-              <ShoppingBag size={36} color="#FF4D4D" />
+              <ShoppingBag size={36} color="#E53C3C" />
               <Text style={styles.emptyTitle}>Nothing to checkout</Text>
               <TouchableOpacity style={styles.primaryButton} onPress={() => router.push("/")}>
                 <Text style={styles.primaryButtonText}>Browse menu</Text>
@@ -766,13 +774,20 @@ function CheckoutScreenContent() {
             </View>
           ) : (
             <>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back to Cart" style={styles.backButton} onPress={() => router.replace('/(tabs)/cart')}>
+                <ArrowLeft size={18} color="#30241F" /><Text style={styles.backText}>Back to Cart</Text>
+              </TouchableOpacity>
+              <Text accessibilityRole="header" style={styles.pageTitle}>CHECKOUT</Text>
+              <Text style={styles.pageSubtitle}>A few details, then the good stuff.</Text>
               <View style={styles.orderDetailsBar}>
                 <OrderSetupSummary />
+                <TouchableOpacity accessibilityRole="button" style={styles.detailToggle} onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={styles.deliveryActionText}>Change Order Details</Text></TouchableOpacity>
               </View>
 
-              <Section title="Order">
+              <Section title="Your order">
                 {cart.items.map((item, index) => {
-                  const details = cartItemDetails(item);
+                  const details = checkoutItemDetails(item);
+                  const expanded = expandedItems.has(item.key);
                   const line = currentQuote?.lines[index];
                   return (
                     <View key={item.key} style={styles.lineRow}>
@@ -781,9 +796,14 @@ function CheckoutScreenContent() {
                           {item.quantity}x {item.name}
                         </Text>
                         {details.length ? (
-                          <Text style={styles.lineMeta} numberOfLines={3}>
-                            {details.join(" • ")}
-                          </Text>
+                          <>
+                            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`${expanded ? 'Hide' : 'Show'} details for ${item.name}`} accessibilityState={{ expanded }} style={styles.detailToggle}
+                              onPress={() => setExpandedItems(previous => { const next = new Set(previous); if (next.has(item.key)) next.delete(item.key); else next.add(item.key); return next; })}>
+                              <Text style={styles.deliveryActionText}>{expanded ? 'Hide details' : 'View details'}</Text>
+                              {expanded ? <ChevronUp size={14} color="#E53C3C" /> : <ChevronDown size={14} color="#E53C3C" />}
+                            </TouchableOpacity>
+                            {expanded && details.map((detail, i) => <Text key={i} style={styles.lineMeta}>{detail}</Text>)}
+                          </>
                         ) : null}
                       </View>
                       <Text style={styles.linePrice}>
@@ -794,7 +814,7 @@ function CheckoutScreenContent() {
                 })}
               </Section>
 
-              <CartCoupons quote={currentQuote} contextKey={quoteKey}
+              <CartCoupons cartTheme quote={currentQuote} contextKey={quoteKey}
                 disabled={submitting || promo.hydrated === false}
                 requestSelection={async selection => {
                   if (!deliveryQuoteReady) throw new Error('Confirm your delivery address and fee before applying an offer.');
@@ -807,6 +827,10 @@ function CheckoutScreenContent() {
                     return (
                       <TouchableOpacity
                         key={String(tip)}
+                        accessibilityRole="button"
+                        accessibilityLabel={tip === 'none' ? 'No tip' : `Tip ${tip}%`}
+                        accessibilityState={{ selected: active }}
+                        disabled={submitting}
                         style={[styles.tipButton, active && styles.tipButtonActive]}
                         onPress={() => cart.setDriverTipPercent(tip)}
                       >
@@ -826,31 +850,16 @@ function CheckoutScreenContent() {
 
               {cart.fulfillmentType === "DELIVERY" ? (
                 <Section title="Delivery">
-                  <View style={styles.inputWithIcon}>
-                    <MapPin size={18} color="#FF4D4D" />
-                    <TextInput
-                      style={styles.input}
-                      value={line1}
-                      onChangeText={setLine1}
-                      placeholder="Street address"
-                      placeholderTextColor="#999"
-                    />
+                  <View style={styles.addressCard}>
+                    <MapPin size={20} color="#E53C3C" />
+                    <View style={styles.lineMain}>
+                      <Text style={styles.lineTitle}>{line1 || 'Choose a delivery address'}</Text>
+                      <Text style={styles.lineMeta}>{deliveryAddress.city}, {deliveryAddress.postal_code}</Text>
+                    </View>
                   </View>
-                  <View style={styles.rowGap}>
-                    <TextInput
-                      style={[styles.inputBox, styles.flexInput]}
-                      value={FIXED_DELIVERY_CITY}
-                      editable={false}
-                    />
-                    <TextInput
-                      style={[styles.inputBox, styles.flexInput]}
-                      value={postalCode}
-                      onChangeText={setPostalCode}
-                      placeholder="Postal code"
-                      placeholderTextColor="#999"
-                      autoCapitalize="characters"
-                    />
-                  </View>
+                  <TouchableOpacity accessibilityRole="button" style={styles.detailToggle} onPress={() => orderSetup.openOrderSetup('DELIVERY')}>
+                    <Text style={styles.deliveryActionText}>Change Address</Text>
+                  </TouchableOpacity>
                   {deliveryQuoteStatus === "loading" ? (
                     <Text style={styles.deliveryStatusText}>
                       Estimating delivery fee…
@@ -868,6 +877,7 @@ function CheckoutScreenContent() {
                       <View style={styles.deliveryActions}>
                         <TouchableOpacity
                           style={styles.deliveryActionButton}
+                          accessibilityRole="button"
                           onPress={() =>
                             setDeliveryQuoteRetryNonce((value) => value + 1)
                           }
@@ -876,6 +886,7 @@ function CheckoutScreenContent() {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.deliveryActionButton}
+                          accessibilityRole="button"
                           onPress={() => orderSetup.openOrderSetup("PICKUP")}
                         >
                           <Text style={styles.deliveryActionText}>
@@ -885,17 +896,23 @@ function CheckoutScreenContent() {
                       </View>
                     </View>
                   ) : null}
+                  <Text style={styles.fieldLabel}>Delivery handoff (optional)</Text>
                   <View style={styles.chipRow}>
                     {[
+                      ["", "None"],
                       ["HAND_TO_ME", "Hand to me"],
                       ["LEAVE_AT_DOOR", "Leave at door"],
-                      ["CALL_ON_ARRIVAL", "Call"],
-                      ["TEXT_ON_ARRIVAL", "Text"],
+                      ["CALL_ON_ARRIVAL", "Call on arrival"],
+                      ["TEXT_ON_ARRIVAL", "Text on arrival"],
                     ].map(([value, label]) => {
                       const active = contactlessPref === value;
                       return (
                         <TouchableOpacity
                           key={value}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delivery handoff: ${label}`}
+                          accessibilityState={{ selected: active }}
+                          disabled={submitting}
                           style={[styles.chip, active && styles.chipActive]}
                           onPress={() => setContactlessPref(value as typeof contactlessPref)}
                         >
@@ -911,12 +928,14 @@ function CheckoutScreenContent() {
 
               <Section title="Notes">
                 <View style={styles.inputWithIcon}>
-                  <MessageSquareText size={18} color="#FF4D4D" />
+                  <MessageSquareText size={18} color="#E53C3C" />
                   <TextInput
                     style={[styles.input, styles.notesInput]}
                     value={orderNotes}
                     onChangeText={setOrderNotes}
-                    placeholder="Order notes"
+                    accessibilityLabel="Order notes (optional)"
+                    editable={!submitting}
+                    placeholder="Order notes (optional)"
                     placeholderTextColor="#999"
                     multiline
                   />
@@ -926,7 +945,7 @@ function CheckoutScreenContent() {
               <Section title="Payment">
                 {paymentOptions.map((option) => {
                   const active = paymentMethod === option.value;
-                  const iconColor = active ? "#EA580C" : "#FF4D4D";
+                  const iconColor = active ? "#E53C3C" : "#75665C";
                   return (
                     <PaymentOption
                       key={option.value}
@@ -940,6 +959,7 @@ function CheckoutScreenContent() {
                         )
                       }
                       active={active}
+                      disabled={submitting}
                       onPress={() => setPaymentMethod(option.value)}
                     />
                   );
@@ -992,37 +1012,32 @@ function CheckoutScreenContent() {
                 pricingBlock !== rewardBlockedReason ? (
                   <Text style={styles.noticeText}>{pricingBlock}</Text>
                 ) : null}
-                {quoteError ? <Text style={styles.errorText}>{quoteError}</Text> : null}
-                {quoteError ? <TouchableOpacity onPress={() => router.push('/(tabs)/cart')} accessibilityRole="button"><Text>Review cart items</Text></TouchableOpacity> : null}
-                {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+                {quoteError ? <Text accessibilityRole="alert" style={styles.errorText}>{quoteError}</Text> : null}
+                {quoteError ? <View style={styles.deliveryActions}>
+                  <TouchableOpacity style={styles.deliveryActionButton} accessibilityRole="button" onPress={() => {
+                    if (recovery === 'sign_in') { pendingSubmitRef.current = false; setAuthVisible(true); }
+                    else if (recovery === 'add_items') router.push('/(tabs)/menu');
+                    else if (['time', 'delivery', 'review'].includes(recovery)) orderSetup.openOrderSetup(cart.fulfillmentType);
+                    else if (recovery === 'items') router.push('/(tabs)/cart');
+                    else { setQuoteError(null); setPricingRetry(value => value + 1); }
+                  }}><Text style={styles.deliveryActionText}>{recovery === 'sign_in' ? 'Sign in' : recovery === 'add_items' ? 'Add more items' : ['time', 'delivery', 'review'].includes(recovery) ? 'Change Order Details' : recovery === 'items' ? 'Review cart items' : 'Retry pricing'}</Text></TouchableOpacity>
+                </View> : null}
+                {submitError ? <Text accessibilityRole="alert" style={styles.errorText}>{submitError}</Text> : null}
               </Section>
 
-              <TouchableOpacity
-                style={[
-                  styles.placeButton,
-                  (submitting ||
-                    Boolean(pricingBlock) ||
-                    (cart.fulfillmentType === "DELIVERY" && !deliveryQuoteReady)) &&
-                    styles.disabledButton,
-                ]}
-                onPress={placeOrder}
-                disabled={
-                  submitting ||
-                  Boolean(pricingBlock) ||
-                  (cart.fulfillmentType === "DELIVERY" && !deliveryQuoteReady)
-                }
-              >
-                {submitting ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Text style={styles.placeButtonText}>
-                    {paymentMethod === "ONLINE_CARD" ? "Pay and place order" : "Place order"}
-                  </Text>
-                )}
-              </TouchableOpacity>
             </>
           )}
         </ScrollView>
+        {cart.items.length > 0 && <View style={styles.checkoutDock}>
+          <View style={styles.dockSummary}>
+            <Text style={styles.summaryLabel}>Order total</Text>
+            <Text style={styles.dockTotal}>{currentQuote ? cents(currentQuote.final_payable_cents) : 'Awaiting quote'}</Text>
+          </View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'} accessibilityState={{ disabled: placeDisabled, busy: submitting }}
+            style={[styles.placeButton, placeDisabled && styles.disabledButton]} onPress={placeOrder} disabled={placeDisabled}>
+            {submitting ? <><ActivityIndicator color="#FFFFFF" /><Text style={styles.placeButtonText}>Placing order...</Text></> : <Text style={styles.placeButtonText}>{paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'}</Text>}
+          </TouchableOpacity>
+        </View>}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1067,6 +1082,9 @@ function PaymentOption({
       ]}
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityLabel={title}
+      accessibilityState={{ selected: active, disabled: Boolean(disabled) }}
       activeOpacity={0.85}
     >
       <View style={[styles.paymentIcon, active && styles.paymentIconActive]}>
@@ -1115,23 +1133,29 @@ function SummaryRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: "#FFF9F5",
   },
   keyboard: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: 20,
-    paddingBottom: 34,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
   },
-  orderDetailsBar: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#EFEFEF",
-  },
+  backButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
+  backText: { color: '#75665C', fontSize: 13, fontWeight: '600' },
+  pageTitle: { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 32, color: '#30241F', marginTop: 12, letterSpacing: 1 },
+  pageSubtitle: { color: '#75665C', marginTop: 8, marginBottom: 8, fontSize: 14, lineHeight: 21 },
+  orderDetailsBar: { padding: 16, backgroundColor: '#FFF0EA', borderRadius: 18, marginTop: 16, borderWidth: 1, borderColor: '#EFE4DE' },
+  detailToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  addressCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  fieldLabel: { color: '#75665C', fontSize: 13, marginTop: 16, fontWeight: '600' },
+  checkoutDock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EFE4DE' },
+  dockSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', maxWidth: 608, alignSelf: 'center' },
+  dockTotal: { flexShrink: 1, color: '#E53C3C', fontSize: 22, fontWeight: '800' },
   emptyState: {
     minHeight: 420,
     alignItems: "center",
@@ -1139,48 +1163,51 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   emptyTitle: {
-    color: "#1A1A1A",
+    color: "#30241F",
     fontSize: 20,
     fontWeight: "900",
   },
   section: {
     marginTop: 16,
     backgroundColor: "#FFF",
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#EFEFEF",
-    padding: 14,
+    borderColor: "#EFE4DE",
+    padding: 18,
   },
   sectionTitle: {
-    color: "#1A1A1A",
-    fontSize: 16,
-    fontWeight: "900",
-    marginBottom: 10,
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+    color: "#30241F",
+    fontSize: 21,
+    fontWeight: "700",
+    marginBottom: 12,
   },
   lineRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: "#F4F4F4",
+    borderTopColor: "#EFE4DE",
     gap: 12,
   },
   lineMain: {
     flex: 1,
   },
   lineTitle: {
-    color: "#1A1A1A",
+    color: "#30241F",
     fontSize: 14,
     fontWeight: "900",
   },
   lineMeta: {
-    color: "#777",
+    color: "#75665C",
     marginTop: 4,
     fontSize: 12,
     lineHeight: 17,
   },
   linePrice: {
-    color: "#FF4D4D",
+    flexShrink: 1,
+    maxWidth: "40%",
+    textAlign: "right",    color: "#E53C3C",
     fontSize: 14,
     fontWeight: "900",
   },
@@ -1189,15 +1216,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 12,
-    backgroundColor: "#F8F8F8",
+    backgroundColor: "#F6EEE9",
     borderWidth: 1,
-    borderColor: "#EFEFEF",
+    borderColor: "#EFE4DE",
     paddingHorizontal: 12,
   },
   input: {
     flex: 1,
     marginLeft: 10,
-    color: "#1A1A1A",
+    color: "#30241F",
     fontSize: 15,
     fontWeight: "600",
   },
@@ -1214,11 +1241,11 @@ const styles = StyleSheet.create({
   inputBox: {
     height: 50,
     borderRadius: 12,
-    backgroundColor: "#F8F8F8",
+    backgroundColor: "#F6EEE9",
     borderWidth: 1,
-    borderColor: "#EFEFEF",
+    borderColor: "#EFE4DE",
     paddingHorizontal: 12,
-    color: "#1A1A1A",
+    color: "#30241F",
     fontWeight: "700",
   },
   flexInput: {
@@ -1231,21 +1258,21 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   chip: {
-    minHeight: 38,
+    minHeight: 44,
     borderRadius: 10,
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFF",
     borderWidth: 1,
-    borderColor: "#E8E8E8",
+    borderColor: "#EFE4DE",
   },
   chipActive: {
-    backgroundColor: "#FF4D4D",
-    borderColor: "#FF4D4D",
+    backgroundColor: "#E53C3C",
+    borderColor: "#E53C3C",
   },
   chipText: {
-    color: "#555",
+    color: "#75665C",
     fontSize: 12,
     fontWeight: "800",
   },
@@ -1256,7 +1283,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
     borderRadius: 13,
     borderWidth: 1,
-    borderColor: "#ECECEC",
+    borderColor: "#EFE4DE",
     backgroundColor: "#FFF",
     padding: 12,
     flexDirection: "row",
@@ -1265,9 +1292,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   paymentOptionActive: {
-    borderColor: "rgba(234, 88, 12, 0.55)",
+    borderColor: "#E53C3C",
     backgroundColor: "#FFF",
-    shadowColor: "rgba(234, 88, 12, 0.25)",
+    shadowColor: "rgba(229, 60, 60, 0.12)",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 3,
@@ -1278,35 +1305,35 @@ const styles = StyleSheet.create({
   },
   paymentIcon: {
     width: 42,
-    height: 42,
+    minHeight: 44,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFF0F0",
+    backgroundColor: "#FFF0EA",
   },
   paymentIconActive: {
-    backgroundColor: "rgba(234, 88, 12, 0.12)",
+    backgroundColor: "#FFF0EA",
   },
   paymentTextWrap: {
     flex: 1,
   },
   paymentTitle: {
-    color: "#1A1A1A",
+    color: "#30241F",
     fontSize: 14,
     fontWeight: "900",
   },
   paymentTitleActive: {
-    color: "#9A3412",
+    color: "#E53C3C",
   },
   paymentDetail: {
-    color: "#777",
+    color: "#75665C",
     marginTop: 3,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "700",
   },
   paymentDetailActive: {
-    color: "#4B5563",
+    color: "#75665C",
   },
   paymentRadio: {
     width: 18,
@@ -1316,40 +1343,44 @@ const styles = StyleSheet.create({
     borderColor: "#D9D9D9",
   },
   paymentRadioActive: {
-    borderColor: "#EA580C",
-    backgroundColor: "#EA580C",
+    borderColor: "#E53C3C",
+    backgroundColor: "#E53C3C",
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 9,
+    gap: 12,
   },
   summaryLabel: {
-    color: "#666",
+    flexShrink: 1,
+    color: "#75665C",
     fontSize: 14,
     fontWeight: "700",
   },
   summaryValue: {
-    color: "#1A1A1A",
+    flexShrink: 1,
+    textAlign: 'right',
+    color: "#30241F",
     fontSize: 14,
     fontWeight: "900",
   },
   totalLabel: {
-    color: "#1A1A1A",
+    color: "#30241F",
     fontSize: 17,
   },
   totalValue: {
-    color: "#FF4D4D",
+    color: "#E53C3C",
     fontSize: 20,
   },
   divider: {
     height: 1,
-    backgroundColor: "#EFEFEF",
+    backgroundColor: "#EFE4DE",
     marginVertical: 4,
   },
   deliveryStatusText: {
-    color: "#666",
+    color: "#75665C",
     fontSize: 12,
     fontWeight: "700",
     marginTop: 8,
@@ -1365,10 +1396,12 @@ const styles = StyleSheet.create({
   },
   deliveryActionButton: {
     borderWidth: 1,
-    borderColor: "#FF4D4D",
+    borderColor: "#E53C3C",
     borderRadius: 9,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingVertical: 10,
   },
   deliveryActionText: {
     color: "#B91C1C",
@@ -1402,28 +1435,28 @@ const styles = StyleSheet.create({
   },
   tipButton: {
     flex: 1,
-    height: 42,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 10,
     backgroundColor: "#FFF",
     borderWidth: 1,
-    borderColor: "#EFEFEF",
+    borderColor: "#EFE4DE",
   },
   tipButtonActive: {
-    borderColor: "#FF4D4D",
+    borderColor: "#E53C3C",
     backgroundColor: "rgba(255,77,77,0.08)",
   },
   tipButtonText: {
-    color: "#666",
+    color: "#75665C",
     fontWeight: "800",
     fontSize: 13,
   },
   tipButtonTextActive: {
-    color: "#FF4D4D",
+    color: "#E53C3C",
   },
   primaryButton: {
-    backgroundColor: "#FF4D4D",
+    backgroundColor: "#E53C3C",
     paddingHorizontal: 28,
     paddingVertical: 13,
     borderRadius: 12,
@@ -1434,12 +1467,19 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   placeButton: {
-    height: 54,
-    borderRadius: 14,
+    minHeight: 54,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    width: "100%",
+    maxWidth: 608,
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 10,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FF4D4D",
-    marginTop: 16,
+    backgroundColor: "#E53C3C",
+    marginTop: 10,
   },
   disabledButton: {
     opacity: 0.65,

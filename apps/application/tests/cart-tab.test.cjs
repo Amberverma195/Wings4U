@@ -373,7 +373,7 @@ test('tip refresh keeps the entire server breakdown visible and sends only the l
   expect(renderer.root.findByProps({ accessibilityLabel: 'Tip 20%' }).props.accessibilityState.selected).toBe(true);
   expect(summaryAmount('Tax')).toBe('$0.83'); expect(summaryAmount('Estimated total')).toBe('$17.58');
   expect(summaryAmount('Promo code (AUTO)')).toBe('-$1.00'); expect(screenText()).not.toContain('Updating?');
-  expect(screenText()).not.toContain('...'); expect(screenText()).toContain('Previous amounts shown');
+  expect(screenText()).not.toContain('Updating pricing'); expect(screenText()).not.toContain('Previous amounts shown');
   const coupons = renderer.root.findAll(node => node.type?.name === 'CartCoupons')[0];
   expect(coupons.props.quote).toBeNull();
   await act(async () => jest.advanceTimersByTime(250)); await act(async () => release());
