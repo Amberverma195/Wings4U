@@ -17,16 +17,14 @@ import { getAccessToken } from "./token-store";
  * or fall back to cookies for backward compat.
  */
 export async function createOrdersSocket(): Promise<Socket> {
-  // The gateway has no namespace; REST paths must never become a namespace.
-  const origin = new URL(getRealtimeOrigin()).origin;
+  const origin = getRealtimeOrigin();
   const token = await getAccessToken();
 
   return io(origin, {
     path: "/ws",
-    transports: ["websocket"],
+    transports: ["websocket", "polling"],
     autoConnect: false,
     auth: token ? { token } : undefined,
-    extraHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 500,
@@ -44,7 +42,6 @@ export function subscribeToChannels(
   socket: Socket,
   channels: readonly string[],
   options?: {
-    onSubscribed?: (channel: string) => void;
     onDenied?: (channel: string, error?: string) => void;
   }
 ): () => void {
@@ -65,8 +62,6 @@ export function subscribeToChannels(
               ack.error ?? "(no reason)"
             );
             options?.onDenied?.(channel, ack.error);
-          } else if (ack?.subscribed === true) {
-            options?.onSubscribed?.(channel);
           }
         }
       );

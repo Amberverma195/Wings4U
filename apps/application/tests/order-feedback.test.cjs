@@ -20,7 +20,7 @@ const mockRefetch = jest.fn();
 const mockChatRefetch = jest.fn();
 const mockSendMessage = jest.fn();
 jest.mock('../src/hooks/use-chat', () => ({ useChat: () => ({ messages: [], loading: false, refetch: mockChatRefetch, sendMessage: mockSendMessage }) }));
-jest.mock('../src/lib/realtime', () => ({ createOrdersSocket: jest.fn(async () => ({ on: jest.fn(), off: jest.fn(), connect: jest.fn(), disconnect: jest.fn() })), subscribeToChannels: jest.fn(() => jest.fn()) }));
+jest.mock('../src/lib/realtime', () => ({ createOrdersSocket: jest.fn(async () => ({ on: jest.fn(), off: jest.fn(), connect: jest.fn(), disconnect: jest.fn() })), subscribeToChannels: () => jest.fn() }));
 jest.mock('../src/components/order-history', () => ({ OrderReorderAction: () => React.createElement('Reorder') }));
 const { apiFetch } = require('../src/lib/api');
 const { withSilentRefresh } = require('../src/context/session');
@@ -291,58 +291,6 @@ test('active orders retain live updates, and completing an order disconnects bef
   await tap('Help'); await tap('Cancel'); await tap('Rate Your Order'); await tap('Close modal');
   expect(texts()).toContain('Order status'); expect(texts()).toContain('Chat');
   expect(renderer.root.findAllByType('TextInput')).toHaveLength(0); expect(mockSendMessage).not.toHaveBeenCalled();
-});
-
-test('live indicator requires both room acknowledgements and catches up after reconnect', async () => {
-  mockOrder.status = 'PREPARING'; await mount(Screen);
-  const realtime = require('../src/lib/realtime');
-  const socket = await realtime.createOrdersSocket.mock.results[0].value;
-  const handler = event => socket.on.mock.calls.find(([name]) => name === event)[1];
-  const [, channels, callbacks] = realtime.subscribeToChannels.mock.calls[0];
-  expect(channels).toEqual(['order:order', 'chat:order']);
-  await act(async () => handler('connect')());
-  expect(texts()).toContain('Connecting live updates');
-  await act(async () => callbacks.onSubscribed(channels[0]));
-  expect(texts()).not.toContain('Live updates connected');
-  await act(async () => callbacks.onSubscribed(channels[1]));
-  expect(texts()).toContain('Live updates connected');
-  expect(mockRefetch).toHaveBeenCalledTimes(1); expect(mockChatRefetch).toHaveBeenCalledTimes(1);
-  await act(async () => handler('disconnect')());
-  expect(texts()).toContain('Live updates unavailable');
-  await act(async () => { handler('connect')(); channels.forEach(callbacks.onSubscribed); });
-  expect(texts()).toContain('Live updates connected');
-  expect(mockRefetch).toHaveBeenCalledTimes(2); expect(mockChatRefetch).toHaveBeenCalledTimes(2);
-  await act(async () => renderer.unmount()); renderer = null;
-  expect(socket.disconnect).toHaveBeenCalledTimes(1);
-  for (const [event, listener] of socket.on.mock.calls) expect(socket.off).toHaveBeenCalledWith(event, listener);
-  expect(realtime.subscribeToChannels.mock.results[0].value).toHaveBeenCalledTimes(1);
-});
-
-test.each(['connect_error', 'error', 'denied', 'creation'])('%s offers Retry and creates a fresh connection', async failure => {
-  const realtime = require('../src/lib/realtime');
-  if (failure === 'creation') realtime.createOrdersSocket.mockRejectedValueOnce(new Error('Token unavailable'));
-  mockOrder.status = 'PREPARING'; await mount(Screen);
-  if (failure !== 'creation') {
-    const socket = await realtime.createOrdersSocket.mock.results[0].value;
-    await act(async () => {
-      if (failure === 'denied') realtime.subscribeToChannels.mock.calls[0][2].onDenied('order:order');
-      else socket.on.mock.calls.find(([name]) => name === failure)[1](new Error('Unavailable'));
-    });
-  }
-  expect(texts()).toContain('Live updates unavailable');
-  await tap('Retry live updates');
-  expect(realtime.createOrdersSocket).toHaveBeenCalledTimes(2);
-  expect(texts()).toContain('Connecting live updates');
-});
-
-test('a pending socket is disconnected when the screen loses focus before token lookup finishes', async () => {
-  const realtime = require('../src/lib/realtime');
-  const pending = deferred(); realtime.createOrdersSocket.mockReturnValueOnce(pending.promise);
-  mockOrder.status = 'PREPARING'; await mount(Screen);
-  mockFocused = false; await act(async () => renderer.update(React.createElement(Screen)));
-  const socket = { disconnect: jest.fn(), connect: jest.fn() };
-  await act(async () => pending.resolve(socket));
-  expect(socket.disconnect).toHaveBeenCalledTimes(1); expect(socket.connect).not.toHaveBeenCalled();
 });
 
 test.each(['PICKED_UP', 'DELIVERED', 'CANCELLED', 'NO_SHOW_PICKUP', 'NO_SHOW_DELIVERY', 'NO_PIN_DELIVERY'])('%s has a final header without refresh or live connection', async status => {

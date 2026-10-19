@@ -588,11 +588,7 @@ export class RealtimeGateway
 
   private readHandshakeAccessToken(socket: Socket): string | undefined {
     const token = socket.handshake.auth?.token;
-    if (typeof token === "string" && token.trim()) return token.trim();
-    const authorization = socket.handshake.headers.authorization;
-    return typeof authorization === "string"
-      ? /^Bearer\s+(\S+)\s*$/i.exec(authorization)?.[1]
-      : undefined;
+    return typeof token === "string" && token.trim() ? token.trim() : undefined;
   }
 
   private async resolveSocketUserFromCookies(
@@ -714,9 +710,6 @@ export class RealtimeGateway
     const resolved = await this.resolveSocketUserFromCookies(
       cookies,
       preferredStationSurface,
-      // Nest does not await handleConnection before dispatching subscriptions.
-      // Native clients have no cookie fallback while that validation is pending.
-      this.readHandshakeAccessToken(socket),
     );
     if (!resolved) {
       socket.emit("error", { message: "Invalid or expired session" });

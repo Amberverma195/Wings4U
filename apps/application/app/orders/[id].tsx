@@ -58,9 +58,6 @@ export default function OrderDetailScreen() {
   const liveOrder = focused && order.order?.id === orderId && ACTIVE_STATUSES.has(order.order.status);
   const history = useMemo(() => order.order ? statusHistory(order.order) : [], [order.order]);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
-  const [realtimeError, setRealtimeError] = useState(false);
-  const [realtimeAttempt, setRealtimeAttempt] = useState(0);
-  const sessionGeneration = getSessionGeneration();
   const [feedback, setFeedback] = useState<{ kind: 'help' | 'review'; context: string } | null>(null);
   const feedbackContext = JSON.stringify([orderId, order.order?.location_id, session.user?.id, getSessionGeneration(), focused]);
   useEffect(() => { setFeedback(null); }, [feedbackContext]);
@@ -71,8 +68,6 @@ export default function OrderDetailScreen() {
 
   useEffect(() => {
     if (!orderId || !liveOrder) return;
-    setRealtimeConnected(false);
-    setRealtimeError(false);
     let disposed = false;
     let cleanup: (() => void) | null = null;
 
@@ -82,22 +77,8 @@ export default function OrderDetailScreen() {
 
       const refreshOrder = () => orderRefetch();
       const refreshChat = () => chatRefetch();
-      const subscribed = new Set<string>();
-      const onConnect = () => {
-        subscribed.clear();
-        setRealtimeConnected(false);
-        setRealtimeError(false);
-      };
-      const onFailure = () => {
-        if (disposed) return;
-        subscribed.clear();
-        setRealtimeConnected(false);
-        setRealtimeError(true);
-      };
-      socket.on("connect", onConnect);
-      socket.on("disconnect", onFailure);
-      socket.on("connect_error", onFailure);
-      socket.on("error", onFailure);
+      socket.on("connect", () => setRealtimeConnected(true));
+      socket.on("disconnect", () => setRealtimeConnected(false));
       socket.on("order.placed", refreshOrder);
       socket.on("order.accepted", refreshOrder);
       socket.on("order.status_changed", refreshOrder);
@@ -105,36 +86,17 @@ export default function OrderDetailScreen() {
       socket.on("order.driver_assigned", refreshOrder);
       socket.on("order.delivery_started", refreshOrder);
       socket.on("order.eta_updated", refreshOrder);
-      socket.on("order.payment_updated", refreshOrder);
-      socket.on("order.manual_review_required", refreshOrder);
       socket.on("chat.message", refreshChat);
       socket.on("chat.read", refreshChat);
 
       const unsubscribe = subscribeToChannels(socket, [
         `order:${orderId}`,
         `chat:${orderId}`,
-      ], {
-        onSubscribed: channel => {
-          if (disposed) return;
-          subscribed.add(channel);
-          if (subscribed.size === 2) {
-            setRealtimeConnected(true);
-            setRealtimeError(false);
-            // Recover updates missed during the initial handshake or reconnect.
-            refreshOrder();
-            refreshChat();
-          }
-        },
-        onDenied: onFailure,
-      });
+      ]);
       socket.connect();
 
       cleanup = () => {
         unsubscribe();
-        socket.off("connect", onConnect);
-        socket.off("disconnect", onFailure);
-        socket.off("connect_error", onFailure);
-        socket.off("error", onFailure);
         socket.off("order.placed", refreshOrder);
         socket.off("order.accepted", refreshOrder);
         socket.off("order.status_changed", refreshOrder);
@@ -142,25 +104,18 @@ export default function OrderDetailScreen() {
         socket.off("order.driver_assigned", refreshOrder);
         socket.off("order.delivery_started", refreshOrder);
         socket.off("order.eta_updated", refreshOrder);
-        socket.off("order.payment_updated", refreshOrder);
-        socket.off("order.manual_review_required", refreshOrder);
         socket.off("chat.message", refreshChat);
         socket.off("chat.read", refreshChat);
         socket.disconnect();
       };
-    })().catch(() => {
-      if (!disposed) {
-        setRealtimeConnected(false);
-        setRealtimeError(true);
-      }
-    });
+    })();
 
     return () => {
       disposed = true;
       cleanup?.();
       setRealtimeConnected(false);
     };
-  }, [chatRefetch, orderId, orderRefetch, liveOrder, sessionGeneration, realtimeAttempt]);
+  }, [chatRefetch, orderId, orderRefetch, liveOrder]);
 
   if (!orderId) {
     return (
@@ -217,12 +172,8 @@ export default function OrderDetailScreen() {
                     ]}
                   />
                   <Text style={styles.realtimeText}>
-                    {realtimeConnected ? "Live updates connected" : realtimeError ? "Live updates unavailable" : "Connecting live updates"}
+                    {realtimeConnected ? "Live updates connected" : "Connecting live updates"}
                   </Text>
-                  {realtimeError ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry live updates"
-                    onPress={() => setRealtimeAttempt(attempt => attempt + 1)}>
-                    <Text style={styles.realtimeText}>Retry</Text>
-                  </TouchableOpacity> : null}
                 </View> : null}
               </View>
 
