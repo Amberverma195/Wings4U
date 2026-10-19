@@ -14,6 +14,7 @@ import { StatusBar } from "expo-status-bar";
 import { useIsFocused, useRouter } from "expo-router";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react-native";
 import { issueAffectsLine } from "../../src/lib/cart-validation";
+import { cartPricingRecovery } from "../../src/lib/cart-pricing-error";
 import { useCart } from "../../src/context/cart";
 import { useOrderSetup } from "../../src/context/order-setup";
 import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
@@ -85,7 +86,7 @@ export default function CartScreen() {
     scheduledFor: cart.scheduledFor, driverTipPercent: cart.driverTipPercent,
     promoCode: promo.promoCode, applyWingsReward: promo.applyWingsReward },
     focused && cart.isCartHydrated && promo.hydrated !== false, promo.clearPromoCode);
-  const { quote, error: quoteError, loading: quoteLoading, notice: promoNotice } = pricing;
+  const { quote: currentQuote, displayQuote: quote, error: quoteError, notice: promoNotice } = pricing;
   useEffect(() => { if (!focused) checkout.cancel(); }, [focused, checkout.cancel]);
 
   const localSubtotal = useMemo(
@@ -94,7 +95,7 @@ export default function CartScreen() {
   );
 
   const discountRows = useMemo(() => promoDiscountRows(quote), [quote]);
-  const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, quote);
+  const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, currentQuote);
   const itemCount = cart.items.reduce((total, item) => total + item.quantity, 0);
   const checkoutDisabled = checkout.busy || cart.isCartHydrating || !orderSetup.ready || promo.hydrated === false ||
     Boolean(pricing.issue || rewardBlockedReason || quoteError?.includes('Minimum subtotal for delivery'));
@@ -198,13 +199,14 @@ export default function CartScreen() {
 
             <View style={styles.summary}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>Order Summary</Text>
-              <CartCoupons cartTheme active={focused} quote={quote} requestSelection={pricing.requestSelection} onValidated={pricing.acceptSelection} disabled={cart.isCartHydrating || promo.hydrated === false} />
+              <CartCoupons cartTheme active={focused} quote={currentQuote} requestSelection={pricing.requestSelection} onValidated={pricing.acceptSelection} disabled={cart.isCartHydrating || promo.hydrated === false} />
               <Text style={styles.tipLabel}>{cart.fulfillmentType === 'DELIVERY' ? 'Add a tip for your driver' : 'Add a tip'}</Text>
               <View style={styles.tipRow}>{(['none', 10, 15, 20] as const).map(tip => <TouchableOpacity key={String(tip)} accessibilityRole="button"
                 accessibilityLabel={tip === 'none' ? 'No tip' : 'Tip ' + tip + '%'} accessibilityState={{ selected: cart.driverTipPercent === tip }}
                 style={[styles.tipButton, cart.driverTipPercent === tip && styles.tipActive]} onPress={() => cart.setDriverTipPercent(tip)}>
                 <Text style={cart.driverTipPercent === tip ? styles.tipActiveText : styles.tipText}>{tip === 'none' ? 'None' : tip + '%'}</Text>
               </TouchableOpacity>)}</View>
+              {pricing.displayOnly ? <Text style={styles.centerText} accessibilityLiveRegion="polite">Updating pricing… Previous amounts shown.</Text> : null}
               {rewardBlockedReason ? <Text style={styles.promoNotice}>{rewardBlockedReason}</Text> : null}
               {promoNotice ? <Text style={styles.promoNotice}>{promoNotice}</Text> : null}
               <View style={styles.summaryRow}>
@@ -224,7 +226,7 @@ export default function CartScreen() {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Tax</Text>
                 <Text style={styles.summaryValue}>
-                  {quoteLoading ? "Updating?" : quote ? formatPrice(quote.tax_cents) : "Calculated at checkout"}
+                  {quote ? formatPrice(quote.tax_cents) : quoteError ? "Unavailable" : "Calculated at checkout"}
                 </Text>
               </View>
               {quote && cart.fulfillmentType === 'DELIVERY' ? <View style={styles.summaryRow}>
@@ -238,16 +240,20 @@ export default function CartScreen() {
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>{quote ? (quote.delivery_fee_is_estimate ? 'Estimated total' : 'Total') : 'Est. Subtotal'}</Text>
                 <Text style={styles.totalValue}>
-                  {quoteLoading
-                    ? "..."
-                    : formatPrice(quote?.final_payable_cents ?? localSubtotal)}
+                  {formatPrice(quote?.final_payable_cents ?? localSubtotal)}
                 </Text>
               </View>
               {quoteError ? (
                 <View><Text accessibilityRole="alert" style={styles.quoteError}>{quoteError}</Text>
-                  <TouchableOpacity accessibilityRole="button" onPress={pricing.refresh}><Text style={{ color: '#30241F' }}>Retry pricing</Text></TouchableOpacity></View>
+                  {pricing.recovery === 'retry' ? <TouchableOpacity accessibilityRole="button" onPress={pricing.refresh}><Text style={{ color: '#30241F' }}>Retry pricing</Text></TouchableOpacity> :
+                    pricing.recovery === 'time' || pricing.recovery === 'delivery' || pricing.recovery === 'review' ?
+                      <TouchableOpacity accessibilityRole="button" onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={{ color: '#30241F' }}>{pricing.recovery === 'time' ? 'Change order time' : 'Review order details'}</Text></TouchableOpacity> : null}</View>
               ) : null}
-              {checkout.error && checkout.error !== quoteError ? <Text style={styles.quoteError} accessibilityRole="alert">{checkout.error}</Text> : null}
+              {checkout.error && checkout.error !== quoteError ? <View>
+                <Text style={styles.quoteError} accessibilityRole="alert">{checkout.error}</Text>
+                {cartPricingRecovery(new Error(checkout.error)) === 'time' ?
+                  <TouchableOpacity accessibilityRole="button" onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={{ color: '#30241F' }}>Change order time</Text></TouchableOpacity> : null}
+              </View> : null}
             </View>
 
             <TouchableOpacity
