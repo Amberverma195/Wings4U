@@ -92,7 +92,7 @@ export function buildOrderSlots(location: LocationInfo, type: FulfillmentType, n
   const lastDay = new Date(`${today}T12:00:00Z`);
   lastDay.setUTCDate(lastDay.getUTCDate() + 6);
   const lastDateKey = lastDay.toISOString().slice(0, 10);
-  const timeFormat = new Intl.DateTimeFormat('en-CA', { timeZone: location.timezone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const timeFormat = new Intl.DateTimeFormat('en-CA', { timeZone: location.timezone, hour: 'numeric', minute: '2-digit' });
   const dateFormat = new Intl.DateTimeFormat('en-CA', { timeZone: location.timezone, weekday: 'short', month: 'short', day: 'numeric' });
   const slots: OrderSlot[] = [];
   for (let ms = start; ms < end; ms += interval) {
