@@ -33,16 +33,23 @@ beforeEach(() => {
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); delete global.window; });
 
-test('signup starts a visible 30-second countdown and still allows code verification', async () => {
-  await signup(); expect(text(resend())).toBe('Resend in 30s'); expect(resend().props.disabled).toBe(true);
-  expect(resend().props['aria-label']).toBe('Resend in 30s');
+test('signup shows initial eligibility separately without requesting a resend', async () => {
+  await signup(); expect(text(resend())).toBe('Resend code'); expect(resend().props.disabled).toBe(true);
+  expect(resend().props['aria-label']).toBe('Resend code');
+  expect(text(renderer.toJSON())).toContain('You can request another code in 30s.');
+  await act(async () => resend().props.onClick());
+  expect(apiFetch.mock.calls.some(call => call[0].endsWith('/resend'))).toBe(false);
   await type('Code', '123456'); expect(button('Verify').props.disabled).toBe(false);
-  await tick(1000); expect(text(resend())).toBe('Resend in 29s');
+  await tick(1000); expect(text(resend())).toBe('Resend code');
+  expect(text(renderer.toJSON())).toContain('You can request another code in 29s.');
   await tick(29000); expect(text(resend())).toBe('Resend code'); expect(resend().props.disabled).toBe(false);
+  expect(text(renderer.toJSON())).not.toContain('You can request another code in');
 });
 test('unverified login starts the same cooldown and does not create a session', async () => {
   await loginPassword(); await type('Your password', 'Example123!'); await submit();
-  expect(text(resend())).toBe('Resend in 30s'); expect(resend().props.disabled).toBe(true);
+  expect(text(resend())).toBe('Resend code'); expect(resend().props.disabled).toBe(true);
+  expect(text(renderer.toJSON())).toContain('You can request another code in 30s.');
+  expect(apiFetch.mock.calls.some(call => call[0].endsWith('/resend'))).toBe(false);
   expect(mockSession.refresh).not.toHaveBeenCalled();
 });
 test('double clicks and a pending request cannot overlap, even after the countdown ends', async () => {
@@ -53,6 +60,7 @@ test('double clicks and a pending request cannot overlap, even after the countdo
   await act(async () => { first = click(); void click(); });
   expect(apiFetch.mock.calls.filter(call => call[0].endsWith('/resend'))).toHaveLength(1);
   expect(text(resend())).toBe('Resend in 30s'); await tick(31000);
+  expect(text(renderer.toJSON())).not.toContain('You can request another code in');
   await act(async () => { void click(); });
   expect(apiFetch.mock.calls.filter(call => call[0].endsWith('/resend'))).toHaveLength(1);
   await act(async () => { release(response({ request_accepted: true, retry_after_seconds: 30 })); await first; });
@@ -69,7 +77,8 @@ test.each(['header', 'date header', 'body', 'message'])('respects a longer serve
 test('rerenders retain one timer, and unmount cleans it up', async () => {
   await signup(); expect(intervals.size).toBe(1); await tick(5000);
   await act(async () => renderer.update(React.createElement(CustomerAuth, { mode: 'signup' })));
-  expect(text(resend())).toBe('Resend in 25s'); expect(intervals.size).toBe(1);
+  expect(text(resend())).toBe('Resend code'); expect(intervals.size).toBe(1);
+  expect(text(renderer.toJSON())).toContain('You can request another code in 25s.');
   await act(async () => renderer.unmount()); renderer = null; expect(intervals.size).toBe(0);
 });
 test('password-reset countdown, longer retry and locked limit remain functional', async () => {
@@ -92,11 +101,14 @@ test.each([0, 19, 30, 750])('failed initial delivery uses server retry %ss and p
   await signup();
   expect(text(renderer.toJSON())).toContain("We couldn't confirm your verification email");
   expect(resend().props.disabled).toBe(retry > 0);
-  expect(text(resend())).toBe(retry ? `Resend in ${retry}s` : 'Resend code');
+  expect(text(resend())).toBe('Resend code');
+  if (retry) expect(text(renderer.toJSON())).toContain(`You can request another code in ${retry}s.`);
+  else expect(text(renderer.toJSON())).not.toContain('You can request another code in');
+  expect(apiFetch.mock.calls.some(call => call[0].endsWith('/resend'))).toBe(false);
   await type('Code', '123456'); expect(button('Verify').props.disabled).toBe(false);
   await act(async () => renderer.update(React.createElement(CustomerAuth, { mode: 'signup' })));
-  expect(text(resend())).toBe(retry ? `Resend in ${retry}s` : 'Resend code');
-  if (retry) { await tick(1000); expect(text(resend())).toBe(`Resend in ${retry - 1}s`); await tick((retry - 1) * 1000); }
+  expect(text(resend())).toBe('Resend code');
+  if (retry) { await tick(1000); expect(text(renderer.toJSON())).toContain(`You can request another code in ${retry - 1}s.`); await tick((retry - 1) * 1000); }
   const click = resend().props.onClick;
   await act(async () => { await Promise.all([click(), click()]); });
   expect(apiFetch.mock.calls.filter(call => call[0].endsWith('/resend'))).toHaveLength(1);
@@ -105,5 +117,13 @@ test.each([0, 19, 30, 750])('failed initial delivery uses server retry %ss and p
 });
 test.each([undefined, -1, '0'])('unknown retry hint %s does not enable an unsafe immediate resend', async retry => {
   apiFetch.mockResolvedValueOnce(response({ email: 'fictional@example.com', otp_sent: false, retry_after_seconds: retry }));
-  await signup(); expect(text(resend())).toBe('Resend in 30s');
+  await signup(); expect(text(resend())).toBe('Resend code'); expect(resend().props.disabled).toBe(true);
+  expect(text(renderer.toJSON())).toContain('You can request another code in 30s.');
+});
+
+test('a valid code can establish a session during the initial waiting period', async () => {
+  await signup(); await type('Code', '123456'); await submit();
+  expect(apiFetch.mock.calls.filter(call => call[0].endsWith('/signup/verify'))).toHaveLength(1);
+  expect(apiFetch.mock.calls.some(call => call[0].endsWith('/resend'))).toBe(false);
+  expect(mockSession.refresh).toHaveBeenCalledTimes(1);
 });

@@ -112,7 +112,7 @@ export function useAuth() {
   }), [run, establishSession]);
 
   const resendVerification = useCallback((email: string) => run(() =>
-    authPost('/api/v1/auth/signup/resend', { email: normalizeEmail(email) }, 'Resend failed')),
+    authPost<{ retry_after_seconds?: number }>('/api/v1/auth/signup/resend', { email: normalizeEmail(email) }, 'Resend failed')),
   [run]);
 
   const requestPasswordReset = useCallback((identifier: string) => run(() =>

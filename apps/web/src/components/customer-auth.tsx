@@ -485,19 +485,21 @@ function ResendButton({
   busy,
   sending,
   cooldownSeconds = 0,
+  initialCooldown = false,
   locked = false,
   onClick,
 }: {
   busy: boolean;
   sending: boolean;
   cooldownSeconds?: number;
+  initialCooldown?: boolean;
   locked?: boolean;
   onClick: () => void;
 }) {
   const disabled = busy || cooldownSeconds > 0 || locked;
   const label = locked
     ? "Resend limit reached"
-    : cooldownSeconds > 0
+    : cooldownSeconds > 0 && !initialCooldown
       ? `Resend in ${cooldownSeconds}s`
       : sending
         ? "Sending..."
@@ -588,6 +590,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
   const resetSignupResendCooldown = signupCooldown.reset;
   const resendInFlight = useRef(false);
   const [resendNotice, setResendNotice] = useState("");
+  const [signupResendRequested, setSignupResendRequested] = useState(false);
   const [resetResendLocked, setResetResendLocked] = useState(false);
   const resetResendCooldownSeconds = resetCooldown.seconds;
 
@@ -669,6 +672,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       const retry = body.data?.retry_after_seconds;
       const wait = typeof retry === "number" && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry) : 30;
       resetSignupResendCooldown();
+      setSignupResendRequested(false);
       startSignupResendCooldown(body.data?.otp_sent === false ? wait : Math.max(30, wait));
       setResendNotice(body.data?.otp_sent === false
         ? "We couldn't confirm your verification email. If a code arrives, you can still use it. You can request another code below when available."
@@ -772,6 +776,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
       // Correct password but unverified email: verification was requested,
       // and the server withheld the session. Route to email verification.
       if (body.data?.needs_email_verification) {
+        setSignupResendRequested(false);
         startSignupResendCooldown();
         setOtpCode("");
         clearPendingLoginIdentifier();
@@ -872,6 +877,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
     const cooldown = step.name === "verify-email" ? signupCooldown : resetCooldown;
     if (cooldown.isCoolingDown() || (step.name === "reset-verify" && resetResendLocked)) return;
     resendInFlight.current = true;
+    if (step.name === "verify-email") setSignupResendRequested(true);
     cooldown.start();
     setError("");
     setResendNotice("");
@@ -1275,8 +1281,12 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
             busy={busy}
             sending={busyAction === "resend"}
             cooldownSeconds={signupCooldown.seconds}
+            initialCooldown={!signupResendRequested}
             onClick={handleResend}
           />
+        )}
+        {!signupResendRequested && signupCooldown.seconds > 0 && (
+          <p style={s.subtitle}>You can request another code in {signupCooldown.seconds}s.</p>
         )}
         {resendNotice && <p role="status" style={s.subtitle}>{resendNotice}</p>}
       </div>

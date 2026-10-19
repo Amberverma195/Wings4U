@@ -85,6 +85,7 @@ export function AuthSheet({
   const [submitCooldownUntil, setSubmitCooldownUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [resendLocked, setResendLocked] = useState(false);
+  const [verificationResendRequested, setVerificationResendRequested] = useState(false);
   const actionInFlight = useRef(false);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
@@ -93,7 +94,7 @@ export function AuthSheet({
   const reset = useCallback(() => {
     setIdentifier(''); setNormalizedIdentifier(''); setPassword(''); setConfirmation('');
     setFullName(''); setEmail(''); setPhone(''); setCode(''); setDeliveryEmail('');
-    setLocalError(null); setCooldownUntil(0); setSubmitCooldownUntil(0); setResendLocked(false); clearError();
+    setLocalError(null); setCooldownUntil(0); setSubmitCooldownUntil(0); setResendLocked(false); setVerificationResendRequested(false); clearError();
   }, [clearError]);
 
   useEffect(() => {
@@ -165,12 +166,14 @@ export function AuthSheet({
       const result = await auth.login(normalizedIdentifier, password);
       if (!visibleRef.current) return;
       if (result.needs_email_verification) {
+        setVerificationResendRequested(false);
         setEmail(result.email); changeStep('verify-email'); startCooldown();
       } else finishAuth(result);
     } else if (step === 'signup') {
       const result = await auth.signup(fullName, phone, email, password, confirmation);
       if (!visibleRef.current) return;
       setEmail(result.email ?? normalizeEmail(email));
+      setVerificationResendRequested(false);
       changeStep('verify-email');
       const retry = result.retry_after_seconds;
       const wait = typeof retry === 'number' && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry) : 30;
@@ -202,8 +205,13 @@ export function AuthSheet({
 
   const resend = () => perform(async () => {
     if (cooldown > 0 || resendLocked) return;
+    if (step === 'verify-email') setVerificationResendRequested(true);
     startCooldown();
-    if (step === 'verify-email') await auth.resendVerification(email);
+    if (step === 'verify-email') {
+      const result = await auth.resendVerification(email);
+      const retry = result?.retry_after_seconds;
+      if (visibleRef.current && typeof retry === 'number' && Number.isFinite(retry) && retry > 30) startCooldown(Math.ceil(retry));
+    }
     else {
       const result = await auth.requestPasswordReset(normalizedIdentifier);
       if (visibleRef.current && result.delivery_email) setDeliveryEmail(result.delivery_email);
@@ -321,9 +329,12 @@ export function AuthSheet({
             {isCodeStep && <TouchableOpacity disabled={busy || cooldown > 0 || resendLocked}
               style={s.linkButton} onPress={() => void resend()}>
               <Text style={[s.link, (cooldown > 0 || resendLocked) && s.muted]}>
-                {resendLocked ? 'Resend limit reached' : cooldown > 0 ? 'Resend in ' + cooldown + 's' : 'Resend code'}
+                {resendLocked ? 'Resend limit reached' : cooldown > 0 && (step !== 'verify-email' || verificationResendRequested) ? 'Resend in ' + cooldown + 's' : 'Resend code'}
               </Text>
             </TouchableOpacity>}
+            {step === 'verify-email' && !verificationResendRequested && cooldown > 0 && (
+              <Text style={s.subtitle}>You can request another code in {cooldown}s.</Text>
+            )}
             {(step === 'login-id' || step === 'login-password') && <TouchableOpacity
               disabled={busy} style={s.linkButton} onPress={() => changeStep('signup')}>
               <Text style={s.link}>No account? Sign up</Text>
