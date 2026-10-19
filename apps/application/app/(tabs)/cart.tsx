@@ -208,7 +208,6 @@ export default function CartScreen() {
                 style={[styles.tipButton, cart.driverTipPercent === tip && styles.tipActive]} onPress={() => cart.setDriverTipPercent(tip)}>
                 <Text style={cart.driverTipPercent === tip ? styles.tipActiveText : styles.tipText}>{tip === 'none' ? 'None' : tip + '%'}</Text>
               </TouchableOpacity>)}</View>
-              {pricing.displayOnly ? <Text style={styles.centerText} accessibilityLiveRegion="polite">Updating pricing… Previous amounts shown.</Text> : null}
               {rewardBlockedReason ? <Text style={styles.promoNotice}>{rewardBlockedReason}</Text> : null}
               {promoNotice ? <Text style={styles.promoNotice}>{promoNotice}</Text> : null}
               <View style={styles.summaryRow}>
