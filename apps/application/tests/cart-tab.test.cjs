@@ -70,6 +70,8 @@ test.each([
 
 test('quantity buttons announce and apply the correct change', async () => {
   await mount();
+  expect(renderer.root.findByType('OrderSetupSummary').props.singleLine).toBe(true);
+  expect(renderer.root.findByType('OrderSetupSummary').props.readOnly).not.toBe(true);
   const decrease = renderer.root.findByProps({ accessibilityLabel: 'Decrease Wings quantity' });
   const increase = renderer.root.findByProps({ accessibilityLabel: 'Increase Wings quantity' });
   expect(decrease.props.accessibilityRole).toBe('button');
@@ -261,7 +263,7 @@ const quoteCalls = () => apiJson.mock.calls.filter(call => call[0] === '/api/v1/
 test('counts quantities, shows the summary action with zero coupons, and reopens a dismissible accessible modal', async () => {
   mockCart.items[0].quantity = 3;
   await mount();
-  expect(screenText()).toContain('Your Order3 items'); expect(screenText()).toContain('Order Summary');
+  expect(screenText()).not.toContain('Your Order'); expect(screenText()).toContain('3 items'); expect(screenText()).toContain('Order Summary');
   expect(button('See coupons & rewards')).toBeDefined(); expect(screenText()).not.toContain('Available Coupons');
   await openCoupons(); expect(screenText()).toContain('Available Coupons'); expect(screenText()).toContain('No coupons yet');
   expect(renderer.root.findByProps({ accessibilityViewIsModal: true })).toBeDefined();

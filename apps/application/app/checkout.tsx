@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -21,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
-  MessageSquareText,
   ShoppingBag,
   Wallet,
 } from "lucide-react-native";
@@ -53,9 +51,8 @@ import {
   quotePromoParams,
   wingsRewardBlockedReason,
 } from "../src/lib/promo-selection";
-import { CartCoupons } from "../src/components/cart-coupons";
 import { requestCartQuote } from "../src/lib/cart-quote";
-import { calculateCartSubtotal, getCartItemSubtotal } from "../src/lib/wing-builder-logic";
+import { getCartItemSubtotal } from "../src/lib/wing-builder-logic";
 import type {
   CartItem,
   CartQuoteResponse,
@@ -148,7 +145,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const [pricingRetry, setPricingRetry] = useState(0);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
   const [promoNotice, setPromoNotice] = useState<string | null>(null);
-  const [orderNotes, setOrderNotes] = useState("");
   const [contactlessPref, setContactlessPref] = useState<
     "" | "HAND_TO_ME" | "LEAVE_AT_DOOR" | "CALL_ON_ARRIVAL" | "TEXT_ON_ARRIVAL"
   >("");
@@ -495,11 +491,12 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const pricingFailed = Boolean(quoteError || deliveryQuoteError);
   const displayQuote = !detailsReady ? null : currentQuote ?? (session.loaded && promo.hydrated !== false && !pricingFailed &&
     deliveryQuoteReady && lastDisplayPrice?.key === displayPriceKey ? lastDisplayPrice.quote : null);
-  const displayOnly = Boolean(displayQuote && !currentQuote);
-  const provisionalSubtotal = useMemo(() => calculateCartSubtotal(cart.items), [cart.items]);
-  const displayDiscountRows = useMemo(() => promoDiscountRows(displayQuote), [displayQuote]);
-  const totalStatus = pricingFailed ? 'Total unavailable' : !detailsReady ? 'Review order details' :
-    cart.fulfillmentType === 'DELIVERY' && !deliveryQuoteReady ? 'Confirming delivery fee' : 'Confirming total';
+  const confirmedTotalQuote = detailsReady && !pricingBlock ? currentQuote : null;
+  const confirmedDiscountRows = useMemo(() => promoDiscountRows(confirmedTotalQuote), [confirmedTotalQuote]);
+  // Normal pricing latency is not an error. Keep real failures visible even
+  // when the complete Total card is hidden.
+  const pricingNotice = currentQuote ? pricingBlock : null;
+  const visibleSubmitError = submitError === 'Wait for the order total to be confirmed before placing the order.' ? null : submitError;
   const paymentOptions = customerPaymentOptions(cart.fulfillmentType);
 
   useEffect(() => {
@@ -556,7 +553,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     };
     if (cart.scheduledFor) payload.scheduled_for = cart.scheduledFor;
     if (tipCents > 0) payload.driver_tip_cents = tipCents;
-    if (orderNotes.trim()) payload.special_instructions = orderNotes.trim();
     if (cart.fulfillmentType === 'DELIVERY' && contactlessPref) payload.contactless_pref = contactlessPref;
     if (cart.fulfillmentType === "DELIVERY") {
       payload.address_snapshot_json = deliveryAddress;
@@ -741,7 +737,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     deliveryQuoteReady,
     initPaymentSheet,
     line1,
-    orderNotes,
     postalCode,
     presentPaymentSheet,
     promo,
@@ -804,8 +799,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
               <Text accessibilityRole="header" style={styles.pageTitle}>CHECKOUT</Text>
               <Text style={styles.pageSubtitle}>A few details, then the good stuff.</Text>
               <View style={styles.orderDetailsBar}>
-                <OrderSetupSummary />
-                <TouchableOpacity accessibilityRole="button" style={styles.detailToggle} onPress={() => orderSetup.openOrderSetup(cart.fulfillmentType)}><Text style={styles.deliveryActionText}>Change Order Details</Text></TouchableOpacity>
+                <OrderSetupSummary singleLine readOnly />
               </View>
 
               <Section title="Your order">
@@ -837,40 +831,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                     </View>
                   );
                 })}
-              </Section>
-
-              <CartCoupons cartTheme quote={currentQuote} contextKey={quoteKey}
-                disabled={submitting || promo.hydrated === false}
-                requestSelection={async selection => {
-                  if (!deliveryQuoteReady) throw new Error('Confirm your delivery address and fee before applying an offer.');
-                  return quoteSelection(selection);
-                }} />
-              <Section title="Add a tip">
-                <View style={styles.tipRow}>
-                  {(["none", 10, 15, 20] as const).map((tip) => {
-                    const active = cart.driverTipPercent === tip;
-                    return (
-                      <TouchableOpacity
-                        key={String(tip)}
-                        accessibilityRole="button"
-                        accessibilityLabel={tip === 'none' ? 'No tip' : `Tip ${tip}%`}
-                        accessibilityState={{ selected: active }}
-                        disabled={submitting}
-                        style={[styles.tipButton, active && styles.tipButtonActive]}
-                        onPress={() => cart.setDriverTipPercent(tip)}
-                      >
-                        <Text
-                          style={[
-                            styles.tipButtonText,
-                            active && styles.tipButtonTextActive,
-                          ]}
-                        >
-                          {tip === "none" ? "None" : `${tip}%`}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
               </Section>
 
               {cart.fulfillmentType === "DELIVERY" ? (
@@ -951,21 +911,42 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                 </Section>
               ) : null}
 
-              <Section title="Notes">
-                <View style={styles.inputWithIcon}>
-                  <MessageSquareText size={18} color="#E53C3C" />
-                  <TextInput
-                    style={[styles.input, styles.notesInput]}
-                    value={orderNotes}
-                    onChangeText={setOrderNotes}
-                    accessibilityLabel="Order notes (optional)"
-                    editable={!submitting}
-                    placeholder="Order notes (optional)"
-                    placeholderTextColor="#999"
-                    multiline
-                  />
-                </View>
-              </Section>
+              {confirmedTotalQuote ? <Section title="Total">
+                <SummaryRow label="Subtotal" value={cents(confirmedTotalQuote.item_subtotal_cents)} />
+                {confirmedDiscountRows.map(row => <SummaryRow key={row.key} label={row.label} value={`-${cents(row.amountCents)}`} discount />)}
+                <SummaryRow label="Tax" value={cents(confirmedTotalQuote.tax_cents)} />
+                {cart.fulfillmentType === 'DELIVERY' ? <SummaryRow label="Delivery" value={confirmedTotalQuote.delivery_fee_waived
+                  ? <>{confirmedTotalQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: 'line-through' }}>{cents(confirmedTotalQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
+                  : cents(confirmedTotalQuote.delivery_fee_cents)} /> : null}
+                {confirmedTotalQuote.driver_tip_cents > 0 ? <SummaryRow label="Tip" value={cents(confirmedTotalQuote.driver_tip_cents)} /> : null}
+                <View style={styles.divider} />
+                <SummaryRow label="Payable" value={cents(confirmedTotalQuote.final_payable_cents)} total />
+              </Section> : null}
+
+              {rewardBlockedReason || promoNotice || pricingNotice || quoteError || visibleSubmitError ? <View>
+                {rewardBlockedReason ? (
+                  <Text style={styles.noticeText}>{rewardBlockedReason}</Text>
+                ) : null}
+                {promoNotice ? (
+                  <Text style={styles.noticeText}>{promoNotice}</Text>
+                ) : null}
+                {pricingNotice &&
+                pricingNotice !== quoteError &&
+                pricingNotice !== rewardBlockedReason ? (
+                  <Text style={styles.noticeText}>{pricingNotice}</Text>
+                ) : null}
+                {quoteError ? <Text accessibilityRole="alert" style={styles.errorText}>{quoteError}</Text> : null}
+                {quoteError ? <View style={styles.deliveryActions}>
+                  <TouchableOpacity style={styles.deliveryActionButton} accessibilityRole="button" onPress={() => {
+                    if (recovery === 'sign_in') { pendingSubmitRef.current = false; authCompletedRef.current = false; setAuthInitialStep('login'); setAuthVisible(true); }
+                    else if (recovery === 'add_items') router.push('/(tabs)/menu');
+                    else if (['time', 'delivery', 'review'].includes(recovery)) orderSetup.openOrderSetup(cart.fulfillmentType);
+                    else if (recovery === 'items') router.push('/(tabs)/cart');
+                    else { setQuoteError(null); setPricingRetry(value => value + 1); }
+                  }}><Text style={styles.deliveryActionText}>{recovery === 'sign_in' ? 'Sign in' : recovery === 'add_items' ? 'Add more items' : ['time', 'delivery', 'review'].includes(recovery) ? 'Change Order Details' : recovery === 'items' ? 'Review cart items' : 'Retry pricing'}</Text></TouchableOpacity>
+                </View> : null}
+                {visibleSubmitError ? <Text accessibilityRole="alert" style={styles.errorText}>{visibleSubmitError}</Text> : null}
+              </View> : null}
 
               <Section title="Payment">
                 {paymentOptions.map((option) => {
@@ -991,78 +972,14 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                 })}
               </Section>
 
-              <Section title="Total">
-                {displayOnly ? <Text accessibilityLiveRegion="polite" style={styles.lineMeta}>Previous prices. Your new total is being confirmed.</Text> : null}
-                <SummaryRow label={displayQuote ? 'Subtotal' : 'Estimated subtotal'} value={displayQuote ? cents(displayQuote.item_subtotal_cents) : provisionalPrice(provisionalSubtotal)} />
-                {displayDiscountRows.map((row) => (
-                  <SummaryRow
-                    key={row.key}
-                    label={row.label}
-                    value={`-${cents(row.amountCents)}`}
-                    discount
-                  />
-                ))}
-                <SummaryRow label="Tax" value={displayQuote ? cents(displayQuote.tax_cents) : '—'} />
-                {cart.fulfillmentType === "DELIVERY" ? (
-                  <SummaryRow
-                    label="Delivery"
-                    value={
-                      !displayQuote
-                        ? (deliveryQuoteStatus === 'error' ? 'Unavailable' : '—')
-                        : displayQuote.delivery_fee_waived
-                          ? <>{displayQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: "line-through" }}>{cents(displayQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
-                          : cents(displayQuote.delivery_fee_cents)
-                    }
-                  />
-                ) : null}
-                {(displayQuote ? displayQuote.driver_tip_cents > 0 : cart.driverTipPercent !== 'none') ? (
-                  <SummaryRow
-                    label="Tip"
-                    value={displayQuote ? cents(displayQuote.driver_tip_cents) : '—'}
-                  />
-                ) : null}
-                <View style={styles.divider} />
-                <SummaryRow
-                  label="Payable"
-                  value={displayQuote ? cents(displayQuote.final_payable_cents) : pricingFailed ? 'Unavailable' : '—'}
-                  total
-                />
-                {rewardBlockedReason ? (
-                  <Text style={styles.noticeText}>{rewardBlockedReason}</Text>
-                ) : null}
-                {promoNotice ? (
-                  <Text style={styles.noticeText}>{promoNotice}</Text>
-                ) : null}
-                {pricingBlock &&
-                pricingBlock !== quoteError &&
-                pricingBlock !== rewardBlockedReason ? (
-                  <Text style={styles.noticeText}>{pricingBlock}</Text>
-                ) : null}
-                {quoteError ? <Text accessibilityRole="alert" style={styles.errorText}>{quoteError}</Text> : null}
-                {quoteError ? <View style={styles.deliveryActions}>
-                  <TouchableOpacity style={styles.deliveryActionButton} accessibilityRole="button" onPress={() => {
-                    if (recovery === 'sign_in') { pendingSubmitRef.current = false; authCompletedRef.current = false; setAuthInitialStep('login'); setAuthVisible(true); }
-                    else if (recovery === 'add_items') router.push('/(tabs)/menu');
-                    else if (['time', 'delivery', 'review'].includes(recovery)) orderSetup.openOrderSetup(cart.fulfillmentType);
-                    else if (recovery === 'items') router.push('/(tabs)/cart');
-                    else { setQuoteError(null); setPricingRetry(value => value + 1); }
-                  }}><Text style={styles.deliveryActionText}>{recovery === 'sign_in' ? 'Sign in' : recovery === 'add_items' ? 'Add more items' : ['time', 'delivery', 'review'].includes(recovery) ? 'Change Order Details' : recovery === 'items' ? 'Review cart items' : 'Retry pricing'}</Text></TouchableOpacity>
-                </View> : null}
-                {submitError ? <Text accessibilityRole="alert" style={styles.errorText}>{submitError}</Text> : null}
-              </Section>
-
             </>
           )}
         </ScrollView>
         {cart.items.length > 0 && <View style={styles.checkoutDock}>
-          <View style={styles.dockSummary}>
-            <Text style={styles.summaryLabel}>{displayOnly ? 'Previous total' : 'Order total'}</Text>
-            {displayQuote ? <Text style={styles.dockTotal}>{cents(displayQuote.final_payable_cents)}</Text> :
-              <View accessibilityLiveRegion="polite" style={styles.totalStatus}>
-                {!pricingFailed && detailsReady ? <ActivityIndicator accessibilityLabel={totalStatus} color="#E53C3C" size="small" /> : null}
-                <Text style={[styles.deliveryStatusText, styles.totalStatusText]}>{totalStatus}</Text>
-              </View>}
-          </View>
+          {confirmedTotalQuote ? <View style={styles.dockSummary}>
+            <Text style={styles.summaryLabel}>Order total</Text>
+            <Text style={styles.dockTotal}>{cents(confirmedTotalQuote.final_payable_cents)}</Text>
+          </View> : null}
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'} accessibilityState={{ disabled: placeDisabled, busy: submitting }}
             style={[styles.placeButton, placeDisabled && styles.disabledButton]} onPress={placeOrder} disabled={placeDisabled}>
             {submitting ? <><ActivityIndicator color="#FFFFFF" /><Text style={styles.placeButtonText}>Placing order...</Text></> : <Text style={styles.placeButtonText}>{paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'}</Text>}
@@ -1186,8 +1103,6 @@ const styles = StyleSheet.create({
   checkoutDock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EFE4DE' },
   dockSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', maxWidth: 608, alignSelf: 'center' },
   dockTotal: { flexShrink: 1, color: '#E53C3C', fontSize: 22, fontWeight: '800' },
-  totalStatus: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  totalStatusText: { flexShrink: 1, marginTop: 0 },
   emptyState: {
     minHeight: 420,
     alignItems: "center",
@@ -1242,28 +1157,6 @@ const styles = StyleSheet.create({
     textAlign: "right",    color: "#E53C3C",
     fontSize: 14,
     fontWeight: "900",
-  },
-  inputWithIcon: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    backgroundColor: "#F6EEE9",
-    borderWidth: 1,
-    borderColor: "#EFE4DE",
-    paddingHorizontal: 12,
-  },
-  input: {
-    flex: 1,
-    marginLeft: 10,
-    color: "#30241F",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  notesInput: {
-    minHeight: 82,
-    textAlignVertical: "top",
-    paddingTop: 14,
   },
   rowGap: {
     flexDirection: "row",
@@ -1460,32 +1353,6 @@ const styles = StyleSheet.create({
   },
   discountValue: {
     color: "#16A34A",
-  },
-  tipRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  tipButton: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "#EFE4DE",
-  },
-  tipButtonActive: {
-    borderColor: "#E53C3C",
-    backgroundColor: "rgba(255,77,77,0.08)",
-  },
-  tipButtonText: {
-    color: "#75665C",
-    fontWeight: "800",
-    fontSize: 13,
-  },
-  tipButtonTextActive: {
-    color: "#E53C3C",
   },
   primaryButton: {
     backgroundColor: "#E53C3C",
