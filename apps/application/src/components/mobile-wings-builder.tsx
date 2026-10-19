@@ -193,6 +193,7 @@ type Props = {
   onClose: () => void;
   editingLine?: CartItem | null;
   saladMenuItems?: MenuItem[];
+  initialWeightId?: string | null;
 };
 
 /* ================================================================== */
@@ -205,6 +206,7 @@ export function WingsBuilderMobile({
   onClose,
   editingLine,
   saladMenuItems = [],
+  initialWeightId,
 }: Props) {
   const { addItem, replaceItem, fulfillmentType } = useCart();
   const { flavours, loading, error, retry } = useWingFlavours(item);
@@ -232,7 +234,7 @@ export function WingsBuilderMobile({
 
   /* State */
   const [selectedWeightId, setSelectedWeightId] = useState<string | null>(
-    editingLine?.menu_item_id ?? null,
+    editingLine?.menu_item_id ?? initialWeightId ?? null,
   );
   const initialWingType = editingPayload?.wing_type ?? null;
   const [wingType, setWingType] = useState<WingType>(initialWingType);
@@ -290,7 +292,7 @@ export function WingsBuilderMobile({
     if (visible && !prevVisible.current) {
       // Reset state for a new open (only if not editing)
       if (!editingLine) {
-        setSelectedWeightId(null);
+        setSelectedWeightId(initialWeightId ?? null);
         setWingType(null);
         setPreparation(null);
         setFlavourSelections([]);

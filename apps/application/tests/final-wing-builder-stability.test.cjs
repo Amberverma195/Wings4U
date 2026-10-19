@@ -309,7 +309,7 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
           return { data: { delivery_quote_token: 'tok-123', expires_at: new Date(Date.now() + 600000).toISOString() } };
         }
         if (url === '/api/v1/cart/quote') {
-          return { data: { final_payable_cents: 3498, lines: [{ menu_item_id: 'wings-1lb', quantity: 2 }] } };
+          return { data: { item_subtotal_cents: 3498, final_payable_cents: 3498, lines: [{ menu_item_id: 'wings-1lb', quantity: 2 }] } };
         }
         return { data: {} };
       };
@@ -415,9 +415,9 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
      4. Correct delivery-tip rounding
      ========================================================================= */
   describe('4. Correct delivery-tip rounding', () => {
-    test('rounds tips mathematically and returns 0 for non-delivery or none', () => {
-      // PICKUP returns 0 regardless of percentage
-      expect(calculateDeliveryTipCents(2000, 15, 'PICKUP')).toBe(0);
+    test('rounds tips mathematically for pickup and delivery, and returns 0 for none', () => {
+      // PICKUP accepts the same tip as DELIVERY
+      expect(calculateDeliveryTipCents(2000, 15, 'PICKUP')).toBe(300);
 
       // 'none' returns 0
       expect(calculateDeliveryTipCents(2000, 'none', 'DELIVERY')).toBe(0);

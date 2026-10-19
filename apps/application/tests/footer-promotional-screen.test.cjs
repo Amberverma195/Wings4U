@@ -298,3 +298,21 @@ test('Menu cards use the local category image fallback and keep the product acti
   const productCard = renderer.root.findAllByType('TouchableOpacity').find(node => Array.isArray(node.props.style) && node.props.style[0]?.borderColor === '#F0E2D9');
   expect(productCard).toBeDefined();
 });
+
+test('reward handoff opens the existing wings builder with the real 1lb SKU selected', async () => {
+  mockParams = { promotion: 'reward', category: 'wings', ts: 'reward-one' };
+  const product = { ...item('wings-by-the-pound'), builder_type: 'WINGS', weight_options: [
+    { menu_item_id: 'real-one-pound', weight_lb: 1 }, { menu_item_id: 'real-two-pound', weight_lb: 2 },
+  ] };
+  mockMenuResult = { ...mockMenuResult, loadedReloadKey: 'reward-one', menu: { categories: [{ id: 'wings', slug: 'wings', name: 'Wings', sort_order: 1, items: [product] }] } };
+  await mount(false);
+  expect(renderer.root.findByType('WingsBuilderMobile').props).toMatchObject({ item: product, initialWeightId: 'real-one-pound', visible: true, editingLine: null });
+  expect(mockCart.addItem).not.toHaveBeenCalled();
+});
+
+test('unavailable 1lb wings never creates a synthetic reward item', async () => {
+  mockParams = { promotion: 'reward', category: 'wings', ts: 'reward-unavailable' };
+  mockMenuResult = { ...mockMenuResult, loadedReloadKey: 'reward-unavailable' };
+  await mount(false); expect(Alert.alert).toHaveBeenCalledWith('Item unavailable', expect.any(String));
+  expect(mockCart.addItem).not.toHaveBeenCalled();
+});

@@ -99,7 +99,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const router = useRouter();
   // Deep-link params set by the Home promo carousel (e.g. ?category=wings&ts=...).
   const params = useLocalSearchParams<{ category?: string; ts?: string; itemSlug?: string; promotion?: string; query?: string; editKey?: string }>();
-  const footerReloadKey = !cinematic && (params.promotion === 'footer' || typeof params.editKey === 'string') && typeof params.ts === 'string' ? params.ts : undefined;
+  const footerReloadKey = !cinematic && (params.promotion === 'footer' || params.promotion === 'reward' || typeof params.editKey === 'string') && typeof params.ts === 'string' ? params.ts : undefined;
   const handledCartEdit = useRef<string | null>(null);
   const handledFooterRequest = useRef<string | null>(null);
   const footerNavigationNonce = useRef(0);
@@ -162,6 +162,8 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
+  const [rewardWeightId, setRewardWeightId] = useState<string | null>(null);
+  const handledRewardRequest = useRef<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -186,6 +188,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     const item = menu.categories.flatMap(category => category.items).find(candidate => candidate.id === line.menu_item_id ||
       [...(candidate.weight_options ?? []), ...(candidate.combo_options ?? [])].some(option => option.menu_item_id === line.menu_item_id));
     if (!item) { Alert.alert('Item no longer available', 'This item cannot be edited. You can remove it from your cart and choose another item.'); return; }
+    setRewardWeightId(null);
     setEditingCartItem(line);
     setSelectedItem(item);
   }, [cinematic, focused, params.editKey, params.ts, loading, menu, loadedReloadKey, footerReloadKey, cart.items]);
@@ -237,7 +240,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   const categoryParam = typeof params.category === 'string' ? params.category : undefined;
   const categoryParamTs = typeof params.ts === 'string' ? params.ts : undefined;
   useEffect(() => {
-    if (params.promotion === 'footer') return;
+    if (params.promotion === 'footer' || params.promotion === 'reward') return;
     if (!categoryParam || sortedCategories.length === 0) return;
     const resolved = resolveCategorySlug(categoryParam, sortedCategories);
     if (!resolved) return;
@@ -253,6 +256,23 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   }, [categoryParam, categoryParamTs, sortedCategories, params.promotion]);
 
   useEffect(() => {
+    if (cinematic || !focused || params.promotion !== 'reward' || !footerReloadKey || loading || !menu ||
+      loadedReloadKey !== footerReloadKey || handledRewardRequest.current === footerReloadKey) return;
+    handledRewardRequest.current = footerReloadKey;
+    const category = menu.categories.find(category => category.items.some(item => item.builder_type === 'WINGS' &&
+      (item.slug === 'wings-1lb' || item.slug === 'wings-by-the-pound')));
+    const item = category?.items.find(item => item.slug === 'wings-1lb') ?? category?.items.find(item => item.slug === 'wings-by-the-pound');
+    const option = item?.weight_options?.find(option => option.weight_lb === 1);
+    if (!item || !item.is_available || item.stock_status === 'UNAVAILABLE' ||
+      (item.allowed_fulfillment_type !== 'BOTH' && item.allowed_fulfillment_type !== fulfillmentType) ||
+      (item.slug !== 'wings-1lb' && !option)) {
+      Alert.alert('Item unavailable', '1lb individual wings are not available for this order time or type. Please check the menu.'); return;
+    }
+    setEditingCartItem(null); setRewardWeightId(option?.menu_item_id ?? item.id);
+    setActiveCategorySlug(category!.slug); setSearchQuery(''); setAvailableOnly(false); setSelectedItem(item);
+  }, [cinematic, focused, params.promotion, footerReloadKey, loading, menu, loadedReloadKey, fulfillmentType]);
+
+  useEffect(() => {
     if (cinematic || params.promotion !== 'search' || typeof params.query !== 'string') return;
     setSearchQuery(params.query);
     setAvailableOnly(false);
@@ -263,6 +283,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     if (cinematic || params.promotion !== 'footer' || !focused || !footerReloadKey || loading || error || !menu ||
       loadedReloadKey !== footerReloadKey || handledFooterRequest.current === footerReloadKey) return;
     handledFooterRequest.current = footerReloadKey;
+    setRewardWeightId(null);
     setSelectedItem(null);
     const target = resolveFooterPromotion(menu.categories, categoryParam ?? '',
       typeof params.itemSlug === 'string' ? params.itemSlug : undefined, fulfillmentType);
@@ -286,6 +307,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   }, [orderSetup.openOrderSetup]);
 
   const choosePopularItem = (item: MenuItem, line: CartItem | null) => {
+    setRewardWeightId(null);
     if (line || needsCustomization(item)) {
       setEditingCartItem(line);
       setSelectedItem(item);
@@ -510,11 +532,13 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
 
         {selectedItem && isWingBuilderItem(selectedItem) ? (
           <WingsBuilderMobile
+            key={`${selectedItem.id}:${editingCartItem?.key ?? 'new'}:${rewardWeightId ?? ''}`}
             visible={Boolean(selectedItem)}
             item={selectedItem}
             editingLine={editingCartItem}
+            initialWeightId={rewardWeightId}
             saladMenuItems={menu?.categories?.find((c) => c.slug === 'salads')?.items ?? []}
-            onClose={() => { setSelectedItem(null); setEditingCartItem(null); }}
+            onClose={() => { setSelectedItem(null); setEditingCartItem(null); setRewardWeightId(null); }}
           />
         ) : selectedItem && isComboBuilderItem(selectedItem) ? (
           <ComboBuilderMobile

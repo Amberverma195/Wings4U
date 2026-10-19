@@ -4,6 +4,7 @@ import { useOrderSetup } from '../context/order-setup';
 import { usePromo } from '../context/promo';
 import { useSession } from '../context/session';
 import { checkoutFingerprint, validateCheckout, type CheckoutSnapshot } from '../lib/checkout-preparation';
+import { apiJson } from '../lib/api';
 
 export function useCheckoutPreparation() {
   const cart = useCart(), setup = useOrderSetup(), promo = usePromo(), session = useSession();
@@ -17,7 +18,7 @@ export function useCheckoutPreparation() {
   const snapshot = useCallback((): CheckoutSnapshot | null => {
     const { cart, setup, promo, session } = latest.current;
     const selection = setup.getConfirmedSetup();
-    if (!selection || !cart.isCartHydrated || !session.loaded) return null;
+    if (!selection || !cart.isCartHydrated || !session.loaded || promo.hydrated === false) return null;
     return { locationId: cart.locationId, items: cart.items, setup: selection,
       driverTipPercent: cart.driverTipPercent, promoCode: promo.promoCode,
       applyWingsReward: promo.applyWingsReward, customerId: session.authenticated ? session.user?.id ?? null : null };
@@ -50,7 +51,17 @@ export function useCheckoutPreparation() {
       const start = snapshot();
       if (!start) throw new Error('Please confirm your order details again before checkout.');
       const key = checkoutFingerprint(start);
-      await validateCheckout(start);
+      const request: typeof apiJson = async (path, init) => {
+        const isCurrent = () => mounted.current && attempt === generation.current && snapshot()?.customerId === start.customerId;
+        if (!isCurrent()) throw new Error('Your cart or account changed. Please try again.');
+        try { return await apiJson(path, init); }
+        catch (cause) {
+          if ((cause as { status?: number }).status !== 401 || !start.customerId || !isCurrent()) throw cause;
+          if (!await latest.current.session.refresh() || !isCurrent()) throw cause;
+          return apiJson(path, init);
+        }
+      };
+      await validateCheckout(start, request);
       const end = snapshot();
       if (attempt !== generation.current || !mounted.current) return false;
       if (!end || checkoutFingerprint(end) !== key) throw new Error('Your cart or order details changed. Review them and try Checkout again.');

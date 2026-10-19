@@ -3,7 +3,7 @@
  *
  * Mirrors `apps/web/src/lib/env.ts` but uses Expo Constants instead of
  * `process.env.NEXT_PUBLIC_*` variables. Config values come from
- * `app.json -> expo.extra` or the `.env` loaded via `expo-constants`.
+ * `app.config.js -> expo.extra`, using public Expo build variables.
  *
  * In development the API runs on your machine at `http://<LAN_IP>:3001`.
  * For the Android emulator, `10.0.2.2` maps to the host loopback.
@@ -12,6 +12,7 @@
 import Constants from "expo-constants";
 import { isDevice } from "expo-device";
 import { Platform } from "react-native";
+const { validateApiOrigin } = require('../../config/api-origin.cjs') as { validateApiOrigin: (value: string, production: boolean) => string };
 
 /** Fallback dev host: Android emulator -> 10.0.2.2, iOS sim -> 127.0.0.1 */
 const DEV_HOST = Platform.OS === "android" ? "10.0.2.2" : "127.0.0.1";
@@ -20,12 +21,16 @@ const DEV_API_PORT = "3001";
 /**
  * Base URL for `/api/v1/*` JSON calls.
  *
- * Resolution order:
- *   1. Android emulator in development: host loopback through `10.0.2.2`
- *   2. `Constants.expoConfig?.extra?.apiOrigin` – explicit override in app.json
- *   3. Dev fallback based on platform
+ * Release builds require a public HTTPS origin from app.config.js.
+ * Development retains the emulator override, configured LAN origin, then platform fallback.
  */
 export function getApiBase(): string {
+  const production = !__DEV__ || Constants.expoConfig?.extra?.environment === 'production';
+  if (production) {
+    const origin = Constants.expoConfig?.extra?.apiOrigin;
+    if (typeof origin !== 'string' || !origin.trim()) throw new Error('Production mobile API origin is not configured.');
+    return validateApiOrigin(origin, true);
+  }
   if (__DEV__ && Platform.OS === "android" && !isDevice) {
     return `http://10.0.2.2:${DEV_API_PORT}`;
   }
@@ -33,7 +38,7 @@ export function getApiBase(): string {
     (Constants.expoConfig?.extra as Record<string, unknown> | undefined)
       ?.apiOrigin;
   if (typeof explicit === "string" && explicit.trim()) {
-    return explicit.replace(/\/$/, "");
+    return validateApiOrigin(explicit.trim(), false);
   }
   // Dev fallback
   return `http://${DEV_HOST}:${DEV_API_PORT}`;
@@ -53,7 +58,7 @@ export function getRealtimeOrigin(): string {
     | undefined;
   const realtime = extra?.realtimeOrigin;
   if (typeof realtime === "string" && realtime.trim()) {
-    return realtime.replace(/\/$/, "");
+    return validateApiOrigin(realtime.trim(), !__DEV__ || extra?.environment === 'production');
   }
   return getApiBase();
 }

@@ -7,7 +7,7 @@ jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
 jest.mock('expo-linking', () => ({ createURL: () => 'wings4u://stripe' }));
 jest.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
-jest.mock('react-native', () => ({ ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView', ScrollView: 'ScrollView',
+jest.mock('react-native', () => ({ Image: 'Image', Pressable: 'Pressable', Modal: ({ visible, children }) => visible ? require('react').createElement('Modal', {}, children) : null, ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView', ScrollView: 'ScrollView',
   Text: 'Text', TextInput: 'TextInput', TouchableOpacity: 'TouchableOpacity', View: 'View', Platform: { OS: 'ios' }, StyleSheet: { create: x => x } }));
 jest.mock('lucide-react-native', () => ({ CheckCircle2: 'Icon', CreditCard: 'Icon', MapPin: 'Icon', MessageSquareText: 'Icon', ShoppingBag: 'Icon', Wallet: 'Icon' }));
 jest.mock('@stripe/stripe-react-native', () => ({ initStripe: jest.fn(), useStripe: () => ({ initPaymentSheet: jest.fn(), presentPaymentSheet: jest.fn() }) }));
@@ -97,4 +97,50 @@ test('delivery failure stays blocked until retry; pickup never needs an address'
   expect(latest.address_snapshot_json).toBeUndefined(); expect(latest.delivery_quote_token).toBeUndefined();
   mockCart = { ...mockCart, fulfillmentType: 'DELIVERY' }; mockSetup.deliveryAddress = { line1: '99 New St', postal_code: 'N6A1A1' };
   await rerender(); expect(place().props.disabled).toBe(true); await settle(); expect(place().props.disabled).toBe(false);
+});
+
+test('pickup coupon and tip selections reach final revalidation and checkout without losing automatic codes', async () => {
+  mockCart = { ...mockCart, fulfillmentType: 'PICKUP', driverTipPercent: 15 };
+  mockPromo = { ...mockPromo, promoCode: 'SAVE' };
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote'
+    ? { data: { ...quote(JSON.parse(init.body)), applied_promo_code: 'AUTO, SAVE' } } : original(url, init));
+  await rerender(); await settle(); expect(place().props.disabled).toBe(false);
+  await act(async () => place().props.onPress());
+  const submit = apiFetch.mock.calls.find(call => call[0] === '/api/v1/checkout');
+  expect(JSON.parse(submit[1].body)).toMatchObject({ fulfillment_type: 'PICKUP', driver_tip_cents: 150, promo_code: 'SAVE' });
+  const pricing = apiJson.mock.calls.filter(call => call[0] === '/api/v1/cart/quote');
+  expect(pricing.length).toBeGreaterThanOrEqual(2); // Preview plus immediate pre-submission revalidation.
+  expect(JSON.parse(pricing.at(-1)[1].body).driver_tip_cents).toBe(150);
+});
+
+test('expired coupon rejection at submission prevents checkout/payment and invalidates the selection', async () => {
+  mockCart = { ...mockCart, fulfillmentType: 'PICKUP' }; mockPromo = { ...mockPromo, promoCode: 'SAVE' };
+  await rerender(); await settle(); expect(place().props.disabled).toBe(false);
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? Promise.reject(new Error('Invalid or expired promo code')) : original(url, init));
+  await act(async () => place().props.onPress());
+  expect(mockPromo.clearPromoCode).toHaveBeenCalled();
+  expect(apiFetch.mock.calls.some(call => /\/checkout$|payment-intent/.test(call[0]))).toBe(false);
+  expect(text(renderer.toJSON())).toContain('Invalid or expired promo code');
+});
+
+test('changed total is shown for review before any order or payment request', async () => {
+  mockCart = { ...mockCart, fulfillmentType: 'PICKUP' }; await rerender(); await settle();
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote'
+    ? { data: { ...quote(JSON.parse(init.body)), final_payable_cents: 1200 } } : original(url, init));
+  await act(async () => place().props.onPress());
+  expect(apiFetch.mock.calls.some(call => /\/checkout$|payment-intent/.test(call[0]))).toBe(false);
+  expect(text(renderer.toJSON())).toContain('Your order total changed');
+});
+
+test('cart changes during final validation cannot submit a stale order', async () => {
+  mockCart = { ...mockCart, fulfillmentType: 'PICKUP' }; await rerender(); await settle();
+  let release; const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? new Promise(resolve => { release ??= resolve; }) : original(url, init));
+  let request; await act(async () => { request = place().props.onPress(); });
+  mockCart = { ...mockCart, items: [{ ...mockCart.items[0], quantity: 2 }] }; await rerender();
+  await act(async () => { release({ data: quote({ items: [{ quantity: 1 }], driver_tip_cents: 0 }) }); await request; });
+  expect(apiFetch.mock.calls.some(call => /\/checkout$|payment-intent/.test(call[0]))).toBe(false);
 });

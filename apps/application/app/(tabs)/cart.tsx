@@ -1,7 +1,9 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,31 +13,21 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused, useRouter } from "expo-router";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react-native";
-import { apiJson } from "../../src/lib/api";
-import { getCartItemIssue, issueAffectsLine, type CartItemIssue } from "../../src/lib/cart-validation";
-import { useCart, type CartContextValue } from "../../src/context/cart";
+import { issueAffectsLine } from "../../src/lib/cart-validation";
+import { useCart } from "../../src/context/cart";
 import { useOrderSetup } from "../../src/context/order-setup";
 import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
 import { usePromo } from "../../src/context/promo";
-import { useAccountData } from "../../src/hooks/use-account-data";
-import { useSession } from "../../src/context/session";
-import { promoBenefitLabel } from "../../src/lib/deals-display";
+import { useCartPricing } from "../../src/hooks/use-cart-pricing";
+import { CartCoupons } from "../../src/components/cart-coupons";
 import {
-  isPromoRejectedQuoteError,
   promoDiscountRows,
-  quotePromoParams,
   wingsRewardBlockedReason,
 } from "../../src/lib/promo-selection";
-import {
-  calculateCartSubtotal,
-  calculateDeliveryTipCents,
-  getCartItemSubtotal,
-} from "../../src/lib/wing-builder-logic";
+import { getCartItemSubtotal } from "../../src/lib/wing-builder-logic";
 import type {
-  ActivePromo,
   CartBuilderPayload,
   CartItem,
-  CartQuoteResponse,
 } from "../../src/lib/types";
 
 function formatPrice(cents: number): string {
@@ -44,11 +36,6 @@ function formatPrice(cents: number): string {
 
 function lineSubtotal(item: CartItem): number {
   return getCartItemSubtotal(item);
-}
-
-function driverTipCents(cart: CartContextValue): number {
-  const subtotal = calculateCartSubtotal(cart.items);
-  return calculateDeliveryTipCents(subtotal, cart.driverTipPercent, cart.fulfillmentType);
 }
 
 function payloadSummary(payload: CartBuilderPayload | undefined): string[] {
@@ -87,20 +74,6 @@ function itemDetails(item: CartItem): string[] {
   return parts;
 }
 
-function buildQuotePayloadItems(items: CartItem[]) {
-  return items.map((item) => ({
-    menu_item_id: item.menu_item_id,
-    quantity: item.quantity,
-    modifier_selections: item.modifier_selections
-      .map((selection) => selection.modifier_option_id)
-      .filter((id): id is string => Boolean(id))
-      .map((modifier_option_id) => ({ modifier_option_id })),
-    removed_ingredients: item.removed_ingredients ?? [],
-    special_instructions: item.special_instructions.trim() || undefined,
-    builder_payload: item.builder_payload,
-  }));
-}
-
 export default function CartScreen() {
   const router = useRouter();
   const cart = useCart();
@@ -108,106 +81,12 @@ export default function CartScreen() {
   const orderSetup = useOrderSetup();
   const checkout = useCheckoutPreparation();
   const promo = usePromo();
-  const account = useAccountData();
-  const session = useSession();
-  const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [itemIssue, setItemIssue] = useState<{ items: CartItem[]; issue: CartItemIssue } | null>(null);
-  const [promoNotice, setPromoNotice] = useState<string | null>(null);
+  const pricing = useCartPricing({ locationId: cart.locationId, items: cart.items, fulfillmentType: cart.fulfillmentType,
+    scheduledFor: cart.scheduledFor, driverTipPercent: cart.driverTipPercent,
+    promoCode: promo.promoCode, applyWingsReward: promo.applyWingsReward },
+    focused && cart.isCartHydrated && promo.hydrated !== false, promo.clearPromoCode);
+  const { quote, error: quoteError, loading: quoteLoading, notice: promoNotice } = pricing;
   useEffect(() => { if (!focused) checkout.cancel(); }, [focused, checkout.cancel]);
-
-  const quoteDependencyKey = useMemo(
-    () =>
-      JSON.stringify({
-        items: buildQuotePayloadItems(cart.items),
-        fulfillmentType: cart.fulfillmentType,
-        scheduledFor: cart.scheduledFor,
-        driverTipPercent: cart.driverTipPercent,
-        promoCode: promo.promoCode,
-        applyWingsReward: promo.applyWingsReward,
-      }),
-    [
-      cart.driverTipPercent,
-      cart.fulfillmentType,
-      cart.items,
-      cart.scheduledFor,
-      promo.promoCode,
-      promo.applyWingsReward,
-    ],
-  );
-
-  const applyCoupon = (code: string) => {
-    setPromoNotice(null);
-    promo.applyPromoCode(code);
-  };
-
-  const applyReward = () => {
-    setPromoNotice(null);
-    promo.redeemWingsReward();
-  };
-
-  useEffect(() => {
-    if (cart.items.length === 0) {
-      setQuote(null);
-      setQuoteError(null);
-      setQuoteLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const timeout = setTimeout(() => {
-      setQuoteLoading(true);
-      setQuoteError(null);
-      void (async () => {
-        try {
-          const envelope = await apiJson<CartQuoteResponse>("/api/v1/cart/quote", {
-            method: "POST",
-            locationId: cart.locationId,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location_id: cart.locationId,
-              fulfillment_type: cart.fulfillmentType,
-              items: buildQuotePayloadItems(cart.items),
-              scheduled_for: cart.scheduledFor ?? undefined,
-              driver_tip_cents: driverTipCents(cart),
-              ...quotePromoParams(promo),
-            }),
-          });
-          if (!cancelled) {
-            setQuote(envelope.data ?? null);
-            setItemIssue(null);
-          }
-        } catch (cause) {
-          if (!cancelled) {
-            const issue = getCartItemIssue(cause);
-            setItemIssue(issue ? { items: cart.items, issue } : null);
-            const message =
-              cause instanceof Error ? cause.message : "Unable to price cart";
-            // Server rejected the selected promo (invalid/expired/not eligible).
-            // Drop it and let the effect re-quote without the code, keeping the
-            // last good quote on screen meanwhile. Mirrors the website.
-            if (isPromoRejectedQuoteError(message) && promo.promoCode) {
-              promo.clearPromoCode();
-              setPromoNotice(message);
-            } else {
-              setQuote(null);
-              setQuoteError(message);
-            }
-          }
-        } finally {
-          if (!cancelled) {
-            setQuoteLoading(false);
-          }
-        }
-      })();
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
-  }, [cart, quoteDependencyKey]);
 
   const localSubtotal = useMemo(
     () => cart.items.reduce((sum, item) => sum + lineSubtotal(item), 0),
@@ -216,16 +95,9 @@ export default function CartScreen() {
 
   const discountRows = useMemo(() => promoDiscountRows(quote), [quote]);
   const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, quote);
-  const rewards = account.data.wingsRewards;
-  const rewardEligible = Boolean(
-    rewards &&
-      rewards.stamps_per_reward > 0 &&
-      rewards.available_stamps >= rewards.stamps_per_reward,
-  );
-  const availableCoupons: ActivePromo[] = account.data.promos.filter(
-    (candidate) => !candidate.autoApply,
-  );
-
+  const itemCount = cart.items.reduce((total, item) => total + item.quantity, 0);
+  const checkoutDisabled = checkout.busy || cart.isCartHydrating || !orderSetup.ready || promo.hydrated === false ||
+    Boolean(pricing.issue || rewardBlockedReason || quoteError?.includes('Minimum subtotal for delivery'));
   return (
     <SafeAreaView edges={["left", "right"]} style={styles.container}>
       {focused && <StatusBar style="dark" />}
@@ -239,13 +111,13 @@ export default function CartScreen() {
       >
         {cart.isCartHydrating ? (
           <View style={styles.centerState}>
-            <ActivityIndicator color="#FF4D4D" />
+            <ActivityIndicator color="#F97316" />
             <Text style={styles.centerText}>Loading cart...</Text>
           </View>
         ) : cart.items.length === 0 ? (
           <View style={styles.centerState}>
             <View style={styles.emptyIcon}>
-              <ShoppingBag size={32} color="#FF4D4D" />
+              <ShoppingBag size={32} color="#F97316" />
             </View>
             <Text style={styles.emptyTitle}>Your cart is empty</Text>
             <TouchableOpacity
@@ -258,23 +130,28 @@ export default function CartScreen() {
         ) : (
           <>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Items</Text>
+              <Text accessibilityRole="header" style={styles.orderTitle}>Your Order</Text>
+              <Text style={styles.itemCount}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
               {cart.items.map((item, itemIndex) => {
                 const details = itemDetails(item);
-                const issue = itemIssue?.items === cart.items && issueAffectsLine(itemIssue.issue, item.menu_item_id, itemIndex) ? itemIssue.issue : null;
+                const pricedLine = quote?.lines?.[itemIndex];
+                const confirmedLineTotal = pricedLine?.menu_item_id === item.menu_item_id && pricedLine.quantity === item.quantity
+                  ? pricedLine.line_total_cents : undefined;
+                const issue = pricing.issue && issueAffectsLine(pricing.issue, item.menu_item_id, itemIndex) ? pricing.issue : null;
                 return (
                   <View key={item.key} style={styles.cartLine}>
                     <View style={styles.cartLineTop}>
+                      {item.image_url ? <Image source={{ uri: item.image_url }} accessibilityLabel={item.name} style={styles.itemImage} /> : null}
                       <View style={styles.cartLineInfo}>
                         <Text style={styles.itemName}>{item.name}</Text>
                         {details.length > 0 ? (
-                          <Text style={styles.itemDetails} numberOfLines={3}>
+                          <Text style={styles.itemDetails}>
                             {details.join(" • ")}
                           </Text>
                         ) : null}
                       </View>
                       <Text style={styles.itemPrice}>
-                        {formatPrice(lineSubtotal(item))}
+                        {formatPrice(confirmedLineTotal ?? lineSubtotal(item))}
                       </Text>
                     </View>
 
@@ -283,6 +160,7 @@ export default function CartScreen() {
                       <View style={styles.quantityControl}>
                         <TouchableOpacity
                           style={styles.iconButton}
+                          accessibilityRole="button" accessibilityLabel={`Increase ${item.name} quantity`}
                           onPress={() =>
                             cart.updateQuantity(item.key, item.quantity - 1)
                           }
@@ -308,7 +186,7 @@ export default function CartScreen() {
                         style={styles.removeButton}
                         onPress={() => cart.removeItem(item.key)}
                       >
-                        <Trash2 size={16} color="#FF4D4D" />
+                        <Trash2 size={16} color="#F97316" />
                       </TouchableOpacity>
                       </View>
                     </View>
@@ -317,103 +195,17 @@ export default function CartScreen() {
               })}
             </View>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Deals & rewards</Text>
-
-              {promo.promoCode ? (
-                <View style={styles.appliedRow}>
-                  <View style={styles.appliedInfo}>
-                    <Text style={styles.appliedLabel}>Promo code</Text>
-                    <Text style={styles.appliedValue}>{promo.promoCode}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={promo.clearPromoCode}
-                    style={styles.removeChip}
-                  >
-                    <Text style={styles.removeChipText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : promo.applyWingsReward ? (
-                <View style={styles.appliedRow}>
-                  <View style={styles.appliedInfo}>
-                    <Text style={styles.appliedLabel}>Reward</Text>
-                    <Text style={styles.appliedValue}>Free 1lb wings</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={promo.clearWingsReward}
-                    style={styles.removeChip}
-                  >
-                    <Text style={styles.removeChipText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              {rewardBlockedReason ? (
-                <Text style={styles.promoNotice}>{rewardBlockedReason}</Text>
-              ) : null}
-              {promoNotice ? (
-                <Text style={styles.promoNotice}>{promoNotice}</Text>
-              ) : null}
-
-              {!session.authenticated ? (
-                <Text style={styles.dealsHint}>
-                  Sign in from the Deals tab to use coupons and rewards.
-                </Text>
-              ) : (
-                <>
-                  {rewardEligible && !promo.applyWingsReward ? (
-                    <TouchableOpacity
-                      style={styles.dealOption}
-                      onPress={applyReward}
-                    >
-                      <View style={styles.dealOptionInfo}>
-                        <Text style={styles.dealOptionTitle}>Free 1lb wings</Text>
-                        <Text style={styles.dealOptionMeta}>
-                          Redeem your wings reward
-                        </Text>
-                      </View>
-                      <Text style={styles.applyText}>Apply</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {availableCoupons.length > 0 ? <Text style={styles.dealOptionMeta}>Party Specials are excluded from coupons.</Text> : null}
-                  {availableCoupons.map((coupon) => {
-                    const applied = promo.promoCode === coupon.code;
-                    return (
-                      <TouchableOpacity
-                        key={coupon.id}
-                        style={styles.dealOption}
-                        disabled={applied}
-                        onPress={() => applyCoupon(coupon.code)}
-                      >
-                        <View style={styles.dealOptionInfo}>
-                          <Text style={styles.dealOptionTitle}>{coupon.name}</Text>
-                          <Text style={styles.dealOptionMeta}>
-                            {coupon.code} • {promoBenefitLabel(coupon)}
-                          </Text>
-                        </View>
-                        <Text
-                          style={[styles.applyText, applied && styles.appliedText]}
-                        >
-                          {applied ? "Applied" : "Apply"}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  {availableCoupons.length === 0 &&
-                  !rewardEligible &&
-                  !promo.promoCode &&
-                  !promo.applyWingsReward ? (
-                    <Text style={styles.dealsHint}>
-                      No coupons available right now.
-                    </Text>
-                  ) : null}
-                </>
-              )}
-            </View>
-
             <View style={styles.summary}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>Order Summary</Text>
+              <CartCoupons active={focused} quote={quote} requestSelection={pricing.requestSelection} onValidated={pricing.acceptSelection} disabled={cart.isCartHydrating || promo.hydrated === false} />
+              <Text style={styles.tipLabel}>{cart.fulfillmentType === 'DELIVERY' ? 'Add a tip for your driver' : 'Add a tip'}</Text>
+              <View style={styles.tipRow}>{(['none', 10, 15, 20] as const).map(tip => <TouchableOpacity key={String(tip)} accessibilityRole="button"
+                accessibilityLabel={tip === 'none' ? 'No tip' : 'Tip ' + tip + '%'} accessibilityState={{ selected: cart.driverTipPercent === tip }}
+                style={[styles.tipButton, cart.driverTipPercent === tip && styles.tipActive]} onPress={() => cart.setDriverTipPercent(tip)}>
+                <Text style={cart.driverTipPercent === tip ? styles.tipActiveText : styles.tipText}>{tip === 'none' ? 'None' : tip + '%'}</Text>
+              </TouchableOpacity>)}</View>
+              {rewardBlockedReason ? <Text style={styles.promoNotice}>{rewardBlockedReason}</Text> : null}
+              {promoNotice ? <Text style={styles.promoNotice}>{promoNotice}</Text> : null}
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Subtotal</Text>
                 <Text style={styles.summaryValue}>
@@ -431,32 +223,18 @@ export default function CartScreen() {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Tax</Text>
                 <Text style={styles.summaryValue}>
-                  {quoteLoading ? "..." : formatPrice(quote?.tax_cents ?? 0)}
+                  {quoteLoading ? "Updating?" : quote ? formatPrice(quote.tax_cents) : "Calculated at checkout"}
                 </Text>
               </View>
-              {cart.fulfillmentType === "DELIVERY" ? (
-                <>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Delivery</Text>
-                    <Text style={styles.summaryValue}>
-                      {quoteLoading
-                        ? "..."
-                        : quote?.delivery_fee_waived
-                          ? "Free"
-                          : formatPrice(quote?.delivery_fee_cents ?? 0)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Tip</Text>
-                    <Text style={styles.summaryValue}>
-                      {formatPrice(quote?.driver_tip_cents ?? driverTipCents(cart))}
-                    </Text>
-                  </View>
-                </>
-              ) : null}
+              {cart.fulfillmentType === 'DELIVERY' ? <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Delivery fee</Text>
+                <Text style={styles.summaryValue}>{!quote ? 'Calculated at checkout' : quote.delivery_fee_waived ? 'Free' :
+                  formatPrice(quote.delivery_fee_cents) + (quote.delivery_fee_is_estimate ? ' estimated ? confirmed at checkout' : '')}</Text>
+              </View> : null}
+              {quote && quote.driver_tip_cents > 0 ? <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Tip</Text><Text style={styles.summaryValue}>{formatPrice(quote.driver_tip_cents)}</Text></View> : null}
               <View style={styles.divider} />
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Total</Text>
+                <Text style={styles.totalLabel}>{quote ? (quote.delivery_fee_is_estimate ? 'Estimated total' : 'Total') : 'Est. Subtotal'}</Text>
                 <Text style={styles.totalValue}>
                   {quoteLoading
                     ? "..."
@@ -464,7 +242,8 @@ export default function CartScreen() {
                 </Text>
               </View>
               {quoteError ? (
-                <Text style={styles.quoteError}>{quoteError}</Text>
+                <View><Text accessibilityRole="alert" style={styles.quoteError}>{quoteError}</Text>
+                  <TouchableOpacity accessibilityRole="button" onPress={pricing.refresh}><Text>Retry pricing</Text></TouchableOpacity></View>
               ) : null}
               {checkout.error && checkout.error !== quoteError ? <Text style={styles.quoteError} accessibilityRole="alert">{checkout.error}</Text> : null}
             </View>
@@ -472,9 +251,9 @@ export default function CartScreen() {
             <TouchableOpacity
               style={[styles.checkoutButtonInline,
                 styles.checkoutButton,
-                (checkout.busy || cart.isCartHydrating || !orderSetup.ready) && styles.checkoutButtonDisabled,
+                checkoutDisabled && styles.checkoutButtonDisabled,
               ]}
-              disabled={checkout.busy || cart.isCartHydrating || !orderSetup.ready}
+              disabled={checkoutDisabled}
               onPress={async () => { if (await checkout.prepare()) router.push("/checkout"); }}
             >
               <Text style={styles.checkoutButtonText}>{checkout.busy ? 'Checking order…' : 'Checkout'}</Text>
@@ -487,9 +266,9 @@ export default function CartScreen() {
           <TouchableOpacity
             style={[
               styles.checkoutButton,
-              (checkout.busy || cart.isCartHydrating || !orderSetup.ready) && styles.checkoutButtonDisabled,
+              checkoutDisabled && styles.checkoutButtonDisabled,
             ]}
-            disabled={checkout.busy || cart.isCartHydrating || !orderSetup.ready}
+            disabled={checkoutDisabled}
             onPress={async () => { if (await checkout.prepare()) router.push("/checkout"); }}
           >
             <Text style={styles.checkoutButtonText}>Checkout</Text>
@@ -503,7 +282,7 @@ export default function CartScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: "#f8c676",
   },
   scroll: {
     flex: 1,
@@ -532,52 +311,35 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,77,77,0.1)",
+    backgroundColor: "rgba(249,115,22,0.1)",
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: "800",
     color: "#1A1A1A",
   },
+  orderTitle: { fontSize: 28, fontWeight: '700', fontFamily: Platform?.OS === 'ios' ? 'Georgia' : 'serif', color: '#111827' },
+  itemCount: { marginTop: 4, marginBottom: 16, color: '#666', fontSize: 14 },
+  itemImage: { width: 64, height: 64, borderRadius: 12 },
+  tipLabel: { fontSize: 14, fontWeight: '700', marginBottom: 10, color: '#30251E' },
+  tipRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  tipButton: { flex: 1, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#E5E5E5' },
+  tipActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
+  tipText: { fontWeight: '700', color: '#444' }, tipActiveText: { fontWeight: '800', color: '#FFF' },
   section: {
     marginTop: 18,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontFamily: Platform?.OS === 'ios' ? 'Georgia' : 'serif',
+    fontSize: 22,
     fontWeight: "800",
     color: "#1A1A1A",
     marginBottom: 10,
   },
-  segmented: {
-    flexDirection: "row",
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: "#EFEFEF",
-  },
-  segment: {
-    flex: 1,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 9,
-  },
-  segmentActive: {
-    backgroundColor: "#FF4D4D",
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#666",
-  },
-  segmentTextActive: {
-    color: "#FFF",
-  },
   cartLine: {
     backgroundColor: "#FFF",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: "#F1F1F1",
@@ -591,19 +353,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   itemName: {
-    color: "#1A1A1A",
-    fontSize: 15,
+    color: "#0C0300",
+    fontSize: 16,
     fontWeight: "800",
   },
   itemDetails: {
     marginTop: 5,
-    color: "#777",
-    fontSize: 12,
-    lineHeight: 17,
+    color: "#6b7280",
+    fontSize: 13,
+    lineHeight: 19,
   },
   itemPrice: {
-    color: "#FF4D4D",
-    fontSize: 15,
+    color: "#EA580C",
+    fontSize: 20,
     fontWeight: "800",
   },
   lineActions: {
@@ -622,9 +384,9 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   iconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#FFF",
     alignItems: "center",
     justifyContent: "center",
@@ -642,44 +404,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,77,77,0.08)",
-  },
-  appliedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(22,163,74,0.08)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  appliedInfo: {
-    flex: 1,
-  },
-  appliedLabel: {
-    color: "#15803D",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  appliedValue: {
-    color: "#166534",
-    fontSize: 15,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  removeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(185,28,28,0.08)",
-  },
-  removeChipText: {
-    color: "#B91C1C",
-    fontWeight: "800",
-    fontSize: 12,
+    backgroundColor: "rgba(249,115,22,0.08)",
   },
   promoNotice: {
     color: "#B45309",
@@ -692,50 +417,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 10,
   },
-  dealsHint: {
-    color: "#888",
-    fontSize: 13,
-    fontWeight: "600",
-    paddingVertical: 4,
-  },
-  dealOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#F1F1F1",
-  },
-  dealOptionInfo: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  dealOptionTitle: {
-    color: "#1A1A1A",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  dealOptionMeta: {
-    color: "#777",
-    fontSize: 12,
-    marginTop: 3,
-  },
-  applyText: {
-    color: "#FF4D4D",
-    fontWeight: "900",
-    fontSize: 13,
-  },
-  appliedText: {
-    color: "#16A34A",
-  },
   summary: {
     marginTop: 10,
     backgroundColor: "#FFF",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 18,
+    padding: 20,
     borderWidth: 1,
     borderColor: "#F1F1F1",
   },
@@ -746,11 +432,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   summaryLabel: {
+    flex: 1,
+    paddingRight: 12,
     color: "#666",
     fontSize: 14,
     fontWeight: "600",
   },
   summaryValue: {
+    maxWidth: '65%', textAlign: 'right', flexShrink: 1,
     color: "#1A1A1A",
     fontSize: 14,
     fontWeight: "800",
@@ -772,6 +461,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   totalLabel: {
+    flex: 1,
+    paddingRight: 8,
     fontSize: 18,
     fontWeight: "900",
     color: "#1A1A1A",
@@ -779,7 +470,7 @@ const styles = StyleSheet.create({
   totalValue: {
     fontSize: 20,
     fontWeight: "900",
-    color: "#FF4D4D",
+    color: "#F97316",
   },
   quoteError: {
     marginTop: 12,
@@ -789,7 +480,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   primaryButton: {
-    backgroundColor: "#FF4D4D",
+    backgroundColor: "#F97316",
     paddingHorizontal: 28,
     paddingVertical: 13,
     borderRadius: 12,
@@ -806,7 +497,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FF4D4D",
+    backgroundColor: "#F97316",
   },
   checkoutButtonInline: {
     display: "none",
@@ -818,7 +509,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: "#f8c676",
     borderTopWidth: 1,
     borderTopColor: "#EEEEEE",
   },

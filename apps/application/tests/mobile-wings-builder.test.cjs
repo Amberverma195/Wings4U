@@ -160,6 +160,14 @@ afterEach(async () => {
 });
 
 describe('WingsBuilderMobile', () => {
+  test('reward initial size selects 1lb but still requires the normal preparation and flavours', async () => {
+    await act(async () => { renderer = create(React.createElement(WingsBuilderMobile, { item: wingsItem, visible: true, onClose, initialWeightId: 'wings-1lb' })); });
+    const size = renderer.root.findAll(node => node.type?.name === 'OptionPills')
+      .find(node => node.props.options.some(option => option.value === 'wings-1lb'));
+    expect(size.props.value).toBe('wings-1lb');
+    await act(async () => submitButton().props.onPress());
+    expect(mockCart.addItem).not.toHaveBeenCalled();
+  });
   test.each([['party-75-wings', '75 Wings', 8999, 8, 5], ['party-100-wings', '100 Wings', 11699, 11, 6.67]])('editing %s explicitly saves the official equivalent and retains pieces, price, quantity and flavours', async (slug, name, price, weight, oldWeight) => {
     const groups = [wingTypeGroup, ...Array.from({ length: 5 }, (_, i) => ({ ...flavourGroup, id: `flavour-${i + 1}`, name: `Flavour ${i + 1}` }))];
     const party = { ...wingsItem, id: slug, slug, name, base_price_cents: price, modifier_groups: groups, weight_options: [{ ...variants[0],

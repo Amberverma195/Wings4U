@@ -36,6 +36,7 @@ import { cents } from "../src/lib/format";
 import { normalizeCanadianPostalCode, normalizeAddressText } from "../src/lib/delivery-address";
 import {
   checkoutPricingBlock,
+  paymentIntentPricingBlock,
   customerPaymentOptions,
   defaultCollectionPreference,
   type CustomerCollectionPreference,
@@ -46,9 +47,9 @@ import {
   quotePromoParams,
   wingsRewardBlockedReason,
 } from "../src/lib/promo-selection";
-import { promoBenefitLabel } from "../src/lib/deals-display";
+import { CartCoupons } from "../src/components/cart-coupons";
+import { requestCartQuote } from "../src/lib/cart-quote";
 import type {
-  ActivePromo,
   CartItem,
   CartQuoteResponse,
   CheckoutResponse,
@@ -212,26 +213,6 @@ function CheckoutScreenContent() {
     [cart.driverTipPercent, cart.fulfillmentType, subtotalForTip],
   );
 
-  const applyCoupon = (code: string) => {
-    setPromoNotice(null);
-    promo.applyPromoCode(code);
-  };
-
-  const applyReward = () => {
-    setPromoNotice(null);
-    promo.redeemWingsReward();
-  };
-
-  const rewards = account.data.wingsRewards;
-  const rewardEligible = Boolean(
-    rewards &&
-      rewards.stamps_per_reward > 0 &&
-      rewards.available_stamps >= rewards.stamps_per_reward,
-  );
-  const availableCoupons: ActivePromo[] = account.data.promos.filter(
-    (candidate) => !candidate.autoApply,
-  );
-
   const deliveryAddress = useMemo(
     () => ({
       line1: normalizeAddressText(line1),
@@ -255,6 +236,7 @@ function CheckoutScreenContent() {
     () =>
       JSON.stringify({
         locationId: cart.locationId,
+        customerKey: session.authenticated ? session.user?.id ?? "authenticated" : "guest",
         items: checkoutItems(cart.items),
         fulfillmentType: cart.fulfillmentType,
         scheduledFor: cart.scheduledFor,
@@ -266,6 +248,8 @@ function CheckoutScreenContent() {
       }),
     [
       cart.locationId,
+      session.authenticated,
+      session.user?.id,
       cart.fulfillmentType,
       cart.items,
       cart.scheduledFor,
@@ -276,6 +260,25 @@ function CheckoutScreenContent() {
       promo.applyWingsReward,
     ],
   );
+  const latestCheckoutKey = useRef(quoteKey);
+  latestCheckoutKey.current = quoteKey;
+  const quoteSelection = async (selection: { promoCode: string | null; applyWingsReward: boolean }) => {
+    const start = quoteKey;
+    const request: typeof apiJson = async (path, init) => {
+      try { return await apiJson(path, init); }
+      catch (error) {
+        if ((error as { status?: number }).status !== 401 || !session.authenticated || latestCheckoutKey.current !== start) throw error;
+        if (!await session.refresh() || latestCheckoutKey.current !== start) throw error;
+        return apiJson(path, init);
+      }
+    };
+    const priced = await requestCartQuote({ locationId: cart.locationId, items: cart.items,
+      fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor, driverTipPercent: cart.driverTipPercent,
+      ...selection, deliveryQuoteToken: cart.fulfillmentType === 'DELIVERY' ? deliveryQuote?.delivery_quote_token : undefined,
+      deliveryAddress: cart.fulfillmentType === 'DELIVERY' ? deliveryAddress : undefined }, request);
+    if (latestCheckoutKey.current !== start) throw new Error('Your cart or account changed. Please review your total again.');
+    return priced;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -426,29 +429,9 @@ function CheckoutScreenContent() {
       setQuoteError(null);
       void (async () => {
         try {
-          const envelope = await apiJson<CartQuoteResponse>("/api/v1/cart/quote", {
-            method: "POST",
-            locationId: cart.locationId,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location_id: cart.locationId,
-              fulfillment_type: cart.fulfillmentType,
-              items: checkoutItems(cart.items),
-              scheduled_for: cart.scheduledFor ?? undefined,
-              driver_tip_cents: tipCents,
-              delivery_quote_token:
-                cart.fulfillmentType === "DELIVERY"
-                  ? deliveryQuote?.delivery_quote_token
-                  : undefined,
-              address_snapshot_json:
-                cart.fulfillmentType === "DELIVERY"
-                  ? deliveryAddress
-                  : undefined,
-              ...quotePromoParams(promo),
-            }),
-          });
+          const nextQuote = await quoteSelection(promo);
           if (!cancelled) {
-            setQuote(envelope.data ?? null);
+            setQuote(nextQuote);
             setPricedQuoteKey(quoteKey);
           }
         } catch (cause) {
@@ -485,14 +468,15 @@ function CheckoutScreenContent() {
     tipCents,
   ]);
 
-  const discountRows = useMemo(() => promoDiscountRows(quote), [quote]);
+  const currentQuote = pricedQuoteKey === quoteKey ? quote : null;
+  const discountRows = useMemo(() => promoDiscountRows(currentQuote), [currentQuote]);
   const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, quote);
   const payableCents = quote?.final_payable_cents ?? subtotal;
   const onlinePaymentsEnabled = Boolean(
     stripeConfig?.online_payments_enabled && stripeConfig.configured,
   );
   const pricingBlock = checkoutPricingBlock({
-    quoteIsCurrent: pricedQuoteKey === quoteKey,
+    quoteIsCurrent: pricedQuoteKey === quoteKey && promo.hydrated !== false && session.loaded !== false,
     quoteLoading,
     quote,
     quoteError,
@@ -587,6 +571,15 @@ function CheckoutScreenContent() {
     }
 
     try {
+      // Revalidate immediately before payment/order submission. Quotes never redeem stamps.
+      const freshQuote = await quoteSelection(promo);
+      const block = checkoutPricingBlock({ quoteLoading: false, quote: freshQuote, quoteError: null,
+        promoCode: promo.promoCode, rewardBlockedReason: wingsRewardBlockedReason(promo.applyWingsReward, freshQuote) });
+      if (block) { setQuote(freshQuote); setPricedQuoteKey(quoteKey); throw new Error(block); }
+      if (freshQuote.final_payable_cents !== quote?.final_payable_cents || freshQuote.driver_tip_cents !== quote?.driver_tip_cents) {
+        setQuote(freshQuote); setPricedQuoteKey(quoteKey);
+        throw new Error('Your order total changed. Please review the updated total before placing your order.');
+      }
       let stripePaymentIntentId =
         paidIntentRef.current?.fingerprint === submissionFingerprint
           ? paidIntentRef.current.paymentIntentId
@@ -626,6 +619,11 @@ function CheckoutScreenContent() {
           if (!intent.configured || !intent.client_secret || !intent.payment_intent_id) {
             throw new Error(intent.message ?? "Online card payments are not configured yet.");
           }
+          const paymentBlock = paymentIntentPricingBlock(intent.amount_cents, intent.quote, freshQuote, promo);
+          if (paymentBlock) {
+            if (intent.quote) { setQuote(intent.quote); setPricedQuoteKey(quoteKey); }
+            throw new Error(paymentBlock);
+          }
 
           await initStripe({
             publishableKey: intent.publishable_key,
@@ -641,6 +639,7 @@ function CheckoutScreenContent() {
             throw new Error(sheet.error.message);
           }
 
+          if (latestCheckoutKey.current !== quoteKey) throw new Error('Your cart or account changed. Review your total before payment.');
           const payment = await presentPaymentSheet();
           if (payment.error) {
             throw new Error(payment.error.message || "Payment was cancelled.");
@@ -658,6 +657,8 @@ function CheckoutScreenContent() {
       if (stripePaymentIntentId) {
         payload.stripe_payment_intent_id = stripePaymentIntentId;
       }
+
+      if (latestCheckoutKey.current !== quoteKey) throw new Error('Your cart or account changed. Review your order before continuing.');
 
       const idempotencyKey = checkoutAttemptRef.current.idempotencyKey;
       const res = await withSilentRefresh(
@@ -698,7 +699,13 @@ function CheckoutScreenContent() {
       cart.clear();
       router.replace(`/orders/${order.id}`);
     } catch (cause) {
-      setSubmitError(cause instanceof Error ? cause.message : "Unable to place order");
+      const message = cause instanceof Error ? cause.message : "Unable to place order";
+      const code = getApiErrorCode((cause as { body?: unknown })?.body);
+      if (code === 'DELIVERY_QUOTE_EXPIRED' || code === 'INVALID_DELIVERY_QUOTE') {
+        setDeliveryQuote(null); setDeliveryQuoteRetryNonce(value => value + 1);
+      }
+      if (promo.promoCode && isPromoRejectedQuoteError(message)) { promo.clearPromoCode(); setPromoNotice(message); setQuote(null); }
+      setSubmitError(message);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -724,6 +731,7 @@ function CheckoutScreenContent() {
     onlinePaymentsEnabled,
     paymentMethod,
     pricingBlock,
+    quoteKey,
     submitting,
     tipCents,
   ]);
@@ -788,91 +796,12 @@ function CheckoutScreenContent() {
                 })}
               </Section>
 
-              <Section title="Deals & rewards">
-                {promo.promoCode ? (
-                  <View style={styles.appliedRow}>
-                    <View style={styles.appliedInfo}>
-                      <Text style={styles.appliedLabel}>Promo code</Text>
-                      <Text style={styles.appliedValue}>{promo.promoCode}</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={promo.clearPromoCode}
-                      style={styles.removeChip}
-                    >
-                      <Text style={styles.removeChipText}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : promo.applyWingsReward ? (
-                  <View style={styles.appliedRow}>
-                    <View style={styles.appliedInfo}>
-                      <Text style={styles.appliedLabel}>Reward</Text>
-                      <Text style={styles.appliedValue}>Free 1lb wings</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={promo.clearWingsReward}
-                      style={styles.removeChip}
-                    >
-                      <Text style={styles.removeChipText}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-
-                {rewardBlockedReason ? (
-                  <Text style={styles.promoNotice}>{rewardBlockedReason}</Text>
-                ) : null}
-                {promoNotice ? (
-                  <Text style={styles.promoNotice}>{promoNotice}</Text>
-                ) : null}
-
-                {!session.authenticated ? (
-                  <Text style={styles.dealsHint}>
-                    Sign in from the Deals tab to use coupons and rewards.
-                  </Text>
-                ) : (
-                  <>
-                    {rewardEligible && !promo.applyWingsReward ? (
-                      <TouchableOpacity style={styles.dealOption} onPress={applyReward}>
-                        <View style={styles.dealOptionInfo}>
-                          <Text style={styles.dealOptionTitle}>Free 1lb wings</Text>
-                          <Text style={styles.dealOptionMeta}>Redeem your wings reward</Text>
-                        </View>
-                        <Text style={styles.applyText}>Apply</Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {availableCoupons.length > 0 ? <Text style={styles.dealOptionMeta}>Party Specials are excluded from coupons.</Text> : null}
-                    {availableCoupons.map((coupon) => {
-                      const applied = promo.promoCode === coupon.code;
-                      return (
-                        <TouchableOpacity
-                          key={coupon.id}
-                          style={styles.dealOption}
-                          disabled={applied}
-                          onPress={() => applyCoupon(coupon.code)}
-                        >
-                          <View style={styles.dealOptionInfo}>
-                            <Text style={styles.dealOptionTitle}>{coupon.name}</Text>
-                            <Text style={styles.dealOptionMeta}>
-                              {coupon.code} • {promoBenefitLabel(coupon)}
-                            </Text>
-                          </View>
-                          <Text style={[styles.applyText, applied && styles.appliedText]}>
-                            {applied ? "Applied" : "Apply"}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-
-                    {availableCoupons.length === 0 &&
-                    !rewardEligible &&
-                    !promo.promoCode &&
-                    !promo.applyWingsReward ? (
-                      <Text style={styles.dealsHint}>No coupons available right now.</Text>
-                    ) : null}
-                  </>
-                )}
-              </Section>
-
+              <CartCoupons quote={pricedQuoteKey === quoteKey ? quote : null} contextKey={quoteKey}
+                disabled={submitting || promo.hydrated === false}
+                requestSelection={async selection => {
+                  if (!deliveryQuoteReady) throw new Error('Confirm your delivery address and fee before applying an offer.');
+                  return quoteSelection(selection);
+                }} />
               <Section title="Add a tip">
                 <View style={styles.tipRow}>
                   {(["none", 10, 15, 20] as const).map((tip) => {
@@ -1029,29 +958,29 @@ function CheckoutScreenContent() {
                     discount
                   />
                 ))}
-                <SummaryRow label="Tax" value={quoteLoading ? "..." : cents(quote?.tax_cents ?? 0)} />
+                <SummaryRow label="Tax" value={currentQuote ? cents(currentQuote.tax_cents) : "Awaiting quote"} />
                 {cart.fulfillmentType === "DELIVERY" ? (
                   <SummaryRow
                     label="Delivery"
                     value={
-                      quoteLoading
-                        ? "..."
-                        : quote?.delivery_fee_waived
+                      !currentQuote
+                        ? "Awaiting quote"
+                        : currentQuote.delivery_fee_waived
                           ? "Free"
-                          : cents(quote?.delivery_fee_cents ?? 0)
+                          : cents(currentQuote.delivery_fee_cents)
                     }
                   />
                 ) : null}
                 {cart.driverTipPercent !== "none" ? (
                   <SummaryRow
                     label="Tip"
-                    value={cents(quote?.driver_tip_cents ?? tipCents)}
+                    value={currentQuote ? cents(currentQuote.driver_tip_cents) : "Awaiting quote"}
                   />
                 ) : null}
                 <View style={styles.divider} />
                 <SummaryRow
                   label="Payable"
-                  value={quoteLoading ? "..." : cents(quote?.final_payable_cents ?? subtotal)}
+                  value={currentQuote ? cents(currentQuote.final_payable_cents) : "Awaiting quote"}
                   total
                 />
                 {rewardBlockedReason ? (
@@ -1467,95 +1396,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   discountValue: {
-    color: "#16A34A",
-  },
-  appliedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(22,163,74,0.08)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  appliedInfo: {
-    flex: 1,
-  },
-  appliedLabel: {
-    color: "#15803D",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  appliedValue: {
-    color: "#166534",
-    fontSize: 15,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  removeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(185,28,28,0.08)",
-  },
-  removeChipText: {
-    color: "#B91C1C",
-    fontWeight: "800",
-    fontSize: 12,
-  },
-  promoNotice: {
-    color: "#B45309",
-    backgroundColor: "rgba(245,158,11,0.1)",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontWeight: "700",
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 10,
-  },
-  dealsHint: {
-    color: "#888",
-    fontSize: 13,
-    fontWeight: "600",
-    paddingVertical: 4,
-  },
-  dealOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#EFEFEF",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-  },
-  dealOptionInfo: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  dealOptionTitle: {
-    color: "#1A1A1A",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  dealOptionMeta: {
-    color: "#777",
-    fontSize: 12,
-    marginTop: 3,
-    fontWeight: "600",
-  },
-  applyText: {
-    color: "#FF4D4D",
-    fontWeight: "900",
-    fontSize: 13,
-  },
-  appliedText: {
     color: "#16A34A",
   },
   tipRow: {

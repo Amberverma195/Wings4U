@@ -10,7 +10,7 @@ beforeEach(() => {
     pickup_min_minutes: 15, delivery_min_minutes: 40, estimated_prep_minutes: 15 },
     categories: [{ items: [{ id: 'synthetic', is_available: true, stock_status: 'NORMAL', allowed_fulfillment_type: 'BOTH',
       weight_options: [{ menu_item_id: 'real-wings-sku' }] }] }] };
-  quote = { final_payable_cents: 1130, lines: [{ menu_item_id: 'real-wings-sku', quantity: 1 }] };
+  quote = { item_subtotal_cents: 1000, final_payable_cents: 1130, lines: [{ menu_item_id: 'real-wings-sku', quantity: 1 }] };
   delivery = { delivery_quote_token: 'delivery-token', expires_at: new Date(now + 10 * 60_000).toISOString() };
   snapshot = { locationId: 'store', items: [{ menu_item_id: 'real-wings-sku', name: 'Wings', quantity: 1, base_price_cents: 1000,
     modifier_selections: [], special_instructions: '', builder_payload: { builder_type: 'WINGS', weight_lb: 1 } }],

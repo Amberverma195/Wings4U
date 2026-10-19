@@ -442,17 +442,14 @@ export function calculateCartSubtotal(
 }
 
 /**
- * Shared percentage-based delivery tip calculation with standard mathematical rounding.
- * Returns 0 if not DELIVERY or driverTipPercent is 'none'.
+ * The API accepts tips for pickup and delivery, matching the website.
+ * Keep the existing function name/signature for cart, checkout and preparation callers.
  */
 export function calculateDeliveryTipCents(
   subtotalCents: number,
   driverTipPercent: "none" | 10 | 15 | 20 | number | string,
   fulfillmentType?: string,
 ): number {
-  if (fulfillmentType && fulfillmentType !== "DELIVERY") {
-    return 0;
-  }
   if (driverTipPercent === "none" || !driverTipPercent) {
     return 0;
   }

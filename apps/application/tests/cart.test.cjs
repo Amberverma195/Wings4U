@@ -113,3 +113,13 @@ test('reorder configurations merge deterministically with saved lines and refres
   expect(cart.items.find(row => row.menu_item_id === 'burger')).toMatchObject({ quantity: 3, base_price_cents: 1600 });
   expect(cart.items.find(row => row.menu_item_id === 'wings')).toMatchObject({ quantity: 1 });
 });
+
+test.each([10, 15, 20])('tip %i survives saved-cart persistence and hydration', async tip => {
+  await act(async () => cart.setDriverTipPercent(tip));
+  await act(async () => jest.advanceTimersByTime(1000));
+  expect(api.putSavedCart).toHaveBeenLastCalledWith('location', expect.objectContaining({ driverTipPercent: tip }));
+  await act(async () => renderer.unmount());
+  api.fetchSavedCart.mockResolvedValue({ ...snapshot([item]), driver_tip_percent: tip });
+  await act(async () => { renderer = create(tree()); });
+  expect(cart.driverTipPercent).toBe(tip);
+});

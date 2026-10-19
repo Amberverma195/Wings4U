@@ -1,9 +1,9 @@
 import { apiJson } from './api';
 import { orderTimeAvailable, validDeliveryAddress, type OrderSetupSelection } from './order-setup';
 import { checkoutPricingBlock } from './payment-options';
-import { quotePromoParams, wingsRewardBlockedReason } from './promo-selection';
+import { wingsRewardBlockedReason } from './promo-selection';
 import type { CartItem, CartQuoteResponse, MenuResponse } from './types';
-import { calculateCartSubtotal, calculateDeliveryTipCents } from './wing-builder-logic';
+import { requestCartQuote } from './cart-quote';
 
 export type CheckoutSnapshot = {
   locationId: string;
@@ -20,7 +20,7 @@ export function checkoutFingerprint(snapshot: CheckoutSnapshot) {
 }
 
 /** Read-only ordering APIs only. This never places an order or starts payment. */
-export async function validateCheckout(snapshot: CheckoutSnapshot): Promise<CartQuoteResponse> {
+export async function validateCheckout(snapshot: CheckoutSnapshot, request: typeof apiJson = apiJson): Promise<CartQuoteResponse> {
   const { setup, locationId, items } = snapshot;
   if (!items.length) throw new Error('Your cart is empty. Add an item before checkout.');
   if (setup.fulfillmentType === 'DELIVERY' && !validDeliveryAddress(setup.deliveryAddress)) {
@@ -28,7 +28,7 @@ export async function validateCheckout(snapshot: CheckoutSnapshot): Promise<Cart
   }
   const query = new URLSearchParams({ location_id: locationId, fulfillment_type: setup.fulfillmentType });
   if (setup.scheduledFor) query.set('scheduled_for', setup.scheduledFor);
-  const menu = (await apiJson<MenuResponse>(`/api/v1/menu?${query}`, { locationId })).data;
+  const menu = (await request<MenuResponse>(`/api/v1/menu?${query}`, { locationId })).data;
   if (!menu?.location || !Array.isArray(menu.categories)) throw new Error('Ordering details could not be loaded. Please try again.');
   const validTime = orderTimeAvailable(menu.location, setup.fulfillmentType, setup.scheduledFor);
   if (!validTime) throw new Error('Your selected order time is unavailable. Change your order details to choose an available time.');
@@ -45,7 +45,7 @@ export async function validateCheckout(snapshot: CheckoutSnapshot): Promise<Cart
 
   let deliveryToken: string | undefined;
   if (setup.fulfillmentType === 'DELIVERY') {
-    const delivery = (await apiJson<{ delivery_quote_token: string; expires_at: string }>('/api/v1/delivery/quote', {
+    const delivery = (await request<{ delivery_quote_token: string; expires_at: string }>('/api/v1/delivery/quote', {
       method: 'POST', locationId, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ location_id: locationId, address_snapshot_json: setup.deliveryAddress, scheduled_for: setup.scheduledFor ?? undefined }),
     })).data;
@@ -54,21 +54,11 @@ export async function validateCheckout(snapshot: CheckoutSnapshot): Promise<Cart
     }
     deliveryToken = delivery.delivery_quote_token;
   }
-  const subtotal = calculateCartSubtotal(items);
-  const quote = (await apiJson<CartQuoteResponse>('/api/v1/cart/quote', {
-    method: 'POST', locationId, headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location_id: locationId, fulfillment_type: setup.fulfillmentType,
-      scheduled_for: setup.scheduledFor ?? undefined,
-      items: items.map(item => ({ menu_item_id: item.menu_item_id, quantity: item.quantity,
-        modifier_selections: item.modifier_selections.filter(selection => selection.modifier_option_id)
-          .map(selection => ({ modifier_option_id: selection.modifier_option_id })),
-        removed_ingredients: item.removed_ingredients ?? [], special_instructions: item.special_instructions.trim() || undefined,
-        builder_payload: item.builder_payload })),
-      driver_tip_cents: calculateDeliveryTipCents(subtotal, snapshot.driverTipPercent, setup.fulfillmentType),
-      delivery_quote_token: deliveryToken, address_snapshot_json: setup.fulfillmentType === 'DELIVERY' ? setup.deliveryAddress : undefined,
-      ...quotePromoParams(snapshot),
-    }),
-  })).data;
+  const quote = await requestCartQuote({ locationId, items, fulfillmentType: setup.fulfillmentType,
+    scheduledFor: setup.scheduledFor, driverTipPercent: snapshot.driverTipPercent,
+    promoCode: snapshot.promoCode, applyWingsReward: snapshot.applyWingsReward,
+    deliveryQuoteToken: deliveryToken, deliveryAddress: setup.fulfillmentType === 'DELIVERY' ? setup.deliveryAddress : undefined,
+  }, request);
   if (!quote || !Number.isFinite(quote.final_payable_cents) || quote.final_payable_cents < 0 || !Array.isArray(quote.lines)) {
     throw new Error('The order total could not be confirmed. Please try again.');
   }

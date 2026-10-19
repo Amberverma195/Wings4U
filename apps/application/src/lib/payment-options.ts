@@ -1,4 +1,5 @@
 import type { CartQuoteResponse } from "./types";
+import { hasAppliedPromo, wingsRewardBlockedReason, type PromoSelection } from './promo-selection';
 
 /** How the customer will pay later. None of these charges a card online. */
 export type CustomerCollectionPreference =
@@ -64,9 +65,20 @@ export function checkoutPricingBlock(input: {
   const selected = input.promoCode?.trim();
   if (
     selected &&
-    input.quote.applied_promo_code?.trim().toLowerCase() !== selected.toLowerCase()
+    !hasAppliedPromo(input.quote, selected)
   ) {
     return "The selected coupon is not applied to this total.";
   }
   return null;
+}
+
+/** Stripe quotes must agree with the total the customer just reviewed. */
+export function paymentIntentPricingBlock(amountCents: number | null, quote: CartQuoteResponse | undefined,
+  reviewed: CartQuoteResponse, selection: PromoSelection): string | null {
+  if (!quote || !Number.isSafeInteger(amountCents) || amountCents !== quote.final_payable_cents ||
+    amountCents !== reviewed.final_payable_cents || quote.driver_tip_cents !== reviewed.driver_tip_cents) {
+    return 'Your payment total changed. Please review the updated total before paying.';
+  }
+  return checkoutPricingBlock({ quoteLoading: false, quote, quoteError: null, promoCode: selection.promoCode,
+    rewardBlockedReason: wingsRewardBlockedReason(selection.applyWingsReward, quote) });
 }

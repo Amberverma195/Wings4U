@@ -125,6 +125,11 @@ export function wingsRewardBlockedReason(
 
 export type PromoDiscountRow = { key: string; label: string; amountCents: number };
 
+/** The API may return both the explicit coupon and automatic deals. */
+export function hasAppliedPromo(quote: Pick<CartQuoteResponse, 'applied_promo_code'> | null, code: string): boolean {
+  return Boolean(quote?.applied_promo_code?.split(',').some(value => value.trim().toUpperCase() === code.trim().toUpperCase()));
+}
+
 /**
  * Server-calculated discount rows for the order summary. Mirrors the website,
  * which surfaces the wings reward and promo code as distinct deductions. The
