@@ -55,6 +55,7 @@ import {
 } from "../src/lib/promo-selection";
 import { CartCoupons } from "../src/components/cart-coupons";
 import { requestCartQuote } from "../src/lib/cart-quote";
+import { calculateCartSubtotal, getCartItemSubtotal } from "../src/lib/wing-builder-logic";
 import type {
   CartItem,
   CartQuoteResponse,
@@ -94,6 +95,10 @@ type DeliveryQuoteStatus = "idle" | "loading" | "ready" | "error";
 
 const CANADIAN_POSTAL_CODE_RE =
   /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i;
+
+function provisionalPrice(amount: number): string {
+  return Number.isSafeInteger(amount) && amount >= 0 ? cents(amount) : '—';
+}
 
 function checkoutItems(items: CartItem[]) {
   return items.map((item) => ({
@@ -136,6 +141,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [pricedQuoteKey, setPricedQuoteKey] = useState<string | null>(null);
+  const [lastDisplayPrice, setLastDisplayPrice] = useState<{ key: string; quote: CartQuoteResponse } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteRecovery, setQuoteRecovery] = useState<ReturnType<typeof cartPricingRecovery>>('retry');
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -231,6 +237,10 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   );
   const latestCheckoutKey = useRef(quoteKey);
   latestCheckoutKey.current = quoteKey;
+  // Selection changes may retain previous prices for display. Every cart,
+  // account, address, schedule and delivery-token input still has to match.
+  const displayPriceKey = useMemo(() => JSON.stringify({ ...JSON.parse(quoteKey),
+    driverTipPercent: null, promoCode: null, applyWingsReward: null }), [quoteKey]);
   const authReviewKey = JSON.stringify({ locationId: cart.locationId, items: checkoutItems(cart.items),
     fulfillmentType: cart.fulfillmentType, scheduledFor: cart.scheduledFor, deliveryAddress,
     driverTipPercent: cart.driverTipPercent, promoCode: promo.promoCode, applyWingsReward: promo.applyWingsReward });
@@ -465,7 +475,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     !(cart.fulfillmentType === 'DELIVERY' && quote?.delivery_fee_is_estimate) &&
     promo.hydrated !== false && session.loaded !== false ? quote : null;
   const tipCents = currentQuote?.driver_tip_cents ?? 0;
-  const discountRows = useMemo(() => promoDiscountRows(currentQuote), [currentQuote]);
   const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, currentQuote);
   const onlinePaymentsEnabled = Boolean(
     stripeConfig?.online_payments_enabled && stripeConfig.configured,
@@ -478,6 +487,19 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     promoCode: promo.promoCode,
     rewardBlockedReason,
   });
+  useEffect(() => {
+    if (currentQuote && !pricingBlock) setLastDisplayPrice({ key: displayPriceKey, quote: currentQuote });
+  }, [currentQuote, pricingBlock, displayPriceKey]);
+  const detailsReady = orderSetup.ready && orderSetup.confirmed && cart.isCartHydrated && !cart.isCartHydrating &&
+    (cart.fulfillmentType !== 'DELIVERY' || hasCompleteDeliveryAddress);
+  const pricingFailed = Boolean(quoteError || deliveryQuoteError);
+  const displayQuote = !detailsReady ? null : currentQuote ?? (session.loaded && promo.hydrated !== false && !pricingFailed &&
+    deliveryQuoteReady && lastDisplayPrice?.key === displayPriceKey ? lastDisplayPrice.quote : null);
+  const displayOnly = Boolean(displayQuote && !currentQuote);
+  const provisionalSubtotal = useMemo(() => calculateCartSubtotal(cart.items), [cart.items]);
+  const displayDiscountRows = useMemo(() => promoDiscountRows(displayQuote), [displayQuote]);
+  const totalStatus = pricingFailed ? 'Total unavailable' : !detailsReady ? 'Review order details' :
+    cart.fulfillmentType === 'DELIVERY' && !deliveryQuoteReady ? 'Confirming delivery fee' : 'Confirming total';
   const paymentOptions = customerPaymentOptions(cart.fulfillmentType);
 
   useEffect(() => {
@@ -787,10 +809,11 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
               </View>
 
               <Section title="Your order">
+                {!displayQuote ? <Text style={styles.lineMeta}>Estimated item prices</Text> : null}
                 {cart.items.map((item, index) => {
                   const details = checkoutItemDetails(item);
                   const expanded = expandedItems.has(item.key);
-                  const line = currentQuote?.lines[index];
+                  const line = displayQuote?.lines[index];
                   return (
                     <View key={item.key} style={styles.lineRow}>
                       <View style={styles.lineMain}>
@@ -808,8 +831,8 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                           </>
                         ) : null}
                       </View>
-                      <Text style={styles.linePrice}>
-                        {line && Number.isFinite(line.line_total_cents) ? cents(line.line_total_cents) : "Awaiting quote"}
+                      <Text style={styles.linePrice} accessibilityLabel={`${displayQuote ? 'Item price' : 'Estimated item price'} for ${item.name}`}>
+                        {line && Number.isFinite(line.line_total_cents) ? cents(line.line_total_cents) : provisionalPrice(getCartItemSubtotal(item))}
                       </Text>
                     </View>
                   );
@@ -969,8 +992,9 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
               </Section>
 
               <Section title="Total">
-                <SummaryRow label="Subtotal" value={currentQuote ? cents(currentQuote.item_subtotal_cents) : "Awaiting quote"} />
-                {discountRows.map((row) => (
+                {displayOnly ? <Text accessibilityLiveRegion="polite" style={styles.lineMeta}>Previous prices. Your new total is being confirmed.</Text> : null}
+                <SummaryRow label={displayQuote ? 'Subtotal' : 'Estimated subtotal'} value={displayQuote ? cents(displayQuote.item_subtotal_cents) : provisionalPrice(provisionalSubtotal)} />
+                {displayDiscountRows.map((row) => (
                   <SummaryRow
                     key={row.key}
                     label={row.label}
@@ -978,29 +1002,29 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
                     discount
                   />
                 ))}
-                <SummaryRow label="Tax" value={currentQuote ? cents(currentQuote.tax_cents) : "Awaiting quote"} />
+                <SummaryRow label="Tax" value={displayQuote ? cents(displayQuote.tax_cents) : '—'} />
                 {cart.fulfillmentType === "DELIVERY" ? (
                   <SummaryRow
                     label="Delivery"
                     value={
-                      !currentQuote
-                        ? (deliveryQuoteStatus === "error" ? "Unavailable" : "Updating delivery fee…")
-                        : currentQuote.delivery_fee_waived
-                          ? <>{currentQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: "line-through" }}>{cents(currentQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
-                          : cents(currentQuote.delivery_fee_cents)
+                      !displayQuote
+                        ? (deliveryQuoteStatus === 'error' ? 'Unavailable' : '—')
+                        : displayQuote.delivery_fee_waived
+                          ? <>{displayQuote.delivery_fee_stated_cents > 0 ? <Text style={{ textDecorationLine: "line-through" }}>{cents(displayQuote.delivery_fee_stated_cents)} </Text> : null}Free</>
+                          : cents(displayQuote.delivery_fee_cents)
                     }
                   />
                 ) : null}
-                {cart.driverTipPercent !== "none" ? (
+                {(displayQuote ? displayQuote.driver_tip_cents > 0 : cart.driverTipPercent !== 'none') ? (
                   <SummaryRow
                     label="Tip"
-                    value={currentQuote ? cents(currentQuote.driver_tip_cents) : "Awaiting quote"}
+                    value={displayQuote ? cents(displayQuote.driver_tip_cents) : '—'}
                   />
                 ) : null}
                 <View style={styles.divider} />
                 <SummaryRow
                   label="Payable"
-                  value={currentQuote ? cents(currentQuote.final_payable_cents) : "Awaiting quote"}
+                  value={displayQuote ? cents(displayQuote.final_payable_cents) : pricingFailed ? 'Unavailable' : '—'}
                   total
                 />
                 {rewardBlockedReason ? (
@@ -1032,8 +1056,12 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
         </ScrollView>
         {cart.items.length > 0 && <View style={styles.checkoutDock}>
           <View style={styles.dockSummary}>
-            <Text style={styles.summaryLabel}>Order total</Text>
-            <Text style={styles.dockTotal}>{currentQuote ? cents(currentQuote.final_payable_cents) : 'Awaiting quote'}</Text>
+            <Text style={styles.summaryLabel}>{displayOnly ? 'Previous total' : 'Order total'}</Text>
+            {displayQuote ? <Text style={styles.dockTotal}>{cents(displayQuote.final_payable_cents)}</Text> :
+              <View accessibilityLiveRegion="polite" style={styles.totalStatus}>
+                {!pricingFailed && detailsReady ? <ActivityIndicator accessibilityLabel={totalStatus} color="#E53C3C" size="small" /> : null}
+                <Text style={[styles.deliveryStatusText, styles.totalStatusText]}>{totalStatus}</Text>
+              </View>}
           </View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'} accessibilityState={{ disabled: placeDisabled, busy: submitting }}
             style={[styles.placeButton, placeDisabled && styles.disabledButton]} onPress={placeOrder} disabled={placeDisabled}>
@@ -1158,6 +1186,8 @@ const styles = StyleSheet.create({
   checkoutDock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EFE4DE' },
   dockSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', maxWidth: 608, alignSelf: 'center' },
   dockTotal: { flexShrink: 1, color: '#E53C3C', fontSize: 22, fontWeight: '800' },
+  totalStatus: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  totalStatusText: { flexShrink: 1, marginTop: 0 },
   emptyState: {
     minHeight: 420,
     alignItems: "center",

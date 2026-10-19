@@ -81,7 +81,7 @@ test('ignores an obsolete cart quote after quantity, tip and promotion change', 
   const original = apiJson.getMockImplementation(); let release;
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' && !release ? new Promise(resolve => { release = resolve; }) : original(url, init));
   await tick(350); await tick(250);
-  expect(summary('Payable')).toBe('Awaiting quote');
+  expect(summary('Payable')).toBe('—');
   mockCart = { ...mockCart, items: [{ ...mockCart.items[0], quantity: 2 }], driverTipPercent: 10 };
   mockPromo = { ...mockPromo, promoCode: 'NEW' }; await rerender();
   expect(place().props.disabled).toBe(true); await settle();
@@ -160,9 +160,83 @@ const confirmedQuote = request => ({ ...quote(request), tax_cents: 117, delivery
   lines: request.items.map(item => ({ ...item, line_total_cents: 1000 * item.quantity })) });
 const quoteRequests = () => apiJson.mock.calls.filter(call => call[0] === '/api/v1/cart/quote');
 const noSubmission = () => expect(apiFetch.mock.calls.some(call => /\/checkout$|payment-intent/.test(call[0]))).toBe(false);
+const footerText = () => text(renderer.root.findAllByType('Text').find(node => ['Order total', 'Previous total'].includes(text(node))).parent);
+
+test('entering checkout with an existing cart immediately shows item estimates and a loading final total', async () => {
+  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Estimated item price for Burger' }))).toBe('$10.00');
+  expect(summary('Estimated subtotal')).toBe('$10.00'); expect(summary('Tax')).toBe('—');
+  expect(footerText()).toContain('Confirming delivery fee'); expect(footerText()).not.toMatch(/\$|Awaiting quote/);
+  expect(text(renderer.toJSON())).not.toContain('Awaiting quote'); expect(text(renderer.toJSON())).not.toContain('$0.00');
+  expect(place().props.disabled).toBe(true);
+  await act(async () => place().props.onPress()); noSubmission();
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: {
+    ...confirmedQuote(JSON.parse(init.body)), item_subtotal_cents: 1200, lines: [{ menu_item_id: 'burger', quantity: 1, line_total_cents: 1200 }],
+  } } : original(url, init));
+  await settle();
+  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Item price for Burger' }))).toBe('$12.00');
+  expect(summary('Estimated subtotal')).toBeUndefined(); expect(summary('Subtotal')).toBe('$12.00');
+  expect(footerText()).toContain('$16.92'); expect(footerText()).not.toContain('Confirming');
+  expect(place().props.disabled).toBe(false);
+});
+
+test.each([
+  ['modifiers', { modifier_selections: [{ option_name: 'Cheese', price_delta_cents: 150 }] }, '$23.00'],
+  ['wings', { builder_payload: { builder_type: 'WINGS', wing_type: 'BONELESS', extra_flavour: { flavour_name: 'Hot' } } }, '$24.00'],
+  ['wing combo', { modifier_selections: [{ option_name: 'Poutine', price_delta_cents: 200 }, { option_name: 'Cola', price_delta_cents: 100 }],
+    builder_payload: { builder_type: 'WING_COMBO', wing_type: 'BONELESS', extra_flavour: { flavour_name: 'Hot' } } }, '$30.00'],
+  ['lunch special', { removed_ingredients: [{ name: 'Onion' }], builder_payload: { builder_type: 'LUNCH_SPECIAL', child_name: 'Wrap', child_addons: [{ name: 'Cheese', price_delta_cents: 150 }] } }, '$23.00'],
+  ['side and pop', { builder_payload: { builder_type: 'ITEM_CUSTOMIZATION', side_pop_bundle: { price_cents: 499, side_label: 'Fries', pop_label: 'Cola' } } }, '$29.98'],
+])('initial %s prices match the Cart helper before checkout quoting', async (_kind, changes, expected) => {
+  mockCart = { ...mockCart, items: [{ ...mockCart.items[0], ...changes, quantity: 2 }] }; await rerender();
+  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Estimated item price for Burger' }))).toBe(expected);
+  expect(summary('Estimated subtotal')).toBe(expected); expect(footerText()).not.toContain(expected);
+  expect(place().props.disabled).toBe(true); expect(quoteRequests()).toHaveLength(0);
+  await act(async () => place().props.onPress()); noSubmission();
+});
+
+test.each([false, true])('coupon %s application/removal retains labeled previous prices but cannot submit', async removing => {
+  mockPromo = { ...mockPromo, promoCode: removing ? 'SAVE' : null };
+  const original = apiJson.getMockImplementation();
+  const priced = request => ({ ...confirmedQuote(request), applied_promo_code: request.promo_code,
+    promo_discount_cents: request.promo_code ? 100 : 0, final_payable_cents: request.promo_code ? 1592 : 1692 });
+  apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: priced(JSON.parse(init.body)) } : original(url, init));
+  await rerender(); await settle();
+  let release;
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? new Promise(resolve => { release = () => resolve({ data: priced(JSON.parse(init.body)) }); }) : original(url, init));
+  mockPromo = { ...mockPromo, promoCode: removing ? null : 'SAVE' }; await rerender();
+  expect(footerText()).toContain(`Previous total${removing ? '$15.92' : '$16.92'}`);
+  expect(summary('Promo code (SAVE)')).toBe(removing ? '-$1.00' : undefined);
+  expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
+  await tick(250); await act(async () => release());
+  expect(footerText()).toContain(`Order total${removing ? '$16.92' : '$15.92'}`);
+  expect(summary('Promo code (SAVE)')).toBe(removing ? undefined : '-$1.00');
+  expect(place().props.disabled).toBe(false);
+});
+
+test('failed refreshing prices stop the loading indicator, drop previous totals and recover on retry', async () => {
+  await settle();
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote' ? Promise.reject(new Error('Network unavailable')) : original(url, init));
+  mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender();
+  expect(footerText()).toContain('Previous total'); await settle();
+  expect(text(renderer.toJSON())).toContain('Network unavailable');
+  expect(footerText()).toContain('Total unavailable'); expect(footerText()).not.toContain('$');
+  expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  expect(place().props.disabled).toBe(true); noSubmission();
+  apiJson.mockImplementation(original); await act(async () => button('Retry pricing').props.onPress()); await settle();
+  expect(footerText()).toContain('Order total$11.00'); expect(place().props.disabled).toBe(false);
+});
+
+test('invalidated order details show a blocked state instead of an indefinite loading indicator', async () => {
+  await settle(); mockSetup.confirmed = false; mockSetup.getConfirmedSetup = () => null; await rerender();
+  expect(footerText()).toContain('Review order details'); expect(footerText()).not.toContain('$');
+  expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
+});
 
 test.each(['quantity', 'modifier', 'builder', 'removed ingredient', 'fulfillment', 'address', 'location', 'schedule', 'coupon', 'reward', 'tip', 'customer'])(
-  '%s changes immediately hide every old confirmed amount and block submission during repricing', async change => {
+  '%s changes invalidate authority; only selection changes retain clearly marked display prices', async change => {
     const original = apiJson.getMockImplementation();
     apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: confirmedQuote(JSON.parse(init.body)) } : original(url, init));
     await settle();
@@ -186,18 +260,59 @@ test.each(['quantity', 'modifier', 'builder', 'removed ingredient', 'fulfillment
     if (change === 'tip') mockCart = { ...mockCart, driverTipPercent: 10 };
     if (change === 'customer') mockSession = { ...mockSession, user: { id: 'customer-b' } };
     await rerender();
-    for (const label of ['Subtotal', 'Tax', 'Payable']) expect(summary(label)).toBe('Awaiting quote');
-    expect(text(renderer.toJSON())).not.toContain('$16.92');
-    expect(summary('Delivery')).not.toBe('$6.75');
+    const compatibleDisplay = ['coupon', 'reward', 'tip'].includes(change);
+    if (compatibleDisplay) {
+      expect(summary('Subtotal')).toBe('$10.00'); expect(summary('Tax')).toBe('$1.17');
+      expect(summary('Payable')).toBe('$16.92'); expect(summary('Delivery')).toBe('$6.75');
+      expect(text(renderer.toJSON())).toContain('Previous total');
+      expect(text(renderer.toJSON())).toContain('Previous prices. Your new total is being confirmed.');
+    } else {
+      expect(summary('Subtotal')).toBeUndefined(); expect(summary('Estimated subtotal')).toBeDefined();
+      for (const label of ['Tax', 'Payable']) expect(summary(label)).toBe('—');
+      expect(text(renderer.toJSON())).not.toContain('$16.92'); expect(summary('Delivery')).not.toBe('$6.75');
+    }
     expect(renderer.root.findAll(node => node.type?.name === 'SummaryRow' && node.props.discount)).toHaveLength(0);
-    if (change === 'tip') expect(summary('Tip')).toBe('Awaiting quote');
+    if (change === 'tip') expect(summary('Tip')).toBeUndefined(); // Previous server quote had no tip.
     expect(place().props.disabled).toBe(true);
+    expect(renderer.root.findAll(node => node.type?.name === 'CartCoupons')[0].props.quote).toBeNull();
     await act(async () => place().props.onPress()); noSubmission();
     await settle(); expect(quoteRequests()).toHaveLength(previousCount + 1);
     expect(place().props.disabled).toBe(true);
     await act(async () => release());
     expect(summary('Payable')).toBe('$23.45'); expect(place().props.disabled).toBe(false);
   });
+
+test('returning to a previous tip can reuse its display prices but never its old authorization', async () => {
+  await settle();
+  const original = apiJson.getMockImplementation(), releases = new Map();
+  apiJson.mockImplementation((url, init) => {
+    if (url !== '/api/v1/cart/quote') return original(url, init);
+    const request = JSON.parse(init.body);
+    return new Promise(resolve => releases.set(request.driver_tip_cents, () => resolve({ data: { ...quote(request), final_payable_cents: 1200 } })));
+  });
+  mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender(); await tick(250);
+  mockCart = { ...mockCart, driverTipPercent: 'none' }; await rerender(); await tick(250);
+  expect(footerText()).toContain('Previous total$10.00'); expect(place().props.disabled).toBe(true);
+  await act(async () => place().props.onPress()); noSubmission();
+  await act(async () => releases.get(100)());
+  expect(footerText()).toContain('Previous total$10.00'); expect(place().props.disabled).toBe(true);
+  await act(async () => releases.get(0)());
+  expect(footerText()).toContain('Order total$12.00'); expect(place().props.disabled).toBe(false);
+});
+
+test('removing a tip keeps the previous breakdown consistent until the new total is confirmed', async () => {
+  mockCart = { ...mockCart, driverTipPercent: 10 }; await rerender(); await settle();
+  expect(summary('Tip')).toBe('$1.00');
+  const original = apiJson.getMockImplementation(); let release;
+  apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
+    ? new Promise(resolve => { release = () => resolve({ data: quote(JSON.parse(init.body)) }); }) : original(url, init));
+  mockCart = { ...mockCart, driverTipPercent: 'none' }; await rerender();
+  expect(summary('Tip')).toBe('$1.00'); expect(footerText()).toContain('Previous total$11.00');
+  expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
+  await tick(250); await act(async () => release());
+  expect(summary('Tip')).toBeUndefined(); expect(footerText()).toContain('Order total$10.00');
+  expect(place().props.disabled).toBe(false);
+});
 
 test.each(['exact', 'coupon', 'threshold'])('checkout displays the current backend delivery fee: %s', async mode => {
   const original = apiJson.getMockImplementation();
@@ -224,8 +339,8 @@ test('expired delivery token hides confirmed prices until a fresh token and cart
   let release;
   apiFetch.mockImplementation((url) => url === '/api/v1/delivery/quote' ? new Promise(resolve => { release = resolve; }) : response(null, false));
   await tick(600000); await tick(350);
-  expect(summary('Subtotal')).toBe('Awaiting quote'); expect(summary('Payable')).toBe('Awaiting quote');
-  expect(text(renderer.toJSON())).toContain('Updating delivery fee'); expect(place().props.disabled).toBe(true);
+  expect(summary('Estimated subtotal')).toBe('$10.00'); expect(summary('Payable')).toBe('—');
+  expect(text(renderer.toJSON())).toContain('Confirming delivery fee'); expect(place().props.disabled).toBe(true);
   await act(async () => place().props.onPress()); noSubmission();
   await act(async () => release(response({ delivery_quote_token: 'renewed', expires_at: new Date(Date.now() + 600000).toISOString() })));
   await settle(); expect(place().props.disabled).toBe(false);
@@ -236,7 +351,7 @@ test.each(['expired', 'invalid expiry', 'missing token'])('a delivery response w
   apiFetch.mockResolvedValue(response({ delivery_quote_token: mode === 'missing token' ? '' : 'invalid',
     expires_at: mode === 'invalid expiry' ? 'invalid' : new Date(Date.now() + (mode === 'expired' ? -1 : 600000)).toISOString() }));
   await settle(); await tick(10000);
-  expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBe('Awaiting quote');
+  expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBe('Unavailable');
   expect(summary('Delivery')).toBe('Unavailable'); expect(text(renderer.toJSON())).toContain('invalid or expired');
   expect(apiFetch.mock.calls.filter(call => call[0] === '/api/v1/delivery/quote')).toHaveLength(1);
   expect(quoteRequests()).toHaveLength(0); await act(async () => place().props.onPress()); noSubmission();
@@ -247,7 +362,7 @@ test('an estimated cart fee cannot confirm checkout even with a delivery token',
   apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote'
     ? { data: { ...confirmedQuote(JSON.parse(init.body)), delivery_fee_is_estimate: true } } : original(url, init));
   await settle(); expect(place().props.disabled).toBe(true);
-  expect(summary('Payable')).toBe('Awaiting quote'); expect(summary('Delivery')).not.toBe('$6.75');
+  expect(summary('Payable')).toBe('Unavailable'); expect(summary('Delivery')).not.toBe('$6.75');
   await act(async () => place().props.onPress()); noSubmission();
 });
 
@@ -256,7 +371,7 @@ test.each(['DELIVERY_QUOTE_EXPIRED', 'INVALID_DELIVERY_QUOTE'])('server rejectio
   apiJson.mockImplementation((url, init) => url === '/api/v1/cart/quote'
     ? Promise.reject(Object.assign(new Error('Delivery token rejected'), { body: { errors: [{ code, message: 'Delivery token rejected' }] } })) : original(url, init));
   await settle();
-  expect(summary('Payable')).toBe('Awaiting quote'); expect(summary('Delivery')).toBe('Unavailable');
+  expect(summary('Payable')).toBe('Unavailable'); expect(summary('Delivery')).toBe('Unavailable');
   expect(place().props.disabled).toBe(true); await act(async () => place().props.onPress()); noSubmission();
   expect(quoteRequests()).toHaveLength(1);
   apiJson.mockImplementation(original);
@@ -513,6 +628,6 @@ test.each(['missing lines', 'missing price', 'wrong item', 'invalid tax'])('an i
     if (problem === 'invalid tax') invalid.tax_cents = NaN;
     return { data: invalid };
   });
-  await settle(); expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBe('Awaiting quote');
+  await settle(); expect(place().props.disabled).toBe(true); expect(summary('Payable')).toBe('Unavailable');
   expect(text(renderer.toJSON())).toContain('could not be confirmed'); noSubmission();
 });
