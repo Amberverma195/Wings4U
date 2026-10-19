@@ -976,10 +976,6 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
           )}
         </ScrollView>
         {cart.items.length > 0 && <View style={styles.checkoutDock}>
-          {confirmedTotalQuote ? <View style={styles.dockSummary}>
-            <Text style={styles.summaryLabel}>Order total</Text>
-            <Text style={styles.dockTotal}>{cents(confirmedTotalQuote.final_payable_cents)}</Text>
-          </View> : null}
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'} accessibilityState={{ disabled: placeDisabled, busy: submitting }}
             style={[styles.placeButton, placeDisabled && styles.disabledButton]} onPress={placeOrder} disabled={placeDisabled}>
             {submitting ? <><ActivityIndicator color="#FFFFFF" /><Text style={styles.placeButtonText}>Placing order...</Text></> : <Text style={styles.placeButtonText}>{paymentMethod === 'ONLINE_CARD' ? 'Pay and place order' : 'Place order'}</Text>}
@@ -1101,8 +1097,6 @@ const styles = StyleSheet.create({
   addressCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   fieldLabel: { color: '#75665C', fontSize: 13, marginTop: 16, fontWeight: '600' },
   checkoutDock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EFE4DE' },
-  dockSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', maxWidth: 608, alignSelf: 'center' },
-  dockTotal: { flexShrink: 1, color: '#E53C3C', fontSize: 22, fontWeight: '800' },
   emptyState: {
     minHeight: 420,
     alignItems: "center",

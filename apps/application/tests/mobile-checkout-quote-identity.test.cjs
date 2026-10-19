@@ -168,12 +168,13 @@ const expectTotalsHidden = () => {
   expect(place().props.disabled).toBe(true);
 };
 
-test('checkout footer shows its total only after the complete Total card is ready', async () => {
+test('checkout footer shows only Place order before and after pricing is ready', async () => {
   expectTotalsHidden();
   expect(text(renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent)).toBe('Place order');
   await settle();
   const footer = renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent;
-  expect(footer.findAllByType('Text').map(node => text(node))).toEqual(['Order total', '$10.00', 'Place order']);
+  expect(footer.findAllByType('Text').map(node => text(node))).toEqual(['Place order']);
+  expect(text(renderer.toJSON())).not.toContain('Order total');
   expect(text(renderer.toJSON())).not.toContain('Previous total');
   expect(summary('Payable')).toBe('$10.00');
 });
@@ -207,7 +208,7 @@ test.each(['PICKUP', 'DELIVERY'])('entering %s checkout keeps items visible and 
   expect(summary('Estimated subtotal')).toBeUndefined(); expect(summary('Subtotal')).toBe('$12.00');
   expect(summary('Payable')).toBe('$16.92'); expect(summary('Tax')).toBe('$1.17');
   expect(text(renderer.toJSON())).not.toContain('Wait for the order total to be confirmed before placing the order.');
-  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent)).toContain('Order total$16.92');
+  expect(text(renderer.root.findByProps({ accessibilityLabel: 'Place order' }).parent)).toBe('Place order');
   expect(place().props.disabled).toBe(false);
 });
 
