@@ -1,6 +1,27 @@
 const { validateApiOrigin, isLocalDevelopmentOrigin } = require('./config/api-origin.cjs');
 
 const REMOTE_DEVELOPMENT_OPT_IN = 'MOBILE_DEV_REMOTE_API';
+const REALTIME_ALIAS = 'MOBILE_REALTIME_SAME_BACKEND_AS';
+
+/**
+ * Order events are only emitted by the API process that handled the order, so
+ * REST and Socket.IO must reach the same backend. When either origin is remote
+ * they must be identical, unless MOBILE_REALTIME_SAME_BACKEND_AS declares that
+ * the realtime host fronts exactly the effective API origin. Two different
+ * local origins stay allowed for local development (for example the Android
+ * emulator loopback and a LAN address of the same machine).
+ */
+function validateRealtimePairing(apiOrigin, realtimeOrigin, production) {
+  const declared = process.env[REALTIME_ALIAS];
+  const aliasOf = declared ? validateApiOrigin(declared, production) : undefined;
+  if (aliasOf && (!realtimeOrigin || aliasOf !== apiOrigin || realtimeOrigin === apiOrigin)) {
+    throw new Error(`${REALTIME_ALIAS} must equal the API origin and is only valid with a different EXPO_PUBLIC_REALTIME_ORIGIN.`);
+  }
+  if (!realtimeOrigin || !apiOrigin || realtimeOrigin === apiOrigin || aliasOf) return aliasOf;
+  if (!production && isLocalDevelopmentOrigin(apiOrigin) && isLocalDevelopmentOrigin(realtimeOrigin)) return undefined;
+  throw new Error(`EXPO_PUBLIC_REALTIME_ORIGIN (${realtimeOrigin}) and the API origin (${apiOrigin}) must target the same backend. ` +
+    `Use the same origin, or set ${REALTIME_ALIAS}=${apiOrigin} if the realtime host is an alias of that backend.`);
+}
 
 module.exports = ({ config }) => {
   const profile = process.env.EAS_BUILD_PROFILE;
@@ -21,22 +42,19 @@ module.exports = ({ config }) => {
   if (!production) {
     // Development builds talk to a local API unless a remote backend (such as
     // the deployed API, which serves production data) is chosen deliberately.
-    const remote = [explicitApiOrigin && validatedApiOrigin, validatedRealtimeOrigin]
+    const remote = [validatedApiOrigin, validatedRealtimeOrigin]
       .filter(origin => origin && !isLocalDevelopmentOrigin(origin));
     if (remote.length && process.env[REMOTE_DEVELOPMENT_OPT_IN] !== 'allow') {
       throw new Error(`Development build targets remote backend ${[...new Set(remote)].join(', ')}. ` +
         `Set ${REMOTE_DEVELOPMENT_OPT_IN}=allow to confirm; remote APIs may serve production data.`);
     }
-    // Order events are only emitted by the API process that handled the order.
-    if (validatedRealtimeOrigin && !isLocalDevelopmentOrigin(validatedRealtimeOrigin) &&
-      !(explicitApiOrigin && !isLocalDevelopmentOrigin(validatedApiOrigin))) {
-      throw new Error('EXPO_PUBLIC_REALTIME_ORIGIN is remote but the REST API is local. Set EXPO_PUBLIC_API_ORIGIN to the same backend.');
-    }
   }
+  const realtimeAliasOf = validateRealtimePairing(validatedApiOrigin, validatedRealtimeOrigin, production);
   return { ...config, extra: { ...config.extra, environment,
     apiOrigin: validatedApiOrigin,
     apiOriginExplicit: Boolean(explicitApiOrigin),
     realtimeOrigin: validatedRealtimeOrigin,
+    realtimeAliasOf,
     defaultLocationId: process.env.EXPO_PUBLIC_DEFAULT_LOCATION_ID || config.extra?.defaultLocationId,
     stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || config.extra?.stripePublishableKey,
   } };

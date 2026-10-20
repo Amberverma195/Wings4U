@@ -61,7 +61,17 @@ export function getRealtimeOrigin(): string {
     | undefined;
   const realtime = extra?.realtimeOrigin;
   if (typeof realtime === "string" && realtime.trim()) {
-    return validateApiOrigin(realtime.trim(), !__DEV__ || extra?.environment === 'production');
+    const production = !__DEV__ || extra?.environment === 'production';
+    const origin = validateApiOrigin(realtime.trim(), production);
+    // Release builds re-check the app.config.js pairing rule: order events
+    // only reach a socket connected to the backend that handled the order.
+    if (production) {
+      const api = getApiBase();
+      if (origin !== api && extra?.realtimeAliasOf !== api) {
+        throw new Error('Realtime origin does not target the configured API backend.');
+      }
+    }
+    return origin;
   }
   return getApiBase();
 }
