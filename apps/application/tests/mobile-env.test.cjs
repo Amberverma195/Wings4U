@@ -22,6 +22,39 @@ test('Android emulator retains its development loopback override', () => {
   global.__DEV__ = true; mockPlatform.OS = 'android'; mockExtra.apiOrigin = 'http://192.168.1.50:3001';
   expect(getApiBase()).toBe('http://10.0.2.2:3001');
 });
+test.each([
+  ['a deployed API', 'https://api.example.com'],
+  ['a LAN API', 'http://192.168.1.50:3001'],
+])('an explicit development origin for %s wins over the Android emulator loopback', (_label, origin) => {
+  global.__DEV__ = true; mockPlatform.OS = 'android';
+  mockExtra = { environment: 'development', apiOrigin: origin, apiOriginExplicit: true };
+  expect(getApiBase()).toBe(origin);
+  expect(getRealtimeOrigin()).toBe(origin);
+});
+test('without an explicit origin the iOS simulator keeps the default LAN origin', () => {
+  global.__DEV__ = true; mockExtra = { apiOrigin: 'http://10.0.0.192:3001', apiOriginExplicit: false };
+  expect(getApiBase()).toBe('http://10.0.0.192:3001');
+});
+test('release runtime rejects a realtime origin on a different backend', () => {
+  global.__DEV__ = false;
+  mockExtra = { environment: 'production', apiOrigin: 'https://api.example.com', realtimeOrigin: 'https://ws.other.example' };
+  expect(() => getRealtimeOrigin()).toThrow('does not target the API backend');
+  mockExtra.realtimeAliasOf = 'https://other.example';
+  expect(() => getRealtimeOrigin()).toThrow('does not target the API backend');
+});
+test('release runtime accepts the same origin or a declared alias of the API origin', () => {
+  global.__DEV__ = false;
+  mockExtra = { environment: 'production', apiOrigin: 'https://api.example.com', realtimeOrigin: 'https://api.example.com/' };
+  expect(getRealtimeOrigin()).toBe('https://api.example.com');
+  mockExtra = { ...mockExtra, realtimeOrigin: 'https://ws.example.com', realtimeAliasOf: 'https://api.example.com' };
+  expect(getRealtimeOrigin()).toBe('https://ws.example.com');
+});
+test('development runtime keeps a local realtime override beside the emulator loopback', () => {
+  global.__DEV__ = true; mockPlatform.OS = 'android';
+  mockExtra = { apiOrigin: 'http://10.0.0.192:3001', apiOriginExplicit: false, realtimeOrigin: 'http://10.0.2.2:3001' };
+  expect(getApiBase()).toBe('http://10.0.2.2:3001');
+  expect(getRealtimeOrigin()).toBe('http://10.0.2.2:3001');
+});
 test('production environment cannot use the Android emulator override', () => {
   global.__DEV__ = true; mockPlatform.OS = 'android';
   mockExtra = { environment: 'production', apiOrigin: 'https://api.example.com' };

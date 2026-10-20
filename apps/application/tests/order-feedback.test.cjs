@@ -6,6 +6,7 @@ jest.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator', Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
   Platform: { OS: 'ios' }, StyleSheet: { create: value => value }, AccessibilityInfo: { setAccessibilityFocus: jest.fn() }, findNodeHandle: () => null,
+  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
 jest.mock('lucide-react-native', () => new Proxy({}, { get: (_, name) => name }));
@@ -20,7 +21,7 @@ const mockRefetch = jest.fn();
 const mockChatRefetch = jest.fn();
 const mockSendMessage = jest.fn();
 jest.mock('../src/hooks/use-chat', () => ({ useChat: () => ({ messages: [], loading: false, refetch: mockChatRefetch, sendMessage: mockSendMessage }) }));
-jest.mock('../src/lib/realtime', () => ({ createOrdersSocket: jest.fn(async () => ({ on: jest.fn(), off: jest.fn(), connect: jest.fn(), disconnect: jest.fn() })), subscribeToChannels: () => jest.fn() }));
+jest.mock('../src/lib/realtime', () => ({ createOrdersSocket: jest.fn(() => ({ on: jest.fn(), off: jest.fn(), connect: jest.fn(), disconnect: jest.fn(), timeout: jest.fn() })) }));
 jest.mock('../src/components/order-history', () => ({ OrderReorderAction: () => React.createElement('Reorder') }));
 const { apiFetch } = require('../src/lib/api');
 const { withSilentRefresh } = require('../src/context/session');
@@ -279,11 +280,14 @@ test('ticket success requires a confirmed creation, and successful tickets canno
 });
 test('active orders retain live updates, and completing an order disconnects before feedback opens', async () => {
   mockOrder.status = 'PREPARING'; await mount(Screen);
-  const socket = await require('../src/lib/realtime').createOrdersSocket.mock.results[0].value;
+  const socket = require('../src/lib/realtime').createOrdersSocket.mock.results[0].value;
   const handler = event => socket.on.mock.calls.find(([name]) => name === event)[1];
   expect(byLabel('Refresh order')).toBeDefined();
   expect(socket.connect).toHaveBeenCalledTimes(1);
-  await act(async () => { handler('order.status_changed')(); handler('chat.message')(); });
+  await act(async () => {
+    handler('order.status_changed')(); handler('chat.message')();
+    await new Promise(resolve => setTimeout(resolve, require('../src/lib/order-realtime').REFRESH_COALESCE_MS + 50));
+  });
   expect(mockRefetch).toHaveBeenCalledTimes(1); expect(mockChatRefetch).toHaveBeenCalledTimes(1);
   mockOrder = { ...mockOrder, status: 'DELIVERED' };
   await act(async () => renderer.update(React.createElement(Screen)));

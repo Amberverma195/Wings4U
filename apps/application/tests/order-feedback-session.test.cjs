@@ -64,7 +64,7 @@ test('initial loading and initial network failure have no cached order', async (
   const pending = deferred(); global.fetch.mockReturnValueOnce(pending.promise); await mount();
   expect(latest.loading).toBe(true); expect(latest.order).toBeNull();
   await act(async () => pending.resolve({ ok: false, status: 503, json: async () => ({ message: 'Unavailable' }) }));
-  expect(latest.loading).toBe(false); expect(latest.order).toBeNull(); expect(latest.error).toBe('Unavailable');
+  expect(latest.loading).toBe(false); expect(latest.order).toBeNull(); expect(latest.error).toBe('Unavailable (HTTP 503)');
 });
 test.each(['network', 408, 429, 500, 503])('temporary %s refresh failure retains data until successful retry', async failure => {
   await mount(); const previous = latest.order;
