@@ -1,4 +1,4 @@
-const { validateApiOrigin, isLocalDevelopmentOrigin } = require('./config/api-origin.cjs');
+const { validateApiOrigin, isLocalDevelopmentOrigin, realtimeTargetsApi } = require('./config/api-origin.cjs');
 
 const REMOTE_DEVELOPMENT_OPT_IN = 'MOBILE_DEV_REMOTE_API';
 const REALTIME_ALIAS = 'MOBILE_REALTIME_SAME_BACKEND_AS';
@@ -17,8 +17,7 @@ function validateRealtimePairing(apiOrigin, realtimeOrigin, production) {
   if (aliasOf && (!realtimeOrigin || aliasOf !== apiOrigin || realtimeOrigin === apiOrigin)) {
     throw new Error(`${REALTIME_ALIAS} must equal the API origin and is only valid with a different EXPO_PUBLIC_REALTIME_ORIGIN.`);
   }
-  if (!realtimeOrigin || !apiOrigin || realtimeOrigin === apiOrigin || aliasOf) return aliasOf;
-  if (!production && isLocalDevelopmentOrigin(apiOrigin) && isLocalDevelopmentOrigin(realtimeOrigin)) return undefined;
+  if (!realtimeOrigin || !apiOrigin || realtimeTargetsApi(apiOrigin, realtimeOrigin, aliasOf, production)) return aliasOf;
   throw new Error(`EXPO_PUBLIC_REALTIME_ORIGIN (${realtimeOrigin}) and the API origin (${apiOrigin}) must target the same backend. ` +
     `Use the same origin, or set ${REALTIME_ALIAS}=${apiOrigin} if the realtime host is an alias of that backend.`);
 }

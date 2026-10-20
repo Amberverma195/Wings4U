@@ -12,7 +12,11 @@
 import Constants from "expo-constants";
 import { isDevice } from "expo-device";
 import { Platform } from "react-native";
-const { validateApiOrigin } = require('../../config/api-origin.cjs') as { validateApiOrigin: (value: string, production: boolean) => string };
+const { validateApiOrigin, isLocalDevelopmentOrigin, realtimeTargetsApi } = require('../../config/api-origin.cjs') as {
+  validateApiOrigin: (value: string, production: boolean) => string;
+  isLocalDevelopmentOrigin: (value: string) => boolean;
+  realtimeTargetsApi: (apiOrigin: string, realtimeOrigin: string, aliasOf: unknown, production: boolean) => boolean;
+};
 
 /** Fallback dev host: Android emulator -> 10.0.2.2, iOS sim -> 127.0.0.1 */
 const DEV_HOST = Platform.OS === "android" ? "10.0.2.2" : "127.0.0.1";
@@ -22,9 +26,10 @@ const DEV_API_PORT = "3001";
  * Base URL for `/api/v1/*` JSON calls.
  *
  * Release builds require a public HTTPS origin from app.config.js.
- * Development precedence: an explicit `EXPO_PUBLIC_API_ORIGIN`, then the
- * Android emulator's host loopback, then the default LAN origin from
- * app.json, then the platform fallback.
+ * Development precedence: an explicit `EXPO_PUBLIC_API_ORIGIN` or a remote
+ * `developmentApiOrigin` (both opted into at build time), then the Android
+ * emulator's host loopback in place of a local LAN default, then the LAN
+ * default, then the platform fallback.
  */
 export function getApiBase(): string {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
@@ -34,7 +39,7 @@ export function getApiBase(): string {
     if (!configured) throw new Error('Production mobile API origin is not configured.');
     return validateApiOrigin(configured, true);
   }
-  if (configured && extra?.apiOriginExplicit === true) {
+  if (configured && (extra?.apiOriginExplicit === true || !isLocalDevelopmentOrigin(configured))) {
     return validateApiOrigin(configured, false);
   }
   if (__DEV__ && Platform.OS === "android" && !isDevice) {
@@ -63,13 +68,10 @@ export function getRealtimeOrigin(): string {
   if (typeof realtime === "string" && realtime.trim()) {
     const production = !__DEV__ || extra?.environment === 'production';
     const origin = validateApiOrigin(realtime.trim(), production);
-    // Release builds re-check the app.config.js pairing rule: order events
-    // only reach a socket connected to the backend that handled the order.
-    if (production) {
-      const api = getApiBase();
-      if (origin !== api && extra?.realtimeAliasOf !== api) {
-        throw new Error('Realtime origin does not target the configured API backend.');
-      }
+    // Re-check app.config.js against the REST origin actually in use, which
+    // can differ from the build-time value on the Android emulator.
+    if (!realtimeTargetsApi(getApiBase(), origin, extra?.realtimeAliasOf, production)) {
+      throw new Error('Realtime origin does not target the API backend in use.');
     }
     return origin;
   }

@@ -26,4 +26,14 @@ function isLocalDevelopmentOrigin(value) {
     /(^|\.)home\.arpa$/.test(host);
 }
 
-module.exports = { validateApiOrigin, isLocalDevelopmentOrigin };
+/**
+ * Order events only reach a socket on the backend that handled the order, so
+ * Socket.IO must reach the REST backend: the same origin, a declared alias of
+ * it, or (development only) two local origins on the developer's machines.
+ */
+function realtimeTargetsApi(apiOrigin, realtimeOrigin, aliasOf, production) {
+  return realtimeOrigin === apiOrigin || aliasOf === apiOrigin ||
+    (!production && isLocalDevelopmentOrigin(apiOrigin) && isLocalDevelopmentOrigin(realtimeOrigin));
+}
+
+module.exports = { validateApiOrigin, isLocalDevelopmentOrigin, realtimeTargetsApi };

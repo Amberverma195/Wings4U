@@ -38,9 +38,9 @@ test('without an explicit origin the iOS simulator keeps the default LAN origin'
 test('release runtime rejects a realtime origin on a different backend', () => {
   global.__DEV__ = false;
   mockExtra = { environment: 'production', apiOrigin: 'https://api.example.com', realtimeOrigin: 'https://ws.other.example' };
-  expect(() => getRealtimeOrigin()).toThrow('does not target the configured API backend');
+  expect(() => getRealtimeOrigin()).toThrow('does not target the API backend');
   mockExtra.realtimeAliasOf = 'https://other.example';
-  expect(() => getRealtimeOrigin()).toThrow('does not target the configured API backend');
+  expect(() => getRealtimeOrigin()).toThrow('does not target the API backend');
 });
 test('release runtime accepts the same origin or a declared alias of the API origin', () => {
   global.__DEV__ = false;
