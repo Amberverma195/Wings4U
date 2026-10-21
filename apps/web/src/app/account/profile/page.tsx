@@ -10,6 +10,7 @@ import { useSession } from "@/lib/session";
 import type { ActivePromo } from "@/lib/types";
 import { AccountSkeleton } from "@/components/account-skeleton";
 import { AccountSurfaceLinks } from "../account-surface-links";
+import { AccountDeletionButton } from "../account-deletion-button";
 
 import styles from "./profile.module.css";
 
@@ -264,7 +265,7 @@ export default function ProfilePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [logoutConfirmOpen, stampsModalOpen]);
 
-  if (!session.loaded || isLoggingOut) {
+  if (!session.loaded || !session.authenticated || isLoggingOut) {
     return <AccountSkeleton isLoggingOut={isLoggingOut} />;
   }
 
@@ -324,6 +325,8 @@ export default function ProfilePage() {
                   </button>
                 </nav>
               </div>
+
+              {session.authenticated && session.user?.role === "CUSTOMER" ? <AccountDeletionButton /> : null}
             </div>
 
 

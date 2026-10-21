@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { renderBrandedEmail } from "./email-brand-template";
+import { PrismaService } from "../../database/prisma.service";
 
 export type OrderEmailStatus =
   | "ACCEPTED"
@@ -87,11 +88,30 @@ export function renderEmail(
 @Injectable()
 export class OrderStatusEmailService {
   private readonly logger = new Logger(OrderStatusEmailService.name);
+  constructor(private readonly prisma: PrismaService) {}
 
   async send(
     order: OrderEmailDetails,
     status: OrderEmailStatus,
   ): Promise<boolean> {
+    if (!order.customerEmailSnapshot?.trim() || !process.env.RESEND_API_KEY?.trim()) return this.deliver(order, status);
+    let rows: Array<{ account_deleted_at: Date | null }>;
+    try {
+      // A copied in-memory recipient is insufficient: re-check the owner after the
+      // status write. Deliberately no transaction or lock around the provider call,
+      // so a pooled connection is never held while waiting on the email provider.
+      rows = await this.prisma.$queryRaw<Array<{ account_deleted_at: Date | null }>>`
+        SELECT u.account_deleted_at FROM users u JOIN orders o ON o.customer_user_id = u.id
+        WHERE o.id = ${order.id}::uuid`;
+    } catch {
+      this.logger.error("Order notification recipient authorization could not be confirmed");
+      return false;
+    }
+    if (rows.some(row => row.account_deleted_at !== null)) return false;
+    return this.deliver(order, status);
+  }
+
+  private async deliver(order: OrderEmailDetails, status: OrderEmailStatus): Promise<boolean> {
     const recipient = order.customerEmailSnapshot?.trim();
     if (!recipient) {
       this.logger.warn(
@@ -132,18 +152,17 @@ export class OrderStatusEmailService {
       });
 
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
         this.logger.error(
-          `Resend rejected ${status} email for order ${order.id} (${response.status}): ${body.slice(0, 500)}`,
+          `Resend rejected ${status} email for order ${order.id} (${response.status})`,
         );
         return false;
       }
 
       this.logger.log(`Sent ${status} email for order ${order.id}`);
       return true;
-    } catch (error) {
+    } catch {
       this.logger.error(
-        `Failed to send ${status} email for order ${order.id}: ${error instanceof Error ? error.message : "network error"}`,
+        `Failed to send ${status} email for order ${order.id}`,
       );
       return false;
     }

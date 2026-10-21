@@ -507,6 +507,27 @@ describe("RealtimeGateway over a real Socket.IO server", () => {
       expect(mobile.connected).toBe(true);
     });
 
+    it("revalidates outbound events so a revoked customer cannot receive private broadcasts on another API instance", async () => {
+      const token = fixtures.issueCustomerToken(CUSTOMER_ID, "deleted-customer-session");
+      const mobile = connect({ token: () => token });
+      await subscribeOnConnect(mobile, [`order:${ORDER_ID}`]);
+      const received = jest.fn(); mobile.on("order.status_changed", received);
+      fixtures.authSessions.get("deleted-customer-session")!.revokedAt = new Date();
+      const rejected = serverRejection(mobile);
+      gateway.emitOrderEvent(LOCATION_ID, ORDER_ID, "order.status_changed", { to_status: "READY", private_data: "must not arrive" });
+      await expect(rejected).resolves.toMatchObject({ reason: "io server disconnect" });
+      expect(received).not.toHaveBeenCalled();
+    });
+
+    it("disconnects all local sockets for a deleted customer", async () => {
+      const first = connect({ token: () => fixtures.issueCustomerToken(CUSTOMER_ID, "first-device") });
+      const second = connect({ token: () => fixtures.issueCustomerToken(CUSTOMER_ID, "second-device") });
+      await Promise.all([subscribeOnConnect(first, [`order:${ORDER_ID}`]), subscribeOnConnect(second, [`order:${ORDER_ID}`])]);
+      const closed = [serverRejection(first), serverRejection(second)];
+      gateway.disconnectCustomer(CUSTOMER_ID);
+      for (const pending of closed) await expect(pending).resolves.toMatchObject({ error: { message: "Account deleted" }, reason: "io server disconnect" });
+    });
+
     it("reconnects with a refreshed token instead of reusing the ended session", async () => {
       let currentToken = fixtures.issueCustomerToken(CUSTOMER_ID, "session-a");
       const mobile = connect({ token: () => currentToken });

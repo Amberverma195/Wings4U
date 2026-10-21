@@ -48,6 +48,7 @@ export async function apiFetch(
   init: RequestInit & { locationId?: string; expectedSessionGeneration?: number } = {}
 ): Promise<Response> {
   const { locationId, expectedSessionGeneration, headers: initHeaders, ...rest } = init;
+  const requestGeneration = expectedSessionGeneration ?? getSessionGeneration();
   const headers = new Headers(initHeaders);
 
   // Attach Bearer token from secure storage
@@ -66,7 +67,7 @@ export async function apiFetch(
   }
 
   const base = getApiBase();
-  if (expectedSessionGeneration !== undefined && expectedSessionGeneration !== getSessionGeneration()) {
+  if (requestGeneration !== getSessionGeneration()) {
     throw new Error('Your session changed. Please try again.');
   }
   return fetch(`${base}${path}`, {

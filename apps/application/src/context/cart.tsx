@@ -26,6 +26,7 @@ import type {
   RemovedIngredientSelection,
 } from "../lib/types";
 import { useSession } from "./session";
+import { getSessionGeneration } from "../lib/token-store";
 
 type PersistedCartDraft = {
   v: 1;
@@ -121,25 +122,28 @@ async function loadPersistedDraft(locationId: string): Promise<PersistedCartDraf
   }
 }
 
-async function persistDraft(payload: Omit<PersistedCartDraft, "v" | "savedAt">): Promise<void> {
-  try {
-    const data: PersistedCartDraft = {
-      v: 1,
-      savedAt: Date.now(),
-      ...payload,
-    };
-    await AsyncStorage.setItem(draftStorageKey(payload.locationId), JSON.stringify(data));
-  } catch {
-    // Storage is best-effort; DB sync remains the source of truth.
-  }
+let draftWrites: Promise<void> = Promise.resolve();
+async function persistDraft(payload: Omit<PersistedCartDraft, "v" | "savedAt">, generation: number): Promise<void> {
+  const write = draftWrites.catch(() => {}).then(async () => {
+    if (generation !== getSessionGeneration()) return;
+    try {
+      const data: PersistedCartDraft = { v: 1, savedAt: Date.now(), ...payload };
+      await AsyncStorage.setItem(draftStorageKey(payload.locationId), JSON.stringify(data));
+      if (generation !== getSessionGeneration()) await AsyncStorage.removeItem(draftStorageKey(payload.locationId));
+    } catch {
+      // Storage is best-effort; DB sync remains the source of truth.
+    }
+  });
+  draftWrites = write;
+  await write;
 }
 
 async function clearPersistedDraft(locationId: string): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(draftStorageKey(locationId));
-  } catch {
-    // ignore
-  }
+  const write = draftWrites.catch(() => {}).then(async () => {
+    try { await AsyncStorage.removeItem(draftStorageKey(locationId)); } catch { /* Unavailable storage. */ }
+  });
+  draftWrites = write;
+  await write;
 }
 
 function getRemovedIngredientsFromPayload(
@@ -406,7 +410,9 @@ export function CartProvider({
       return;
     }
 
+    const generation = getSessionGeneration();
     const timeout = setTimeout(() => {
+      if (generation !== getSessionGeneration()) return;
       const payload = {
         locationId,
         items,
@@ -415,10 +421,10 @@ export function CartProvider({
         scheduledFor,
         driverTipPercent,
       };
-      void persistDraft(payload);
+      void persistDraft(payload, generation);
       void (async () => {
         const snapshot = await putSavedCart(locationId, payload);
-        if (snapshot) {
+        if (snapshot && generation === getSessionGeneration()) {
           setCartExpiresAt(snapshot.expires_at);
           setIsGuestCart(snapshot.is_guest);
         }

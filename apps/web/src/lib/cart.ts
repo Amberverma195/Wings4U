@@ -38,6 +38,7 @@ import {
   type SavedCartSnapshot,
 } from "./saved-cart-api";
 import { useSession } from "./session";
+import { getAuthSessionGeneration } from "./auth-events";
 import type { CartItem, CartModifierSelection, FulfillmentType } from "./types";
 
 /** Coalesce rapid +/- quantity taps into one toast. */
@@ -758,7 +759,9 @@ export function useCartState(locationId: string): CartContextValue {
 
     if (putTimerRef.current) clearTimeout(putTimerRef.current);
 
+    const generation = getAuthSessionGeneration();
     putTimerRef.current = setTimeout(() => {
+      if (generation !== getAuthSessionGeneration()) return;
       void (async () => {
         const res = await putSavedCart(locationId, {
           items,
@@ -767,7 +770,7 @@ export function useCartState(locationId: string): CartContextValue {
           scheduledFor,
           driverTipPercent,
         });
-        if (res) {
+        if (res && generation === getAuthSessionGeneration()) {
           setCartExpiresAt(res.expires_at);
           setIsGuestCart(res.is_guest);
         }

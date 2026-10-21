@@ -701,7 +701,7 @@ export class AuthService {
     // their refresh cookie expired weeks later. Revoke the row here so the
     // cookie is also unusable going forward, then let the controller clear
     // cookies on the thrown failure.
-    if (!session.user.isActive) {
+    if (!session.user.isActive || session.user.archivedAt || session.user.accountDeletedAt) {
       await this.prisma.authSession.updateMany({
         where: { id: session.id, revokedAt: null },
         data: { revokedAt: now, revokedByUserId: session.userId },

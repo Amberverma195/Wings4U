@@ -22,6 +22,7 @@ import React, {
   useState,
 } from 'react';
 import { useSession } from './session';
+import { getSessionGeneration } from '../lib/token-store';
 import {
   EMPTY_PROMO_SELECTION,
   promoReducer,
@@ -52,8 +53,12 @@ export function PromoProvider({ children }: { children: React.ReactNode }) {
   const owner = useRef(customerKey); owner.current = customerKey;
   const storageWrites = useRef(Promise.resolve());
   const enqueueWrite = useCallback((value: string | null) => {
-    storageWrites.current = storageWrites.current.then(() => value
-      ? AsyncStorage.setItem(STORAGE_KEY, value) : AsyncStorage.removeItem(STORAGE_KEY)).catch(() => {});
+    const generation = getSessionGeneration();
+    storageWrites.current = storageWrites.current.then(async () => {
+      if (generation !== getSessionGeneration()) return;
+      if (value) await AsyncStorage.setItem(STORAGE_KEY, value); else await AsyncStorage.removeItem(STORAGE_KEY);
+      if (generation !== getSessionGeneration()) await AsyncStorage.removeItem(STORAGE_KEY);
+    }).catch(() => {});
   }, []);
   const dispatch = useCallback((action: PromoAction) => {
     if (!hydrated) return;

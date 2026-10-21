@@ -13,7 +13,9 @@ import { apiFetch } from "./api";
 import {
   addAuthSessionClearedListener,
   notifyAuthSessionCleared,
+  getAuthSessionGeneration,
 } from "./auth-events";
+import { forgetDeletedAccount } from "./account-deletion";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import {
   clearStoredDeliveryQuotes,
@@ -120,6 +122,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchSession = useCallback(async (): Promise<boolean> => {
+    const generation = getAuthSessionGeneration();
+    const current = () => generation === getAuthSessionGeneration();
+    const applyCurrent = (next: SessionApiResponse) => {
+      if (current()) setData(next);
+    };
     let timeoutId: number | undefined;
     try {
       const controller = new AbortController();
@@ -134,7 +141,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const envelope = (await res.json()) as ApiEnvelope<SessionApiResponse>;
         const next = envelope.data ?? SIGNED_OUT_SESSION;
         if (next.authenticated === true) {
-          setData(next);
+          applyCurrent(next);
           return true;
         }
 
@@ -150,7 +157,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             if (retry.ok) {
               const retryEnvelope = (await retry.json()) as ApiEnvelope<SessionApiResponse>;
               const recovered = retryEnvelope.data ?? SIGNED_OUT_SESSION;
-              setData(recovered);
+              applyCurrent(recovered);
               return recovered.authenticated === true;
             }
 
@@ -168,7 +175,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           return false;
         }
 
-        setData(next);
+        applyCurrent(next);
         return false;
       }
 
@@ -181,7 +188,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           if (retry.ok) {
             const envelope = (await retry.json()) as ApiEnvelope<SessionApiResponse>;
             const next = envelope.data ?? SIGNED_OUT_SESSION;
-            setData(next);
+            applyCurrent(next);
             return next.authenticated === true;
           }
         }
@@ -225,7 +232,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [fetchSession, loaded, pathname]);
 
   useEffect(() => {
-    const revalidate = () => {
+    const revalidate = (event: Event) => {
+      if (event.type === "pageshow" && (event as PageTransitionEvent).persisted && pathname?.startsWith("/account")) {
+        window.location.reload();
+        return;
+      }
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return;
       }
@@ -241,10 +252,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("pageshow", revalidate);
       document.removeEventListener("visibilitychange", revalidate);
     };
-  }, [fetchSession]);
+  }, [fetchSession, pathname]);
 
   useEffect(() => {
     return addAuthSessionClearedListener(() => {
+      forgetDeletedAccount();
       applySignedOut();
       if (isProtectedSurface) {
         router.replace("/login");

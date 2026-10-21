@@ -310,7 +310,7 @@ function setAuthCookies(
   });
 }
 
-function clearAuthCookies(res: Response): void {
+export function clearAuthCookies(res: Response): void {
   // Pass the full attribute set so the browser actually overwrites / evicts
   // the cookie instead of silently dropping a mismatched Set-Cookie.
   clearSharedCookieVariants(res, "access_token", ACCESS_COOKIE_BASE, ["/api"]);

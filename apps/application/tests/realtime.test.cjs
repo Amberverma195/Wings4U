@@ -1,6 +1,6 @@
 jest.mock('../src/lib/env', () => ({ getRealtimeOrigin: jest.fn(() => 'https://api.example.com') }));
-jest.mock('../src/lib/token-store', () => ({ getAccessToken: jest.fn() }));
-jest.mock('socket.io-client', () => ({ io: jest.fn(() => ({})) }));
+jest.mock('../src/lib/token-store', () => ({ getAccessToken: jest.fn(), subscribeSessionGeneration: jest.fn() }));
+jest.mock('socket.io-client', () => ({ io: jest.fn(() => ({ on: jest.fn(), disconnect: jest.fn() })) }));
 const { io } = require('socket.io-client');
 const { getAccessToken } = require('../src/lib/token-store');
 const { createOrdersSocket } = require('../src/lib/realtime');

@@ -259,6 +259,15 @@ export class RealtimeGateway
     this.sessionSockets.delete(sessionId);
   }
 
+  disconnectCustomer(userId: string): void {
+    for (const socket of this.server?.sockets?.sockets?.values() ?? []) {
+      if (socket.data.user?.role === "CUSTOMER" && socket.data.user.userId === userId) {
+        socket.emit("error", { message: "Account deleted" });
+        socket.disconnect(true);
+      }
+    }
+  }
+
   /* ------------------------------------------------------------------ */
   /*  Channel subscriptions                                              */
   /* ------------------------------------------------------------------ */
@@ -399,11 +408,23 @@ export class RealtimeGateway
     event: string,
     payload: Record<string, unknown>,
   ): void {
-    this.server.to(channel).emit(event, {
+    const envelope = {
       event_type: event,
       payload,
       timestamp: new Date().toISOString(),
-    });
+    };
+    // A socket on another API instance may still be connected after deletion.
+    // Revalidate customers before EVERY outbound broadcast, not only subscribe.
+    const customers = [...(this.server.sockets?.sockets?.values() ?? [])].filter(socket =>
+      socket.data.user?.role === "CUSTOMER" && socket.rooms.has(channel));
+    const target = this.server.to(channel);
+    if (customers.length) target.except(customers.map(socket => socket.id)).emit(event, envelope);
+    else target.emit(event, envelope);
+    for (const socket of customers) {
+      void this.revalidateSocketUser(socket).then(user => {
+        if (user?.role === "CUSTOMER" && socket.connected && socket.rooms.has(channel)) socket.emit(event, envelope);
+      }).catch(() => { socket.disconnect(true); });
+    }
   }
 
   emitOrderEvent(

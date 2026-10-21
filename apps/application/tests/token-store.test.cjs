@@ -1,5 +1,8 @@
 const mockDisk = new Map();
-jest.mock('expo-secure-store', () => ({ getItemAsync: jest.fn(), setItemAsync: jest.fn(), deleteItemAsync: jest.fn() }), { virtual: true });
+// isolateModules may create another mock registry. Share the same disk adapter
+// so each isolated token-store instance exercises the configured storage mock.
+const mockSecureStore = { getItemAsync: jest.fn(), setItemAsync: jest.fn(), deleteItemAsync: jest.fn() };
+jest.mock('expo-secure-store', () => mockSecureStore, { virtual: true });
 const store = require('expo-secure-store');
 let tokens;
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };

@@ -73,6 +73,10 @@ model User {
   createdAt                 DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   archivedAt                DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  accountDeletedAt          DateTime?                 @map("account_deleted_at") @db.Timestamptz(6)
+  accountDeletionAuthorizations AccountDeletionAuthorization[]
+  accountDeletionRequest    AccountDeletionRequest?
+  accountDeletionHolds      AccountDeletionHold[]
   lastProfileIdentityChangeAt DateTime?                 @map("last_profile_identity_change_at") @db.Timestamptz(6)
   adminAuditLogs            AdminAuditLog[]
   adminLocationAssignments  AdminLocationAssignment[]
@@ -292,6 +296,48 @@ model AuthSession {
 
   @@index([userId, revokedAt, expiresAt], map: "idx_auth_sessions_user_active")
   @@map("auth_sessions")
+}
+
+model AccountDeletionAuthorization {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  sessionId         String   @map("session_id") @db.Uuid
+  tokenHash         String   @unique @map("token_hash")
+  requestId         String   @unique @map("request_id") @db.Uuid
+  credentialHash    String   @map("credential_hash")
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
+  consumedAt        DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user              User     @relation(fields: [userId], references: [id], onDelete: NoAction)
+
+  @@index([userId, expiresAt], map: "idx_account_deletion_authorizations_user")
+  @@map("account_deletion_authorizations")
+}
+
+model AccountDeletionHold {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+  code         String
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt   DateTime? @map("released_at") @db.Timestamptz(6)
+  user         User @relation(fields: [userId], references: [id], onDelete: NoAction)
+
+  @@index([userId, releasedAt], map: "idx_account_deletion_holds_active")
+  @@map("account_deletion_holds")
+}
+
+model AccountDeletionRequest {
+  id                String   @id @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  authorizationHash String   @map("authorization_hash")
+  status            String
+  blockersJson      Json     @default("[]") @map("blockers_json")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  user              User     @relation(fields: [userId], references: [id], onDelete: NoAction)
+
+  @@map("account_deletion_requests")
 }
 
 model LocationSettings {

@@ -10,6 +10,7 @@ import { useSession, withSilentRefresh } from "@/lib/session";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { AccountSkeleton } from "@/components/account-skeleton";
 import { AccountSurfaceLinks } from "./account-surface-links";
+import { AccountDeletionButton } from "./account-deletion-button";
 
 import styles from "./profile/profile.module.css"; // Reuse profile styles for consistency
 
@@ -102,7 +103,7 @@ export default function AccountPage() {
 
 
 
-  if (!session.loaded || isLoggingOut) {
+  if (!session.loaded || !session.authenticated || isLoggingOut) {
     return <AccountSkeleton isLoggingOut={isLoggingOut} />;
   }
 
@@ -220,6 +221,7 @@ export default function AccountPage() {
                   <span>{busy ? "Saving..." : "Save changes"}</span>
                 </button>
               </form>
+              {session.authenticated && session.user?.role === "CUSTOMER" ? <AccountDeletionButton /> : null}
             </section>
           </div>
         </div>
