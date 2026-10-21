@@ -1130,7 +1130,6 @@ function OrdersTab({
         {hasMoreOrders ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load More Orders"
           accessibilityState={{ disabled: loadingMoreOrders || paginationDisabled, busy: loadingMoreOrders }}
           disabled={loadingMoreOrders || paginationDisabled} style={styles.loadMoreOrders} onPress={onLoadMore}>
-          {loadingMoreOrders ? <ActivityIndicator color="#FF4D4D" /> : null}
           <Text style={styles.loadMoreOrdersText}>{loadingMoreOrders ? 'Loading more orders...' : 'Load More Orders'}</Text>
         </TouchableOpacity> : ordersError ? <TouchableOpacity accessibilityRole="button" style={styles.loadMoreOrders}
           disabled={paginationDisabled} onPress={onRetry}><Text style={styles.loadMoreOrdersText}>Try again</Text></TouchableOpacity> : null}

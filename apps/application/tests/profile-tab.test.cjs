@@ -175,12 +175,14 @@ test('an empty Past list with more mixed/active-only pages remains loadable and 
   mockAccount.data.orders = [...mockAccount.data.orders, historyOrder(3)]; await rerender();
   expect(selected('Past (1)')).toBe(true); expect(renderer.root.findAllByProps({ accessibilityLabel: 'Reorder' })).toHaveLength(1);
 });
-test('pagination spinner and disabled button are visible while the next page loads', async () => {
+test('pagination uses one compact skeleton and a disabled button without a second spinner', async () => {
   mockAccount.data.ordersNextCursor = 'page2'; await rerender(); await tap('Orders'); await tap('Past (0)');
   mockAccount.loadingMoreOrders = true; await rerender();
   const loading = renderer.root.findByProps({ accessibilityLabel: 'Load More Orders' });
   expect(loading.props.disabled).toBe(true); expect(loading.props.accessibilityState.busy).toBe(true);
-  expect(loading.findAllByType('ActivityIndicator')).toHaveLength(1); expect(strings()).toContain('Loading more orders...');
+  expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  expect(loadingGroups().map(node => node.props.testID)).toEqual(['orders-pagination-skeleton']);
+  expect(strings()).toContain('Loading more orders...');
 });
 test('failed page leaves existing cards visible with a retry action; exhaustion removes the button', async () => {
   mockAccount.data.orders = [historyOrder(1)]; mockAccount.data.ordersNextCursor = 'page2';

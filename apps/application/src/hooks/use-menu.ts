@@ -29,18 +29,18 @@ export function useMenu(
   reloadKey?: string,
 ): UseMenuResult {
   const id = locationId ?? DEFAULT_LOCATION_ID;
-  const [menu, setMenu] = useState<MenuResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const context = JSON.stringify([id, fulfillmentType, scheduledFor || null, reloadKey ?? null]);
+  const [state, setState] = useState<Omit<UseMenuResult, 'refetch'> & { context: string }>(() => ({
+    context, menu: null, loading: true, error: null, loadedReloadKey: null,
+  }));
   const [nonce, setNonce] = useState(0);
-  const [loadedReloadKey, setLoadedReloadKey] = useState<string | null | undefined>(null);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    setState(previous => ({ context, menu: previous.context === context ? previous.menu : null,
+      loading: true, error: null, loadedReloadKey: previous.context === context ? previous.loadedReloadKey : null }));
 
     void (async () => {
       try {
@@ -56,22 +56,22 @@ export function useMenu(
         );
         if (!cancelled) {
           if (!envelope.data) throw new Error("Menu response missing data");
-          setMenu(envelope.data);
-          setLoadedReloadKey(reloadKey);
+          setState({ context, menu: envelope.data, loading: false, error: null, loadedReloadKey: reloadKey });
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setState(previous => ({ ...previous, loading: false, error: err instanceof Error ? err.message : String(err) }));
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [id, fulfillmentType, scheduledFor, reloadKey, nonce]);
+  }, [id, fulfillmentType, scheduledFor, reloadKey, nonce, context, refetch]);
 
-  return { menu, loading, error, refetch, loadedReloadKey };
+  // Hide incompatible data during render, before the new request effect runs.
+  return state.context === context ? { ...state, refetch } : {
+    menu: null, loading: true, error: null, refetch, loadedReloadKey: null,
+  };
 }

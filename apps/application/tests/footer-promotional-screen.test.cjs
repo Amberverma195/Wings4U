@@ -67,9 +67,16 @@ test('failed initial menu request shows error/retry; a retry shows placeholders 
   mockMenuResult = { ...mockMenuResult, menu: null, loading: false, error: 'Offline' }; await mount(false);
   expect(skeletons()).toHaveLength(0);
   expect(renderer.root.findAllByType('Text').some(node => node.props.children === 'Offline')).toBe(true);
-  mockMenuResult = { ...mockMenuResult, loading: true };
+  const retry = renderer.root.findAllByType('Text').find(node => node.props.children === 'Try Again');
+  await act(async () => retry.parent.props.onPress());
+  expect(mockMenuResult.refetch).toHaveBeenCalledTimes(1);
+  mockMenuResult = { ...mockMenuResult, loading: true, error: null };
   await act(async () => renderer.update(React.createElement(MenuScreen)));
   expect(skeletons()).toHaveLength(1);
+  mockMenuResult = { ...mockMenuResult, loading: false, menu };
+  await act(async () => renderer.update(React.createElement(MenuScreen)));
+  expect(skeletons()).toHaveLength(0);
+  expect(renderer.root.findAll(node => node.type?.name === 'MenuItemCard').length).toBeGreaterThan(0);
 });
 
 test('a successful empty catalog is not an unresolved initial load', async () => {
@@ -354,4 +361,33 @@ test('unavailable 1lb wings never creates a synthetic reward item', async () => 
   mockMenuResult = { ...mockMenuResult, loadedReloadKey: 'reward-unavailable' };
   await mount(false); expect(Alert.alert).toHaveBeenCalledWith('Item unavailable', expect.any(String));
   expect(mockCart.addItem).not.toHaveBeenCalled();
+});
+
+test.each([true, false])('refresh failure stays inline on cinematic=%s and Retry retains cards, search, category and the scroll view', async cinematic => {
+  await mount(cinematic);
+  if (!cinematic) {
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Burgers' }).props.onPress());
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Search menu' }).props.onChangeText('classic'));
+  }
+  const scroll = renderer.root.findAllByType('ScrollView').find(node => node.props.refreshControl);
+  const cards = () => cinematic ? renderer.root.findAllByType('PopularItems') : renderer.root.findAll(node => node.type?.name === 'MenuItemCard');
+  const count = cards().length; expect(count).toBeGreaterThan(0);
+  mockMenuResult = { ...mockMenuResult, error: 'Offline' };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic })));
+  expect(cards()).toHaveLength(count); expect(skeletons()).toHaveLength(0);
+  expect(shownNames()).not.toContain("Couldn't load menu");
+  expect(shownNames().join(' ')).toContain("Couldn't refresh menu.");
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Retry menu refresh' }).props.onPress());
+  expect(mockMenuResult.refetch).toHaveBeenCalledTimes(1);
+  mockMenuResult = { ...mockMenuResult, loading: true, error: null };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic })));
+  expect(cards()).toHaveLength(count); expect(skeletons()).toHaveLength(0);
+  mockMenuResult = { ...mockMenuResult, loading: false, menu: { ...menu } };
+  await act(async () => renderer.update(React.createElement(MenuScreen, { cinematic })));
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry menu refresh' })).toHaveLength(0);
+  expect(renderer.root.findAllByType('ScrollView').find(node => node.props.refreshControl)).toBe(scroll);
+  if (!cinematic) {
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Search menu' }).props.value).toBe('classic');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Burgers' }).props.accessibilityState.selected).toBe(true);
+  }
 });

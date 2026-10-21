@@ -174,7 +174,11 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   }, [menu]);
 
   useEffect(() => {
-    if (loading || !menu) return;
+    if (!menu) {
+      setSelectedItem(null); setEditingCartItem(null); setRewardWeightId(null);
+      return;
+    }
+    if (loading) return;
     setSelectedItem(previous => previous ? menu.categories.flatMap(category => category.items).find(item => item.id === previous.id) ?? null : null);
   }, [menu, loading]);
 
@@ -498,7 +502,7 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
   /* ---------------------------------------------------------------- */
   /*  Error state                                                      */
   /* ---------------------------------------------------------------- */
-  if (error) {
+  if (error && !menu) {
     return (
       <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <TabHeader title={cinematic ? 'Wings4U' : 'Menu'} />
@@ -536,6 +540,14 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
         }
       >
         {menuHeader}
+
+        {error ? <View style={styles.refreshError}>
+          <Text style={styles.refreshErrorText} accessibilityRole="alert">Couldn't refresh menu. {error}</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry menu refresh"
+            disabled={loading} onPress={refetch}>
+            <Text style={styles.refreshRetryText}>Retry</Text>
+          </TouchableOpacity>
+        </View> : null}
 
         {selectedItem && isWingBuilderItem(selectedItem) ? (
           <WingsBuilderMobile
@@ -809,6 +821,10 @@ const styles = StyleSheet.create({
   },
 
   /* Error */
+  refreshError: { marginHorizontal: 20, marginVertical: 12, padding: 12, borderRadius: 12,
+    backgroundColor: '#FFF1EB', flexDirection: 'row', alignItems: 'center', gap: 12 },
+  refreshErrorText: { flex: 1, color: '#663D32', fontSize: 14 },
+  refreshRetryText: { color: '#B52D2D', fontWeight: '700', padding: 8 },
   errorWrap: {
     flex: 1,
     justifyContent: 'center',

@@ -1,8 +1,8 @@
 # Mobile skeleton loading implementation
 
-Branch: `feat/mobile-loading-skeletons`, based on current `main` at `380dd2c32eda1230c0a38d23b66529a912058aea`.
+Original implementation branch: `feat/mobile-loading-skeletons`, based on `main` at `380dd2c32eda1230c0a38d23b66529a912058aea`.
 
-Changes are local, uncommitted and unpublished. Website and backend code are unchanged.
+The original skeleton implementation was committed and published to `main` in `fc050530bcd752131e06b91be9461f47413f644d`. Website and backend code were unchanged. The review corrections described below are a separate follow-up.
 
 ## Loading-state audit and coverage
 
@@ -17,7 +17,7 @@ Changes are local, uncommitted and unpublished. Website and backend code are unc
 | Profile Orders | Account initial load without ready data | Active/Past filters and order-number/date/status/price/action card shapes. Successful empty history immediately uses the existing empty state. |
 | Profile Addresses | Account initial load without ready data and without an open form | Heading/action shapes and saved-address cards. Loaded saved addresses, empty state and an open Add/Edit form remain real content. |
 | Profile Support | Account initial load without ready data and without an open form | Existing help/action card and ticket-title/status/date/summary list shapes. Loaded tickets, empty state and unsent ticket form remain real content. |
-| Orders pagination | `loadingMoreOrders` | One compact bottom-of-list placeholder. Earlier rows, selected filter, pagination safeguards and existing busy button remain. |
+| Orders pagination | `loadingMoreOrders` | One compact bottom-of-list placeholder. Earlier rows, selected filter, pagination safeguards and disabled/busy button remain. The follow-up below removes the original redundant button spinner. |
 | Order detail | `order.loading && !order.order` | Header/status/action, metadata/estimate, item rows, inset amounts and status-history shapes. No speculative driver identity, PIN or fake order data. Valid cached detail is never replaced during realtime or HTTP refresh. |
 | Orders / Deals redirect tabs | No new skeleton | Existing authenticated redirects into Profile sections and guest sign-in experiences are unchanged. No duplicate full-page loading overlay was added. |
 
@@ -38,7 +38,7 @@ Profile is keyed by authenticated user ID so another account cannot inherit the 
 
 ## State distinctions preserved
 
-- Background menu refresh with cached data keeps the menu and customizations.
+- Background menu refresh with cached data keeps the menu and customizations while pending. The original error branch still replaced the screen on refresh failure; the follow-up below corrects that behavior.
 - Cart pricing refresh keeps the actual items, available amounts and quantity controls; it is separate from persistence hydration.
 - A successful empty array ends initial placeholders immediately and uses the existing empty state.
 - Initial failures use the existing errors/retry paths rather than keeping skeletons indefinitely.
@@ -85,7 +85,7 @@ Paths relative to repository root:
 
 The Home/Menu route wrappers, Orders/Deals redirect routes, cart persistence, pricing calculations, checkout preparation, API URLs and website/backend files were not changed.
 
-## Validation actually executed
+## Original implementation validation actually executed
 
 Relevant targeted tests passed before the final full run: 8 suites, 297 tests. The final full run includes the additional readiness-reset case.
 
@@ -138,4 +138,48 @@ Automated tests verify state selection, shared animation configuration, cleanup 
 
 No production database mutations, migrations, resets, seeds, live customer/checkout writes, credential changes, deployment changes, backend/website changes or production deployments were performed.
 
-Nothing was committed, pushed or merged. Existing unrelated database-guard edits and root untracked files were preserved.
+The original implementation was subsequently committed and pushed to `main` in `fc050530bcd752131e06b91be9461f47413f644d` after explicit authorization. No deployment was performed. Existing unrelated database-guard edits and root untracked files were preserved.
+
+## Review corrections (2026-10-20)
+
+Branch: `fix/mobile-skeleton-review`, based on latest fetched `origin/main` at `fc050530bcd752131e06b91be9461f47413f644d`. These corrections were implemented and validated locally before the user authorized publication to main. Publication is recorded in Git history; no deployment was performed.
+
+### P2: menu refresh and context validity
+
+Root cause: the screen's unconditional error branch replaced previously loaded content, while the hook retained data without identifying the store, fulfillment, schedule or navigation reload context that produced it.
+
+The hook now stores menu/request status together with a key containing the effective location ID, fulfillment type, scheduled time and reload key. A context mismatch returns no menu and an initial-loading state during render, before request effects run. Context changes discard the old response; cancelled requests cannot publish a late success or failure. Manual/focus refresh nonce changes keep compatible data. No extra fetch was added; existing dependencies and request cancellation remain. Navigation reload keys require a fresh matching response as before.
+
+The full-screen error now applies only when no compatible menu exists. A refresh failure with compatible content shows an inline accessible warning and Retry action. Cards remain mounted during retries; search/category state and the ScrollView are retained. Initial failures retain the existing Try Again flow. A missing compatible menu also clears open builder/edit/reward selection so an old-context product cannot reopen with a new menu. Availability, fulfillment, cart-edit and promotional-link checks remain.
+
+### P3: one pagination indicator
+
+Root cause: the pagination footer skeleton and the button ActivityIndicator were both rendered for the same pending request. The footer skeleton remains and the button spinner is removed. Button disabled/busy state and loading text remain. Existing rows, Active/Past filter, cursor handling, deduplication, synchronous request lock and failure/retry behavior are unchanged; no API or account-fetching architecture change was needed.
+
+### P3: publication history
+
+Root cause: this report described its original pre-publication state after the implementation had been pushed. Publication details now identify the actual original commit above, and original validation/safety information is retained as historical evidence. This section records the separate follow-up.
+
+### Exact follow-up files
+
+- `apps/application/src/hooks/use-menu.ts`: compatible cache ownership and atomic request state.
+- `apps/application/src/screens/menu-screen.tsx`: inline refresh error/Retry and clearing incompatible product selection.
+- `apps/application/app/(tabs)/profile.tsx`: remove duplicate pagination spinner.
+- `apps/application/tests/use-menu.test.cjs`: initial failure/retry, compatible cache refresh/retry, all four context changes before effects, and late old-context success/failure.
+- `apps/application/tests/footer-promotional-screen.test.cjs`: initial Retry through success and Home/Menu refresh failures, inline Retry, retained cards/search/category/scroll identity.
+- `apps/application/tests/profile-tab.test.cjs`: exactly one pagination skeleton, no spinner and disabled/busy button.
+- `apps/application/LOADING_SKELETONS.md`: corrected publication history and this follow-up report.
+
+Existing account pagination tests also verify duplicate-call suppression before rerender, cursor preservation and retry after failure, deduplication, refresh races and account isolation. Existing screen suites exercise customization, cart editing, promotion navigation, profile section navigation and account switching.
+
+### Follow-up validation
+
+- Targeted initial run: 4 suites, 93 tests passed (before the two additional late-response cases and expanded initial Retry assertions).
+- Complete mobile suite: **62 suites passed; 1,018 tests passed; 0 snapshots; exit 0**, 15.789 seconds. Command: `node node_modules/jest/bin/jest.js --config apps/application/jest.config.cjs --runInBand --silent`.
+- TypeScript: `npx tsc -p apps/application/tsconfig.json --noEmit`, exit 0.
+
+- Android and iOS Expo exports: `npx expo export --dev --platform android --platform ios --output-dir <temporary-directory>` from `apps/application`, exit 0. Both platforms produced a 14 MB JavaScript bundle plus assets/metadata. These are development bundle exports, not release/Hermes or signed APK/IPA builds; `--dev` uses the existing development configuration without setting or changing environment variables. No app/API flow was run.
+- Whitespace: `git diff --check -- apps/application`, exit 0.
+- Temporary logs: `wings4u-skeleton-review-tests.log`, `wings4u-skeleton-review-export.log`; export directory: `wings4u-skeleton-review-export` (all under the local temporary directory).
+
+No physical-device or simulator testing was performed. Native visual alignment, smoothness and accessibility still require device QA. Production data, environment files/variables/secrets, deployment configuration, website and backend business rules were untouched. No database commands, live order/customer writes or deployments were executed. Unrelated local database-guard changes, root `.expo/` and root `tsconfig.json` were preserved.
