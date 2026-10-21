@@ -111,6 +111,14 @@ If obligations exist, return `resolution_required` with specific fixed messages,
 When eligible, erase/minimize data and invalidate all sessions atomically. Commit is the only completed state. No asynchronous erasure queue is needed.
 Transient transaction conflicts are retried a bounded number of times. Other transaction failures roll back the authorization, request, data cleanup and tombstone together, permitting a deliberate retry while authorization is valid.
 
+## Order-status emails
+
+Each order-status email re-reads the customer's deletion state immediately before sending and skips deleted accounts.
+No transaction or row lock is held during the email provider call, so the API's small connection pool (5) is never
+tied up waiting on email. Accepted residual window: deletion requires every order to be finished, so the only possible
+overlap is a final-status email (for example Delivered) whose provider call is already in flight, at most 10 seconds,
+when deletion commits. That sends one email about the customer's own order to the address on that order.
+
 ## Release order (required)
 
 This API build reads `users.account_deleted_at` on every authenticated request (Prisma loads all User columns).

@@ -95,21 +95,20 @@ export class OrderStatusEmailService {
     status: OrderEmailStatus,
   ): Promise<boolean> {
     if (!order.customerEmailSnapshot?.trim() || !process.env.RESEND_API_KEY?.trim()) return this.deliver(order, status);
+    let rows: Array<{ account_deleted_at: Date | null }>;
     try {
-      // Hold the owner lock through the bounded provider attempt. Deletion
-      // either waits for an already-started email, or prevents stale snapshots
-      // from being sent after it commits. A copied in-memory recipient is insufficient.
-      return await this.prisma.$transaction(async tx => {
-        const rows = await tx.$queryRaw<Array<{ account_deleted_at: Date | null }>>`
-          SELECT u.account_deleted_at FROM users u JOIN orders o ON o.customer_user_id = u.id
-          WHERE o.id = ${order.id}::uuid FOR KEY SHARE OF u`;
-        if (rows.some(row => row.account_deleted_at !== null)) return false;
-        return this.deliver(order, status);
-      }, { timeout: 15_000 });
+      // A copied in-memory recipient is insufficient: re-check the owner after the
+      // status write. Deliberately no transaction or lock around the provider call,
+      // so a pooled connection is never held while waiting on the email provider.
+      rows = await this.prisma.$queryRaw<Array<{ account_deleted_at: Date | null }>>`
+        SELECT u.account_deleted_at FROM users u JOIN orders o ON o.customer_user_id = u.id
+        WHERE o.id = ${order.id}::uuid`;
     } catch {
       this.logger.error("Order notification recipient authorization could not be confirmed");
       return false;
     }
+    if (rows.some(row => row.account_deleted_at !== null)) return false;
+    return this.deliver(order, status);
   }
 
   private async deliver(order: OrderEmailDetails, status: OrderEmailStatus): Promise<boolean> {

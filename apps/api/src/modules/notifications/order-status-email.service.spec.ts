@@ -8,7 +8,10 @@ import {
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_FETCH = global.fetch;
 let recipientDeleted = false;
-const prisma = { $transaction: async (callback: any) => callback({ $queryRaw: async () => [{ account_deleted_at: recipientDeleted ? new Date() : null }] }) } as any;
+const prisma = {
+  $queryRaw: jest.fn(async () => [{ account_deleted_at: recipientDeleted ? new Date() : null }]),
+  $transaction: jest.fn(async () => { throw new Error("email delivery must not hold a transaction"); }),
+} as any;
 const notificationService = () => new OrderStatusEmailService(prisma);
 
 const order = {
@@ -23,6 +26,8 @@ const order = {
 describe("OrderStatusEmailService", () => {
   beforeEach(() => {
     recipientDeleted = false;
+    prisma.$queryRaw.mockClear();
+    prisma.$transaction.mockClear();
     process.env = {
       ...ORIGINAL_ENV,
       RESEND_API_KEY: "re_test",
@@ -120,6 +125,26 @@ describe("OrderStatusEmailService", () => {
 
   it("does not send an in-memory order/contact snapshot after customer deletion commits", async () => {
     recipientDeleted = true;
+    expect(await notificationService().send(order, "DELIVERED")).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("checks the recipient without a lock or transaction, so no pooled connection waits on the provider", async () => {
+    let releaseProvider!: () => void;
+    (global.fetch as jest.Mock).mockImplementationOnce(() => new Promise(resolve => {
+      releaseProvider = () => resolve({ ok: true, json: async () => ({ id: "email" }) });
+    }));
+    const sending = notificationService().send(order, "DELIVERED");
+    await new Promise(resolve => setImmediate(resolve));
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(String(prisma.$queryRaw.mock.calls[0][0].join(" "))).not.toMatch(/FOR (KEY SHARE|SHARE|UPDATE)/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    releaseProvider();
+    await expect(sending).resolves.toBe(true);
+  });
+
+  it("does not send when the recipient check fails", async () => {
+    prisma.$queryRaw.mockRejectedValueOnce(new Error("pool exhausted"));
     expect(await notificationService().send(order, "DELIVERED")).toBe(false);
     expect(global.fetch).not.toHaveBeenCalled();
   });
