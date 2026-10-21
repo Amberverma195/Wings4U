@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AccountDeletionService } from "./account-deletion.service";
-import { ACCOUNT_DELETION_POLICY_VERSION, minimizePayment, minimizePricing } from "./account-deletion.policy";
+import { ACCOUNT_DELETION_POLICY_VERSION, minimizeAuditPayload, minimizePayment, minimizePricing } from "./account-deletion.policy";
 import { SessionValidator } from "../../common/session/session-validator.service";
 import { signJwt } from "../../common/utils/jwt";
 import { AuthService } from "./auth.service";
@@ -88,6 +88,14 @@ describe("atomic customer account deletion with only mocked dependencies", () =>
     await expect(verify()).rejects.toThrow("not available");
     expect(db.$transaction).not.toHaveBeenCalled();
   });
+  it("stays disabled while online card payments are enabled, because the policy covers in-store collection only", async () => {
+    process.env.ONLINE_PAYMENTS_ENABLED = "true";
+    try {
+      expect(service.config().enabled).toBe(false);
+      await expect(verify()).rejects.toThrow("not available");
+      expect(db.$transaction).not.toHaveBeenCalled();
+    } finally { delete process.env.ONLINE_PAYMENTS_ENABLED; }
+  });
   it.each(["ADMIN", "STAFF", "DRIVER"])("rejects %s even if a caller bypassed the shared ADMIN role override", async role => {
     await expect(service.verify({ ...session, role }, "Fictional123!")).rejects.toThrow("Only customer");
     expect(db.$transaction).not.toHaveBeenCalled();
@@ -147,7 +155,14 @@ describe("atomic customer account deletion with only mocked dependencies", () =>
     expect(db.orderItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { specialInstructions: null, builderPayloadJson: Prisma.DbNull } }));
     expect(db.supportTicket.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["ticket"] } } }));
     expect(db.orderMessage.deleteMany).not.toHaveBeenCalled(); // Preserve referenced message IDs / FK constraints.
-    expect(db.adminAuditLog.updateMany).toHaveBeenCalled();
+  });
+  it("keeps financial audit evidence while removing free text from related audit logs", async () => {
+    db.adminAuditLog.findMany.mockResolvedValue([{ id: "audit", payloadJson: { order_id: other, amount_cents: 1000,
+      decision: "APPROVE", refund_method: "CASH", admin_notes: "Called Jane at 555-0100", customer_email: "private@example.invalid" } }]);
+    await remove(await verify());
+    expect(db.adminAuditLog.update).toHaveBeenCalledWith({ where: { id: "audit" }, data: { reasonText: null,
+      payloadJson: { order_id: other, amount_cents: 1000, decision: "APPROVE", refund_method: "CASH" } } });
+    expect(db.adminAuditLog.deleteMany).not.toHaveBeenCalled();
   });
   it.each([
     ["order", "ACTIVE_ORDERS"], ["orderPayment", "PENDING_PAYMENTS"], ["refundRequest", "PENDING_REFUNDS"],
@@ -202,6 +217,17 @@ describe("atomic customer account deletion with only mocked dependencies", () =>
     expect(minimizePayment({ amount: 1000, id: "pi_ok", payment_method: { id: "pm_ok", billing_details: { email: "private" } },
       status: "customer name", note: "private", metadata: { email: "private" }, currency: "CAD" })).toEqual({ amount: 1000, id: "pi_ok", payment_method: "pm_ok", currency: "CAD" });
     expect(minimizePricing({ tax_cents: 100, collection_preference: "CASH_ON_DELIVERY", customer: { phone: "private" } })).toEqual({ tax_cents: 100, collection_preference: "CASH_ON_DELIVERY" });
+  });
+  it("audit minimization keeps amounts, IDs, enum codes, order numbers and times, and drops contact or free text", () => {
+    expect(minimizeAuditPayload({
+      amount_cents: 1250, driver_tip_cents: 300, refund_method: "ORIGINAL_PAYMENT", order_id: other, order_number: "1042",
+      issued_at: "2026-10-20T12:00:00.000Z", approved: true, previous: null,
+      customer_name: "Jane", customerPhone: "555-0100", ip_address: "203.0.113.9", reasonText: "Jane was upset",
+      free_form: "Jane Doe, 1 Main St", lines: [{ amount_cents: 50, note: "private" }, "Jane"],
+    })).toEqual({
+      amount_cents: 1250, driver_tip_cents: 300, refund_method: "ORIGINAL_PAYMENT", order_id: other, order_number: "1042",
+      issued_at: "2026-10-20T12:00:00.000Z", approved: true, previous: null, lines: [{ amount_cents: 50 }],
+    });
   });
   it("confirms a lost success response only with the matching high-entropy proof, within 24h, without restoring access", async () => {
     const proof = await verify(); await remove(proof);

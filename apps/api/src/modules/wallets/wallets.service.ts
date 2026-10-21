@@ -1,9 +1,13 @@
 import {
   Injectable,
   BadRequestException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+
+export const DELETED_ACCOUNT_STORE_CREDIT_MESSAGE =
+  "This customer deleted their account, so store credit cannot be used. Refund in store by cash, or back to the original card on the payment terminal, and record that method instead.";
 
 interface CreditDebitParams {
   userId: string;
@@ -50,6 +54,15 @@ export class WalletsService {
   ) {
     if (params.amountCents <= 0) {
       throw new BadRequestException("Credit amount must be positive");
+    }
+
+    // The database also rejects this; checking first gives staff an actionable error.
+    const customer = await tx.user.findUnique({
+      where: { id: params.userId },
+      select: { accountDeletedAt: true },
+    });
+    if (customer?.accountDeletedAt) {
+      throw new UnprocessableEntityException(DELETED_ACCOUNT_STORE_CREDIT_MESSAGE);
     }
 
     const wallet = await tx.customerWallet.upsert({

@@ -7,7 +7,7 @@ import {
 import { PrismaService } from "../../database/prisma.service";
 import { ChatService } from "../chat/chat.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
-import { WalletsService } from "../wallets/wallets.service";
+import { DELETED_ACCOUNT_STORE_CREDIT_MESSAGE, WalletsService } from "../wallets/wallets.service";
 import { RefundService } from "../refunds/refund.service";
 import { OrderStatusEmailService } from "../notifications/order-status-email.service";
 import { customerAccountWhere } from "./admin-customers.service";
@@ -89,6 +89,10 @@ function serializeRefundRequest(r: Record<string, unknown>) {
             (r.order as Record<string, unknown>).customerNameSnapshot ?? null,
           final_payable_cents:
             (r.order as Record<string, unknown>).finalPayableCents ?? 0,
+          customer_account_deleted: Boolean(
+            ((r.order as Record<string, unknown>).customer as { accountDeletedAt?: unknown } | null)
+              ?.accountDeletedAt,
+          ),
         }
       : null,
   };
@@ -267,6 +271,15 @@ export class AdminService {
     let result: Record<string, unknown>;
 
     if (action === "APPROVE") {
+      if (!refundMethod && refund.order.customerUserId) {
+        const customer = await this.prisma.user.findUnique({
+          where: { id: refund.order.customerUserId },
+          select: { accountDeletedAt: true },
+        });
+        if (customer?.accountDeletedAt) {
+          throw new UnprocessableEntityException(DELETED_ACCOUNT_STORE_CREDIT_MESSAGE);
+        }
+      }
       const method = (refundMethod ?? "STORE_CREDIT") as never;
       const issued = await this.refundService.approveAndIssue({
         refundRequestId,
@@ -588,6 +601,7 @@ export class AdminService {
             status: true,
             customerNameSnapshot: true,
             finalPayableCents: true,
+            customer: { select: { accountDeletedAt: true } },
           },
         },
       },

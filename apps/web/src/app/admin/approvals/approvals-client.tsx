@@ -11,6 +11,7 @@ type OrderRef = {
   status: string;
   customer_name_snapshot: string | null;
   final_payable_cents: number;
+  customer_account_deleted?: boolean;
 };
 
 type CancellationRequest = {
@@ -195,7 +196,12 @@ function RefundCard({
   onResolved: () => void;
 }) {
   const session = useSession();
-  const [method, setMethod] = useState<string>(request.refund_method ?? "STORE_CREDIT");
+  const customerDeleted = request.order?.customer_account_deleted === true;
+  const [method, setMethod] = useState<string>(
+    customerDeleted
+      ? request.refund_method && request.refund_method !== "STORE_CREDIT" ? request.refund_method : "ORIGINAL_PAYMENT"
+      : request.refund_method ?? "STORE_CREDIT",
+  );
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -296,12 +302,18 @@ function RefundCard({
               border: "1px solid #d4d4d4",
             }}
           >
-            <option value="STORE_CREDIT">Store credit</option>
+            {customerDeleted ? null : <option value="STORE_CREDIT">Store credit</option>}
             <option value="ORIGINAL_PAYMENT">Original payment</option>
             <option value="CASH">Cash</option>
           </select>
         </label>
       </div>
+      {customerDeleted ? (
+        <p role="note" style={{ margin: "0.6rem 0 0", fontSize: "0.85rem" }}>
+          This customer deleted their account, so store credit is unavailable. Refund in store by
+          cash or back to the original card on the payment terminal, then approve with that method.
+        </p>
+      ) : null}
 
       <textarea
         rows={2}

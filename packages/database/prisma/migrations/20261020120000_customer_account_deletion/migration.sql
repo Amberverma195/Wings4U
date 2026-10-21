@@ -83,34 +83,45 @@ FOR EACH ROW EXECUTE FUNCTION "lock_account_deletion_hold"();
 -- commits a write completes first (and is included in cleanup), or aborts; after
 -- deletion commits it cannot repopulate personal/account data. No DB setting or
 -- client-supplied bypass can disable this guard. Other inactive accounts are unchanged.
+-- Retained records (tickets, ledgers, messages, promo redemptions) stay operable by
+-- staff: an UPDATE that keeps the same deleted owner is allowed, but the optional
+-- second argument (a JSON patch) re-applies the erased values so text cannot return.
+-- Creating a record for, or moving a record onto, a deleted account is rejected.
 CREATE FUNCTION "guard_deleted_account_owner"() RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
 DECLARE owner_id UUID; deleted_at TIMESTAMPTZ;
 BEGIN
   owner_id := (to_jsonb(NEW) ->> TG_ARGV[0])::UUID;
   IF owner_id IS NULL THEN RETURN NEW; END IF;
   SELECT account_deleted_at INTO deleted_at FROM users WHERE id = owner_id FOR KEY SHARE;
-  IF deleted_at IS NOT NULL THEN
-    RAISE EXCEPTION 'Account is deleted' USING ERRCODE = '23514', CONSTRAINT = 'deleted_account_owner';
+  IF deleted_at IS NULL THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND TG_NARGS > 1 AND (to_jsonb(OLD) ->> TG_ARGV[0])::UUID = owner_id THEN
+    RETURN jsonb_populate_record(NEW, TG_ARGV[1]::jsonb);
   END IF;
-  RETURN NEW;
+  RAISE EXCEPTION 'Account is deleted' USING ERRCODE = '23514', CONSTRAINT = 'deleted_account_owner';
 END;
 $$;
 
 DO $$
 DECLARE entry TEXT[];
 BEGIN
+  -- Third element: erased-field patch for retained tables; '' means rows are deleted, never retained.
   FOREACH entry SLICE 1 IN ARRAY ARRAY[
-    ['user_identities','user_id'], ['auth_sessions','user_id'],
-    ['customer_profiles','user_id'], ['customer_addresses','user_id'],
-    ['saved_carts','user_id'], ['checkout_idempotency_keys','user_id'],
-    ['customer_wallets','customer_user_id'], ['customer_credit_ledger','customer_user_id'],
-    ['customer_wings_rewards','customer_user_id'], ['customer_wings_stamp_ledger','customer_user_id'],
-    ['promo_redemptions','customer_user_id'], ['support_tickets','customer_user_id'],
-    ['support_ticket_messages','author_user_id'], ['order_messages','sender_user_id'],
-    ['item_reviews','customer_user_id'], ['driver_delivery_reviews','customer_user_id'],
-    ['catering_inquiries','customer_user_id'], ['chat_read_states','user_id']
+    ['user_identities','user_id',''], ['auth_sessions','user_id',''],
+    ['customer_profiles','user_id',''], ['customer_addresses','user_id',''],
+    ['saved_carts','user_id',''], ['checkout_idempotency_keys','user_id',''],
+    ['customer_wallets','customer_user_id',''],
+    ['customer_credit_ledger','customer_user_id','{"reason_text":"Personal information removed"}'],
+    ['customer_wings_rewards','customer_user_id',''],
+    ['customer_wings_stamp_ledger','customer_user_id','{"reason_text":"Personal information removed"}'],
+    ['promo_redemptions','customer_user_id','{"metadata_json":{}}'],
+    ['support_tickets','customer_user_id','{"subject":"Personal information removed","description":"Personal information removed"}'],
+    ['support_ticket_messages','author_user_id','{"message_body":"Personal information removed"}'],
+    ['order_messages','sender_user_id','{"message_body":"Personal information removed"}'],
+    ['item_reviews','customer_user_id',''], ['driver_delivery_reviews','customer_user_id',''],
+    ['catering_inquiries','customer_user_id',''], ['chat_read_states','user_id','']
   ] LOOP
-    EXECUTE format('CREATE TRIGGER deleted_account_owner BEFORE INSERT OR UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION guard_deleted_account_owner(%L)', entry[1], entry[2]);
+    EXECUTE format('CREATE TRIGGER deleted_account_owner BEFORE INSERT OR UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION guard_deleted_account_owner(%L%s)',
+      entry[1], entry[2], CASE WHEN entry[3] = '' THEN '' ELSE format(', %L', entry[3]) END);
   END LOOP;
 END;
 $$;

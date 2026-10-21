@@ -25,7 +25,7 @@ type FakeRefund = Record<string, any> & { id: string; status: string };
 type FakeOrder = Record<string, any> & { id: string };
 type FakePayment = Record<string, any> & { transactionStatus: string };
 
-function createHarness(options: { failRefundLedger?: boolean } = {}) {
+function createHarness(options: { failRefundLedger?: boolean; deletedCustomer?: boolean } = {}) {
   const state = {
     refunds: new Map<string, FakeRefund>(),
     orders: new Map<string, FakeOrder>(),
@@ -33,6 +33,7 @@ function createHarness(options: { failRefundLedger?: boolean } = {}) {
     wallets: new Map<string, Record<string, any>>(),
     creditLedger: [] as Record<string, any>[],
     audits: [] as Record<string, any>[],
+    deletedCustomers: new Set<string>(options.deletedCustomer ? ["customer-1"] : []),
   };
 
   state.orders.set("order-1", {
@@ -164,6 +165,12 @@ function createHarness(options: { failRefundLedger?: boolean } = {}) {
         state.payments.push(row);
         return row;
       }),
+    },
+    user: {
+      findUnique: jest.fn(async ({ where }: any) => ({
+        id: where.id,
+        accountDeletedAt: state.deletedCustomers.has(where.id) ? new Date(2026, 9, 20) : null,
+      })),
     },
     customerWallet: {
       upsert: jest.fn(async ({ where, update, create }: any) => {
@@ -319,6 +326,47 @@ describe("Refund issuance atomicity and concurrency", () => {
     expect(harness.state.creditLedger).toHaveLength(1);
     expect(harness.state.wallets.get("customer-1")!.balanceCents).toBe(1000);
   });
+});
+
+describe("Refunds for customers who deleted their account", () => {
+  it("refuses unusable store credit with an actionable message and leaves the request pending", async () => {
+    const harness = createHarness({ deletedCustomer: true });
+
+    await expect(
+      harness.service.approveAndIssue({
+        refundRequestId: "refund-1",
+        approvedByUserId: "admin-1",
+        refundMethod: "STORE_CREDIT",
+      }),
+    ).rejects.toThrow(/cash, or back to the original card/);
+
+    expect(harness.state.refunds.get("refund-1")!.status).toBe("PENDING");
+    expect(harness.state.wallets.size).toBe(0);
+    expect(harness.state.creditLedger).toHaveLength(0);
+    expect(harness.state.payments.filter((p) => p.transactionType === "REFUND")).toHaveLength(0);
+  });
+
+  it.each(["CASH", "ORIGINAL_PAYMENT"] as const)(
+    "issues an in-store %s refund and records it in the payment ledger",
+    async (refundMethod) => {
+      const harness = createHarness({ deletedCustomer: true });
+
+      await harness.service.approveAndIssue({
+        refundRequestId: "refund-1",
+        approvedByUserId: "admin-1",
+        refundMethod,
+      });
+
+      expect(harness.state.refunds.get("refund-1")!.status).toBe("ISSUED");
+      const refundRows = harness.state.payments.filter((p) => p.transactionType === "REFUND");
+      expect(refundRows).toHaveLength(1);
+      expect(refundRows[0]).toMatchObject({
+        signedAmountCents: -1000,
+        paymentMethod: refundMethod === "CASH" ? "CASH" : "CARD",
+      });
+      expect(harness.state.wallets.size).toBe(0);
+    },
+  );
 });
 
 describe("Refund request authorization", () => {

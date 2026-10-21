@@ -1,13 +1,17 @@
 import { Prisma } from "@prisma/client";
+import { onlinePaymentsEnabled } from "../payments/payment-policy";
 
-export const ACCOUNT_DELETION_POLICY_VERSION = "2026-10-20-review-1";
+export const ACCOUNT_DELETION_POLICY_VERSION = "2026-10-20-review-2";
 export const DELETION_AUTHORIZATION_TTL_MS = 5 * 60_000;
 
 // Enabling requires a separately reviewed retention/obligations policy and migration.
-// Never default to enabled, including in development.
+// Never default to enabled, including in development. The policy assumes in-store
+// collection only (cash / physical card terminal); it has no handling for online
+// card charges that exist at a processor before an order row does.
 export function accountDeletionEnabled(): boolean {
   return process.env.ACCOUNT_DELETION_ENABLED === "true" &&
-    process.env.ACCOUNT_DELETION_POLICY_VERSION === ACCOUNT_DELETION_POLICY_VERSION;
+    process.env.ACCOUNT_DELETION_POLICY_VERSION === ACCOUNT_DELETION_POLICY_VERSION &&
+    !onlinePaymentsEnabled();
 }
 
 export const TERMINAL_ORDER_STATUSES = [
@@ -68,6 +72,35 @@ export function minimizePayment(value: Prisma.JsonValue): Prisma.InputJsonObject
     if (typeof input[key] === "string" && allowed.includes(input[key])) output[key] = input[key];
   }
   if (typeof input.reference_unavailable === "boolean") output.reference_unavailable = input.reference_unavailable;
+  return output;
+}
+
+const AUDIT_PERSONAL_KEY_PARTS = new Set(["name", "email", "phone", "address", "street", "city", "postal", "note", "notes",
+  "reason", "message", "comment", "description", "subject", "body", "text", "instructions", "contact", "ip", "device",
+  "agent", "token", "password", "secret", "metadata"]);
+const isPersonalAuditKey = (key: string) =>
+  key.split(/[_\-.\s]|(?=[A-Z])/).some(part => AUDIT_PERSONAL_KEY_PARTS.has(part.toLowerCase()));
+const AUDIT_STRUCTURED_VALUE = [
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, // record IDs
+  /^[A-Z][A-Z0-9_]{0,63}$/, // enum codes such as CASH, ORIGINAL_PAYMENT, APPROVE
+  /^\d{1,20}$/, // order numbers serialized as strings
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/, // timestamps
+];
+
+/** Financial audit evidence survives (amounts, IDs, methods, statuses, times); free text does not. */
+export function minimizeAuditPayload(value: Prisma.JsonValue): Prisma.InputJsonValue | null {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") return AUDIT_STRUCTURED_VALUE.some(pattern => pattern.test(value)) ? value : null;
+  if (Array.isArray(value)) {
+    return value.map(minimizeAuditPayload).filter((item): item is Prisma.InputJsonValue => item !== null);
+  }
+  const output: Record<string, Prisma.InputJsonValue | null> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isPersonalAuditKey(key) || item === undefined) continue;
+    const kept = minimizeAuditPayload(item);
+    if (kept !== null || item === null) output[key] = kept;
+  }
   return output;
 }
 

@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { minimizePayment, minimizePricing } from "./account-deletion.policy";
+import { minimizeAuditPayload, minimizePayment, minimizePricing } from "./account-deletion.policy";
 
 const REMOVED = "Personal information removed";
 
@@ -67,9 +67,13 @@ export async function eraseCustomerData(tx: Prisma.TransactionClient, userId: st
       cancellationReason: null, revalidationDiffJson: Prisma.DbNull, pricingSnapshotJson: minimizePricing(order.pricingSnapshotJson),
     } });
   }
-  await tx.adminAuditLog.updateMany({ where: { OR: [{ actorUserId: userId }, { entityId: { in: entityIds } },
+  const audits = await tx.adminAuditLog.findMany({ where: { OR: [{ actorUserId: userId }, { entityId: { in: entityIds } },
     { payloadJson: { path: ["customer_user_id"], equals: userId } }, { payloadJson: { path: ["user_id"], equals: userId } }] },
-    data: { reasonText: null, payloadJson: {} } });
+    select: { id: true, payloadJson: true } });
+  for (const audit of audits) {
+    await tx.adminAuditLog.update({ where: { id: audit.id },
+      data: { reasonText: null, payloadJson: minimizeAuditPayload(audit.payloadJson) ?? {} } });
+  }
   await tx.accountDeletionAuthorization.deleteMany({ where: { userId } });
   // Last write: triggers allow cleanup while active and then seal the tombstone.
   await tx.user.update({ where: { id: userId }, data: {
