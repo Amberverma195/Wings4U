@@ -58,6 +58,7 @@ export const ORDER_REFRESH_EVENTS = [
   "order.eta_updated",
   "order.payment_updated",
   "order.manual_review_required",
+  "cancellation.decided",
 ] as const;
 export const CHAT_REFRESH_EVENTS = ["chat.message", "chat.read"] as const;
 

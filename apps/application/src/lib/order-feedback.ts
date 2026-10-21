@@ -3,10 +3,10 @@ import type { OrderDetail, OrderItem, SupportTicketType } from './types';
 import { cents } from './format';
 
 export const ORDER_ISSUES: ReadonlyArray<{ value: SupportTicketType; label: string; subjectLabel: string }> = [
-  { value: 'WRONG_ITEM', label: 'Wrong Item', subjectLabel: 'Wrong item' },
-  { value: 'MISSING_ITEM', label: 'Missing Item', subjectLabel: 'Missing item' },
-  { value: 'COLD_FOOD', label: 'Cold Food', subjectLabel: 'Cold food' },
-  { value: 'BURNT_FOOD', label: 'Burnt Food', subjectLabel: 'Burnt food' },
+  { value: 'WRONG_ITEM', label: 'Wrong item', subjectLabel: 'Wrong item' },
+  { value: 'MISSING_ITEM', label: 'Missing item', subjectLabel: 'Missing item' },
+  { value: 'COLD_FOOD', label: 'Cold food', subjectLabel: 'Cold food' },
+  { value: 'BURNT_FOOD', label: 'Burnt food', subjectLabel: 'Burnt food' },
   { value: 'OTHER', label: 'Other', subjectLabel: 'Other' },
 ];
 
@@ -33,14 +33,14 @@ export function feedbackItemTitle(item: OrderItem): string {
 export function ticketPayload(order: OrderDetail, selectedIds: string[], type: SupportTicketType, description: string) {
   const selected = (order.items ?? []).filter(item => selectedIds.includes(item.id));
   const issue = ORDER_ISSUES.find(row => row.value === type);
-  if (!selected.length || !issue || !description.trim()) throw new Error('Select an item and explain the issue.');
+  if (((order.items ?? []).length > 0 && !selected.length) || !issue || !description.trim()) throw new Error('Select an item and explain the issue.');
   return {
     ticket_type: type,
-    subject: `${issue.subjectLabel} - ${selected.map(item => item.product_name_snapshot).join(', ')}${order.order_number ? ` (#${order.order_number})` : ''}`,
-    description: [`Issue type: ${issue.subjectLabel}`, 'Selected item(s):', selected.map(item => {
+    subject: `${issue.subjectLabel} - ${selected.length ? selected.map(item => item.product_name_snapshot).join(', ') : 'Whole order'}${order.order_number ? ` (#${order.order_number})` : ''}`,
+    description: [`Issue type: ${issue.subjectLabel}`, 'Selected item(s):', selected.length ? selected.map(item => {
       const summary = feedbackItemSummary(item);
       return `- ${feedbackItemTitle(item)} - ${cents(item.line_total_cents)}${summary ? ` (${summary})` : ''} [order_item_id: ${item.id}]`;
-    }).join('\n'), '', 'Customer description:', description.trim()].join('\n'),
+    }).join('\n') : '- Whole order', '', 'Customer description:', description.trim()].join('\n'),
     order_id: order.id,
   };
 }

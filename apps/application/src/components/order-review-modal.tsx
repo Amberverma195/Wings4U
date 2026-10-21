@@ -84,7 +84,7 @@ export function OrderReviewModal({ order, onClose }: { order: OrderDetail; onClo
     }
   };
 
-  return <OrderFeedbackSheet title="Rate Your Order" subtitle="How was your food? Share your experience." onClose={onClose}>
+  return <OrderFeedbackSheet title="Rate your Order" onClose={onClose}>
     {loading ? <View accessibilityLiveRegion="polite" style={s.card}><ActivityIndicator color="#FF4D4D" /><Text style={s.muted}>Loading reviews...</Text></View> : null}
     <FeedbackError message={loadError} />
     {loadError || Object.keys(conflicts).some(id => !reviews[id]) ? <FeedbackButton label="Reload reviews" secondary disabled={loading} onPress={() => void load()} /> : null}
@@ -117,10 +117,11 @@ export function OrderReviewModal({ order, onClose }: { order: OrderDetail; onClo
               placeholder="Tell us about this item (optional)" placeholderTextColor="#777777" style={s.input} editable={!disabled}
               value={draft.body} onChangeText={body => updateDraft(item.id, { body })} />
             <FeedbackError message={errors[item.id] ?? null} />
-            <FeedbackButton label="Submit Review" disabled={disabled || !validReview(draft.rating, draft.body)} busy={busy[item.id]}
+            <FeedbackButton label="Submit review" disabled={disabled || !validReview(draft.rating, draft.body)} busy={busy[item.id]} busyLabel="Submitting…"
               onPress={() => void submit(item.id)} />
           </>}
         </View>;
       })}
+    <FeedbackButton label="Close" secondary onPress={onClose} />
   </OrderFeedbackSheet>;
 }

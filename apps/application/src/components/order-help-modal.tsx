@@ -8,8 +8,8 @@ import { useOrderFeedbackRequest } from '../hooks/use-order-feedback-request';
 import { FeedbackButton, FeedbackError, OrderFeedbackSheet, feedbackStyles as s } from './order-feedback-sheet';
 
 export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose: () => void }) {
-  const [step, setStep] = useState<'items' | 'details' | 'success'>('items');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [step, setStep] = useState<'items' | 'details' | 'success'>(order.items.length > 1 ? 'items' : 'details');
+  const [selectedIds, setSelectedIds] = useState<string[]>(order.items.length === 1 ? [order.items[0].id] : []);
   const [issue, setIssue] = useState<SupportTicketType>('WRONG_ITEM');
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
   const selected = items.filter(item => selectedIds.includes(item.id));
   const all = items.length > 0 && selected.length === items.length;
   const submit = async () => {
-    if (locked.current || submitted.current || !selected.length || !description.trim() || step !== 'details') return;
+    if (locked.current || submitted.current || (items.length > 0 && !selected.length) || !description.trim() || step !== 'details') return;
     const attempt = scope();
     if (!attempt.current()) return;
     locked.current = true; setBusy(true); setError(null);
@@ -38,11 +38,11 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
       if (attempt.current()) { locked.current = false; setBusy(false); }
     }
   };
-  return <OrderFeedbackSheet title={step === 'items' ? 'Which item had an issue?' : step === 'details' ? 'Open a Support Ticket' : 'Ticket Submitted!'}
-    subtitle={step === 'items' ? 'Select one or more items from your order.' : undefined} onClose={onClose}>
+  return <OrderFeedbackSheet title={step === 'items' ? 'Which item had an issue?' : step === 'details' ? 'Open a support ticket' : 'Ticket submitted'}
+    subtitle={step === 'items' ? 'Select one or more items from your order.' : undefined} dismissDisabled={busy} onClose={onClose}>
     {step === 'success' ? <>
       <CheckCircle2 size={36} color="#E53C3C" />
-      <Text accessibilityLiveRegion="polite" style={s.text}>Your support ticket has been created. Our team will review your request and get back to you.</Text>
+      <Text accessibilityLiveRegion="polite" style={s.text}>Our team will review your request and get back to you.</Text>
       <FeedbackButton label="Close" onPress={onClose} />
     </> : <>
       <Text style={s.muted}>Order #{order.order_number}</Text>
@@ -50,7 +50,7 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
         {!items.length ? <Text style={s.text}>Order items are unavailable. Please close this window and reload your order.</Text> : <>
           <TouchableOpacity accessibilityRole="checkbox" accessibilityLabel="Select All" accessibilityState={{ checked: all }}
             onPress={() => setSelectedIds(all ? [] : items.map(item => item.id))} style={[s.card, { flexDirection: 'row', alignItems: 'center', minHeight: 44 }]}>
-            {all ? <Check size={22} color="#E53C3C" /> : <Square size={22} color="#777777" />}<Text style={s.label}>Select All</Text>
+            {all ? <Check size={22} color="#E53C3C" /> : <Square size={22} color="#777777" />}<Text style={s.label}>{all ? 'Clear selection' : 'Select all'}</Text>
           </TouchableOpacity>
           {items.map(item => {
             const checked = selectedIds.includes(item.id);
@@ -68,9 +68,9 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
         <View style={s.actions}><FeedbackButton label="Continue" disabled={!selected.length} onPress={() => { if (selected.length) setStep('details'); }} />
           <FeedbackButton label="Cancel" secondary onPress={onClose} /></View>
       </> : <>
-        <Text style={s.label}>For:</Text>
+        {selected.length ? <Text style={s.label}>For</Text> : null}
         <View style={s.actions}>{selected.map(item => <View key={item.id} style={[s.card, s.selected]}><Text style={s.secondaryText}>{feedbackItemTitle(item)}</Text></View>)}</View>
-        <Text style={s.label}>Issue Type</Text>
+        <Text style={s.label}>Issue type</Text>
         <View style={s.actions}>{ORDER_ISSUES.map(option => <TouchableOpacity key={option.value} accessibilityRole="radio" accessibilityLabel={option.label}
           accessibilityState={{ checked: issue === option.value, disabled: busy }} disabled={busy} onPress={() => setIssue(option.value)}
           style={[s.card, { minHeight: 44, justifyContent: 'center' }, issue === option.value && s.selected]}>
@@ -80,9 +80,9 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
         <TextInput accessibilityLabel="Please Explain the Issue" multiline placeholder="Tell us what happened..." placeholderTextColor="#777777"
           style={s.input} value={description} onChangeText={setDescription} editable={!busy} />
         <FeedbackError message={error} />
-        <View style={s.actions}><FeedbackButton label="Back" secondary disabled={busy} onPress={() => setStep('items')} />
-          <FeedbackButton label="Submit Ticket" disabled={!selected.length || !description.trim()} busy={busy} onPress={submit} />
-          <FeedbackButton label="Cancel" secondary onPress={onClose} /></View>
+        <View style={s.actions}>{items.length > 1 ? <FeedbackButton label="Back" secondary disabled={busy} onPress={() => setStep('items')} /> : null}
+          <FeedbackButton label="Submit ticket" disabled={(items.length > 0 && !selected.length) || !description.trim()} busy={busy} onPress={submit} />
+          <FeedbackButton label="Cancel" secondary disabled={busy} onPress={onClose} /></View>
       </>}
     </>}
   </OrderFeedbackSheet>;

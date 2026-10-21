@@ -3,11 +3,12 @@ import { AccessibilityInfo, ActivityIndicator, findNodeHandle, KeyboardAvoidingV
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 
-export function OrderFeedbackSheet({ title, subtitle, onClose, children }: {
-  title: string; subtitle?: string; onClose: () => void; children: React.ReactNode;
+export function OrderFeedbackSheet({ title, subtitle, onClose, children, dismissDisabled = false }: {
+  title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; dismissDisabled?: boolean;
 }) {
   const heading = useRef<React.ComponentRef<typeof Text>>(null);
-  return <Modal visible transparent animationType="slide" onRequestClose={onClose} onShow={() => {
+  const dismiss = () => { if (!dismissDisabled) onClose(); };
+  return <Modal visible transparent animationType="slide" onRequestClose={dismiss} onShow={() => {
     const node = findNodeHandle(heading.current);
     if (node) AccessibilityInfo.setAccessibilityFocus(node);
   }}>
@@ -16,7 +17,7 @@ export function OrderFeedbackSheet({ title, subtitle, onClose, children }: {
         <View style={feedbackStyles.sheet} accessibilityViewIsModal importantForAccessibility="yes">
           <View style={feedbackStyles.header}>
             <Text ref={heading} accessible accessibilityRole="header" style={feedbackStyles.title}>{title}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close modal" onPress={onClose} style={feedbackStyles.close}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close modal" disabled={dismissDisabled} accessibilityState={{ disabled: dismissDisabled }} onPress={dismiss} style={feedbackStyles.close}>
               <X size={22} color="#1A1A1A" />
             </TouchableOpacity>
           </View>
@@ -30,13 +31,13 @@ export function OrderFeedbackSheet({ title, subtitle, onClose, children }: {
   </Modal>;
 }
 
-export function FeedbackButton({ label, onPress, disabled = false, busy = false, secondary = false }: {
-  label: string; onPress: () => void; disabled?: boolean; busy?: boolean; secondary?: boolean;
+export function FeedbackButton({ label, onPress, disabled = false, busy = false, secondary = false, busyLabel = 'Submitting...' }: {
+  label: string; onPress: () => void; disabled?: boolean; busy?: boolean; secondary?: boolean; busyLabel?: string;
 }) {
   return <TouchableOpacity accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: disabled || busy, busy }}
     disabled={disabled || busy} onPress={onPress} style={[feedbackStyles.button, secondary && feedbackStyles.secondary, (disabled || busy) && feedbackStyles.disabled]}>
     {busy ? <ActivityIndicator color={secondary ? '#FF4D4D' : '#FFF'} accessibilityLabel="Submitting" /> : null}
-    <Text style={[feedbackStyles.buttonText, secondary && feedbackStyles.secondaryText]}>{busy ? 'Submitting...' : label}</Text>
+    <Text style={[feedbackStyles.buttonText, secondary && feedbackStyles.secondaryText]}>{busy ? busyLabel : label}</Text>
   </TouchableOpacity>;
 }
 
@@ -60,8 +61,8 @@ export const feedbackStyles = StyleSheet.create({
   selected: { borderColor: '#FF4D4D', backgroundColor: '#FFF0ED' },
   input: { minHeight: 105, borderRadius: 14, borderWidth: 1, borderColor: '#EBDDD5', padding: 12, color: '#1A1A1A', backgroundColor: '#FFF', fontSize: 15, textAlignVertical: 'top' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  button: { flexGrow: 1, flexBasis: 90, minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: '#FF4D4D', backgroundColor: '#FF4D4D', padding: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  button: { flexGrow: 1, flexBasis: 90, minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: '#C52B2B', backgroundColor: '#C52B2B', padding: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
   buttonText: { color: '#FFF', fontSize: 14, fontWeight: '800', textAlign: 'center' },
-  secondary: { backgroundColor: '#FFF' }, secondaryText: { color: '#E53C3C' },
+  secondary: { backgroundColor: '#FFF' }, secondaryText: { color: '#B62828' },
   disabled: { opacity: 0.5 }, error: { color: '#B91C1C', fontSize: 14, lineHeight: 21 },
 });

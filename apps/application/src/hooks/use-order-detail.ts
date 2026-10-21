@@ -57,6 +57,10 @@ export function useOrderDetail(orderId: string | null): UseOrderDetailResult {
         const envelope = await response.json().catch(() => null) as { data?: OrderDetail | null } | null;
         if (!response.ok) throw new Error(describeApiFailure(response.status, envelope, 'Unable to load order.'));
         if (!envelope) throw new Error(`Order response was not valid JSON (HTTP ${response.status}).`);
+        if (envelope.data && envelope.data.customer_user_id !== session.user?.id) {
+          if (current()) setOrder(null);
+          throw new Error('You do not have access to this order');
+        }
         if (current()) {
           setOrder(envelope.data ?? null);
           setError(null);

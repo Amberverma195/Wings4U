@@ -6,10 +6,10 @@ import { SectionSwitch } from './section-switch';
 import { ReorderButton } from './reorder-button';
 import { useSession } from '../context/session';
 
-export function OrderReorderAction({ order }: { order: Pick<OrderSummary, 'id' | 'location_id' | 'status'> }) {
+export function OrderReorderAction({ order, websiteOrderDetail = false }: { order: Pick<OrderSummary, 'id' | 'location_id' | 'status'>; websiteOrderDetail?: boolean }) {
   const session = useSession();
   return session.loaded && session.authenticated && TERMINAL_STATUSES.has(order.status)
-    ? <ReorderButton orderId={order.id} locationId={order.location_id} /> : null;
+    ? <ReorderButton orderId={order.id} locationId={order.location_id} websiteOrderDetail={websiteOrderDetail} /> : null;
 }
 
 export function OrderRow({ order }: { order: OrderSummary }) {

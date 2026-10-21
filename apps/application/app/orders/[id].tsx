@@ -5,6 +5,7 @@ import {
   AppState,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,20 +14,22 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronDown, Check, LifeBuoy, MessageCircle, RefreshCw, Star } from "lucide-react-native";
+import { ChevronDown, Check, LifeBuoy, Star } from "lucide-react-native";
 import { useChat } from "../../src/hooks/use-chat";
 import { useOrderDetail } from "../../src/hooks/use-order-detail";
 import { OrderReorderAction } from "../../src/components/order-history";
+import { OrderTrackingDetails } from "../../src/components/order-tracking-details";
+import { sortedStatusHistory, statusEventCopy } from "../../src/lib/order-tracking";
+import { OrderActiveActions } from "../../src/components/order-active-actions";
 import { OrderHelpModal } from "../../src/components/order-help-modal";
 import { OrderReviewModal } from "../../src/components/order-review-modal";
 import { canUseOrderFeedback } from "../../src/lib/order-feedback";
 import { getSessionGeneration } from "../../src/lib/token-store";
 import { useSession } from "../../src/context/session";
-import { cents, orderStatusCustomerLabel, shortTime, statusEventWhenLine } from "../../src/lib/format";
+import { cents, orderStatusCustomerLabel, statusEventWhenLine } from "../../src/lib/format";
 import { createOrdersSocket } from "../../src/lib/realtime";
 import { startOrderRealtime, type OrderRealtimeHandle, type OrderRealtimeStatus } from "../../src/lib/order-realtime";
 import { ACTIVE_STATUSES } from "../../src/lib/types";
-import type { ChatMessage, OrderDetail } from "../../src/lib/types";
 
 /** Background refresh while live updates are not confirmed. */
 const FALLBACK_REFRESH_MS = 30_000;
@@ -36,20 +39,6 @@ function paramToString(value: string | string[] | undefined): string | null {
   return value ?? null;
 }
 
-function statusHistory(order: OrderDetail) {
-  const events: Array<{ id: string; to_status: string; created_at: string | null }> = [...(order.status_events ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  if (!events.some(event => event.to_status === 'PLACED')) events.push({ id: 'placed', to_status: 'PLACED', created_at: order.placed_at });
-  const latest = events.find(event => event.to_status === order.status);
-  return [latest ?? { id: 'current', to_status: order.status, created_at: order.status === 'PLACED' ? order.placed_at : order.status === 'ACCEPTED' ? order.accepted_at : order.status === 'READY' ? order.ready_at : order.status === 'CANCELLED' ? order.cancelled_at : order.completed_at },
-    ...events.filter(event => event.id !== latest?.id)];
-}
-
-function messageAuthor(message: ChatMessage, userId: string | undefined): "me" | "staff" {
-  return message.sender_user_id === userId || message.sender_surface === "CUSTOMER"
-    ? "me"
-    : "staff";
-}
-
 export default function OrderDetailScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
@@ -57,11 +46,13 @@ export default function OrderDetailScreen() {
   const focused = useIsFocused();
   const orderId = paramToString(params.id);
   const order = useOrderDetail(orderId);
-  const chat = useChat(orderId);
+  const chat = useChat(order.order?.id === orderId ? orderId : null, order.order?.location_id ?? null, order.order?.status ?? null);
   const [historyOpen, setHistoryOpen] = useState(false);
   useEffect(() => setHistoryOpen(false), [orderId]);
   const liveOrder = focused && order.order?.id === orderId && ACTIVE_STATUSES.has(order.order.status);
-  const history = useMemo(() => order.order ? statusHistory(order.order) : [], [order.order]);
+  const ownsOrder = session.loaded && session.authenticated && Boolean(session.user && ['CUSTOMER', 'ADMIN'].includes(session.user.role)) &&
+    order.order?.customer_user_id === session.user?.id;
+  const history = useMemo(() => order.order ? sortedStatusHistory(order.order) : [], [order.order]);
   const [realtimeStatus, setRealtimeStatus] = useState<OrderRealtimeStatus>("connecting");
   const realtimeRef = useRef<OrderRealtimeHandle | null>(null);
   const sessionGeneration = getSessionGeneration();
@@ -69,7 +60,7 @@ export default function OrderDetailScreen() {
   const [feedback, setFeedback] = useState<{ kind: 'help' | 'review'; context: string } | null>(null);
   const feedbackContext = JSON.stringify([orderId, order.order?.location_id, session.user?.id, getSessionGeneration(), focused]);
   useEffect(() => { setFeedback(null); }, [feedbackContext]);
-  const feedbackEligible = focused && order.order && order.order.id === orderId && canUseOrderFeedback(order.order, session);
+  const feedbackEligible = focused && !order.error && order.order && order.order.id === orderId && canUseOrderFeedback(order.order, session);
   useEffect(() => { if (!feedbackEligible) setFeedback(null); }, [feedbackEligible]);
   const orderRefetch = order.refetch;
   const chatRefetch = chat.refetch;
@@ -139,7 +130,9 @@ export default function OrderDetailScreen() {
           </View>
         ) : order.order ? (
           <>
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}
+              refreshControl={liveOrder ? <RefreshControl refreshing={order.loading} onRefresh={() => { order.refetch(); realtimeRef.current?.resume(); }} /> : undefined}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back to my orders" style={styles.backButton} onPress={() => router.push("/(tabs)/orders")}><Text style={styles.helpActionText}>Back to my orders</Text></TouchableOpacity>
               <View style={styles.hero}>
                 <View style={styles.heroTop}>
                   <View>
@@ -151,28 +144,13 @@ export default function OrderDetailScreen() {
                       )}
                     </Text>
                   </View>
-                  {liveOrder ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh order" style={styles.iconButton} onPress={order.refetch}>
-                    <RefreshCw size={18} color="#1A1A1A" />
-                  </TouchableOpacity> : null}
+
                 </View>
-                {liveOrder ? <View style={styles.realtimeRow}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      realtimeStatus === "live" && styles.statusDotConnected,
-                      realtimeStatus === "unavailable" && styles.statusDotUnavailable,
-                    ]}
-                  />
-                  <Text style={styles.realtimeText}>
-                    {realtimeStatus === "live" ? "Live updates connected"
-                      : realtimeStatus === "unavailable" ? "Live updates unavailable" : "Connecting live updates"}
-                  </Text>
-                  {realtimeStatus === "unavailable" ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry live updates"
-                    onPress={() => realtimeRef.current?.resume()} style={styles.realtimeRetry}>
-                    <Text style={styles.realtimeRetryText}>Retry</Text>
-                  </TouchableOpacity> : null}
-                </View> : null}
+                {liveOrder && ownsOrder && !order.error && order.order.location_id ? <OrderActiveActions key={feedbackContext}
+                  order={order.order} chat={chat} onRefresh={order.refetch} /> : null}
               </View>
+
+              <OrderTrackingDetails key={feedbackContext} order={order.order} chat={chat} actionsAvailable={!order.error} />
 
               {order.error ? <View style={styles.refreshWarning}>
                 <View style={styles.refreshWarningBody}>
@@ -184,16 +162,16 @@ export default function OrderDetailScreen() {
                   <Text style={styles.helpActionText}>Retry</Text>
                 </TouchableOpacity>
               </View> : null}
-              <OrderReorderAction order={order.order} />
+              {!order.error ? <OrderReorderAction order={order.order} websiteOrderDetail /> : null}
               {feedbackEligible ? <View style={styles.feedbackActions}>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Help" style={styles.helpAction}
                   onPress={() => setFeedback({ kind: 'help', context: feedbackContext })}>
                   <LifeBuoy size={18} color="#E53C3C" /><Text style={styles.helpActionText}>Help</Text>
                 </TouchableOpacity>
-                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Rate Your Order" style={[styles.helpAction, styles.rateAction]}
+                {order.order.items.length ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Rate your Order" style={[styles.helpAction, styles.rateAction]}
                   onPress={() => setFeedback({ kind: 'review', context: feedbackContext })}>
-                  <Star size={18} color="#FFF" /><Text style={[styles.helpActionText, styles.rateActionText]}>Rate Your Order</Text>
-                </TouchableOpacity>
+                  <Star size={18} color="#FFF" /><Text style={[styles.helpActionText, styles.rateActionText]}>Rate your Order</Text>
+                </TouchableOpacity> : null}
               </View> : null}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Items</Text>
@@ -220,47 +198,18 @@ export default function OrderDetailScreen() {
                   {order.order.wallet_applied_cents > 0 ? <InfoRow label="Wallet credit" value={'-' + cents(order.order.wallet_applied_cents)} /> : null}
                   <View style={styles.summaryTotal}><Text style={styles.itemTitle}>Total</Text><Text style={styles.itemPrice}>{cents(order.order.final_payable_cents)}</Text></View>
                 </View>
-                <View style={styles.statusPanel}>
-                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={historyOpen ? 'Hide status updates' : 'View all status updates'}
+                {history.length ? <View style={styles.statusPanel}>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={historyOpen ? 'Close status updates' : 'View all status updates'}
                     accessibilityState={{ expanded: historyOpen }} onPress={() => setHistoryOpen(open => !open)} style={styles.statusTrigger}>
                     <View style={styles.chatHeader}><Text style={styles.statusLabel}>Order status</Text><ChevronDown size={18} color="#E53C3C" style={{ transform: [{ rotate: historyOpen ? '180deg' : '0deg' }] }} /></View>
-                    {history.slice(0, 1).map(event => <StatusEntry key={event.id} status={orderStatusCustomerLabel(event.to_status, order.order!.fulfillment_type)} date={event.created_at} />)}
+                    {history.slice(0, 1).map(event => <StatusEntry key={event.id} status={statusEventCopy(event, order.order!).title} detail={statusEventCopy(event, order.order!).detail} date={event.created_at} />)}
                   </TouchableOpacity>
                   {historyOpen ? <View style={styles.statusHistory}>
-                    {history.slice(1).map(event => <StatusEntry key={event.id} status={orderStatusCustomerLabel(event.to_status, order.order!.fulfillment_type)} date={event.created_at} />)}
+                    {history.map(event => <StatusEntry key={event.id} status={statusEventCopy(event, order.order!).title} detail={statusEventCopy(event, order.order!).detail} date={event.created_at} />)}
                   </View> : null}
-                </View>
+                </View> : null}
               </View>
 
-              <View style={styles.section}>
-                <View style={styles.chatHeader}>
-                  <Text style={styles.sectionTitle}>Chat</Text>
-                  <MessageCircle size={18} color="#FF4D4D" />
-                </View>
-                {chat.loading && chat.messages.length === 0 ? (
-                  <Text style={styles.mutedText}>Loading chat...</Text>
-                ) : chat.messages.length === 0 ? (
-                  <Text style={styles.mutedText}>No messages yet.</Text>
-                ) : (
-                  chat.messages.map((message) => {
-                    const mine = messageAuthor(message, session.user?.id) === "me";
-                    return (
-                      <View
-                        key={message.id}
-                        style={[styles.messageBubble, mine && styles.messageBubbleMine]}
-                      >
-                        <Text style={[styles.messageText, mine && styles.messageTextMine]}>
-                          {message.message_body}
-                        </Text>
-                        <Text style={[styles.messageTime, mine && styles.messageTimeMine]}>
-                          {shortTime(message.created_at)}
-                        </Text>
-                      </View>
-                    );
-                  })
-                )}
-                {chat.error ? <Text style={styles.errorText}>{chat.error}</Text> : null}
-              </View>
             </ScrollView>
 
           </>
@@ -281,9 +230,9 @@ export default function OrderDetailScreen() {
   );
 }
 
-function StatusEntry({ status, date }: { status: string; date: string | null }) {
+function StatusEntry({ status, date, detail }: { status: string; date: string | null; detail?: string | null }) {
   return <View style={styles.statusEntry}><View style={styles.timelineDot}><Check size={11} color="#FFF" /></View>
-    <View style={styles.itemMain}><Text style={styles.statusTitle}>{status}</Text><Text style={styles.statusDate}>{date ? statusEventWhenLine(date) : ''}</Text></View></View>;
+    <View style={styles.itemMain}><Text style={styles.statusTitle}>{status}</Text><Text style={styles.statusDate}>{date ? statusEventWhenLine(date) : ''}</Text>{detail ? <Text style={styles.itemMeta}>{detail}</Text> : null}</View></View>;
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -296,6 +245,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  backButton: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 8 },
   itemRemoved: { marginTop: 4, color: '#E53C3C', fontSize: 12, lineHeight: 18 },
   itemInstructions: { marginTop: 6, color: '#777', fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
   summary: { backgroundColor: '#F6F6F6', borderRadius: 14, paddingHorizontal: 12, marginTop: 14 },
@@ -383,45 +333,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   iconButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 20,
     backgroundColor: "#FFF",
     alignItems: "center",
     justifyContent: "center",
-  },
-  realtimeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 16,
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#F59E0B",
-  },
-  statusDotConnected: {
-    backgroundColor: "#22C55E",
-  },
-  statusDotUnavailable: {
-    backgroundColor: "#9CA3AF",
-  },
-  realtimeText: {
-    color: "#DDD",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  realtimeRetry: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  realtimeRetryText: {
-    color: "#FFB3B3",
-    fontSize: 12,
-    fontWeight: "900",
   },
   section: {
     marginTop: 16,
@@ -488,36 +405,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  messageBubble: {
-    alignSelf: "flex-start",
-    maxWidth: "86%",
-    backgroundColor: "#F4F4F4",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginTop: 8,
-  },
-  messageBubbleMine: {
-    alignSelf: "flex-end",
-    backgroundColor: "#FF4D4D",
-  },
-  messageText: {
-    color: "#1A1A1A",
-    fontSize: 14,
-    fontWeight: "600",
-    lineHeight: 19,
-  },
-  messageTextMine: {
-    color: "#FFF",
-  },
-  messageTime: {
-    color: "#777",
-    fontSize: 10,
-    fontWeight: "700",
-    marginTop: 5,
-  },
-  messageTimeMine: {
-    color: "rgba(255,255,255,0.78)",
   },
 });

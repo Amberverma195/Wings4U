@@ -38,7 +38,7 @@ test('order detail uses silent refresh and preserves visible order during live r
   await mount(); expect(latest.order.id).toBe('order-a');
   const pending = deferred(); global.fetch.mockReturnValueOnce(pending.promise);
   await act(async () => latest.refetch()); expect(latest.order.id).toBe('order-a');
-  await act(async () => pending.resolve(response({ id: 'order-a', status: 'DELIVERED' })));
+  await act(async () => pending.resolve(response({ id: 'order-a', customer_user_id: 'customer', status: 'DELIVERED' })));
   expect(latest.order.status).toBe('DELIVERED'); expect(withSilentRefresh).toHaveBeenCalledWith(expect.any(Function), mockSession.refresh, mockSession.clear);
 });
 test.each(['logout', 'account', 'order', 'generation'])('%s clears authenticated order data and ignores late responses', async change => {
@@ -58,6 +58,11 @@ test.each(['logout', 'account', 'order', 'generation'])('%s clears authenticated
 });
 test('unauthenticated session never fetches order detail', async () => {
   mockSession.authenticated = false; mockSession.user = null; await mount(); expect(global.fetch).not.toHaveBeenCalled(); expect(latest.order).toBeNull();
+});
+
+test('customer tracking rejects an order owned by another account, matching the website owner guard', async () => {
+  global.fetch.mockResolvedValue(response({ id: 'order-a', customer_user_id: 'someone-else' }));
+  await mount(); expect(latest.order).toBeNull(); expect(latest.error).toBe('You do not have access to this order');
 });
 
 test('initial loading and initial network failure have no cached order', async () => {

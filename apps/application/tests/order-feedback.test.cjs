@@ -3,7 +3,7 @@ const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let mockSession, mockOrder, mockOrderId, mockFocused, mockGeneration, mockOrderLoading, mockOrderError, renderer;
 jest.mock('react-native', () => ({
-  ActivityIndicator: 'ActivityIndicator', Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
+  RefreshControl: 'RefreshControl', ActivityIndicator: 'ActivityIndicator', Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
   Platform: { OS: 'ios' }, StyleSheet: { create: value => value }, AccessibilityInfo: { setAccessibilityFocus: jest.fn() }, findNodeHandle: () => null,
   AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
@@ -45,13 +45,13 @@ const selectFirst = async () => act(async () => checkboxes()[1].props.onPress())
 const details = async () => { await selectFirst(); await tap('Continue'); };
 const enterDescription = async body => act(async () => input().props.onChangeText(body));
 const stars = () => renderer.root.findAllByType('TouchableOpacity').filter(node => node.props.accessibilityRole === 'radio');
-const submits = () => renderer.root.findAllByType('TouchableOpacity').filter(node => node.props.accessibilityLabel === 'Submit Review');
+const submits = () => renderer.root.findAllByType('TouchableOpacity').filter(node => node.props.accessibilityLabel === 'Submit review');
 const refreshWarning = "Couldn't refresh order. Showing the last available details.";
 beforeEach(() => {
   jest.clearAllMocks(); mockFocused = true; mockGeneration = 1; mockOrderId = 'order'; mockOrderLoading = false; mockOrderError = null;
   mockSession = { loaded: true, authenticated: true, user: { id: 'customer', role: 'CUSTOMER' }, refresh: jest.fn(), clear: jest.fn() };
-  mockOrder = { id: 'order', location_id: 'order-location', customer_user_id: 'customer', order_number: 1061, status: 'DELIVERED',
-    item_subtotal_cents: 3000, tax_cents: 390, tax_rate_bps: 1300, item_discount_total_cents: 0, order_discount_total_cents: 0, status_events: [],
+  mockOrder = { id: 'order', location_id: 'order-location', customer_user_id: 'customer', order_number: 1061, status: 'DELIVERED', cancel_allowed_until: '2020-01-01',
+    item_subtotal_cents: 3000, tax_cents: 390, tax_rate_bps: 1300, item_discount_total_cents: 0, order_discount_total_cents: 0, status_events: [{id:'placed',to_status:'PLACED',created_at:'2026-10-19T10:00:00Z'}],
     fulfillment_type: 'DELIVERY', placed_at: '2026-10-01', final_payable_cents: 3000, items: [item('line-a', 1), item('line-b', 2)] };
   apiFetch.mockResolvedValue(response([]));
 });
@@ -87,47 +87,56 @@ test('revoked order data shows full-screen error instead of stale details or inl
 
 test.each(['PICKED_UP', 'DELIVERED'])('%s shows both actions immediately after Reorder and before Details; existing sections remain', async status => {
   mockOrder.status = status; await mount(Screen);
-  expect(byLabel('Help')).toBeDefined(); expect(byLabel('Rate Your Order')).toBeDefined();
+  expect(byLabel('Help')).toBeDefined(); expect(byLabel('Rate your Order')).toBeDefined();
   const content = renderer.root.findByType('ScrollView').children;
   const index = content.findIndex(node => node.type === require('../src/components/order-history').OrderReorderAction);
   expect(content[index + 1].findByProps({ accessibilityLabel: 'Help' })).toBeDefined();
   expect(content[index + 2].findAllByType('Text')[0].children).toEqual(['Items']);
-  expect(texts()).toEqual(expect.arrayContaining(['Order status', 'Chat']));
+  expect(texts()).toEqual(expect.arrayContaining(['Order status']));
   await tap('Help'); expect(renderer.root.findAllByType('Modal')).toHaveLength(1);
-  await tap('Cancel'); await tap('Rate Your Order');
+  await tap('Cancel'); await tap('Rate your Order');
   expect(apiFetch).toHaveBeenCalledWith('/api/v1/orders/order/reviews', expect.objectContaining({ locationId: 'order-location' }));
 });
-test.each(['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'CANCELLED', 'REFUNDED', 'UNKNOWN'])('%s hides actions', async status => {
-  mockOrder.status = status; await mount(Screen); expect(byLabel('Help')).toBeUndefined(); expect(byLabel('Rate Your Order')).toBeUndefined();
+test.each(['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'CANCELLED', 'REFUNDED', 'UNKNOWN'])('%s hides post-order feedback actions', async status => {
+  mockOrder.status = status; await mount(Screen);
+  expect(Boolean(byLabel('Help'))).toBe(['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(status));
+  expect(byLabel('Rate your Order')).toBeUndefined();
 });
 test.each(['signed-out', 'staff', 'other-customer', 'not-loaded'])('%s cannot open feedback', async change => {
   if (change === 'signed-out') mockSession.authenticated = false;
   if (change === 'staff') mockSession.user.role = 'STAFF';
   if (change === 'other-customer') mockSession.user.id = 'other';
   if (change === 'not-loaded') mockSession.loaded = false;
-  await mount(Screen); expect(byLabel('Help')).toBeUndefined(); expect(byLabel('Rate Your Order')).toBeUndefined();
+  await mount(Screen); expect(byLabel('Help')).toBeUndefined(); expect(byLabel('Rate your Order')).toBeUndefined();
 });
 test.each(['PICKED_UP', 'DELIVERED'])('admin purchasing their own %s order can use both feedback flows', async status => {
   mockSession.user.role = 'ADMIN'; mockOrder.status = status; await mount(Screen);
-  expect(byLabel('Help')).toBeDefined(); expect(byLabel('Rate Your Order')).toBeDefined();
+  expect(byLabel('Help')).toBeDefined(); expect(byLabel('Rate your Order')).toBeDefined();
   await tap('Help'); await details(); await enterDescription('An issue');
-  apiFetch.mockResolvedValueOnce(response({ id: 'ticket' })); await tap('Submit Ticket');
-  expect(texts()).toContain('Ticket Submitted!'); await tap('Close');
-  apiFetch.mockResolvedValueOnce(response([])); await tap('Rate Your Order');
+  apiFetch.mockResolvedValueOnce(response({ id: 'ticket' })); await tap('Submit ticket');
+  expect(texts()).toContain('Ticket submitted'); await tap('Close');
+  apiFetch.mockResolvedValueOnce(response([])); await tap('Rate your Order');
   await act(async () => stars()[4].props.onPress()); apiFetch.mockResolvedValueOnce(response({ ...review(), rating: 5 }));
   await act(async () => submits()[0].props.onPress()); expect(texts()).toContain('Review submitted · 5 of 5 stars');
 });
 test.each(['different-owner', 'CANCELLED', 'READY', 'OUT_FOR_DELIVERY'])('admin feedback remains hidden for %s', async reason => {
   mockSession.user.role = 'ADMIN';
   if (reason === 'different-owner') mockOrder.customer_user_id = 'someone-else'; else mockOrder.status = reason;
-  await mount(Screen); expect(byLabel('Help')).toBeUndefined(); expect(byLabel('Rate Your Order')).toBeUndefined();
+  await mount(Screen);
+  expect(Boolean(byLabel('Help'))).toBe(['READY', 'OUT_FOR_DELIVERY'].includes(reason));
+  expect(byLabel('Rate your Order')).toBeUndefined();
 });
-test('help always starts with item selection, including one-item orders; empty orders disable Continue', async () => {
+test('website single-item support skips selection and empty orders allow whole-order support', async () => {
   mockOrder.items = [item('line-a', 1)]; await mount();
-  expect(texts()).toContain('Which item had an issue?'); expect(checkboxes()).toHaveLength(2);
-  expect(byLabel('Continue').props.disabled).toBe(true);
+  expect(texts()).toContain('Open a support ticket'); expect(checkboxes()).toHaveLength(0);
+  expect(byLabel('Back')).toBeUndefined(); expect(byLabel('Submit ticket').props.disabled).toBe(true);
+  await enterDescription('Wrong item'); apiFetch.mockResolvedValueOnce(response({ id: 'ticket' })); await tap('Submit ticket');
+  expect(JSON.parse(apiFetch.mock.calls[0][1].body).description).toContain('[order_item_id: line-a]');
   await act(async () => renderer.unmount()); renderer = null; mockOrder.items = []; await mount();
-  expect(texts().join(' ')).toContain('Order items are unavailable'); expect(byLabel('Continue').props.disabled).toBe(true);
+  expect(texts()).toContain('Open a support ticket'); expect(byLabel('Continue')).toBeUndefined(); expect(byLabel('Back')).toBeUndefined();
+  await enterDescription('Whole order issue'); apiFetch.mockResolvedValueOnce(response({ id: 'whole-order-ticket' })); await tap('Submit ticket');
+  const body = JSON.parse(apiFetch.mock.calls[1][1].body);
+  expect(body.subject).toBe('Wrong item - Whole order (#1061)'); expect(body.description).toContain('- Whole order');
 });
 test('checkboxes use unique line IDs for duplicate product names, and Select All toggles both directions', async () => {
   await mount(); expect(checkboxes()).toHaveLength(3);
@@ -137,28 +146,28 @@ test('checkboxes use unique line IDs for duplicate product names, and Select All
   await selectFirst(); await act(async () => checkboxes()[2].props.onPress()); expect(checkboxes()[0].props.accessibilityState.checked).toBe(true);
 });
 test('Back preserves selection, issue, and description; trimmed blank descriptions cannot submit', async () => {
-  await mount(); await details(); await enterDescription('   '); expect(byLabel('Submit Ticket').props.disabled).toBe(true);
-  await enterDescription('Too cold'); await tap('Cold Food'); await tap('Back');
+  await mount(); await details(); await enterDescription('   '); expect(byLabel('Submit ticket').props.disabled).toBe(true);
+  await enterDescription('Too cold'); await tap('Cold food'); await tap('Back');
   expect(checkboxes()[1].props.accessibilityState.checked).toBe(true); await tap('Continue');
-  expect(input().props.value).toBe('Too cold'); expect(byLabel('Cold Food').props.accessibilityState.checked).toBe(true);
+  expect(input().props.value).toBe('Too cold'); expect(byLabel('Cold food').props.accessibilityState.checked).toBe(true);
   expect(apiFetch).not.toHaveBeenCalled();
 });
 test.each(ORDER_ISSUES)('$value submits website-compatible selected snapshots and actual location', async issue => {
-  apiFetch.mockResolvedValue(response({ id: 'ticket' })); await mount(); await details(); await tap(issue.label); await enterDescription('  An issue  '); await tap('Submit Ticket');
+  apiFetch.mockResolvedValue(response({ id: 'ticket' })); await mount(); await details(); await tap(issue.label); await enterDescription('  An issue  '); await tap('Submit ticket');
   const [path, options] = apiFetch.mock.calls[0]; const body = JSON.parse(options.body);
   expect(path).toBe('/api/v1/support/tickets'); expect(options.locationId).toBe('order-location');
   expect(body).toEqual(ticketPayload(mockOrder, ['line-a'], issue.value, 'An issue'));
   expect(body.subject).toBe(`${issue.subjectLabel} - Wings (#1061)`);
   expect(body.description).toContain('- Wings - $17.99 (Combos / Flavours: Buffalo / Options: Fries) [order_item_id: line-a]');
-  expect(body.description).not.toContain('line-b'); expect(body.order_id).toBe('order'); expect(texts()).toContain('Ticket Submitted!');
+  expect(body.description).not.toContain('line-b'); expect(body.order_id).toBe('order'); expect(texts()).toContain('Ticket submitted');
   expect(withSilentRefresh).toHaveBeenCalledWith(expect.any(Function), mockSession.refresh, mockSession.clear);
 });
 test('support request failure preserves inputs and rapid duplicate submissions are locked', async () => {
   const pending = deferred(); apiFetch.mockReturnValue(pending.promise); await mount(); await details(); await enterDescription('Missing fries');
-  const submit = byLabel('Submit Ticket').props.onPress;
+  const submit = byLabel('Submit ticket').props.onPress;
   await act(async () => { void submit(); void submit(); }); expect(apiFetch).toHaveBeenCalledTimes(1);
   await act(async () => pending.resolve(response('Please contact the store', 422)));
-  expect(input().props.value).toBe('Missing fries'); expect(texts()).toContain('Please contact the store'); expect(texts()).not.toContain('Ticket Submitted!');
+  expect(input().props.value).toBe('Missing fries'); expect(texts()).toContain('Please contact the store'); expect(texts()).not.toContain('Ticket submitted');
 });
 test('ticket selection builder includes quantities and every actual selected marker', () => {
   const body = ticketPayload(mockOrder, ['line-a', 'line-b'], 'WRONG_ITEM', 'bad');
@@ -214,7 +223,7 @@ test.each(['Close modal', 'hardware-back'])('%s dismisses without implicit submi
 });
 test.each(['logout', 'account', 'order', 'generation', 'blur'])('%s dismisses modal and ignores late ticket response', async change => {
   await mount(Screen); await tap('Help'); await details(); await enterDescription('Private description');
-  const pending = deferred(); apiFetch.mockReturnValue(pending.promise); await act(async () => { void byLabel('Submit Ticket').props.onPress(); });
+  const pending = deferred(); apiFetch.mockReturnValue(pending.promise); await act(async () => { void byLabel('Submit ticket').props.onPress(); });
   if (change === 'logout') mockSession = { ...mockSession, authenticated: false, user: null };
   if (change === 'account') mockSession = { ...mockSession, user: { id: 'other', role: 'CUSTOMER' } };
   if (change === 'order') { mockOrderId = 'new-order'; mockOrder = { ...mockOrder, id: 'new-order' }; }
@@ -222,25 +231,25 @@ test.each(['logout', 'account', 'order', 'generation', 'blur'])('%s dismisses mo
   if (change === 'blur') mockFocused = false;
   await act(async () => renderer.update(React.createElement(Screen)));
   await act(async () => pending.resolve(response({ id: 'late-ticket' })));
-  expect(renderer.root.findAllByType('Modal')).toHaveLength(0); expect(texts()).not.toContain('Ticket Submitted!');
+  expect(renderer.root.findAllByType('Modal')).toHaveLength(0); expect(texts()).not.toContain('Ticket submitted');
 });
 test('closing clears help drafts; late review loads never appear on reopening', async () => {
   await mount(Screen); await tap('Help'); await details(); await enterDescription('Private'); await tap('Cancel'); await tap('Help');
   expect(texts()).toContain('Which item had an issue?'); expect(byLabel('Continue').props.disabled).toBe(true); await tap('Cancel');
-  const pending = deferred(); apiFetch.mockReturnValueOnce(pending.promise); await tap('Rate Your Order'); await tap('Close modal');
-  apiFetch.mockResolvedValue(response([])); await tap('Rate Your Order'); await act(async () => pending.resolve(response([review()])));
+  const pending = deferred(); apiFetch.mockReturnValueOnce(pending.promise); await tap('Rate your Order'); await tap('Close modal');
+  apiFetch.mockResolvedValue(response([])); await tap('Rate your Order'); await act(async () => pending.resolve(response([review()])));
   expect(texts()).not.toContain('Good wings'); expect(submits()).toHaveLength(2);
 });
 test('silent-refresh callback cannot retry after account switch', async () => {
   let retry;
   withSilentRefresh.mockImplementationOnce(async call => { retry = call; return call(); });
-  await mount(); await details(); await enterDescription('Problem'); await tap('Submit Ticket');
+  await mount(); await details(); await enterDescription('Problem'); await tap('Submit ticket');
   mockGeneration++;
   expect(() => retry()).toThrow('Your session or order changed'); expect(apiFetch).toHaveBeenCalledTimes(1);
 });
 
 test.each(['logout', 'account', 'order', 'generation', 'blur'])('%s invalidates a pending item-review submission', async change => {
-  await mount(Screen); await tap('Rate Your Order');
+  await mount(Screen); await tap('Rate your Order');
   await act(async () => stars()[4].props.onPress());
   const pending = deferred(); apiFetch.mockReturnValueOnce(pending.promise);
   await act(async () => { void submits()[0].props.onPress(); });
@@ -274,15 +283,15 @@ test('review responses belonging to another customer are not displayed', async (
 });
 test('ticket success requires a confirmed creation, and successful tickets cannot be submitted twice', async () => {
   apiFetch.mockResolvedValue(response(null)); await mount(); await details(); await enterDescription('Problem');
-  await tap('Submit Ticket'); expect(texts()).not.toContain('Ticket Submitted!'); expect(input().props.value).toBe('Problem');
-  apiFetch.mockResolvedValue(response({ id: 'ticket' })); const submit = byLabel('Submit Ticket').props.onPress; await act(async () => submit());
-  await act(async () => submit()); expect(apiFetch).toHaveBeenCalledTimes(2); expect(texts()).toContain('Ticket Submitted!');
+  await tap('Submit ticket'); expect(texts()).not.toContain('Ticket submitted'); expect(input().props.value).toBe('Problem');
+  apiFetch.mockResolvedValue(response({ id: 'ticket' })); const submit = byLabel('Submit ticket').props.onPress; await act(async () => submit());
+  await act(async () => submit()); expect(apiFetch).toHaveBeenCalledTimes(2); expect(texts()).toContain('Ticket submitted');
 });
 test('active orders retain live updates, and completing an order disconnects before feedback opens', async () => {
   mockOrder.status = 'PREPARING'; await mount(Screen);
   const socket = require('../src/lib/realtime').createOrdersSocket.mock.results[0].value;
   const handler = event => socket.on.mock.calls.find(([name]) => name === event)[1];
-  expect(byLabel('Refresh order')).toBeDefined();
+  expect(renderer.root.findByType('ScrollView').props.refreshControl).toBeDefined();
   expect(socket.connect).toHaveBeenCalledTimes(1);
   await act(async () => {
     handler('order.status_changed')(); handler('chat.message')();
@@ -292,8 +301,8 @@ test('active orders retain live updates, and completing an order disconnects bef
   mockOrder = { ...mockOrder, status: 'DELIVERED' };
   await act(async () => renderer.update(React.createElement(Screen)));
   expect(socket.disconnect).toHaveBeenCalledTimes(1); expect(byLabel('Refresh order')).toBeUndefined();
-  await tap('Help'); await tap('Cancel'); await tap('Rate Your Order'); await tap('Close modal');
-  expect(texts()).toContain('Order status'); expect(texts()).toContain('Chat');
+  await tap('Help'); await tap('Cancel'); await tap('Rate your Order'); await tap('Close modal');
+  expect(texts()).toContain('Order status'); expect(byLabel('Order Chat')).toBeUndefined();
   expect(renderer.root.findAllByType('TextInput')).toHaveLength(0); expect(mockSendMessage).not.toHaveBeenCalled();
 });
 
@@ -322,5 +331,5 @@ test('items precede the price breakdown and a collapsed latest status expands in
   await tap('View all status updates');
   expect(texts()).toEqual(expect.arrayContaining(['Picked up', 'Ready for pickup', 'Order placed']));
   expect(texts().indexOf('Ready for pickup')).toBeLessThan(texts().indexOf('Order placed'));
-  await tap('Hide status updates'); expect(texts()).not.toContain('Ready for pickup');
+  await tap('Close status updates'); expect(texts()).not.toContain('Ready for pickup');
 });

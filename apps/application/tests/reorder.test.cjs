@@ -28,6 +28,16 @@ const texts = () => renderer.root.findAllByType('Text').map(node => node.childre
 const button = label => renderer.root.findAllByType('TouchableOpacity').find(node => node.findAllByType('Text').some(text => text.children.join('') === label));
 const tap = async label => act(async () => button(label).props.onPress());
 const mount = async () => act(async () => { renderer = create(tree()); });
+
+test('order-detail reorder uses the website request and labels without changing the order-list workflow', async () => {
+  await act(async () => { renderer = create(React.createElement(ReorderButton, { orderId: 'past', locationId: 'original-store', websiteOrderDetail: true })); });
+  await tap('Order again');
+  const [path, init] = apiFetch.mock.calls[0];
+  expect(path).toBe('/api/v1/orders/past/reorder'); expect(init.locationId).toBe('original-store'); expect(init.method).toBe('POST');
+  expect(init.body).toBeUndefined(); expect(mockCart.addItem).not.toHaveBeenCalled();
+  expect(texts()).toContain('Review your reorder'); expect(texts()).toContain('Configuration changes');
+  await tap('Add to cart'); expect(mockCart.addItem).toHaveBeenCalledTimes(1); expect(mockRouter.navigate).toHaveBeenCalledWith('/(tabs)/cart');
+});
 const rerender = async () => act(async () => renderer.update(tree()));
 beforeEach(() => {
   jest.clearAllMocks(); mockFocused = true;
@@ -120,6 +130,14 @@ test('hydration blocks requests and confirmations', async () => {
 test('expired review cannot be confirmed', async () => {
   const now = jest.spyOn(Date, 'now').mockReturnValue(1000); await mount(); await tap('Reorder'); now.mockReturnValue(122000);
   await tap('Add to cart'); expect(mockCart.addItem).not.toHaveBeenCalled(); now.mockRestore();
+});
+
+test('order-detail reorder does not add the independent preview expiry absent from the website', async () => {
+  const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+  try {
+    await act(async () => { renderer = create(React.createElement(ReorderButton, { orderId: 'past', locationId: 'original-store', websiteOrderDetail: true })); });
+    await tap('Order again'); now.mockReturnValue(122000); await tap('Add to cart'); expect(mockCart.addItem).toHaveBeenCalledTimes(1);
+  } finally { now.mockRestore(); }
 });
 test('each eligible OrderRow has a sibling reorder action, independent of details navigation', async () => {
   const order = { id: 'past', location_id: 'original-store', status: 'DELIVERED', order_number: 42, fulfillment_type: 'DELIVERY', placed_at: '2026-10-01', final_payable_cents: 1800 };

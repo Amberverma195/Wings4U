@@ -8,7 +8,7 @@ import { apiFetch } from '../lib/api';
 import { parseReorderPreview, REORDER_SKIP_COPY, reorderCartItems, reorderError, type MobileReorderPreview } from '../lib/reorder';
 import { cents } from '../lib/format';
 
-export function ReorderButton({ orderId, locationId }: { orderId: string; locationId: string }) {
+export function ReorderButton({ orderId, locationId, websiteOrderDetail = false }: { orderId: string; locationId: string; websiteOrderDetail?: boolean }) {
   const session = useSession(), cart = useCart(), router = useRouter(), focused = useIsFocused();
   const [preview, setPreview] = useState<MobileReorderPreview | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export function ReorderButton({ orderId, locationId }: { orderId: string; locati
         // Silent refresh must not retry on behalf of a different account.
         if (!isCurrent()) throw new Error('Reorder cancelled.');
         return apiFetch(`/api/v1/orders/${orderId}/reorder`, { method: 'POST', locationId,
-          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fulfillment_type: cart.fulfillmentType, scheduled_for: cart.scheduledFor ?? undefined }) });
+          headers: { 'Content-Type': 'application/json' }, ...(websiteOrderDetail ? {} : { body: JSON.stringify({ fulfillment_type: cart.fulfillmentType, scheduled_for: cart.scheduledFor ?? undefined }) }) });
       }, session.refresh, session.clear);
       const body = await response.json().catch(() => null);
       if (!isCurrent()) return;
@@ -53,7 +53,7 @@ export function ReorderButton({ orderId, locationId }: { orderId: string; locati
   const confirm = () => {
     const review = approved.current, state = latest.current;
     if (!review || locked.current) return;
-    if (!state.session.authenticated || !state.session.user || !state.focused || review.context !== currentContext.current || Date.now() > review.expires) {
+    if (!state.session.authenticated || !state.session.user || !state.focused || review.context !== currentContext.current || (!websiteOrderDetail && Date.now() > review.expires)) {
       dismiss(); setError('Your order details changed or this preview expired. Please tap Reorder again.'); return;
     }
     if (!state.cart.isCartHydrated || state.cart.isCartHydrating) { dismiss(); setError('Your cart is still loading. Please try again in a moment.'); return; }
@@ -69,9 +69,9 @@ export function ReorderButton({ orderId, locationId }: { orderId: string; locati
   };
   if (!session.loaded || !session.authenticated) return null;
   return <View style={styles.wrapper}>
-    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Reorder" accessibilityState={{ disabled: busy, busy }}
+    <TouchableOpacity accessibilityRole="button" accessibilityLabel={websiteOrderDetail ? 'Order again' : 'Reorder'} accessibilityState={{ disabled: busy, busy }}
       disabled={busy} onPress={fetchPreview} style={[styles.button, busy && styles.disabled]}>
-      {busy ? <ActivityIndicator color="#FF4D4D" /> : <Text style={styles.buttonText}>Reorder</Text>}
+      {busy ? <ActivityIndicator color="#FF4D4D" /> : <Text style={styles.buttonText}>{websiteOrderDetail ? 'Order again' : 'Reorder'}</Text>}
     </TouchableOpacity>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     <Modal visible={Boolean(preview)} transparent animationType="slide" onRequestClose={dismiss}>
@@ -86,7 +86,7 @@ export function ReorderButton({ orderId, locationId }: { orderId: string; locati
             <DiffGroup title="Modifiers dropped" lines={preview.diff.modifier_changes.map(row => `${row.name}: ${row.dropped.join(', ')}`)} />
             <DiffGroup title="Price changes" lines={preview.diff.price_changes.map(row => `${row.name}: ${cents(row.old_cents)} → ${cents(row.new_cents)}`)} />
             <DiffGroup title="Configuration changes" lines={(preview.diff.configuration_changes ?? []).map(row => `${row.name}: ${row.changes.join(', ')}`)} />
-            {!preview.all_unavailable ? <Text style={styles.copy}>Availability can change. Your entire cart, order time and current prices will be checked again before checkout. No previous discounts, rewards or payment details are copied.</Text> : null}
+            {!preview.all_unavailable && !websiteOrderDetail ? <Text style={styles.copy}>Availability can change. Your entire cart, order time and current prices will be checked again before checkout. No previous discounts, rewards or payment details are copied.</Text> : null}
           </ScrollView>
           <View style={styles.actions}>
             <TouchableOpacity accessibilityRole="button" onPress={dismiss} style={styles.button}><Text style={styles.buttonText}>{preview.all_unavailable ? 'Close' : 'Cancel'}</Text></TouchableOpacity>
