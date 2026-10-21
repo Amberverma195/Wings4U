@@ -1,5 +1,5 @@
 jest.mock('../src/lib/env', () => ({ getApiBase: () => 'https://offline.invalid' }));
-jest.mock('../src/lib/token-store', () => ({ getAccessToken: jest.fn(async () => 'secure-token') }));
+jest.mock('../src/lib/token-store', () => ({ getAccessToken: jest.fn(async () => 'secure-token'), getSessionGeneration: () => 0 }));
 const { apiFetch } = require('../src/lib/api');
 const originalFetch = global.fetch;
 afterEach(() => { global.fetch = originalFetch; });

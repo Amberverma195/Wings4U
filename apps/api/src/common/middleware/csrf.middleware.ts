@@ -87,7 +87,7 @@ export function csrfMiddleware(
   // to ambient authority CSRF attacks, always exempt requests using Bearer auth.
   const hasBearerAuth =
     typeof req.headers.authorization === "string" &&
-    req.headers.authorization.startsWith("Bearer ");
+    /^Bearer\s+\S+$/i.test(req.headers.authorization);
 
   if (hasBearerAuth) {
     next();

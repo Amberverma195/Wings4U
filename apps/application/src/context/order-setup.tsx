@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useCart } from './cart';
 import { useSession } from './session';
+import { getSessionGeneration } from '../lib/token-store';
 import { useAccountData } from '../hooks/use-account-data';
 import { OrderSetupModal } from '../components/order-setup-modal';
 import { ORDER_SETUP_TTL_MS, normalizeDeliveryAddress, readOrderSetup, type DeliveryAddress, type OrderSetupSelection, type StoredOrderSetup } from '../lib/order-setup';
@@ -72,10 +73,13 @@ export function OrderSetupProvider({ children }: { children: React.ReactNode }) 
 
   // Serialize writes so a background save cannot overwrite a later expiry/reset.
   const persist = useCallback((value: OrderSetupSelection | null, timestamp = Date.now()) => {
+    const generation = getSessionGeneration();
     const raw = value ? JSON.stringify({ ...value, v: 1, lastActiveAt: timestamp }) : null;
     writeQueue.current = writeQueue.current.catch(() => {}).then(async () => {
+      if (generation !== getSessionGeneration()) return;
       if (raw) await AsyncStorage.setItem(key, raw);
       else await AsyncStorage.removeItem(key);
+      if (generation !== getSessionGeneration()) await AsyncStorage.removeItem(key);
     }).catch(() => {});
   }, [key]);
 

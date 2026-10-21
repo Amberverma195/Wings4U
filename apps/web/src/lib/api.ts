@@ -71,6 +71,7 @@ export async function apiFetch(
   const base = getPublicApiBase();
   const effectivePath = base ? path : routeStoreNetworkApiThroughWeb(path);
   return fetch(`${base}${effectivePath}`, {
+    cache: "no-store",
     ...rest,
     credentials: "include",
     headers

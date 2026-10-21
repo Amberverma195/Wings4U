@@ -1,3 +1,5 @@
+jest.mock("../../database/prisma.service", () => ({ PrismaService: class {} }));
+
 import {
   OrderEmailStatus,
   OrderStatusEmailService,
@@ -5,6 +7,9 @@ import {
 
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_FETCH = global.fetch;
+let recipientDeleted = false;
+const prisma = { $transaction: async (callback: any) => callback({ $queryRaw: async () => [{ account_deleted_at: recipientDeleted ? new Date() : null }] }) } as any;
+const notificationService = () => new OrderStatusEmailService(prisma);
 
 const order = {
   id: "5d29ce89-c565-4e24-b9b5-0912de22003b",
@@ -17,6 +22,7 @@ const order = {
 
 describe("OrderStatusEmailService", () => {
   beforeEach(() => {
+    recipientDeleted = false;
     process.env = {
       ...ORIGINAL_ENV,
       RESEND_API_KEY: "re_test",
@@ -43,7 +49,7 @@ describe("OrderStatusEmailService", () => {
   ] as Array<[OrderEmailStatus, string]>)(
     "sends the %s email directly through Resend",
     async (status, expectedSubject) => {
-      const sent = await new OrderStatusEmailService().send(order, status);
+      const sent = await notificationService().send(order, status);
 
       expect(sent).toBe(true);
       expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -69,7 +75,7 @@ describe("OrderStatusEmailService", () => {
   );
 
   it("does nothing when the order has no customer email", async () => {
-    const sent = await new OrderStatusEmailService().send(
+    const sent = await notificationService().send(
       { ...order, customerEmailSnapshot: null },
       "ACCEPTED",
     );
@@ -86,19 +92,19 @@ describe("OrderStatusEmailService", () => {
     });
 
     await expect(
-      new OrderStatusEmailService().send(order, "DELIVERED"),
+      notificationService().send(order, "DELIVERED"),
     ).resolves.toBe(false);
   });
 
   it("does not submit email without an API key", async () => {
     delete process.env.RESEND_API_KEY;
-    expect(await new OrderStatusEmailService().send(order, "ACCEPTED")).toBe(false);
+    expect(await notificationService().send(order, "ACCEPTED")).toBe(false);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("preserves the default sender and request timeout", async () => {
     delete process.env.RESEND_FROM;
-    await new OrderStatusEmailService().send(order, "ACCEPTED");
+    await notificationService().send(order, "ACCEPTED");
     const [, init] = (global.fetch as jest.Mock).mock.calls[0];
     expect(JSON.parse(init.body).from).toBe("Wings 4 U <no-reply@wings4ulondon.ca>");
     expect(init.method).toBe("POST"); expect(init.signal).toBeInstanceOf(AbortSignal);
@@ -106,9 +112,15 @@ describe("OrderStatusEmailService", () => {
 
   it("returns false on a provider timeout without retrying or changing the key", async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error("timeout"));
-    expect(await new OrderStatusEmailService().send(order, "PICKED_UP")).toBe(false);
+    expect(await notificationService().send(order, "PICKED_UP")).toBe(false);
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect((global.fetch as jest.Mock).mock.calls[0][1].headers["Idempotency-Key"])
       .toBe(`order-status/picked_up/${order.id}`);
+  });
+
+  it("does not send an in-memory order/contact snapshot after customer deletion commits", async () => {
+    recipientDeleted = true;
+    expect(await notificationService().send(order, "DELIVERED")).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

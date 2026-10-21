@@ -57,6 +57,8 @@ import {
 import { formatPhoneForDisplay } from '../../src/lib/phone';
 import { ProfileSkeleton, ProfileSectionSkeleton, OrdersPaginationSkeleton } from '../../src/components/skeletons/screen-skeletons';
 import { ProfileTabGuard } from '../../src/components/profile-tab-guard';
+import { AccountDeletionModal } from '../../src/components/account-deletion';
+import { forgetDeletedAccount } from '../../src/lib/account-deletion';
 
 type TabKey = 'overview' | 'profile' | 'orders' | 'addresses' | 'support' | 'cards';
 type OrderFilter = 'active' | 'past';
@@ -203,6 +205,7 @@ function ProfileScreen() {
   const [ticketFormOpen, setTicketFormOpen] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
 
   const user = session.user;
   const displayName = user?.displayName ?? '';
@@ -465,6 +468,8 @@ function ProfileScreen() {
               onSave={handleSaveProfile}
               onVerifyPhone={handleVerifyPhone}
               onCancelEdit={cancelProfileEdit}
+              showAccountDeletion={session.authenticated && user?.role === 'CUSTOMER'}
+              onDeleteAccount={() => setDeleteAccountOpen(true)}
             />
           )}
 
@@ -537,6 +542,14 @@ function ProfileScreen() {
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
+      {deleteAccountOpen ? <AccountDeletionModal visible onClose={() => setDeleteAccountOpen(false)}
+        onCompleted={async () => {
+          session.clear();
+          navigation.reset({ index: 0, routes: [{ name: 'index' }] });
+          try { await forgetDeletedAccount(); }
+          catch { Alert.alert('Account deleted', 'You are signed out. Some local saved data could not be cleared.'); return; }
+          Alert.alert('Account deleted', 'Your Wings4U account has been deleted.');
+        }} /> : null}
     </SafeAreaView>
   );
 }
@@ -920,6 +933,8 @@ function ProfileTab({
   onSave,
   onVerifyPhone,
   onCancelEdit,
+  showAccountDeletion,
+  onDeleteAccount,
 }: {
   savedName: string;
   savedPhone: string;
@@ -931,6 +946,8 @@ function ProfileTab({
   onSave: (name: string, phone: string) => void;
   onVerifyPhone: (code: string) => void;
   onCancelEdit: () => void;
+  showAccountDeletion: boolean;
+  onDeleteAccount: () => void;
 }) {
   const nameRef = useRef<TextInput>(null);
   const [editing, setEditing] = useState(false);
@@ -1065,6 +1082,23 @@ function ProfileTab({
           {loading ? 'Saving...' : verifyingPhone ? 'Confirm code' : 'Save Changes'}
         </Text>
       </TouchableOpacity>
+      {showAccountDeletion ? (
+        <View style={styles.accountDeletion}>
+          <TouchableOpacity
+            style={styles.deleteAccountBtn}
+            onPress={onDeleteAccount}
+            accessibilityRole="button"
+            accessibilityLabel="Delete Account"
+            accessibilityHint="Review permanent account deletion and data retention."
+          >
+            <Trash2 size={18} color="#B91C1C" />
+            <Text style={styles.deleteAccountText}>Delete Account</Text>
+          </TouchableOpacity>
+          <Text style={styles.helperText}>
+            Review permanent account deletion and data retention.
+          </Text>
+        </View>
+      ) : null}
     </SectionCard>
   );
 }
@@ -1586,6 +1620,29 @@ const styles = StyleSheet.create({
     color: '#30241F',
     fontSize: 17,
     fontWeight: '800',
+  },
+  accountDeletion: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EBDDD5',
+  },
+  deleteAccountBtn: {
+    minHeight: 44,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#B91C1C',
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  deleteAccountText: {
+    color: '#B91C1C',
+    fontSize: 14,
+    fontWeight: '700',
   },
   editBtn: {
     width: 34,

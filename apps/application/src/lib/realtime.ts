@@ -9,7 +9,14 @@
  */
 import { io, type Socket } from "socket.io-client";
 import { getRealtimeOrigin } from "./env";
-import { getAccessToken } from "./token-store";
+import { getAccessToken, subscribeSessionGeneration } from "./token-store";
+
+const customerSockets = new Set<Socket>();
+export function disconnectCustomerSockets() {
+  for (const socket of customerSockets) socket.disconnect();
+  customerSockets.clear();
+}
+subscribeSessionGeneration(disconnectCustomerSockets);
 
 /**
  * Build a not-yet-connected Socket.IO client for the `/ws` gateway.
@@ -23,7 +30,7 @@ import { getAccessToken } from "./token-store";
  * realtime controller bounds authentication and subscription recovery.
  */
 export function createOrdersSocket(): Socket {
-  return io(getRealtimeOrigin(), {
+  const socket = io(getRealtimeOrigin(), {
     path: "/ws",
     transports: ["websocket"],
     autoConnect: false,
@@ -39,4 +46,7 @@ export function createOrdersSocket(): Socket {
     reconnectionDelay: 500,
     reconnectionDelayMax: 5000,
   });
+  customerSockets.add(socket);
+  socket.on('disconnect', reason => { if (reason === 'io client disconnect') customerSockets.delete(socket); });
+  return socket;
 }

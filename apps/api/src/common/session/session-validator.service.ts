@@ -85,7 +85,7 @@ export class SessionValidator {
     });
 
     if (!session || !session.user) return null;
-    if (!session.user.isActive) return null;
+    if (!session.user.isActive || session.user.archivedAt || session.user.accountDeletedAt) return null;
 
     const dbRole = session.user.role as UserRole;
     const dbEmployeeRole = session.user.employeeProfile?.role as

@@ -2,6 +2,14 @@
 
 import { io, type Socket } from "socket.io-client";
 import { getRealtimeOrigin } from "./env";
+import { addAuthSessionClearedListener } from "./auth-events";
+
+const customerSockets = new Set<Socket>();
+export function disconnectCustomerSockets() {
+  for (const socket of customerSockets) socket.disconnect();
+  customerSockets.clear();
+}
+if (typeof window !== "undefined") addAuthSessionClearedListener(disconnectCustomerSockets);
 
 /**
  * Build a not-yet-connected Socket.IO client for the `/ws` gateway.
@@ -31,7 +39,7 @@ export function createOrdersSocket(
       ? "pos"
       : undefined;
 
-  return io(origin, {
+  const socket = io(origin, {
     path: "/ws",
     transports: ["websocket", "polling"],
     autoConnect: false,
@@ -42,6 +50,11 @@ export function createOrdersSocket(
     reconnectionDelay: 500,
     reconnectionDelayMax: 5000,
   });
+  if (!surface) {
+    customerSockets.add(socket);
+    socket.on("disconnect", reason => { if (reason === "io client disconnect") customerSockets.delete(socket); });
+  }
+  return socket;
 }
 
 /**

@@ -2,9 +2,13 @@
 
 const AUTH_SESSION_CLEARED_EVENT = "wings4u:auth-session-cleared";
 const AUTH_SESSION_CLEARED_STORAGE_KEY = "wings4u:auth-session-cleared";
+let authSessionGeneration = 0;
+export function getAuthSessionGeneration() { return authSessionGeneration; }
 
 export function notifyAuthSessionCleared() {
   if (typeof window === "undefined") return;
+
+  authSessionGeneration++;
 
   window.dispatchEvent(new Event(AUTH_SESSION_CLEARED_EVENT));
 
@@ -21,6 +25,7 @@ export function notifyAuthSessionCleared() {
 export function addAuthSessionClearedListener(listener: () => void) {
   const onStorage = (event: StorageEvent) => {
     if (event.key === AUTH_SESSION_CLEARED_STORAGE_KEY) {
+      authSessionGeneration++;
       listener();
     }
   };

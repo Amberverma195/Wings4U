@@ -18,15 +18,16 @@ jest.mock('react-native-svg', () => ({ __esModule: true, default: 'Svg', Circle:
 jest.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('lucide-react-native', () => Object.fromEntries(['Check', 'CheckCircle2', 'Copy', 'CreditCard', 'Home', 'LifeBuoy', 'LogOut', 'Mail', 'MapPin', 'Pencil', 'Phone', 'Plus', 'Save', 'Ticket', 'Trash2', 'User', 'X'].map(name => [name, name])));
-jest.mock('../src/context/session', () => ({ useSession: () => mockSession }));
+jest.mock('../src/context/session', () => ({ useSession: () => mockSession, withSilentRefresh: call => call() }));
 jest.mock('../src/context/cart', () => ({ useCart: () => ({ items: [], locationId: 'store', fulfillmentType: 'PICKUP', scheduledFor: null, isCartHydrated: true }) }));
 jest.mock('../src/lib/api', () => ({ apiFetch: jest.fn(), getApiErrorMessage: () => 'Unable to reorder' }));
 jest.mock('../src/hooks/use-auth', () => ({ useAuth: () => mockAuth }));
 jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => mockAccount }));
 jest.mock('../src/components/auth-sheet', () => ({ AuthSheet: 'AuthSheet' }));
+jest.mock('../src/lib/account-deletion', () => ({ forgetDeletedAccount: jest.fn(async () => {}) }));
 
 const ProfileTab = require('../app/(tabs)/profile').default;
-const user = { id: 'customer', displayName: 'Wing Fan', email: 'wings@example.com', phone: '+15195550123' };
+const user = { id: 'customer', role: 'CUSTOMER', displayName: 'Wing Fan', email: 'wings@example.com', phone: '+15195550123' };
 let renderer;
 const strings = () => renderer.root.findAllByType('Text').map(node => node.children.filter(child => typeof child === 'string').join(''));
 const button = label => renderer.root.findAllByType('TouchableOpacity').find(node => node.findAllByType('Text').some(text => text.children.join('') === label));
@@ -40,7 +41,8 @@ beforeEach(async () => {
   jest.clearAllMocks(); mockFocused = true; mockParams = {};
   mockAuth.loading = false;
   global.requestAnimationFrame = jest.fn(() => 1); global.cancelAnimationFrame = jest.fn();
-  mockSession = { loaded: true, authenticated: true, user, needsProfileCompletion: false };
+  mockSession = { loaded: true, authenticated: true, user, needsProfileCompletion: false,
+    clear: jest.fn(() => { mockSession = { ...mockSession, authenticated: false, user: null }; }) };
   mockAccount = { loading: false, refreshing: false, error: null, refresh: jest.fn(), sectionErrors: {}, loadingMoreOrders: false, loadMoreOrders: jest.fn(), data: {
     orders: [], ordersNextCursor: null, promos: [], wingsLedger: [], wingsRewards: null, addresses: [], tickets: [],
   } };
@@ -61,6 +63,27 @@ test('Overview, Orders, Addresses, Support, Rewards and Coupons remain accessibl
     await tap(tab); expect(selected(tab)).toBe(true);
   }
   expect(button('Sign Out')).toBeDefined();
+});
+
+test('Delete Account is under Profile; opening and cancelling only loads status', async () => {
+  const { apiFetch } = require('../src/lib/api');
+  apiFetch.mockResolvedValue({ ok: true, json: async () => ({ data: { enabled: false, status: 'unavailable', blockers: [], available_stamps: 0 } }) });
+  expect(button('Delete Account')).toBeUndefined(); await tap('Profile');
+  expect(button('Delete Account')).toBeDefined(); await tap('Delete Account');
+  expect(renderer.root.findAllByType('Modal')).toHaveLength(1);
+  await tap('Keep My Account'); expect(renderer.root.findAllByType('Modal')).toHaveLength(0);
+  expect(apiFetch.mock.calls.filter(call => call[1]?.method === 'DELETE')).toHaveLength(0);
+});
+
+test('completed deletion clears local account state and resets navigation so Android Back cannot reopen Profile', async () => {
+  const { AccountDeletionModal } = require('../src/components/account-deletion');
+  await tap('Profile'); await tap('Delete Account');
+  const clear = mockSession.clear;
+  await act(async () => renderer.root.findByType(AccountDeletionModal).props.onCompleted());
+  expect(clear).toHaveBeenCalledTimes(1);
+  expect(require('../src/lib/account-deletion').forgetDeletedAccount).toHaveBeenCalledTimes(1);
+  expect(mockNavigation.reset).toHaveBeenCalledWith({ index: 0, routes: [{ name: 'index' }] });
+  await rerender(); expect(strings()).not.toContain('Wing Fan');
 });
 
 test.each(['overview', 'profile', 'orders', 'addresses', 'support'])('section deep link opens %s without redirecting or stripping any parameters', async section => {
