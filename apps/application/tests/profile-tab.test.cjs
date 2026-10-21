@@ -8,6 +8,7 @@ const mockAuth = { logout: jest.fn(), clearError: jest.fn(), updateProfile: jest
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter, useNavigation: () => mockNavigation,
   useLocalSearchParams: () => mockParams, useIsFocused: () => mockFocused }));
 jest.mock('react-native', () => ({
+  ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock(),
   ActivityIndicator: 'ActivityIndicator', Alert: { alert: jest.fn() }, Modal: 'Modal',
   RefreshControl: 'RefreshControl', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', StyleSheet: { create: value => value, absoluteFill: {} },
@@ -33,9 +34,12 @@ const selected = label => Boolean(button(label).props.style[1]);
 const tap = async label => act(async () => { await button(label).props.onPress(); });
 const rerender = async () => act(async () => renderer.update(React.createElement(ProfileTab)));
 const sheet = () => renderer.root.findByType('AuthSheet');
+const originalFrame = global.requestAnimationFrame, originalCancelFrame = global.cancelAnimationFrame;
 
 beforeEach(async () => {
   jest.clearAllMocks(); mockFocused = true; mockParams = {};
+  mockAuth.loading = false;
+  global.requestAnimationFrame = jest.fn(() => 1); global.cancelAnimationFrame = jest.fn();
   mockSession = { loaded: true, authenticated: true, user, needsProfileCompletion: false };
   mockAccount = { loading: false, refreshing: false, error: null, refresh: jest.fn(), sectionErrors: {}, loadingMoreOrders: false, loadMoreOrders: jest.fn(), data: {
     orders: [], ordersNextCursor: null, promos: [], wingsLedger: [], wingsRewards: null, addresses: [], tickets: [],
@@ -47,7 +51,7 @@ beforeEach(async () => {
   mockAuth.logout.mockImplementation(async () => { mockSession = { ...mockSession, authenticated: false, user: null }; });
   await act(async () => { renderer = create(React.createElement(ProfileTab)); });
 });
-afterEach(async () => { await act(async () => renderer.unmount()); });
+afterEach(async () => { await act(async () => renderer.unmount()); global.requestAnimationFrame = originalFrame; global.cancelAnimationFrame = originalCancelFrame; });
 
 test('Overview, Orders, Addresses, Support, Rewards and Coupons remain accessible inside Profile', async () => {
   expect(selected('Overview')).toBe(true);
@@ -191,4 +195,88 @@ test('genuinely empty exhausted history shows No past orders; an initial load fa
   await tap('Orders'); await tap('Past (0)'); expect(strings()).toContain('No past orders'); expect(button('Load More Orders')).toBeUndefined();
   mockAccount.sectionErrors.orders = 'Offline'; await rerender();
   expect(strings()).not.toContain('No past orders'); await tap('Try again'); expect(mockAccount.refresh).toHaveBeenCalledWith('refresh');
+});
+
+const loadingGroups = () => renderer.root.findAllByType('View').filter(node => /skeleton$/.test(node.props.testID ?? ''));
+
+test.each(['overview', 'orders', 'addresses', 'support'])('%s uses its skeleton only until the first account response, including an empty success', async section => {
+  mockAccount = { ...mockAccount, loading: true, hasLoaded: false }; mockParams = { section, entry: 'loading-test' }; await rerender();
+  expect(loadingGroups().map(node => node.props.testID)).toContain(`profile-${section}-skeleton`);
+  expect(strings()).toContain('Wing Fan'); // Authenticated identity is already available.
+  mockAccount = { ...mockAccount, loading: false, hasLoaded: true }; await rerender();
+  expect(loadingGroups()).toHaveLength(0);
+  if (section === 'orders') expect(strings()).toContain('No active orders');
+});
+
+test('already available Profile fields are editable while unrelated account resources are loading', async () => {
+  mockAccount = { ...mockAccount, loading: true, hasLoaded: false }; mockParams = { section: 'profile', entry: 'ready-identity' }; await rerender();
+  expect(loadingGroups()).toHaveLength(0); expect(strings().join(' ')).toContain('Wing Fan');
+  expect(strings().join(' ')).not.toContain('Loading account');
+});
+
+test('unknown authentication uses public profile/detail placeholders and never cached customer content', async () => {
+  mockSession = { loaded: false, authenticated: false, user: null, needsProfileCompletion: false }; await rerender();
+  expect(loadingGroups().map(node => node.props.testID)).toEqual(expect.arrayContaining(['profile-header-skeleton', 'profile-profile-skeleton']));
+  expect(strings()).not.toContain('Wing Fan'); expect(sheet().props.visible).toBe(false);
+  mockSession = { ...mockSession, loaded: true }; await rerender();
+  expect(loadingGroups()).toHaveLength(0); expect(sheet().props.visible).toBe(true); expect(strings()).not.toContain('Wing Fan');
+});
+
+test('initial failure ends placeholders and preserves the existing account error/retry state', async () => {
+  mockParams = { section: 'orders', entry: 'error' }; mockAccount = { ...mockAccount, loading: true, hasLoaded: false }; await rerender();
+  mockAccount = { ...mockAccount, loading: false, hasLoaded: true, error: 'Offline', sectionErrors: { orders: 'Offline' } }; await rerender();
+  expect(loadingGroups()).toHaveLength(0); expect(strings()).toContain('Offline');
+  await tap('Past (0)'); await tap('Try again'); expect(mockAccount.refresh).toHaveBeenCalledWith('refresh');
+});
+
+test('pagination keeps actual rows and selected filter while adding only a small bottom preview', async () => {
+  mockAccount.data.orders = [historyOrder(1)]; mockAccount.data.ordersNextCursor = 'next'; await rerender(); await tap('Orders'); await tap('Past (1)');
+  mockAccount.loadingMoreOrders = true; await rerender();
+  expect(strings()).toContain('Order #1'); expect(selected('Past (1)')).toBe(true);
+  expect(loadingGroups().map(node => node.props.testID)).toEqual(['orders-pagination-skeleton']);
+  mockAccount.loadingMoreOrders = false; await rerender(); expect(loadingGroups()).toHaveLength(0);
+});
+
+test('switching accounts discards old section data and form state without leaking the previous profile', async () => {
+  await tap('Addresses'); await tap('Add');
+  await act(async () => renderer.root.findByProps({ placeholder: 'Street address' }).props.onChangeText('Private address draft'));
+  mockSession = { ...mockSession, user: { ...user, id: 'customer-b', displayName: 'Another Customer' } };
+  mockAccount = { ...mockAccount, loading: true, hasLoaded: false }; await rerender();
+  expect(strings()).not.toContain('Wing Fan'); expect(strings()).toContain('Another Customer');
+  expect(loadingGroups().map(node => node.props.testID)).toContain('profile-overview-skeleton');
+  expect(renderer.root.findAllByType('TextInput').some(node => node.props.value === 'Private address draft')).toBe(false);
+});
+
+test('profile edits stay mounted during account refresh and saving', async () => {
+  await tap('Profile'); await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Edit account' }).props.onPress());
+  await act(async () => renderer.root.findByProps({ placeholder: 'Full Name' }).props.onChangeText('My unsaved name'));
+  mockAccount = { ...mockAccount, loading: true, hasLoaded: true, refreshing: true }; mockAuth.loading = true; await rerender();
+  expect(renderer.root.findByProps({ placeholder: 'Full Name' }).props.value).toBe('My unsaved name');
+  expect(loadingGroups()).toHaveLength(0); expect(strings()).toContain('Saving...');
+});
+
+test('Add Address remains open with its draft during refresh and the existing saving state', async () => {
+  await tap('Addresses'); await tap('Add');
+  await act(async () => renderer.root.findByProps({ placeholder: 'Street address' }).props.onChangeText('12 Wing Street'));
+  await act(async () => renderer.root.findByProps({ placeholder: 'Postal code' }).props.onChangeText('N6A 1A1'));
+  mockAccount = { ...mockAccount, refreshing: true, hasLoaded: true }; await rerender();
+  expect(renderer.root.findByProps({ placeholder: 'Street address' }).props.value).toBe('12 Wing Street'); expect(loadingGroups()).toHaveLength(0);
+  let finish; mockAccount.saveAddress = jest.fn(() => new Promise(resolve => { finish = resolve; }));
+  let saving; await act(async () => { saving = button('Save').props.onPress(); });
+  expect(strings()).toContain('Saving...'); expect(loadingGroups()).toHaveLength(0);
+  expect(renderer.root.findByProps({ placeholder: 'Street address' }).props.value).toBe('12 Wing Street');
+  await act(async () => { finish(); await saving; });
+});
+
+test('an unsent support request survives refresh and remains visible while submitting', async () => {
+  await tap('Support'); await tap('Contact support');
+  await act(async () => renderer.root.findByProps({ placeholder: 'Subject' }).props.onChangeText('My unsent issue'));
+  await act(async () => renderer.root.findByProps({ placeholder: 'What happened?' }).props.onChangeText('Detailed customer draft'));
+  mockAccount = { ...mockAccount, refreshing: true, hasLoaded: true }; await rerender();
+  expect(renderer.root.findByProps({ placeholder: 'Subject' }).props.value).toBe('My unsent issue'); expect(loadingGroups()).toHaveLength(0);
+  let finish; mockAccount.createTicket = jest.fn(() => new Promise(resolve => { finish = resolve; })); let sending;
+  await act(async () => { sending = button('Create').props.onPress(); });
+  expect(strings()).toContain('Creating...'); expect(loadingGroups()).toHaveLength(0);
+  expect(renderer.root.findByProps({ placeholder: 'What happened?' }).props.value).toBe('Detailed customer draft');
+  await act(async () => { finish(); await sending; });
 });

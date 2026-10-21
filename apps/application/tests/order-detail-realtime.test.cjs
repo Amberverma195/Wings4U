@@ -6,9 +6,10 @@ let mockSession, mockGeneration, renderer, mockFocused = true, mockOrderId = 'or
 const mockOpenURL = jest.fn(async () => {});
 const mockAppStateListeners = new Set();
 jest.mock('react-native', () => ({
+  ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock(),
   RefreshControl: 'RefreshControl', ActivityIndicator: 'ActivityIndicator', Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
-  Platform: { OS: 'ios' }, Linking: { openURL: (...args) => mockOpenURL(...args) }, StyleSheet: { create: value => value }, AccessibilityInfo: { setAccessibilityFocus: jest.fn() }, findNodeHandle: () => null,
+  Platform: { OS: 'ios' }, Linking: { openURL: (...args) => mockOpenURL(...args) }, StyleSheet: { create: value => value }, AccessibilityInfo: { ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock().AccessibilityInfo, setAccessibilityFocus: jest.fn() }, findNodeHandle: () => null,
   AppState: { currentState: 'active', addEventListener: jest.fn((_, listener) => {
     mockAppStateListeners.add(listener);
     return { remove: () => mockAppStateListeners.delete(listener) };

@@ -11,6 +11,7 @@ jest.mock('expo-router', () => ({ useIsFocused: () => true, useRouter: () => moc
 jest.mock('expo-image', () => ({ Image: 'Image' }));
 jest.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 jest.mock('react-native', () => ({
+  ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock(),
   StyleSheet: { create: value => value, absoluteFill: {} },
   Text: 'Text', View: 'View', TouchableOpacity: 'TouchableOpacity', ScrollView: 'ScrollView',
   ActivityIndicator: 'ActivityIndicator', RefreshControl: 'RefreshControl', TextInput: 'TextInput',
@@ -37,6 +38,44 @@ jest.mock('../src/components/mobile-wings-builder', () => ({ WingsBuilderMobile:
 jest.mock('../src/components/mobile-combo-builder', () => ({ ComboBuilderMobile: 'ComboBuilderMobile' }));
 jest.mock('../src/components/promotional-carousel', () => ({ PromotionalCarousel: 'PromotionalCarousel' }));
 const { MenuScreen } = require('../src/screens/menu-screen');
+
+const skeletons = () => renderer.root.findAllByType('View').filter(node => /^(home|menu)-skeleton$/.test(node.props.testID ?? ''));
+
+test.each([true, false])('initial %s cinematic route uses the correct loading layout and keeps its real header/search', async cinematic => {
+  mockMenuResult = { ...mockMenuResult, menu: null, loading: true };
+  await mount(cinematic);
+  expect(skeletons().map(node => node.props.testID)).toEqual([cinematic ? 'home-skeleton' : 'menu-skeleton']);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Search menu' })).toBeDefined();
+  expect(renderer.root.findAllByType('TrendingFlavours')).toHaveLength(cinematic ? 1 : 0);
+  expect(renderer.root.findAllByType('PromotionalCarousel')).toHaveLength(cinematic ? 1 : 0);
+  const heroImages = renderer.root.findAllByType('Image').filter(node => !node.props.source?.uri);
+  expect(heroImages.length > 0).toBe(cinematic);
+});
+
+test('successful Menu load removes its skeleton, and refreshing existing data keeps the actual cards', async () => {
+  mockMenuResult = { ...mockMenuResult, menu: null, loading: true }; await mount(false);
+  expect(skeletons()).toHaveLength(1);
+  mockMenuResult = { ...mockMenuResult, loading: false, menu: { categories: [{ id: 'tenders', slug: 'tenders', name: 'Tenders', items: [item('crispy-tenders')] }] } };
+  await act(async () => renderer.update(React.createElement(MenuScreen)));
+  expect(skeletons()).toHaveLength(0); expect(renderer.root.findAll(node => node.type?.name === 'MenuItemCard')).toHaveLength(1);
+  mockMenuResult = { ...mockMenuResult, loading: true };
+  await act(async () => renderer.update(React.createElement(MenuScreen)));
+  expect(skeletons()).toHaveLength(0); expect(renderer.root.findAll(node => node.type?.name === 'MenuItemCard')).toHaveLength(1);
+});
+
+test('failed initial menu request shows error/retry; a retry shows placeholders only while unresolved', async () => {
+  mockMenuResult = { ...mockMenuResult, menu: null, loading: false, error: 'Offline' }; await mount(false);
+  expect(skeletons()).toHaveLength(0);
+  expect(renderer.root.findAllByType('Text').some(node => node.props.children === 'Offline')).toBe(true);
+  mockMenuResult = { ...mockMenuResult, loading: true };
+  await act(async () => renderer.update(React.createElement(MenuScreen)));
+  expect(skeletons()).toHaveLength(1);
+});
+
+test('a successful empty catalog is not an unresolved initial load', async () => {
+  mockMenuResult = { ...mockMenuResult, menu: { categories: [] }, loading: false }; await mount(false);
+  expect(skeletons()).toHaveLength(0);
+});
 const { FOOTER_PROMOTIONAL_BANNERS: banners } = require('../src/lib/footer-promotional-banners');
 const { useMenu } = require('../src/hooks/use-menu');
 const { Alert } = require('react-native');

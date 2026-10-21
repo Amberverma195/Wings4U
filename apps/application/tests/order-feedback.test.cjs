@@ -3,9 +3,10 @@ const { act, create } = require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let mockSession, mockOrder, mockOrderId, mockFocused, mockGeneration, mockOrderLoading, mockOrderError, renderer;
 jest.mock('react-native', () => ({
+  ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock(),
   RefreshControl: 'RefreshControl', ActivityIndicator: 'ActivityIndicator', Modal: 'Modal', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
-  Platform: { OS: 'ios' }, StyleSheet: { create: value => value }, AccessibilityInfo: { setAccessibilityFocus: jest.fn() }, findNodeHandle: () => null,
+  Platform: { OS: 'ios' }, StyleSheet: { create: value => value }, AccessibilityInfo: { ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock().AccessibilityInfo, setAccessibilityFocus: jest.fn() }, findNodeHandle: () => null,
   AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
@@ -59,7 +60,7 @@ afterEach(async () => { if (renderer) await act(async () => renderer.unmount());
 
 test('initial order load shows loading, then full-screen error with Try again on failure', async () => {
   mockOrder = null; mockOrderLoading = true; await mount(Screen);
-  expect(texts()).toContain('Loading order...'); expect(renderer.root.findAllByType('ScrollView')).toHaveLength(0);
+  expect(renderer.root.findAllByType('View').filter(node => node.props.testID === 'order-detail-skeleton')).toHaveLength(1); expect(texts()).not.toContain('Items');
   mockOrderLoading = false; mockOrderError = 'Unable to load order'; await act(async () => renderer.update(React.createElement(Screen)));
   expect(texts()).toContain('Unable to load order'); expect(texts()).toContain('Try again'); expect(texts()).not.toContain(refreshWarning);
   const retry = renderer.root.findAllByType('TouchableOpacity').find(node => node.findAllByType('Text').some(text => text.children.join('') === 'Try again'));

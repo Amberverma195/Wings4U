@@ -1,7 +1,6 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   AppState,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronDown, Check, LifeBuoy, Star } from "lucide-react-native";
 import { useChat } from "../../src/hooks/use-chat";
 import { useOrderDetail } from "../../src/hooks/use-order-detail";
+import { OrderDetailSkeleton } from "../../src/components/skeletons/screen-skeletons";
 import { OrderReorderAction } from "../../src/components/order-history";
 import { OrderTrackingDetails } from "../../src/components/order-tracking-details";
 import { sortedStatusHistory, statusEventCopy } from "../../src/lib/order-tracking";
@@ -117,10 +117,7 @@ export default function OrderDetailScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         {order.loading && !order.order ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator color="#FF4D4D" />
-            <Text style={styles.mutedText}>Loading order...</Text>
-          </View>
+          <ScrollView showsVerticalScrollIndicator={false}><OrderDetailSkeleton active={focused} /></ScrollView>
         ) : order.error && !order.order ? (
           <View style={styles.centerState}>
             <Text style={styles.errorText}>{order.error}</Text>

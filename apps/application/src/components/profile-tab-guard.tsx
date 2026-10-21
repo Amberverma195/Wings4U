@@ -5,6 +5,7 @@ import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { useSession } from '../context/session';
 import { useProfileTabAuth } from '../hooks/use-profile-tab-auth';
 import { AuthSheet } from './auth-sheet';
+import { ProfileSkeleton } from './skeletons/screen-skeletons';
 
 const alreadyOnProfile = () => {};
 
@@ -26,7 +27,7 @@ export function ProfileTabGuard({ children }: { children: ReactNode }) {
   }, [focused, session.authenticated, requestProfile, cancelPending]);
 
   return <>
-    {session.loaded && session.authenticated ? children :
+    {session.loaded && session.authenticated ? children : !session.loaded ? <ProfileSkeleton active={focused} /> :
       <View style={styles.loading}><ActivityIndicator size="large" color="#FF4D4D" accessibilityLabel="Loading profile" /></View>}
     <AuthSheet {...authSheetProps} visible={focused && authSheetProps.visible} />
   </>;

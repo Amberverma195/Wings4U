@@ -55,6 +55,7 @@ import {
   type SupportTicketType,
 } from '../../src/lib/types';
 import { formatPhoneForDisplay } from '../../src/lib/phone';
+import { ProfileSkeleton, ProfileSectionSkeleton, OrdersPaginationSkeleton } from '../../src/components/skeletons/screen-skeletons';
 import { ProfileTabGuard } from '../../src/components/profile-tab-guard';
 
 type TabKey = 'overview' | 'profile' | 'orders' | 'addresses' | 'support' | 'cards';
@@ -173,7 +174,8 @@ function formatTicketType(type: string): string {
 }
 
 export default function ProfileTabRoute() {
-  return <ProfileTabGuard><ProfileScreen /></ProfileTabGuard>;
+  const session = useSession();
+  return <ProfileTabGuard><ProfileScreen key={session.user?.id ?? 'guest'} /></ProfileTabGuard>;
 }
 
 function ProfileScreen() {
@@ -386,17 +388,11 @@ function ProfileScreen() {
     }
   }
 
-  if (!session.loaded || !user || account.loading) {
-    return (
-      <SafeAreaView edges={["left", "right"]} style={styles.container}>
-        {focused && <StatusBar style="dark" />}
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#E53C3C" />
-          <Text style={styles.loadingText}>Loading account...</Text>
-        </View>
-      </SafeAreaView>
-    );
+  if (!session.loaded || !user) {
+    return <SafeAreaView edges={["left", "right"]} style={styles.container}><ProfileSkeleton active={focused} /></SafeAreaView>;
   }
+  const showSectionSkeleton = account.loading && !account.hasLoaded && activeTab !== 'profile' &&
+    !(activeTab === 'addresses' && addressFormOpen) && !(activeTab === 'support' && ticketFormOpen);
 
   return (
     <SafeAreaView edges={["left", "right"]} style={styles.container}>
@@ -441,6 +437,7 @@ function ProfileScreen() {
         </ScrollView>
 
         <View style={styles.content}>
+          {showSectionSkeleton ? <ProfileSectionSkeleton active={focused} section={activeTab === 'cards' ? 'overview' : activeTab} /> : <>
           {activeTab === 'overview' && (
             <OverviewTab
               availableStamps={availableStamps}
@@ -530,6 +527,7 @@ function ProfileScreen() {
           )}
 
           {/* {activeTab === 'cards' && <CardsTab orders={account.data.orders} />} */}
+          </>}
         </View>
       </ScrollView>
 
@@ -1096,6 +1094,7 @@ function OrdersTab({
   onLoadMore: () => void;
   onRetry: () => void;
 }) {
+  const focused = useIsFocused();
   return (
     <SectionCard title="Order history">
       <View style={styles.switchRow}>
@@ -1125,6 +1124,7 @@ function OrdersTab({
       ) : (
         visibleOrders.map((order) => <OrderRow key={order.id} order={order} />)
       )}
+      {loadingMoreOrders ? <OrdersPaginationSkeleton active={focused} /> : null}
       {filter === 'past' ? <>
         {ordersError ? <Text style={styles.errorText} accessibilityRole="alert">{ordersError}</Text> : null}
         {hasMoreOrders ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load More Orders"

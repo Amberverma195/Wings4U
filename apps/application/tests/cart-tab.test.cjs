@@ -5,6 +5,7 @@ let mockCart, mockSession, mockFocused, mockSetup, mockOffers, mockRewards;
 const mockRouter = { push: jest.fn() };
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter, useIsFocused: () => mockFocused }));
 jest.mock('react-native', () => ({
+  ...require('./skeleton-native-mock.cjs').createNativeSkeletonMock(),
   Image: 'Image', Pressable: 'Pressable', Modal: ({ visible, children }) => visible ? require('react').createElement('Modal', {}, children) : null, ActivityIndicator: 'ActivityIndicator', ScrollView: 'ScrollView', Text: 'Text', TouchableOpacity: 'TouchableOpacity', View: 'View',
   StyleSheet: { create: value => value },
 }));
@@ -50,6 +51,27 @@ beforeEach(() => {
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; jest.useRealTimers(); });
 const mount = async () => act(async () => { renderer = create(React.createElement(CartTab)); });
+
+test('cart hydration shows a decorative cart preview, then immediately restores the real empty state', async () => {
+  mockCart.items = []; mockCart.isCartHydrating = true; mockCart.isCartHydrated = false;
+  await mount();
+  expect(renderer.root.findAllByType('View').filter(node => node.props.testID === 'cart-skeleton')).toHaveLength(1);
+  expect(renderedText(renderer.toJSON())).not.toContain('Your cart is empty');
+  expect(button('Checkout')).toBeUndefined();
+  mockCart = { ...mockCart, isCartHydrating: false, isCartHydrated: true };
+  await act(async () => renderer.update(React.createElement(CartTab)));
+  expect(renderer.root.findAllByType('View').filter(node => node.props.testID === 'cart-skeleton')).toHaveLength(0);
+  expect(renderedText(renderer.toJSON())).toContain('Your cart is empty'); expect(button('Browse menu')).toBeDefined();
+});
+
+test('pending pricing keeps real items, amounts and quantity controls instead of a hydration skeleton', async () => {
+  const original = apiJson.getMockImplementation();
+  apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? new Promise(() => {}) : original(url, init));
+  await mount(); await act(async () => jest.advanceTimersByTime(250));
+  expect(renderer.root.findAllByType('View').filter(node => node.props.testID === 'cart-skeleton')).toHaveLength(0);
+  expect(renderedText(renderer.toJSON())).toContain('Wings'); expect(renderedText(renderer.toJSON())).toContain('$10.00');
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Increase Wings quantity' })).toBeDefined();
+});
 
 test.each([
   [401, {}, 'Authentication failed', 'Sign in'],

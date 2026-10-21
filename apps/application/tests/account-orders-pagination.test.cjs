@@ -30,6 +30,33 @@ test('initial request loads 20 authenticated orders at the scoped location', asy
   expect(requests()).toEqual([['/api/v1/orders/customer?limit=20', { locationId: 'store' }]]);
   expect(withSilentRefresh).toHaveBeenCalledWith(expect.any(Function), mockSession.refresh, mockSession.clear);
 });
+
+test('readiness distinguishes an unresolved account from a successful empty response without another API request', async () => {
+  const pending = deferred(); mockOrdersResponse = () => pending.promise;
+  await mount(); expect(account.loading).toBe(true); expect(account.hasLoaded).toBe(false); expect(account.data.orders).toEqual([]);
+  await act(async () => pending.resolve(response([])));
+  expect(account.loading).toBe(false); expect(account.hasLoaded).toBe(true); expect(account.data.orders).toEqual([]);
+  expect(requests()).toHaveLength(1);
+});
+
+test('a cached account remains ready during refresh, while another account never inherits readiness', async () => {
+  await mount(); const pending = deferred(); mockOrdersResponse = () => pending.promise; let request;
+  await act(async () => { request = account.refresh('refresh'); });
+  expect(account.hasLoaded).toBe(true); expect(account.data.orders).toHaveLength(20); expect(account.refreshing).toBe(true);
+  mockOrdersResponse = () => new Promise(() => {}); await update(customer('b'));
+  expect(account.hasLoaded).toBe(false); expect(account.data.orders).toEqual([]);
+  await act(async () => { pending.resolve(response(orders(21))); await request; });
+  expect(account.hasLoaded).toBe(false); expect(account.data.orders).toEqual([]);
+});
+
+test('resetting account contents during session revalidation also resets initial-load readiness', async () => {
+  await mount(); expect(account.hasLoaded).toBe(true);
+  const pending = deferred(); mockOrdersResponse = () => pending.promise;
+  await update({ ...mockSession, loaded: false }); expect(account.hasLoaded).toBe(false);
+  await update({ ...mockSession, loaded: true }); expect(account.hasLoaded).toBe(false); expect(account.loading).toBe(true);
+  await act(async () => pending.resolve(response([])));
+  expect(account.hasLoaded).toBe(true); expect(account.loading).toBe(false);
+});
 test('appends pages by cursor, deduplicates IDs, retains earlier rows, then stops at null', async () => {
   await mount(); mockOrdersResponse = async () => response(orders(20), 'cursor/39+');
   await act(async () => account.loadMoreOrders());

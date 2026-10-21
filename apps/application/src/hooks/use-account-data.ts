@@ -204,6 +204,7 @@ function useAccountDataState() {
       if (!session.authenticated || !userKey) {
         ordersCursor.current = null;
         setData(EMPTY_ACCOUNT_DATA);
+        setDataOwner(null);
         setLoading(false);
         setRefreshing(false);
         setError(null);
@@ -311,6 +312,7 @@ function useAccountDataState() {
 
   useEffect(() => {
     setData(EMPTY_ACCOUNT_DATA);
+    setDataOwner(null);
     setLoading(true);
     setLoadingMoreOrders(false);
     pageBusy.current = null;
@@ -405,6 +407,8 @@ function useAccountDataState() {
 
   return {
     data: session.authenticated && dataOwner === userKey ? data : EMPTY_ACCOUNT_DATA,
+    // Readiness is separate from empty arrays and from an in-progress refresh.
+    hasLoaded: Boolean(session.loaded && session.authenticated && userKey && dataOwner === userKey),
     loading: loading || (session.authenticated && dataOwner !== userKey),
     refreshing,
     error,

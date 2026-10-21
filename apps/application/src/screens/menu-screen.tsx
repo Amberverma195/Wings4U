@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   useWindowDimensions,
-  ActivityIndicator,
   RefreshControl,
   TextInput,
   Alert,
@@ -28,6 +27,7 @@ import { useMenu } from '../hooks/use-menu';
 import { useCart } from '../context/cart';
 import { useOrderSetup } from '../context/order-setup';
 import { OrderSetupSummary } from '../components/order-setup-summary';
+import { HomeSkeleton, MenuSkeleton } from '../components/skeletons/screen-skeletons';
 import { TabHeader } from '../components/tab-header';
 import { MenuItemBuilder } from '../components/menu-item-builder';
 import { WingsBuilderMobile } from '../components/mobile-wings-builder';
@@ -318,63 +318,8 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
     }
   };
 
-  /* ---------------------------------------------------------------- */
-  /*  Loading state                                                    */
-  /* ---------------------------------------------------------------- */
-  if (loading && !menu) {
-    return (
-      <SafeAreaView style={styles.container} edges={['left', 'right']}>
-        <TabHeader title={cinematic ? 'Wings4U' : 'Menu'} />
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#FF4D4D" />
-          <Text style={styles.loadingText}>Loading menu...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  /* ---------------------------------------------------------------- */
-  /*  Error state                                                      */
-  /* ---------------------------------------------------------------- */
-  if (error) {
-    return (
-      <SafeAreaView style={styles.container} edges={['left', 'right']}>
-        <TabHeader title={cinematic ? 'Wings4U' : 'Menu'} />
-        <View style={styles.errorWrap}>
-          <AlertCircle size={48} color="#FF4D4D" />
-          <Text style={styles.errorTitle}>Couldn't load menu</Text>
-          <Text style={styles.errorMessage}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  /* ---------------------------------------------------------------- */
-  /*  Render                                                           */
-  /* ---------------------------------------------------------------- */
-  return (
-    <SafeAreaView style={[styles.container, !cinematic && styles.menuContainer]} edges={['left', 'right']}>
-      {focused && <StatusBar style={cinematic && !headerScrolledAway ? 'light' : 'dark'} />}
-      {!cinematic && <TabHeader title="Menu" />}
-      <ScrollView
-        ref={scrollRef}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentInsetAdjustmentBehavior="never"
-        onScroll={({ nativeEvent }) => {
-          if (cinematic) setHeaderScrolledAway(nativeEvent.contentOffset.y >= measuredHeaderHeight - insets.top);
-        }}
-        scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF4D4D" />
-        }
-      >
-        {/* Header Section */}
-        <View style={[styles.header, !cinematic && styles.compactHeader, !cinematic && styles.menuHeader, cinematic && { minHeight: headerHeight }]}
+  const menuHeader = (
+    <View style={[styles.header, !cinematic && styles.compactHeader, !cinematic && styles.menuHeader, cinematic && { minHeight: headerHeight }]}
           onLayout={({ nativeEvent }) => setMeasuredHeaderHeight(nativeEvent.layout.height)}>
           {cinematic && <View
             style={StyleSheet.absoluteFill}
@@ -529,6 +474,68 @@ export function MenuScreen({ cinematic = false }: { cinematic?: boolean }) {
             </View>}
           </View>
         </View>
+  );
+
+  /* ---------------------------------------------------------------- */
+  /*  Loading state                                                    */
+  /* ---------------------------------------------------------------- */
+  if (loading && !menu) {
+    return <SafeAreaView style={[styles.container, !cinematic && styles.menuContainer]} edges={['left', 'right']}>
+      {focused && <StatusBar style={cinematic && !headerScrolledAway ? 'light' : 'dark'} />}
+      {!cinematic && <TabHeader title="Menu" />}
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+        contentInsetAdjustmentBehavior="never" scrollEventThrottle={16}
+        onScroll={({ nativeEvent }) => { if (cinematic) setHeaderScrolledAway(nativeEvent.contentOffset.y >= measuredHeaderHeight - insets.top); }}>
+        {menuHeader}
+        {cinematic ? <HomeSkeleton active={focused} /> : <MenuSkeleton active={focused} />}
+        {cinematic ? <TrendingFlavours /> : null}
+        {cinematic ? <PromotionalCarousel banners={FOOTER_PROMOTIONAL_BANNERS}
+          onPressBanner={handleFooterBannerPress} imageBackgroundColor="#FFFFFF" /> : null}
+      </ScrollView>
+    </SafeAreaView>;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Error state                                                      */
+  /* ---------------------------------------------------------------- */
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        <TabHeader title={cinematic ? 'Wings4U' : 'Menu'} />
+        <View style={styles.errorWrap}>
+          <AlertCircle size={48} color="#FF4D4D" />
+          <Text style={styles.errorTitle}>Couldn't load menu</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Render                                                           */
+  /* ---------------------------------------------------------------- */
+  return (
+    <SafeAreaView style={[styles.container, !cinematic && styles.menuContainer]} edges={['left', 'right']}>
+      {focused && <StatusBar style={cinematic && !headerScrolledAway ? 'light' : 'dark'} />}
+      {!cinematic && <TabHeader title="Menu" />}
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentInsetAdjustmentBehavior="never"
+        onScroll={({ nativeEvent }) => {
+          if (cinematic) setHeaderScrolledAway(nativeEvent.contentOffset.y >= measuredHeaderHeight - insets.top);
+        }}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF4D4D" />
+        }
+      >
+        {menuHeader}
 
         {selectedItem && isWingBuilderItem(selectedItem) ? (
           <WingsBuilderMobile

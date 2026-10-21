@@ -21,6 +21,7 @@ import { OrderSetupSummary } from "../../src/components/order-setup-summary";
 import { useCheckoutPreparation } from "../../src/hooks/use-checkout-preparation";
 import { usePromo } from "../../src/context/promo";
 import { useCartPricing } from "../../src/hooks/use-cart-pricing";
+import { CartSkeleton } from "../../src/components/skeletons/screen-skeletons";
 import { CartCoupons } from "../../src/components/cart-coupons";
 import { AuthSheet } from "../../src/components/auth-sheet";
 import {
@@ -109,15 +110,12 @@ export default function CartScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          cart.items.length === 0 && styles.emptyContent,
+          cart.items.length === 0 && !cart.isCartHydrating && styles.emptyContent,
         ]}
         showsVerticalScrollIndicator={false}
       >
         {cart.isCartHydrating ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator color="#E53C3C" />
-            <Text style={styles.centerText}>Loading cart...</Text>
-          </View>
+          <CartSkeleton active={focused} />
         ) : cart.items.length === 0 ? (
           <View style={styles.centerState}>
             <View style={styles.emptyIcon}>
@@ -279,7 +277,7 @@ export default function CartScreen() {
           </>
         )}
       </ScrollView>
-      {cart.items.length > 0 ? (
+      {cart.items.length > 0 && !cart.isCartHydrating ? (
         <View style={styles.checkoutDock}>
           <TouchableOpacity
             style={[
