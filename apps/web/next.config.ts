@@ -34,7 +34,8 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["@chakra-ui/react"],
   },
   async rewrites() {
-    return [
+    // Fallback runs after dynamic route handlers, including the signed /api/v1 proxy.
+    return { fallback: [
       { source: "/api/:path*", destination: `${apiProxyTarget}/api/:path*` },
       { source: "/ws", destination: `${apiProxyTarget}/ws` },
       { source: "/ws/:path*", destination: `${apiProxyTarget}/ws/:path*` },
@@ -43,7 +44,7 @@ const nextConfig: NextConfig = {
         source: "/socket.io/:path*",
         destination: `${apiProxyTarget}/socket.io/:path*`,
       },
-    ];
+    ] };
   },
   async headers() {
     return [{ source: "/account/:path*", headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0" }] }];

@@ -1,5 +1,7 @@
 # Security and rate-limiting follow-up review
 
+Final PR #17 corrections, routing proof, upload limits and deployment-status evidence are recorded in [pr17-final-review.md](pr17-final-review.md).
+
 Reviewed main at afb6931. Work branch: fix/security-rate-limit-followup. No Prisma schema change or migration is required.
 
 ## Confirmed findings and fixes
@@ -71,17 +73,17 @@ These checks assume PostgreSQL READ COMMITTED statement snapshots, the normal de
 
 ## Validation and safety
 
-With workspace dependencies installed/generated, reproduce the safe check set with node scripts/verify-security-followup.cjs. The runner overrides database targets to an unreachable loopback port, disables Redis, uses test secrets, and runs only mocked unit/component/isolated HTTP tests and TypeScript checks. It never loads .env or invokes API startup, e2e, build, Prisma CLI, migration or seed scripts.
+With workspace dependencies installed/generated, reproduce the safe check set with node scripts/verify-security-followup.cjs. The runner overrides database targets to an unreachable loopback port, disables Redis, uses test secrets, and runs only mocked unit/component/isolated HTTP tests and TypeScript checks. It never loads the root .env or invokes the real API startup, database-backed e2e, Prisma CLI, migration or seed scripts. Routing validation now builds/starts only a minimal isolated Next fixture; see the final review for that safety boundary.
 
 Final results are recorded below. Existing API baseline: 1,325 tests pass at afb6931. Existing native baseline: 1,036 tests pass. During implementation, the new cart parser initially caused Nest to skip its default parser for other routes; the failures were introduced by this patch and fixed with a distinct middleware wrapper. New reopen authorization tests caught the global admin-role bypass; the endpoint now explicitly requires CUSTOMER. A stale Babel/Jest transform-cache run failed native secure-store mocks; fresh-cache full and focused runs pass without changing those tests. Type-check failures in new code were fixed.
 
 ESLint could not run: the repository has no ESLint configuration, script or installed package. npx --no-install eslint --version confirmed the missing dependency. No dependency/lockfile changes were made to add unrelated tooling.
 
-Regression evidence includes KDS/POS, checkout/idempotency, website/native auth and refresh, tracking/realtime and customer-support tests. This confirms mocked regressions pass; it does not certify live production workflows. Online payment/Stripe and online refund implementation files were untouched. No production database access/mutation, schema migration, seed, deployment, merge, environment-variable change, WAF publication or Railway/Vercel settings change was performed.
+Regression evidence includes KDS/POS, checkout/idempotency, website/native auth and refresh, tracking/realtime and customer-support tests. This confirms mocked regressions pass; it does not certify live production workflows. Online payment/Stripe and online refund implementation files were untouched. No production database access/mutation, schema migration, seed, merge, environment-variable change, WAF publication or Railway/Vercel settings change was performed. No deployment command was issued; however, GitHub subsequently recorded a completed automatic Vercel Preview deployment, as documented in the final review.
 
 ## PR publication safety
 
-The requested draft PR targets main from the separate work branch. The repository owner confirmed that automatic Vercel preview deployments and Railway PR environments are disabled for this branch and explicitly authorized publication. No deployment or merge is authorized. Railway's connected app returned reauthentication required during a read-only project lookup; no configuration was available. Repository files alone cannot establish those external settings. The existing GitHub workflow invokes database-backed e2e setup; it should not be run against live infrastructure. A review commit can carry [skip ci], with the safe local validation evidence attached, until isolated CI is approved.
+The draft PR targets main from the separate work branch. The owner previously reported that automatic preview/PR deployments were disabled and authorized publication. GitHub now shows a completed Vercel Preview deployment for commit 58e8672, so disabled preview deployment must not be treated as verified. The final-fixes request explicitly prohibits another push, deployment or merge; the final corrections remain local. Railway's connected app returned reauthentication required during a read-only project lookup; no configuration was available. Repository files alone cannot establish those external settings. The existing GitHub workflow invokes database-backed e2e setup; it should not be run against live infrastructure. A review commit can carry [skip ci], with the safe local validation evidence attached, until isolated CI is approved.
 
 ## Final test results
 

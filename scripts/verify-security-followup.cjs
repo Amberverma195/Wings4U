@@ -1,4 +1,4 @@
-/** Safe mocked checks only. Deliberately does not load .env or invoke e2e/build/migrations. */
+/** Safe isolated checks only. Never loads the root .env or invokes database e2e/migrations. */
 const { spawnSync } = require('node:child_process');
 const { resolve } = require('node:path');
 const root = resolve(__dirname, '..');
@@ -18,4 +18,8 @@ for (const workspace of ['api', 'web', 'application']) {
     { cwd: root, env, stdio: 'inherit' });
   if (types.error || types.status !== 0) failed = true;
 }
+// Starts Next in a disposable fixture plus a mocked local Nest upstream; never starts the real API.
+const routing = spawnSync(process.execPath, ['--test', 'apps/web/integration/proxy-routing.test.cjs'],
+  { cwd: root, env, stdio: 'inherit' });
+if (routing.error || routing.status !== 0) failed = true;
 process.exitCode = failed ? 1 : 0;
