@@ -55,6 +55,9 @@ async function proxyStationUpstream(
     },
   });
 
+  const retryAfter = upstream.headers.get("retry-after");
+  if (retryAfter) response.headers.set("retry-after", retryAfter);
+
   for (const cookie of getSetCookieHeaders(upstream.headers)) {
     response.headers.append("set-cookie", cookie);
   }

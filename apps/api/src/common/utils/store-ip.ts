@@ -36,6 +36,7 @@ function normalizeIpCandidate(ip: string | null | undefined): string | null {
 }
 
 function ipv4ToNumber(ip: string): number | null {
+  if (isIP(ip) !== 4) return null;
   const parts = ip.split(".");
   if (parts.length !== 4) return null;
 
@@ -60,7 +61,7 @@ function isValidIpLiteral(value: string | null | undefined): boolean {
 
 function isValidCidr(entry: string): boolean {
   const [base, prefixText] = entry.split("/");
-  const prefix = parseInt(prefixText, 10);
+  const prefix = /^\d{1,2}$/.test(prefixText ?? "") && entry.split("/").length === 2 ? Number(prefixText) : NaN;
   return (
     ipv4ToNumber(base) !== null &&
     Number.isFinite(prefix) &&
@@ -184,12 +185,19 @@ export function extractClientIp(
   if (signedClientIp) return signedClientIp;
 
   const peerIp =
-    normalizeIpCandidate(req.ip) ??
     normalizeIpCandidate(req.socket?.remoteAddress) ??
+    normalizeIpCandidate(req.ip) ??
     "";
   const proxyRanges = trustedProxyRanges();
   if (!peerIp || !isTrustedProxyIp(peerIp, proxyRanges)) {
     return peerIp;
+  }
+
+  // Railway documents X-Real-IP, not a guaranteed leftmost XFF contract.
+  // Consume it only from an explicitly trusted ingress peer.
+  if (matchesEntry(peerIp, RAILWAY_PRIVATE_PROXY_CIDR)) {
+    const real = normalizeIpCandidate(firstHeaderValue(req.headers["x-real-ip"]));
+    return real && isValidIpLiteral(real) ? real : peerIp;
   }
 
   const forwarded = req.headers["x-forwarded-for"];
@@ -201,11 +209,6 @@ export function extractClientIp(
         (candidate): candidate is string =>
           !!candidate && isValidIpLiteral(candidate),
       );
-    // Railway controls the leftmost X-Forwarded-For value. Its CDN hop IPs are
-    // not stable, so trust that value only after validating the private peer.
-    if (matchesEntry(peerIp, RAILWAY_PRIVATE_PROXY_CIDR) && chain[0]) {
-      return chain[0];
-    }
     for (let index = chain.length - 1; index >= 0; index -= 1) {
       const candidate = chain[index]!;
       if (!isTrustedProxyIp(candidate, proxyRanges)) return candidate;
@@ -216,7 +219,7 @@ export function extractClientIp(
   const realIp = req.headers["x-real-ip"];
   if (typeof realIp === "string") {
     const normalized = normalizeIpCandidate(realIp);
-    if (normalized) return normalized;
+    if (normalized && isValidIpLiteral(normalized)) return normalized;
   }
 
   return peerIp;

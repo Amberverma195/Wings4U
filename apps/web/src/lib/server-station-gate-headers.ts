@@ -1,4 +1,5 @@
 import "server-only";
+import { isIP } from "node:net";
 import { createHmac } from "node:crypto";
 
 const SIGNED_CLIENT_IP_HEADER = "x-w4u-client-ip";
@@ -6,7 +7,7 @@ const SIGNED_CLIENT_IP_SIGNATURE_HEADER = "x-w4u-client-ip-signature";
 
 function firstHeaderIp(value: string | null): string | null {
   const candidate = value?.split(",")[0]?.trim();
-  return candidate || null;
+  return candidate && isIP(candidate) ? candidate : null;
 }
 
 function signClientIp(clientIp: string): string | null {
@@ -16,13 +17,10 @@ function signClientIp(clientIp: string): string | null {
 }
 
 function resolveIncomingClientIp(requestHeaders: Headers): string | null {
-  return (
-    firstHeaderIp(requestHeaders.get("x-forwarded-for")) ??
-    firstHeaderIp(requestHeaders.get("x-real-ip")) ??
-    firstHeaderIp(requestHeaders.get("x-vercel-forwarded-for")) ??
-    firstHeaderIp(requestHeaders.get("cf-connecting-ip")) ??
-    firstHeaderIp(requestHeaders.get("true-client-ip"))
-  );
+  // Vercel overwrites this ingress header. Outside Vercel no caller header
+  // is signed: local/direct deployments must configure a trusted ingress first.
+  if (process.env.VERCEL !== "1") return null;
+  return firstHeaderIp(requestHeaders.get("x-vercel-forwarded-for"));
 }
 
 /** Lets the API attribute server-side proxied calls to the visitor, not the Vercel egress IP. */
@@ -41,15 +39,13 @@ export function buildStationGateHeaders(
   requestHeaders: Headers,
   cookieHeader: string,
 ): Record<string, string> {
-  const forwardedFor = requestHeaders.get("x-forwarded-for");
-  const realIp = requestHeaders.get("x-real-ip");
+
   const clientIp = resolveIncomingClientIp(requestHeaders);
   const signature = clientIp ? signClientIp(clientIp) : null;
 
   return {
     ...(cookieHeader ? { cookie: cookieHeader } : {}),
-    ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
-    ...(realIp ? { "x-real-ip": realIp } : {}),
+
     ...(clientIp && signature
       ? {
           [SIGNED_CLIENT_IP_HEADER]: clientIp,

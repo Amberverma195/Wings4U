@@ -21,7 +21,7 @@ const OTHER_LOCATION = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 describe("Support authorization (isolated HTTP, no database)", () => {
   let app: INestApplication;
-  const support = { listTickets: jest.fn().mockResolvedValue({ tickets: [], next_cursor: null }), getTicket: jest.fn(async () => ({})),
+  const support = { reopenTicket: jest.fn(async () => ({})), createTicket: jest.fn(async (_input: unknown) => ({})), listTickets: jest.fn().mockResolvedValue({ tickets: [], next_cursor: null }), getTicket: jest.fn(async () => ({})),
     getEligibleOrders: jest.fn(async () => ({ orders: [] })), linkOrder: jest.fn(async () => ({})), getTicketOrderDetails: jest.fn(async () => ({})),
     addMessage: jest.fn(async () => ({})), updateStatus: jest.fn(async () => ({})), resolve: jest.fn(async () => ({})) };
   beforeAll(async () => {
@@ -64,6 +64,20 @@ describe("Support authorization (isolated HTTP, no database)", () => {
       await request(app.getHttpServer()).get(`/api/v1/admin/support-tickets?${query}`)
         .set("X-Location-Id", LOCATION).auth("admin", { type: "bearer" }).expect(422);
     }
+  });
+
+  it("reopening is customer-only and passes server-derived owner and location", async () => {
+    const path = `/api/v1/support/tickets/${TICKET}/reopen`;
+    await request(app.getHttpServer()).post(path).set("X-Location-Id", LOCATION).expect(401);
+    for (const token of ["staff", "admin"]) await request(app.getHttpServer()).post(path).set("X-Location-Id", LOCATION).auth(token, { type: "bearer" }).expect(403);
+    await request(app.getHttpServer()).post(path).set("X-Location-Id", LOCATION).auth("customer", { type: "bearer" }).send({ status: "CLOSED", customerUserId: "attacker" }).expect(201);
+    expect(support.reopenTicket).toHaveBeenCalledWith(TICKET, "customer", LOCATION);
+  });
+  it("ignores privileged ticket-source fields in customer input", async () => {
+    await request(app.getHttpServer()).post('/api/v1/support/tickets').set("X-Location-Id", LOCATION).auth("customer", { type: "bearer" })
+      .send({ ticket_type: "COLD_FOOD", subject: "Cold food", description: "Help", created_source: "SYSTEM_OVERDUE_DELIVERY", allowAdditionalOrderTicket: true }).expect(201);
+    expect(support.createTicket).toHaveBeenCalledWith(expect.objectContaining({ createdSource: "CUSTOMER_APP", customerUserId: "customer" }));
+    expect(support.createTicket.mock.calls[0][0]).not.toHaveProperty("allowAdditionalOrderTicket");
   });
 
   it("scopes customer list/detail requests and prevents caller-supplied admin expansion", async () => {

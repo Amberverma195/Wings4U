@@ -11,6 +11,7 @@ jest.mock("../src/lib/delivery-quote", () => ({ clearStoredDeliveryQuotes: jest.
 const { isDefinitiveRefreshFailure } = require("../src/lib/session");
 
 test("a throttled or timed-out refresh is not treated as a signed-out session", () => {
+  expect(isDefinitiveRefreshFailure(409)).toBe(false);
   expect(isDefinitiveRefreshFailure(429)).toBe(false);
   expect(isDefinitiveRefreshFailure(408)).toBe(false);
   expect(isDefinitiveRefreshFailure(503)).toBe(false);

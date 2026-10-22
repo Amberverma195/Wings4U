@@ -540,7 +540,7 @@ export function SupportTicketForm({
             <>
               {" "}
               <Link href={`/account/support/${existingTicketId}`} style={{ fontWeight: 800 }}>
-                View your existing ticket
+                View or reopen your existing ticket
               </Link>
             </>
           ) : null}

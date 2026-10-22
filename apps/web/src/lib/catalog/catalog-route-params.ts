@@ -28,10 +28,18 @@ export function normalizeCatalogScheduledFor(
 ): { ok: true; value: string | undefined } | { ok: false } {
   const value = raw?.trim();
   if (!value) return { ok: true, value: undefined };
+  if (value.length > 64 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return { ok: false };
+  const calendarDate = new Date(value.slice(0, 10) + "T00:00:00.000Z");
+  if (!Number.isFinite(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== value.slice(0, 10)) return { ok: false };
   const ms = Date.parse(value);
   if (!Number.isFinite(ms)) return { ok: false };
   if (ms < now - SCHEDULE_PAST_LIMIT_MS || ms > now + SCHEDULE_FUTURE_LIMIT_MS) {
     return { ok: true, value: undefined };
   }
   return { ok: true, value: new Date(Math.floor(ms / 60_000) * 60_000).toISOString() };
+}
+
+/** Reject repeated and unknown parameters before any cache lookup. */
+export function validCatalogQuery(params: URLSearchParams, allowed: string[]): boolean {
+  return [...params.keys()].every(key => allowed.includes(key) && params.getAll(key).length === 1);
 }

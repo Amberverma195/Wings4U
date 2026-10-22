@@ -65,6 +65,7 @@ export const RATE_LIMITS = {
   savedCartMergeIp: policy("saved_cart.merge.ip", 60, 15 * MINUTE),
 
   // POST /support/tickets, POST /support/tickets/:id/messages
+  supportReopenCustomer: policy("support.reopen.customer", 10, HOUR),
   supportGeneralTicketCustomer: policy("support.ticket.general.customer", 3, DAY),
   supportOrderTicketCustomer: policy("support.ticket.order.customer", 5, HOUR),
   supportMessageCustomerTicket: policy("support.message.customer.ticket", 5, MINUTE),

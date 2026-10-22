@@ -177,13 +177,13 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   }, [load]);
 
   const sendReply = async () => {
-    if (!reply.trim()) return;
+    if (sending || !reply.trim()) return;
     setSending(true);
     setError(null);
     try {
       const res = await withSilentRefresh(
         () =>
-          apiFetch(`/api/v1/support/tickets/${ticketId}/messages`, {
+          apiFetch(`/api/v1/support/tickets/${ticketId}/${ticket?.status === "RESOLVED" || ticket?.status === "CLOSED" ? "reopen" : "messages"}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message_body: reply.trim() }),
@@ -198,7 +198,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
           body?.errors?.[0]?.message ?? `Send failed (${res.status})`,
         );
       }
-      setReply("");
+      if (ticket?.status !== "RESOLVED" && ticket?.status !== "CLOSED") setReply("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed");
@@ -262,7 +262,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   const isCustomerMessage = (msg: Message) =>
     msg.author_user_id === ticket.customer_user_id;
 
-  const canReply = ticket.status !== "CLOSED" && ticket.status !== "RESOLVED";
+  const needsReopen = ticket.status === "CLOSED" || ticket.status === "RESOLVED";
 
   return (
     <div className={styles.pageShell}>
@@ -363,7 +363,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                 </div>
               )}
 
-              {canReply && (
+              {(
                 <div className={styles.replyBox}>
                   <textarea
                     className={styles.replyTextarea}
@@ -379,17 +379,12 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                       disabled={sending || !reply.trim()}
                       onClick={() => void sendReply()}
                     >
-                      {sending ? "Sending…" : "Send Reply"}
+                      {sending ? "Sending…" : needsReopen ? "Reopen ticket" : "Send Reply"}
                     </button>
                   </div>
                 </div>
               )}
 
-              {!canReply && (
-                <p style={{ color: "#9ca3af", marginTop: "0.75rem", fontWeight: 600, fontSize: "0.88rem" }}>
-                  This ticket has been {ticket.status.toLowerCase().replace(/_/g, " ")}. No further replies are possible.
-                </p>
-              )}
             </section>
 
             {/* Audit Timeline */}

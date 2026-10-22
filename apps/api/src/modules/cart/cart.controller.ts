@@ -1,6 +1,9 @@
 import { Body, Controller, Post, Req, UseGuards } from "@nestjs/common";
 import {
   ArrayMinSize,
+  ArrayMaxSize,
+  MaxLength,
+  Max,
   IsArray,
   IsBoolean,
   IsIn,
@@ -20,6 +23,7 @@ import { assertRequestLocationMatches } from "../../common/utils/location-ref";
 import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
 import { RateLimiterService } from "../rate-limit/rate-limit.service";
 import { cartRequesterLimiterKeys } from "../saved-cart/cart-rate-limit";
+import { BoundedCustomization } from "./bounded-customization";
 import { CartService } from "./cart.service";
 
 const QUOTE_LIMIT_MESSAGE = "Too many price checks. Your cart is saved.";
@@ -34,6 +38,7 @@ class RemovedIngredientDto {
   id!: string;
 
   @IsString()
+  @MaxLength(200)
   name!: string;
 }
 
@@ -43,10 +48,12 @@ class CartItemDto {
 
   @IsInt()
   @Min(1)
+  @Max(999)
   quantity!: number;
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(128)
   @ValidateNested({ each: true })
   @Type(() => ModifierSelectionDto)
   modifier_selections?: ModifierSelectionDto[];
@@ -54,20 +61,24 @@ class CartItemDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
+  @ArrayMaxSize(64)
   @Type(() => RemovedIngredientDto)
   removed_ingredients?: RemovedIngredientDto[];
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   special_instructions?: string;
 
   @IsOptional()
   @IsObject()
+  @BoundedCustomization()
   builder_payload?: Record<string, unknown>;
 }
 
-class CartQuoteDto {
+export class CartQuoteDto {
   @IsString()
+  @MaxLength(64)
   location_id!: string;
 
   @IsIn(["PICKUP", "DELIVERY"])
@@ -75,12 +86,14 @@ class CartQuoteDto {
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => CartItemDto)
   items!: CartItemDto[];
 
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   promo_code?: string;
 
   @IsOptional()
@@ -95,14 +108,17 @@ class CartQuoteDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   scheduled_for?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(8192)
   delivery_quote_token?: string;
 
   @IsOptional()
   @IsObject()
+  @BoundedCustomization()
   address_snapshot_json?: Record<string, unknown>;
 
   /**

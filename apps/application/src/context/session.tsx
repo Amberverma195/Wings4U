@@ -204,7 +204,7 @@ let inFlightRefresh: { generation: number; promise: Promise<RefreshResult> } | n
  * server rejects it before touching tokens, so keep the user signed in.
  */
 export function isDefinitiveRefreshFailure(status: number): boolean {
-  return status < 500 && status !== 408 && status !== 429;
+  return status < 500 && status !== 408 && status !== 409 && status !== 429;
 }
 
 async function performRefresh(generation: number): Promise<RefreshResult> {
