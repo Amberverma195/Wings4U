@@ -79,9 +79,9 @@ ESLint could not run: the repository has no ESLint configuration, script or inst
 
 Regression evidence includes KDS/POS, checkout/idempotency, website/native auth and refresh, tracking/realtime and customer-support tests. This confirms mocked regressions pass; it does not certify live production workflows. Online payment/Stripe and online refund implementation files were untouched. No production database access/mutation, schema migration, seed, deployment, merge, environment-variable change, WAF publication or Railway/Vercel settings change was performed.
 
-## PR publication prerequisite
+## PR publication safety
 
-The requested PR is intended for main from the separate work branch. Before publishing the branch/PR, automatic Vercel preview deployments and Railway PR environments must be confirmed disabled for it, consistent with the explicit no-deployment constraint. Railway's connected app returned reauthentication required during a read-only project lookup; no configuration was available. Repository files alone cannot establish those external settings. The existing GitHub workflow invokes database-backed e2e setup; it should not be run against live infrastructure. A review commit can carry [skip ci], with the safe local validation evidence attached, until isolated CI is approved.
+The requested draft PR targets main from the separate work branch. The repository owner confirmed that automatic Vercel preview deployments and Railway PR environments are disabled for this branch and explicitly authorized publication. No deployment or merge is authorized. Railway's connected app returned reauthentication required during a read-only project lookup; no configuration was available. Repository files alone cannot establish those external settings. The existing GitHub workflow invokes database-backed e2e setup; it should not be run against live infrastructure. A review commit can carry [skip ci], with the safe local validation evidence attached, until isolated CI is approved.
 
 ## Final test results
 

@@ -6,8 +6,8 @@ The patch also signs normal same-origin REST forwarding, validates ingress attri
 
 Validation: 1,357 API, 184 website and 1,039 native tests pass; all three TypeScript checks and diff checks pass. Tests use mocks/isolated local HTTP and an unreachable database override. ESLint is not installed/configured. No database-backed e2e or live deployment tests ran.
 
-Review [the full findings, changed-file inventory and deployment verification checklist](Docs/security/rate-limit-followup-review.md). WAF rate limiting and Railway/Vercel ingress assumptions require manual verification. Redis fallback remains per process during outages; real PostgreSQL lock/isolation behavior still needs isolated infrastructure tests.
+Review [the full findings, changed-file inventory and deployment verification checklist](https://github.com/Amberverma195/Wings4U/blob/fix/security-rate-limit-followup/Docs/security/rate-limit-followup-review.md). WAF rate limiting and Railway/Vercel ingress assumptions require manual verification. Redis fallback remains per process during outages; real PostgreSQL lock/isolation behavior still needs isolated infrastructure tests.
 
 Online payment/Stripe and online refund code, pricing, coupons, inventory, attendance and address business logic are untouched. No production database mutation, migration, deployment, merge, settings change or environment-variable change was performed.
 
-Draft only. Before branch/PR publication, verify automatic preview/PR deployments are disabled. The review commit skips the repository's database-backed CI; safe local checks are recorded above. Do not merge or deploy without explicit approval.
+Draft for review. The repository owner confirmed that automatic Vercel preview deployments and Railway PR environments are disabled for this branch and authorized PR publication. The review commit skips the repository's database-backed CI; safe local checks are recorded above. Do not merge or deploy without explicit approval.
