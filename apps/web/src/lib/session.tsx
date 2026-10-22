@@ -326,7 +326,7 @@ let inFlightRefresh: Promise<RefreshResult> | null = null;
  * server rejects it before touching cookies, so keep the user signed in.
  */
 export function isDefinitiveRefreshFailure(status: number): boolean {
-  return status < 500 && status !== 408 && status !== 429;
+  return status < 500 && status !== 408 && status !== 409 && status !== 429;
 }
 
 async function performRefresh(): Promise<RefreshResult> {

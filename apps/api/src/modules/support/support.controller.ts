@@ -1,5 +1,6 @@
 import {
   Body,
+  ForbiddenException,
   Controller,
   Get,
   Param,
@@ -11,6 +12,8 @@ import {
 } from "@nestjs/common";
 import {
   IsBoolean,
+  MaxLength,
+  MinLength,
   IsEnum,
   IsIn,
   IsOptional,
@@ -31,9 +34,13 @@ class CreateTicketDto {
   ticket_type!: SupportTicketType;
 
   @IsString()
+  @MaxLength(200)
+  @MinLength(1)
   subject!: string;
 
   @IsString()
+  @MaxLength(10000)
+  @MinLength(1)
   description!: string;
 
   @IsOptional()
@@ -47,6 +54,8 @@ class CreateTicketDto {
 
 class AddMessageDto {
   @IsString()
+  @MaxLength(10000)
+  @MinLength(1)
   message_body!: string;
 
   @IsOptional()
@@ -157,6 +166,14 @@ export class SupportController {
       user.role,
       req.locationId,
     );
+  }
+
+  @Post(":id/reopen")
+  @Roles("CUSTOMER")
+  async reopen(@Param("id", ParseUUIDPipe) id: string, @Req() req: Request,
+    @CurrentUser() user: NonNullable<Request["user"]>) {
+    if (user.role !== "CUSTOMER") throw new ForbiddenException("Only the ticket customer may reopen it");
+    return this.supportService.reopenTicket(id, user.userId, req.locationId!);
   }
 
   @Post(":id/status")

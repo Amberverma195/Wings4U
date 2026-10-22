@@ -11,6 +11,10 @@ import {
   catalogWingFlavoursLocationTag,
 } from "./cache-tags";
 
+export class CatalogRateLimitError extends Error {
+  constructor(readonly retryAfter: string) { super("Too many menu requests"); }
+}
+
 type CatalogFulfillmentType = "PICKUP" | "DELIVERY";
 
 type WingFlavourApiRow = {
@@ -48,6 +52,10 @@ function catalogServerHeaders(): Record<string, string> {
   };
 }
 
+function canonicalCatalogLocation(value: string): string {
+  return value.length === 36 ? value.toLowerCase() : value.toUpperCase();
+}
+
 function scheduleMinuteBucket(scheduledFor?: string): string {
   if (!scheduledFor) {
     return "now";
@@ -83,13 +91,15 @@ async function fetchCatalogJson<T>(
       },
     });
 
+    if (response.status === 429) throw new CatalogRateLimitError(response.headers.get("retry-after") || "60");
     if (!response.ok) {
       return null;
     }
 
     const envelope = (await response.json()) as ApiEnvelope<T>;
     return envelope.data ?? null;
-  } catch {
+  } catch (error) {
+    if (error instanceof CatalogRateLimitError) throw error;
     return null;
   }
 }
@@ -99,6 +109,7 @@ export async function getCachedMenu(
   fulfillmentType: CatalogFulfillmentType = "PICKUP",
   scheduledFor?: string,
 ): Promise<MenuResponse | null> {
+  locationId = canonicalCatalogLocation(locationId);
   const query = new URLSearchParams({
     location_id: locationId,
     fulfillment_type: fulfillmentType,
@@ -119,6 +130,7 @@ export async function getCachedMenu(
 }
 
 export async function getCachedWingFlavours(locationId: string = DEFAULT_LOCATION_ID,): Promise<WingFlavourApiRow[] | null> {
+  locationId = canonicalCatalogLocation(locationId);
   const tags = [CATALOG_WING_FLAVOURS_TAG, catalogWingFlavoursLocationTag(locationId)];
 
   return fetchCatalogJson<WingFlavourApiRow[]>(

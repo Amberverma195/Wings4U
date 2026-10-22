@@ -671,7 +671,7 @@ export class AuthService {
   /*  Refresh                                                           */
   /* ------------------------------------------------------------------ */
 
-  async refresh(refreshTokenRaw: string): Promise<Omit<TokenBundle, "user">> {
+  async refresh(refreshTokenRaw: string, enforceSessionBudget?: (sessionId: string) => Promise<void>): Promise<Omit<TokenBundle, "user">> {
     const hash = sha256(refreshTokenRaw);
     const now = new Date();
 
@@ -709,14 +709,18 @@ export class AuthService {
       throw new UnauthorizedException("Invalid or expired refresh token");
     }
 
-    const newRefresh = generateRefreshToken();
+    // Read lineage only after the full opaque token matches an active database session.
+    const lineage = refreshTokenRaw.includes(".") ? refreshTokenRaw.split(".")[0] : session.id;
+    await enforceSessionBudget?.(lineage);
+    const newRefresh = `${lineage}.${generateRefreshToken()}`;
 
-    const [, newSession] = await this.prisma.$transaction([
-      this.prisma.authSession.update({
-        where: { id: session.id },
+    const newSession = await this.prisma.$transaction(async tx => {
+      const claimed = await tx.authSession.updateMany({
+        where: { id: session.id, refreshTokenHash: hash, revokedAt: null, expiresAt: { gt: now } },
         data: { revokedAt: now, revokedByUserId: session.userId },
-      }),
-      this.prisma.authSession.create({
+      });
+      if (claimed.count !== 1) throw new ConflictException("Session refresh already in progress; retry with the current token");
+      return tx.authSession.create({
         data: {
           userId: session.userId,
           refreshTokenHash: sha256(newRefresh),
@@ -726,8 +730,8 @@ export class AuthService {
           isPosSession: session.isPosSession,
           expiresAt: refreshTokenExpiresAt(),
         },
-      }),
-    ]);
+      });
+    });
 
     // Rebuild the access token from the CURRENT user record, not from the
     // partial shape carried by the previous refresh. This is what keeps

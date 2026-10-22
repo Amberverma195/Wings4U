@@ -96,6 +96,7 @@ export class RateLimiterService {
           .zcard(key)
           .zrange(key, 0, 0, "WITHSCORES")
           .exec()) ?? [];
+      this.assertRedisResults(results);
       const count = Number(results[1]?.[1] ?? 0);
       const oldest = results[2]?.[1] as string[] | undefined;
       return this.windowResult(count, limit, windowMs, now, oldest?.length === 2 ? Number(oldest[1]) : now);
@@ -151,6 +152,7 @@ export class RateLimiterService {
           .zadd(key, expiresAt, member)
           .pexpire(key, ttlMs)
           .exec()) ?? [];
+      this.assertRedisResults(results);
       const existed = results[1]?.[1] != null;
       const countBefore = Number(results[2]?.[1] ?? 0);
       if (!existed && countBefore >= max) {
@@ -210,7 +212,7 @@ export class RateLimiterService {
     } catch (err) {
       this.redisRetryAtMs = Date.now() + REDIS_FAILURE_BACKOFF_MS;
       this.logger.warn(
-        `Redis rate-limit check failed, using in-process fallback: ${(err as Error).message}`,
+        `Redis rate-limit check failed, using in-process fallback`,
       );
       return null;
     }
@@ -227,6 +229,10 @@ export class RateLimiterService {
       return { allowed: false, remaining: 0, resetAtMs: oldestMs + windowMs };
     }
     return { allowed: true, remaining: limit - count, resetAtMs: now + windowMs };
+  }
+
+  private assertRedisResults(results: Array<[Error | null, unknown]>): void {
+    if (!results.length || results.some(([error]) => error)) throw new Error("Redis transaction failed");
   }
 
   private async checkRedis(
@@ -246,6 +252,7 @@ export class RateLimiterService {
     pipe.pexpire(key, windowMs);
     const results = (await pipe.exec()) ?? [];
 
+    this.assertRedisResults(results);
     const countBefore = Number(results[1]?.[1] ?? 0);
     if (countBefore >= limit) {
       await redis.zrem(key, member);

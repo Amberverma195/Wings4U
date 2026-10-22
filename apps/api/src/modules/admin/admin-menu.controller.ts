@@ -30,6 +30,7 @@ import { Type } from "class-transformer";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
+import { MENU_IMAGE_UPLOAD_OPTIONS } from "./menu-image-upload";
 import { AdminMenuService } from "./admin-menu.service";
 
 // ── Wing Flavours DTO ──
@@ -315,7 +316,7 @@ export class AdminMenuController {
   }
 
   @Post("items/:id/image")
-  @UseInterceptors(FileInterceptor("image"))
+  @UseInterceptors(FileInterceptor("image", MENU_IMAGE_UPLOAD_OPTIONS))
   async uploadImage(
     @Param("id", ParseUUIDPipe) id: string,
     @UploadedFile() file: any,
@@ -325,7 +326,7 @@ export class AdminMenuController {
   }
 
   @Post("categories/:id/builder-image")
-  @UseInterceptors(FileInterceptor("image"))
+  @UseInterceptors(FileInterceptor("image", MENU_IMAGE_UPLOAD_OPTIONS))
   async uploadBuilderCategoryImage(
     @Param("id", ParseUUIDPipe) id: string,
     @UploadedFile() file: any,

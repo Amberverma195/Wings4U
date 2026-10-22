@@ -10,6 +10,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private idleTimer: NodeJS.Timeout | null = null;
   private activeOperations = 0;
   private shuttingDown = false;
+  private retryAtMs = 0;
 
   onModuleInit(): void {
     if (!apiEnvironment.redisUrl.trim()) {
@@ -91,13 +92,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   private async ensureClient(): Promise<Redis | null> {
     const url = apiEnvironment.redisUrl.trim();
-    if (!url || this.shuttingDown) return null;
+    if (!url || this.shuttingDown || Date.now() < this.retryAtMs) return null;
     if (this.client?.status === "ready") return this.client;
     if (this.connectPromise) return this.connectPromise;
 
     const client = new Redis(url, {
       lazyConnect: true,
       connectTimeout: 2_000,
+      commandTimeout: 2_000,
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
       retryStrategy: () => null,
@@ -115,6 +117,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return client;
       })
       .catch((err) => {
+        this.retryAtMs = Date.now() + 5_000;
         this.logger.warn(
           `Redis connect failed; Redis-backed features will use fallbacks: ${(err as Error).message}`,
         );

@@ -97,3 +97,15 @@ describe("RedisService", () => {
     await service.onModuleDestroy();
   });
 });
+
+it("backs off failed connections for all Redis consumers and recovers after the deadline", async () => {
+  jest.useFakeTimers(); mockRedisInstances.length = 0; mockConnectError = new Error("unavailable");
+  (apiEnvironment as any).redisUrl = "redis://test";
+  const service = new RedisService();
+  await service.get("one"); await Promise.all([service.get("two"), service.get("three")]);
+  expect(mockRedisInstances).toHaveLength(1);
+  mockConnectError = null; jest.advanceTimersByTime(5001);
+  await expect(service.get("recovered")).resolves.toBe("cached");
+  expect(mockRedisInstances).toHaveLength(2);
+  await service.onModuleDestroy(); jest.useRealTimers();
+});

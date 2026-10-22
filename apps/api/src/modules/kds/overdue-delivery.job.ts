@@ -52,7 +52,7 @@ export class OverdueDeliveryJob {
       if (threshold > now) continue;
 
       const existing = await this.prisma.supportTicket.findFirst({
-        where: { orderId: order.id, ticketType: OVERDUE_TICKET_TYPE },
+        where: { orderId: order.id, ticketType: OVERDUE_TICKET_TYPE, createdSource: "SYSTEM_OVERDUE_DELIVERY" },
         select: { id: true },
       });
       if (existing) continue;
@@ -70,7 +70,6 @@ export class OverdueDeliveryJob {
             `${grace}-minute grace window.`,
           createdSource: "SYSTEM_OVERDUE_DELIVERY",
           priority: "HIGH",
-          allowAdditionalOrderTicket: true,
         });
         createdCount += 1;
       } catch (err) {

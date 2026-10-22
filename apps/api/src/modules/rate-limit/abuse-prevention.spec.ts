@@ -291,6 +291,19 @@ describe("auth abuse limits (no database)", () => {
     expect((await post("/api/v1/auth/refresh", { refresh_token: "token-b" }, "203.0.113.40")).status).toBe(200);
   });
 
+  it("keeps a stable session budget across distinct successful rotations and returns 429 without cookie changes", async () => {
+    auth.refresh.mockImplementation(async (_token: string, budget: (id: string) => Promise<void>) => {
+      await budget("verified-session-lineage");
+      return { accessToken: "access", refreshToken: "rotated", csrfToken: "csrf" };
+    });
+    for (let i = 0; i < RATE_LIMITS.refreshToken.limit; i++) {
+      expect((await post("/api/v1/auth/refresh", { refresh_token: `rotation-${i}` }, "203.0.113.42")).status).toBe(200);
+    }
+    const limited = await post("/api/v1/auth/refresh", { refresh_token: "next-rotation" }, "203.0.113.42");
+    expect(limited.status).toBe(429); expect(limited.headers["set-cookie"]).toBeUndefined();
+    expect(limited.headers["retry-after"]).toMatch(/^\d+$/);
+  });
+
   it("stops repeated invalid refresh tokens with a 429 that does not clear cookies", async () => {
     auth.refresh.mockImplementation(async (token: string) => {
       if (token.startsWith("bad-")) throw new UnauthorizedException("Invalid or expired refresh token");

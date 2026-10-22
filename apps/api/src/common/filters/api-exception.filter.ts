@@ -19,6 +19,8 @@ function mapStatusToCode(status: number): string {
       return "NOT_FOUND";
     case 409:
       return "CONFLICT";
+    case 413:
+      return "PAYLOAD_TOO_LARGE";
     case 422:
       return "VALIDATION_FAILED";
     case 429:
@@ -79,6 +81,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    const parserError = exception as { type?: string; status?: number };
+    if (["entity.too.large", "entity.verify.failed", "entity.parse.failed"].includes(parserError?.type ?? "")) {
+      const status = parserError.type === "entity.parse.failed" ? 400 : 413;
+      response.status(status).json({ data: null, meta: { request_id: requestId },
+        errors: [{ code: status === 413 ? "PAYLOAD_TOO_LARGE" : "VALIDATION_FAILED", message: status === 413 ? "Request payload exceeds the supported limits" : "Invalid JSON request" }] });
+      return;
+    }
     // Surface the actual cause in the server log — otherwise the generic
     // INTERNAL_ERROR body makes debugging impossible.
     const err = exception as Error & { code?: string };

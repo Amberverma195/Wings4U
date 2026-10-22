@@ -1,5 +1,7 @@
 "use client";
 
+import { menuImageFileError, menuImageUploadError } from "@/lib/menu-image-upload";
+
 import { normalizeIngredientText } from "@wings4u/customization";
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -290,6 +292,8 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
   const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const fileError = menuImageFileError(file);
+    if (fileError) { setError(fileError); e.target.value = ""; return; }
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
     setImageRemoved(false);
@@ -357,7 +361,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
           `${ADMIN_MENU_API_BASE}/items/${savedId}/image`,
           { method: "POST", body: fd },
         );
-        if (!res.ok) throw new Error("Failed to upload image");
+        if (!res.ok) throw new Error(await menuImageUploadError(res));
       } else if (imageRemoved && savedId) {
         await adminApiFetch(`${ADMIN_MENU_API_BASE}/items/${savedId}/image`, {
           method: "DELETE",

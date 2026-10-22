@@ -88,7 +88,7 @@ const MESSAGE_LIMIT_MESSAGE = "You're sending messages too quickly.";
 /** Oldest first, so historical duplicates resolve to the original ticket. */
 function findCustomerOrderTicket(db: SupportDb, orderId: string, customerUserId: string) {
   return db.supportTicket.findFirst({
-    where: { orderId, customerUserId },
+    where: { orderId, customerUserId, createdSource: { not: "SYSTEM_OVERDUE_DELIVERY" } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { id: true, status: true, createdAt: true },
   });
@@ -107,7 +107,7 @@ function existingCustomerTicketError(existing: { id: string; status: string; cre
   return new ConflictException({
     code: SUPPORT_TICKET_EXISTS,
     message:
-      "You already have a support ticket for this order. Please add any new details to your existing ticket.",
+      "You already have a support ticket for this order. Please view your existing ticket to reply or reopen it.",
     detail: { ticket_id: existing.id, status: existing.status, created_at: existing.createdAt },
   });
 }
@@ -129,11 +129,6 @@ export class SupportService {
     orderId?: string;
     priority?: string;
     createdByUserId?: string | null;
-    /**
-     * Only the automated overdue-delivery alert sets this: it is a staff
-     * signal with its own per-order dedupe, not a customer conversation.
-     */
-    allowAdditionalOrderTicket?: boolean;
   }) {
     const priority = params.priority ?? "NORMAL";
 
@@ -156,7 +151,7 @@ export class SupportService {
     }
 
     const singleTicketOrder =
-      params.orderId && params.customerUserId && !params.allowAdditionalOrderTicket
+      params.orderId && params.customerUserId && params.createdSource !== "SYSTEM_OVERDUE_DELIVERY"
         ? { orderId: params.orderId, customerUserId: params.customerUserId }
         : null;
     // Cheap pre-check so a duplicate attempt is answered without spending the
@@ -171,6 +166,11 @@ export class SupportService {
     }
 
     const ticket = await this.prisma.$transaction(async (tx) => {
+      if (params.orderId && params.createdSource === "SYSTEM_OVERDUE_DELIVERY") {
+        await lockOrderForTicket(tx, params.orderId);
+        const existing = await tx.supportTicket.findFirst({ where: { orderId: params.orderId, ticketType: "DELIVERY_OVERDUE", createdSource: "SYSTEM_OVERDUE_DELIVERY" }, select: { id: true } });
+        if (existing) throw new ConflictException("Overdue alert already exists");
+      }
       if (singleTicketOrder) {
         await lockOrderForTicket(tx, singleTicketOrder.orderId);
         const existing = await findCustomerOrderTicket(
@@ -258,7 +258,7 @@ export class SupportService {
     // Customer ownership check: customers can only view their own tickets
     if (
       viewerRole === "CUSTOMER" &&
-      (!viewerUserId || ticket.customerUserId !== viewerUserId)
+      (!viewerUserId || ticket.customerUserId !== viewerUserId || ticket.createdSource === "SYSTEM_OVERDUE_DELIVERY")
     ) {
       throw new ForbiddenException("You do not have access to this ticket");
     }
@@ -318,7 +318,10 @@ export class SupportService {
     const where: Prisma.SupportTicketWhereInput = {};
 
     if (params.locationId) where.locationId = params.locationId;
-    if (params.customerUserId) where.customerUserId = params.customerUserId;
+    if (params.customerUserId) {
+      where.customerUserId = params.customerUserId;
+      where.createdSource = { not: "SYSTEM_OVERDUE_DELIVERY" };
+    }
     if (params.status) where.status = params.status as TicketStatus;
 
     if (params.cursor) {
@@ -408,9 +411,13 @@ export class SupportService {
     // Customer ownership check: customers can only message their own tickets
     if (
       senderRole === "CUSTOMER" &&
-      ticket.customerUserId !== senderUserId
+      (ticket.customerUserId !== senderUserId || ticket.createdSource === "SYSTEM_OVERDUE_DELIVERY")
     ) {
       throw new ForbiddenException("You do not have access to this ticket");
+    }
+
+    if (isCustomer && (ticket.status === "RESOLVED" || ticket.status === "CLOSED")) {
+      throw new ConflictException("Reopen this ticket before adding new information");
     }
 
     await this.rateLimiter.enforce(
@@ -419,30 +426,66 @@ export class SupportService {
       MESSAGE_LIMIT_MESSAGE,
     );
 
-    const [message] = await this.prisma.$transaction([
-      this.prisma.supportTicketMessage.create({
+    const message = await this.prisma.$transaction(async tx => {
+      const current = await this.lockedTicket(tx, ticketId, locationId);
+      if (isCustomer && (current.customerUserId !== senderUserId || current.createdSource === "SYSTEM_OVERDUE_DELIVERY")) {
+        throw new ForbiddenException("You do not have access to this ticket");
+      }
+      if (isCustomer && (current.status === "RESOLVED" || current.status === "CLOSED")) {
+        throw new ConflictException("Reopen this ticket before adding new information");
+      }
+      const created = await tx.supportTicketMessage.create({
         data: {
           supportTicketId: ticketId,
           authorUserId: senderUserId,
           messageBody: body,
           isInternalNote,
         },
-      }),
-      this.prisma.supportTicketEvent.create({
+      });
+      await tx.supportTicketEvent.create({
         data: {
           ticketId,
           performedByUserId: senderUserId,
           eventType: "MESSAGE_ADDED",
           payloadJson: { is_internal_note: isInternalNote },
         },
-      }),
-      this.prisma.supportTicket.update({
+      });
+      await tx.supportTicket.update({
         where: { id: ticketId },
         data: { updatedAt: new Date() },
-      }),
-    ]);
+      });
+      return created;
+    });
 
     return serializeMessage(message as unknown as Record<string, unknown>);
+  }
+
+  async reopenTicket(ticketId: string, customerUserId: string, locationId: string) {
+    if (!locationId) throw new ForbiddenException("An authorized restaurant location is required");
+    const ticket = await this.prisma.supportTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) throw new NotFoundException("Support ticket not found");
+    assertTicketLocationScope(ticket, locationId);
+    if (ticket.customerUserId !== customerUserId || ticket.createdSource === "SYSTEM_OVERDUE_DELIVERY") {
+      throw new ForbiddenException("You do not have access to this ticket");
+    }
+    await this.rateLimiter.enforce(`rl:support:reopen:${rateLimitKeyPart(customerUserId)}`,
+      RATE_LIMITS.supportReopenCustomer, "Too many reopening attempts. Please try again later.");
+    return this.prisma.$transaction(async tx => {
+      const current = await this.lockedTicket(tx, ticketId, locationId);
+      if (!current || current.locationId !== locationId || current.customerUserId !== customerUserId || current.createdSource === "SYSTEM_OVERDUE_DELIVERY") {
+        throw new ForbiddenException("You do not have access to this ticket");
+      }
+      const changed = await tx.supportTicket.updateMany({
+        where: { id: ticketId, locationId, customerUserId, createdSource: { not: "SYSTEM_OVERDUE_DELIVERY" }, status: { in: ["RESOLVED", "CLOSED"] } },
+        data: { status: "OPEN", resolvedAt: null, resolvedByUserId: null, resolutionType: null, updatedAt: new Date() },
+      });
+      if (changed.count === 1) await tx.supportTicketEvent.create({ data: {
+        ticketId, performedByUserId: customerUserId, eventType: "STATUS_CHANGED",
+        fromValue: current.status, toValue: "OPEN", note: "Reopened by customer",
+      } });
+      const updated = await tx.supportTicket.findUnique({ where: { id: ticketId } });
+      return serializeTicketSummary(updated as unknown as Record<string, unknown>);
+    });
   }
 
   async updateStatus(
@@ -451,42 +494,20 @@ export class SupportService {
     newStatus: string,
     locationId?: string,
   ) {
-    const ticket = await this.prisma.supportTicket.findUnique({
-      where: { id: ticketId },
-    });
-    if (!ticket) {
-      throw new NotFoundException("Support ticket not found");
-    }
-
-    if (locationId) {
-      assertTicketLocationScope(ticket, locationId);
-    }
-
-    const oldStatus = ticket.status;
-    if (oldStatus === newStatus) {
-      throw new ConflictException(`Ticket is already "${newStatus}"`);
-    }
-
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.supportTicket.update({
+    return this.prisma.$transaction(async tx => {
+      const ticket = await this.lockedTicket(tx, ticketId, locationId);
+      const oldStatus = ticket.status;
+      if (oldStatus === newStatus) throw new ConflictException(`Ticket is already "${newStatus}"`);
+      const updated = await tx.supportTicket.update({
         where: { id: ticketId },
-        data: {
-          status: newStatus as TicketStatus,
-          updatedAt: new Date(),
-        },
-      }),
-      this.prisma.supportTicketEvent.create({
-        data: {
-          ticketId,
-          performedByUserId: actorUserId,
-          eventType: "STATUS_CHANGED",
-          fromValue: oldStatus,
-          toValue: newStatus,
-        },
-      }),
-    ]);
-
-    return serializeTicketSummary(updated as unknown as Record<string, unknown>);
+        data: { status: newStatus as TicketStatus, updatedAt: new Date() },
+      });
+      await tx.supportTicketEvent.create({ data: {
+        ticketId, performedByUserId: actorUserId, eventType: "STATUS_CHANGED",
+        fromValue: oldStatus, toValue: newStatus,
+      } });
+      return serializeTicketSummary(updated as unknown as Record<string, unknown>);
+    });
   }
 
   async resolve(
@@ -496,57 +517,34 @@ export class SupportService {
     notes: string,
     locationId?: string,
   ) {
-    const ticket = await this.prisma.supportTicket.findUnique({
-      where: { id: ticketId },
+    return this.prisma.$transaction(async tx => {
+      const ticket = await this.lockedTicket(tx, ticketId, locationId);
+      if (ticket.status === "RESOLVED" || ticket.status === "CLOSED") {
+        throw new ConflictException(`Ticket is already "${ticket.status}"`);
+      }
+      const now = new Date();
+      const typedResolution = resolutionType as TicketResolutionType;
+      const updated = await tx.supportTicket.update({ where: { id: ticketId }, data: {
+        status: "RESOLVED", resolutionType: typedResolution, resolvedByUserId, resolvedAt: now, updatedAt: now,
+      } });
+      await tx.supportTicketResolution.create({ data: {
+        ticketId, resolutionType: typedResolution, createdByUserId: resolvedByUserId, note: notes,
+      } });
+      await tx.supportTicketEvent.create({ data: {
+        ticketId, performedByUserId: resolvedByUserId, eventType: "RESOLVED",
+        toValue: resolutionType, payloadJson: { note: notes },
+      } });
+      return serializeTicketSummary(updated as unknown as Record<string, unknown>);
     });
-    if (!ticket) {
-      throw new NotFoundException("Support ticket not found");
-    }
+  }
 
-    if (locationId) {
-      assertTicketLocationScope(ticket, locationId);
-    }
-
-    if (ticket.status === "RESOLVED" || ticket.status === "CLOSED") {
-      throw new ConflictException(
-        `Ticket is already "${ticket.status}"`,
-      );
-    }
-
-    const now = new Date();
-    const typedResolution = resolutionType as TicketResolutionType;
-
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.supportTicket.update({
-        where: { id: ticketId },
-        data: {
-          status: "RESOLVED",
-          resolutionType: typedResolution,
-          resolvedByUserId,
-          resolvedAt: now,
-          updatedAt: now,
-        },
-      }),
-      this.prisma.supportTicketResolution.create({
-        data: {
-          ticketId,
-          resolutionType: typedResolution,
-          createdByUserId: resolvedByUserId,
-          note: notes,
-        },
-      }),
-      this.prisma.supportTicketEvent.create({
-        data: {
-          ticketId,
-          performedByUserId: resolvedByUserId,
-          eventType: "RESOLVED",
-          toValue: resolutionType,
-          payloadJson: { note: notes },
-        },
-      }),
-    ]);
-
-    return serializeTicketSummary(updated as unknown as Record<string, unknown>);
+  /** All conversation/status writers lock the same ticket before reading mutable state. */
+  private async lockedTicket(tx: Prisma.TransactionClient, ticketId: string, locationId?: string) {
+    await tx.$queryRaw`SELECT id::text AS id FROM support_tickets WHERE id = ${ticketId}::uuid FOR UPDATE`;
+    const ticket = await tx.supportTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) throw new NotFoundException("Support ticket not found");
+    if (locationId) assertTicketLocationScope(ticket, locationId);
+    return ticket;
   }
 
   private async ticketForOrderLink(ticketId: string, locationId: string) {
@@ -579,7 +577,7 @@ export class SupportService {
       const order = await tx.order.findFirst({ where: { id: orderId, locationId, customerUserId: ticket.customerUserId },
         select: orderContextSelect });
       if (!order) throw new ForbiddenException("Choose an order belonging to this customer and restaurant");
-      const existing = await findCustomerOrderTicket(tx, orderId, ticket.customerUserId!);
+      const existing = ticket.createdSource === "SYSTEM_OVERDUE_DELIVERY" ? null : await findCustomerOrderTicket(tx, orderId, ticket.customerUserId!);
       if (existing) {
         throw new ConflictException({
           code: SUPPORT_TICKET_EXISTS,

@@ -181,6 +181,7 @@ export default function ProfileTabRoute() {
 }
 
 function ProfileScreen() {
+  const router = useRouter();
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const focused = useIsFocused();
   const params = useLocalSearchParams<{ section?: string | string[]; entry?: string | string[] }>();
@@ -386,6 +387,13 @@ function ProfileScreen() {
       setTicketFormOpen(false);
     } catch (error) {
       setTicketError(error instanceof Error ? error.message : 'Unable to create ticket');
+      const existing = (error as { body?: { errors?: Array<{ code?: string; detail?: { ticket_id?: string } }> } }).body?.errors?.[0];
+      if (existing?.code === 'SUPPORT_TICKET_EXISTS' && existing.detail?.ticket_id) {
+        const ticketId = existing.detail.ticket_id;
+        Alert.alert('Existing support ticket', 'Continue in your existing ticket. You can reopen it if it has been resolved or closed.', [
+          { text: 'Cancel', style: 'cancel' }, { text: 'View ticket', onPress: () => router.push(`/support/${ticketId}`) },
+        ]);
+      }
     } finally {
       setTicketBusy(false);
     }
@@ -1473,8 +1481,9 @@ function OrderRow({ order }: { order: OrderSummary }) {
 }
 
 function TicketRow({ ticket }: { ticket: SupportTicketSummary }) {
+  const router = useRouter();
   return (
-    <View style={styles.ticketRow}>
+    <TouchableOpacity accessibilityRole="button" accessibilityLabel={`View support ticket: ${ticket.subject}`} onPress={() => router.push(`/support/${ticket.id}`)} style={styles.ticketRow}>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{ticket.subject}</Text>
         <Text style={styles.rowMeta}>
@@ -1484,7 +1493,7 @@ function TicketRow({ ticket }: { ticket: SupportTicketSummary }) {
           <Text style={styles.previewText} numberOfLines={2}>{ticket.latest_public_message.message_body}</Text>
         ) : null}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

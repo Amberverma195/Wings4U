@@ -188,7 +188,7 @@ function useAccountDataState() {
       const res = await authedFetch(path, init);
       const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
       if (!res.ok || !body || body.data == null) {
-        throw new Error(getApiErrorMessage(body, res.statusText || "Request failed"));
+        throw Object.assign(new Error(getApiErrorMessage(body, res.statusText || "Request failed")), { body, status: res.status });
       }
       return body.data as T;
     },

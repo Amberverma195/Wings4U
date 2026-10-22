@@ -15,7 +15,7 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [existingTicket, setExistingTicket] = useState(false);
+  const [existingTicket, setExistingTicket] = useState<string | null>(null);
   const locked = useRef(false);
   const submitted = useRef(false);
   const scope = useOrderFeedbackRequest(order);
@@ -37,7 +37,10 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
       setStep('success');
     } catch (cause) {
       if (!attempt.current()) return;
-      if (isExistingTicketConflict(cause)) setExistingTicket(true);
+      if (isExistingTicketConflict(cause)) {
+        const detail = (cause as { body?: { errors?: Array<{ detail?: { ticket_id?: string } }> } }).body?.errors?.[0]?.detail;
+        setExistingTicket(detail?.ticket_id ?? 'existing');
+      }
       setError(cause instanceof Error ? cause.message : 'Unable to submit your ticket. Please try again.');
     } finally {
       if (attempt.current()) { locked.current = false; setBusy(false); }
@@ -87,10 +90,10 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
         <FeedbackError message={error} />
         {existingTicket ? <FeedbackButton label="View my support tickets" secondary onPress={() => {
           onClose();
-          router.push(`/profile?section=support&entry=${Date.now()}`);
+          router.push(existingTicket && existingTicket !== 'existing' ? `/support/${existingTicket}` : `/profile?section=support&entry=${Date.now()}`);
         }} /> : null}
         <View style={s.actions}>{items.length > 1 ? <FeedbackButton label="Back" secondary disabled={busy} onPress={() => setStep('items')} /> : null}
-          <FeedbackButton label="Submit ticket" disabled={(items.length > 0 && !selected.length) || !description.trim() || existingTicket} busy={busy} onPress={submit} />
+          <FeedbackButton label="Submit ticket" disabled={(items.length > 0 && !selected.length) || !description.trim() || Boolean(existingTicket)} busy={busy} onPress={submit} />
           <FeedbackButton label="Cancel" secondary disabled={busy} onPress={onClose} /></View>
       </>}
     </>}

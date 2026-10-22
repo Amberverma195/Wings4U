@@ -1,5 +1,7 @@
 "use client";
 
+import { menuImageFileError, menuImageUploadError } from "@/lib/menu-image-upload";
+
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { requestCatalogRevalidation } from "@/lib/catalog/revalidate-catalog";
@@ -547,6 +549,8 @@ function BuilderCategoryImageModal({
   const handleFilePick = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const fileError = menuImageFileError(file);
+    if (fileError) { setError(fileError); event.target.value = ""; return; }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setImageFile(file);
     setPreviewUrl(URL.createObjectURL(file));
@@ -587,7 +591,7 @@ function BuilderCategoryImageModal({
           `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,
           { method: "POST", body: formData },
         );
-        if (!res.ok) throw new Error(await readErrorMessage(res));
+        if (!res.ok) throw new Error(await menuImageUploadError(res));
       } else if (removePending) {
         const res = await adminApiFetch(
           `${ADMIN_MENU_API_BASE}/categories/${category.id}/builder-image`,

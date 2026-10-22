@@ -129,6 +129,7 @@ class PasswordResetConfirmDto {
 class RefreshDto {
   @IsOptional()
   @IsString()
+  @MaxLength(512)
   refresh_token?: string;
 }
 
@@ -737,7 +738,10 @@ export class AuthController {
     );
 
     try {
-      const result = await this.authService.refresh(refreshToken);
+      const result = await this.authService.refresh(refreshToken, async sessionId => {
+        await this.rateLimiter.enforce(`rl:auth:refresh:session:${rateLimitKeyPart(sessionId)}`,
+          RATE_LIMITS.refreshToken, REFRESH_LIMIT_MESSAGE);
+      });
       setAuthCookies(
         res,
         result.accessToken,
