@@ -49,6 +49,14 @@ export class ApiExceptionFilter implements ExceptionFilter {
       const explicitCode =
         typeof payload["code"] === "string" ? payload["code"] : undefined;
       const field = payload["field"] as string | undefined;
+      const retryAfter = payload["retry_after_seconds"];
+      const retryAfterSeconds =
+        typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.ceil(retryAfter)
+          : undefined;
+      if (status === HttpStatus.TOO_MANY_REQUESTS && retryAfterSeconds && !response.getHeader("Retry-After")) {
+        response.setHeader("Retry-After", String(retryAfterSeconds));
+      }
       const errors = Array.isArray(message)
         ? message.map((m) => ({
             code: explicitCode ?? mapStatusToCode(status),
@@ -59,7 +67,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
               code: explicitCode ?? mapStatusToCode(status),
               message: typeof message === "string" ? message : "Request failed",
               ...(payload["detail"] && typeof payload["detail"] === "object" ? { detail: payload["detail"] } : {}),
-              ...(field ? { field } : {})
+              ...(field ? { field } : {}),
+              ...(retryAfterSeconds ? { retry_after_seconds: retryAfterSeconds } : {})
             }
           ];
       response.status(status).json({

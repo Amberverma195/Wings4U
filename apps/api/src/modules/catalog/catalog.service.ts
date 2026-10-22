@@ -380,10 +380,23 @@ function buildSyntheticCard(params: {
 
 @Injectable()
 export class CatalogService {
+  // Concurrent cache misses for the same key share one database build.
+  private readonly inFlightBuilds = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly catalogCache: CatalogCacheService,
   ) {}
+
+  private singleFlight<T>(key: string, build: () => Promise<T>): Promise<T> {
+    const existing = this.inFlightBuilds.get(key);
+    if (existing) return existing as Promise<T>;
+    const pending = build().finally(() => {
+      if (this.inFlightBuilds.get(key) === pending) this.inFlightBuilds.delete(key);
+    });
+    this.inFlightBuilds.set(key, pending);
+    return pending;
+  }
 
   async getMenu(
     locationId: string,
@@ -399,11 +412,11 @@ export class CatalogService {
     });
     const baseMenu =
       cached.value ??
-      (await this.buildMenuBase(locationId, fulfillmentType, scheduleReference));
-
-    if (!cached.value) {
-      await this.catalogCache.setMenuBase(cached.key, baseMenu);
-    }
+      (await this.singleFlight(cached.key, async () => {
+        const built = await this.buildMenuBase(locationId, fulfillmentType, scheduleReference);
+        await this.catalogCache.setMenuBase(cached.key, built);
+        return built;
+      }));
 
     return this.withCustomerDeliveryEligibility(
       baseMenu,
@@ -604,7 +617,10 @@ export class CatalogService {
   async getWingFlavours(locationId: string): Promise<WingFlavourDto[]> {
     const cached = await this.catalogCache.getWingFlavours(locationId);
     if (cached.value) return cached.value;
+    return this.singleFlight(cached.key, () => this.buildWingFlavours(locationId, cached.key));
+  }
 
+  private async buildWingFlavours(locationId: string, cacheKey: string): Promise<WingFlavourDto[]> {
     const flavours = await this.prisma.wingFlavour.findMany({
       where: { locationId, isActive: true, archivedAt: null },
       orderBy: [
@@ -624,7 +640,7 @@ export class CatalogService {
       is_plain: flavour.isPlain,
       sort_order: flavour.sortOrder,
     }));
-    await this.catalogCache.setWingFlavours(cached.key, serialized);
+    await this.catalogCache.setWingFlavours(cacheKey, serialized);
     return serialized;
   }
 }

@@ -20,6 +20,7 @@ import { KdsOperatingHoursService } from "../kds/kds-operating-hours.service";
 import { KdsPresenceService } from "../kds/kds-presence.service";
 import { KdsService } from "../kds/kds.service";
 import { PosAuthService } from "../pos/pos-auth.service";
+import { RateLimiterService } from "../rate-limit/rate-limit.service";
 import { RealtimeGateway } from "./realtime.gateway";
 
 const SECRET = "realtime-socket-spec-secret";
@@ -138,6 +139,7 @@ function createFixtures() {
     },
     locationSettings: {
       findUnique: jest.fn(async () => ({ trustedIpRanges })),
+      findMany: jest.fn(async () => [{ trustedIpRanges }]),
     },
     order: {
       findUnique: jest.fn(async ({ where }: { where: { id: string } }) => {
@@ -211,6 +213,16 @@ describe("RealtimeGateway over a real Socket.IO server", () => {
         },
         { provide: PosAuthService, useValue: new PosAuthService(prisma) },
         { provide: KdsOperatingHoursService, useValue: operatingHours },
+        {
+          provide: RateLimiterService,
+          useValue: {
+            check: jest.fn().mockResolvedValue({ allowed: true, remaining: 10, resetAtMs: Date.now() + 60_000 }),
+            peek: jest.fn().mockResolvedValue({ allowed: true, remaining: 10, resetAtMs: Date.now() + 60_000 }),
+            acquireSlot: jest.fn().mockResolvedValue(true),
+            releaseSlot: jest.fn().mockResolvedValue(undefined),
+            refreshSlots: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

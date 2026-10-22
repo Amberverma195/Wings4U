@@ -7,6 +7,8 @@ import {
 } from "@nestjs/common";
 import type { Prisma, TicketResolutionType, TicketStatus } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
+import { RateLimiterService, rateLimitKeyPart } from "../rate-limit/rate-limit.service";
 import { adminContextSelect, type AdminTicketContext, actorSelect, eventSelect, messageSelect, resolutionSelect,
   ticketSelect, orderContextSelect, serializeActor, serializeAdminContext, serializeOrderContext, serializeCreator } from "./support.selects";
 
@@ -78,9 +80,44 @@ function assertTicketLocationScope(
   }
 }
 
+type SupportDb = PrismaService | Prisma.TransactionClient;
+
+export const SUPPORT_TICKET_EXISTS = "SUPPORT_TICKET_EXISTS";
+const MESSAGE_LIMIT_MESSAGE = "You're sending messages too quickly.";
+
+/** Oldest first, so historical duplicates resolve to the original ticket. */
+function findCustomerOrderTicket(db: SupportDb, orderId: string, customerUserId: string) {
+  return db.supportTicket.findFirst({
+    where: { orderId, customerUserId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, status: true, createdAt: true },
+  });
+}
+
+/**
+ * Serializes every writer that can attach a ticket to this order (customer
+ * creation and admin linking) without a schema change: both take this row
+ * lock before checking for an existing ticket, and hold it until commit.
+ */
+async function lockOrderForTicket(tx: Prisma.TransactionClient, orderId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id::text AS id FROM orders WHERE id = ${orderId}::uuid FOR UPDATE`;
+}
+
+function existingCustomerTicketError(existing: { id: string; status: string; createdAt: Date }) {
+  return new ConflictException({
+    code: SUPPORT_TICKET_EXISTS,
+    message:
+      "You already have a support ticket for this order. Please add any new details to your existing ticket.",
+    detail: { ticket_id: existing.id, status: existing.status, created_at: existing.createdAt },
+  });
+}
+
 @Injectable()
 export class SupportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateLimiter: RateLimiterService,
+  ) {}
 
   async createTicket(params: {
     locationId: string;
@@ -92,6 +129,11 @@ export class SupportService {
     orderId?: string;
     priority?: string;
     createdByUserId?: string | null;
+    /**
+     * Only the automated overdue-delivery alert sets this: it is a staff
+     * signal with its own per-order dedupe, not a customer conversation.
+     */
+    allowAdditionalOrderTicket?: boolean;
   }) {
     const priority = params.priority ?? "NORMAL";
 
@@ -113,7 +155,28 @@ export class SupportService {
       }
     }
 
+    const singleTicketOrder =
+      params.orderId && params.customerUserId && !params.allowAdditionalOrderTicket
+        ? { orderId: params.orderId, customerUserId: params.customerUserId }
+        : null;
+    // Cheap pre-check so a duplicate attempt is answered without spending the
+    // customer's creation budget; the locked re-check below is authoritative.
+    if (singleTicketOrder) {
+      const existing = await findCustomerOrderTicket(
+        this.prisma, singleTicketOrder.orderId, singleTicketOrder.customerUserId);
+      if (existing) throw existingCustomerTicketError(existing);
+    }
+    if (params.createdSource === "CUSTOMER_APP" && params.customerUserId) {
+      await this.enforceCustomerTicketLimit(params.customerUserId, Boolean(params.orderId));
+    }
+
     const ticket = await this.prisma.$transaction(async (tx) => {
+      if (singleTicketOrder) {
+        await lockOrderForTicket(tx, singleTicketOrder.orderId);
+        const existing = await findCustomerOrderTicket(
+          tx, singleTicketOrder.orderId, singleTicketOrder.customerUserId);
+        if (existing) throw existingCustomerTicketError(existing);
+      }
       const created = await tx.supportTicket.create({
         data: {
           locationId: params.locationId,
@@ -143,6 +206,23 @@ export class SupportService {
     });
 
     return serializeTicketSummary(ticket as unknown as Record<string, unknown>);
+  }
+
+  private async enforceCustomerTicketLimit(customerUserId: string, orderLinked: boolean): Promise<void> {
+    const user = rateLimitKeyPart(`user:${customerUserId}`);
+    if (orderLinked) {
+      await this.rateLimiter.enforce(
+        `rl:support:ticket:order:${user}`,
+        RATE_LIMITS.supportOrderTicketCustomer,
+        "You've opened several order support tickets recently.",
+      );
+      return;
+    }
+    await this.rateLimiter.enforce(
+      `rl:support:ticket:general:${user}`,
+      RATE_LIMITS.supportGeneralTicketCustomer,
+      "You've reached the daily limit for new general support tickets. You can still reply in your existing tickets.",
+    );
   }
 
   async getTicket(
@@ -307,6 +387,13 @@ export class SupportService {
     if (isInternalNote && senderRole !== "ADMIN" && senderRole !== "STAFF") {
       throw new ForbiddenException("Only staff can add internal notes");
     }
+    const isCustomer = senderRole === "CUSTOMER";
+    const sender = rateLimitKeyPart(`user:${senderUserId}`);
+    await this.rateLimiter.enforce(
+      `rl:support:message:${isCustomer ? "customer" : "staff"}:hourly:${sender}`,
+      isCustomer ? RATE_LIMITS.supportMessageCustomerHourly : RATE_LIMITS.supportMessageStaffHourly,
+      MESSAGE_LIMIT_MESSAGE,
+    );
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
@@ -325,6 +412,12 @@ export class SupportService {
     ) {
       throw new ForbiddenException("You do not have access to this ticket");
     }
+
+    await this.rateLimiter.enforce(
+      `rl:support:message:${isCustomer ? "customer" : "staff"}:ticket:${rateLimitKeyPart(`${senderUserId}:${ticketId}`)}`,
+      isCustomer ? RATE_LIMITS.supportMessageCustomerTicket : RATE_LIMITS.supportMessageStaffTicket,
+      MESSAGE_LIMIT_MESSAGE,
+    );
 
     const [message] = await this.prisma.$transaction([
       this.prisma.supportTicketMessage.create({
@@ -482,9 +575,18 @@ export class SupportService {
   async linkOrder(ticketId: string, orderId: string, actorUserId: string, locationId: string) {
     const ticket = await this.ticketForOrderLink(ticketId, locationId);
     return this.prisma.$transaction(async tx => {
+      await lockOrderForTicket(tx, orderId);
       const order = await tx.order.findFirst({ where: { id: orderId, locationId, customerUserId: ticket.customerUserId },
         select: orderContextSelect });
       if (!order) throw new ForbiddenException("Choose an order belonging to this customer and restaurant");
+      const existing = await findCustomerOrderTicket(tx, orderId, ticket.customerUserId!);
+      if (existing) {
+        throw new ConflictException({
+          code: SUPPORT_TICKET_EXISTS,
+          message: "This customer already has a support ticket for this order. Continue in that ticket instead.",
+          detail: { ticket_id: existing.id, status: existing.status },
+        });
+      }
       // Conditional write prevents two admins from overwriting an association concurrently.
       const updated = await tx.supportTicket.updateMany({
         where: { id: ticketId, locationId, customerUserId: ticket.customerUserId, orderId: null },

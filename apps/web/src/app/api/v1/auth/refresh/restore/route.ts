@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPublicApiBase } from "@/lib/env";
+import { buildSignedClientIpHeaders } from "@/lib/server-station-gate-headers";
 
 const ADMIN_ROOT = "/admin";
 const REFRESH_PATH = "/api/v1/auth/refresh";
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         accept: "application/json",
         cookie: cookieHeader,
         ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+        ...buildSignedClientIpHeaders(request.headers),
       },
       cache: "no-store",
       credentials: "include",
@@ -90,6 +92,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       { error: "Session restoration is temporarily unavailable." },
       { status: 503, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  if (upstream.status === 429) {
+    const retryAfter = upstream.headers.get("retry-after");
+    return NextResponse.json(
+      { error: "Too many session refresh attempts. Please wait a moment and reload." },
+      {
+        status: 429,
+        headers: { "cache-control": "no-store", ...(retryAfter ? { "retry-after": retryAfter } : {}) },
+      },
     );
   }
 

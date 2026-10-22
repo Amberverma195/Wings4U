@@ -78,6 +78,7 @@ describe("CheckoutService idempotent replay", () => {
       {} as never,
       {} as never,
       verifier as never,
+      { enforce: jest.fn() } as never,
     );
 
     await expect(service.placeOrder(params)).resolves.toMatchObject({
@@ -121,6 +122,7 @@ describe("CheckoutService idempotent replay", () => {
       {} as never,
       {} as never,
       { verifyForDelivery: jest.fn() } as never,
+      { enforce: jest.fn() } as never,
     );
 
     await expect(service.placeOrder(reused)).rejects.toBeInstanceOf(
@@ -140,6 +142,7 @@ describe("CheckoutService idempotent replay", () => {
       {} as never,
       {} as never,
       {} as never,
+      { enforce: jest.fn() } as never,
     );
 
     await expect(
@@ -191,6 +194,7 @@ describe("CheckoutService idempotent replay", () => {
       {} as never,
       {} as never,
       { verifyForDelivery: jest.fn() } as never,
+      { enforce: jest.fn() } as never,
     );
 
     await expect(service.placeOrder(params)).rejects.toBeInstanceOf(

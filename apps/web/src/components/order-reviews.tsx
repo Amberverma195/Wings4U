@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiFetch } from "@/lib/api";
 import { useSession, withSilentRefresh } from "@/lib/session";
@@ -69,23 +69,30 @@ function ReviewForm({
   orderItemId,
   locationId,
   onSubmitted,
+  onAlreadyReviewed,
 }: {
   orderId: string;
   orderItemId: string;
   locationId: string;
   onSubmitted: (r: ReviewRecord) => void;
+  /** A duplicate submit (another tab or a double tap) shows the saved review instead. */
+  onAlreadyReviewed: () => void;
 }) {
   const session = useSession();
   const [rating, setRating] = useState(0);
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Blocks a second click that lands before the disabled state renders.
+  const inFlight = useRef(false);
 
   const submit = useCallback(async () => {
     if (rating < 1) {
       setError("Please select a rating.");
       return;
     }
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -107,6 +114,9 @@ function ReviewForm({
         session.clear,
       );
       const payload = await res.json();
+      if (res.status === 409) {
+        onAlreadyReviewed();
+      }
       if (!res.ok) {
         throw new Error(
           payload?.errors?.[0]?.message ?? `Review failed (${res.status})`,
@@ -116,9 +126,10 @@ function ReviewForm({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not submit review");
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
-  }, [orderId, orderItemId, locationId, rating, body, session, onSubmitted]);
+  }, [orderId, orderItemId, locationId, rating, body, session, onSubmitted, onAlreadyReviewed]);
 
   return (
     <div style={{ marginTop: "0.5rem" }}>
@@ -299,6 +310,7 @@ export function OrderReviews({
                 onSubmitted={(r) =>
                   setReviews((prev) => ({ ...prev, [item.id]: r }))
                 }
+                onAlreadyReviewed={() => void fetchReviews()}
               />
             )}
           </div>

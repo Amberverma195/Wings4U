@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { getCachedMenu } from "@/lib/catalog/server-catalog";
-import { DEFAULT_LOCATION_ID } from "@/lib/env";
+import {
+  normalizeCatalogScheduledFor,
+  parseCatalogLocationId,
+} from "@/lib/catalog/catalog-route-params";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const locationId = searchParams.get("location_id")?.trim() || DEFAULT_LOCATION_ID;
+  const locationId = parseCatalogLocationId(searchParams.get("location_id"));
   const fulfillmentType = searchParams.get("fulfillment_type");
-  const scheduledFor = searchParams.get("scheduled_for")?.trim() || undefined;
+  const scheduledFor = normalizeCatalogScheduledFor(searchParams.get("scheduled_for"));
+
+  if (!locationId) {
+    return NextResponse.json({ error: "location_id is invalid" }, { status: 400 });
+  }
 
   if (fulfillmentType !== "PICKUP" && fulfillmentType !== "DELIVERY") {
     return NextResponse.json(
@@ -15,7 +22,14 @@ export async function GET(request: Request) {
     );
   }
 
-  const menu = await getCachedMenu(locationId, fulfillmentType, scheduledFor);
+  if (!scheduledFor.ok) {
+    return NextResponse.json(
+      { error: "scheduled_for must be a valid date" },
+      { status: 400 },
+    );
+  }
+
+  const menu = await getCachedMenu(locationId, fulfillmentType, scheduledFor.value);
 
   if (!menu) {
     return NextResponse.json({ error: "Failed to load menu" }, { status: 502 });

@@ -16,7 +16,7 @@ jest.mock('expo-router', () => ({ useIsFocused: () => mockFocused, useRouter: ()
 jest.mock('../src/context/session', () => ({ useSession: () => mockSession, withSilentRefresh: jest.fn(async call => call()) }));
 jest.mock('../src/lib/token-store', () => ({ getSessionGeneration: () => mockGeneration }));
 jest.mock('../src/lib/api', () => ({ apiFetch: jest.fn(), getApiErrorMessage: (body, fallback) => body?.errors?.[0]?.message ?? fallback,
-  ApiRequestError: class extends Error { constructor(message, body, status) { super(message); this.status = status; } } }));
+  ApiRequestError: class extends Error { constructor(message, body, status) { super(message); this.body = body; this.status = status; } } }));
 jest.mock('../src/hooks/use-order-detail', () => ({ useOrderDetail: () => ({ order: mockOrder, refetch: mockRefetch, loading: mockOrderLoading, error: mockOrderError }) }));
 const mockRefetch = jest.fn();
 const mockChatRefetch = jest.fn();
@@ -162,6 +162,14 @@ test.each(ORDER_ISSUES)('$value submits website-compatible selected snapshots an
   expect(body.description).toContain('- Wings - $17.99 (Combos / Flavours: Buffalo / Options: Fries) [order_item_id: line-a]');
   expect(body.description).not.toContain('line-b'); expect(body.order_id).toBe('order'); expect(texts()).toContain('Ticket submitted');
   expect(withSilentRefresh).toHaveBeenCalledWith(expect.any(Function), mockSession.refresh, mockSession.clear);
+});
+test('a duplicate order ticket points at the customer tickets and cannot be submitted again', async () => {
+  apiFetch.mockResolvedValue({ ok: false, status: 409, json: async () => ({ errors: [{ code: 'SUPPORT_TICKET_EXISTS', message: 'You already have a support ticket for this order.' }] }) });
+  await mount(); await details(); await enterDescription('Cold again'); await tap('Submit ticket');
+  expect(texts()).toContain('You already have a support ticket for this order.');
+  expect(byLabel('View my support tickets')).toBeTruthy();
+  expect(byLabel('Submit ticket').props.disabled).toBe(true);
+  await tap('Submit ticket'); expect(apiFetch).toHaveBeenCalledTimes(1);
 });
 test('support request failure preserves inputs and rapid duplicate submissions are locked', async () => {
   const pending = deferred(); apiFetch.mockReturnValue(pending.promise); await mount(); await details(); await enterDescription('Missing fries');

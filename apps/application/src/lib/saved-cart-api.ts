@@ -1,5 +1,6 @@
 import type { ApiEnvelope } from "@wings4u/contracts";
-import { apiFetch } from "./api";
+import { apiFetch, getRetryAfterSeconds } from "./api";
+import { getSessionGeneration } from "./token-store";
 import type { CartItem, FulfillmentType } from "./types";
 
 export type DriverTipPercent = "none" | 10 | 15 | 20;
@@ -66,16 +67,64 @@ export async function fetchSavedCart(
   }
 }
 
+type SavedCartWrite = {
+  items: CartItem[];
+  fulfillmentType: FulfillmentType;
+  locationTimezone: string;
+  scheduledFor: string | null;
+  driverTipPercent: DriverTipPercent;
+};
+
+/**
+ * After a 429 the full-replace autosave is held until Retry-After, and only
+ * the newest snapshot is sent then: one request per throttle window instead
+ * of a retry per edit, without losing the customer's latest cart.
+ */
+let writesBlockedUntil = 0;
+let deferredWrite: {
+  locationId: string;
+  state: SavedCartWrite;
+  generation: number;
+  resolve: (snapshot: SavedCartSnapshot | null) => void;
+} | null = null;
+let deferredTimer: ReturnType<typeof setTimeout> | null = null;
+
+function deferSavedCartWrite(
+  locationId: string,
+  state: SavedCartWrite,
+): Promise<SavedCartSnapshot | null> {
+  deferredWrite?.resolve(null);
+  return new Promise((resolve) => {
+    deferredWrite = { locationId, state, generation: getSessionGeneration(), resolve };
+    if (deferredTimer) return;
+    deferredTimer = setTimeout(() => {
+      deferredTimer = null;
+      const next = deferredWrite;
+      deferredWrite = null;
+      if (!next) return;
+      // A cart from before a sign-in/out must not be written to the new owner.
+      if (next.generation !== getSessionGeneration()) {
+        next.resolve(null);
+        return;
+      }
+      void putSavedCart(next.locationId, next.state).then(next.resolve);
+    }, Math.max(0, writesBlockedUntil - Date.now()));
+  });
+}
+
+export function cancelDeferredSavedCartWrite(): void {
+  if (deferredTimer) clearTimeout(deferredTimer);
+  deferredTimer = null;
+  deferredWrite?.resolve(null);
+  deferredWrite = null;
+}
+
 export async function putSavedCart(
   locationId: string,
-  state: {
-    items: CartItem[];
-    fulfillmentType: FulfillmentType;
-    locationTimezone: string;
-    scheduledFor: string | null;
-    driverTipPercent: DriverTipPercent;
-  },
+  state: SavedCartWrite,
 ): Promise<SavedCartSnapshot | null> {
+  const generation = getSessionGeneration();
+  if (Date.now() < writesBlockedUntil) return deferSavedCartWrite(locationId, state);
   try {
     const res = await apiFetch("/api/v1/cart/me", {
       method: "PUT",
@@ -89,6 +138,13 @@ export async function putSavedCart(
         driver_tip_percent: driverTipToApi(state.driverTipPercent),
       }),
     });
+    // The cart belongs to whoever was signed in when the save started.
+    if (generation !== getSessionGeneration()) return null;
+    if (res.status === 429) {
+      const body = await res.json().catch(() => null);
+      writesBlockedUntil = Date.now() + (getRetryAfterSeconds(res, body) ?? 30) * 1000;
+      return deferSavedCartWrite(locationId, state);
+    }
     if (!res.ok) return null;
     const envelope = (await res.json()) as ApiEnvelope<SavedCartSnapshot>;
     return envelope.data ?? null;
@@ -98,6 +154,7 @@ export async function putSavedCart(
 }
 
 export async function deleteSavedCart(locationId: string): Promise<void> {
+  cancelDeferredSavedCartWrite();
   try {
     await apiFetch("/api/v1/cart/me", { method: "DELETE", locationId });
   } catch {

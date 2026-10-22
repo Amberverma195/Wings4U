@@ -74,6 +74,11 @@ import {
   normalizeDeliveryAddress,
 } from "../delivery-pricing/delivery-address";
 import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
+import { RATE_LIMITS, type RateLimitPolicy } from "../rate-limit/rate-limit.policies";
+import {
+  RateLimiterService,
+  rateLimitKeyPart,
+} from "../rate-limit/rate-limit.service";
 import {
   DELIVERY_BASE_FEE_CENTS,
   DELIVERY_INCLUDED_DISTANCE_METRES,
@@ -345,7 +350,43 @@ export class CheckoutService {
     private readonly promotionsService: PromotionsService,
     private readonly stripePaymentsService: StripePaymentsService,
     private readonly deliveryQuoteVerifier: DeliveryQuoteVerifierService,
+    private readonly rateLimiter: RateLimiterService,
   ) {}
+
+  /**
+   * Counts committed online orders, so idempotent replays, failed validation
+   * and rolled-back attempts never consume the allowance and new idempotency
+   * keys cannot bypass it. Callers must hold the per-customer advisory lock.
+   */
+  private async assertCustomerOrderAllowance(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<void> {
+    const now = Date.now();
+    for (const policy of [
+      RATE_LIMITS.checkoutOrdersCustomer,
+      RATE_LIMITS.checkoutOrdersCustomerDaily,
+    ] satisfies RateLimitPolicy[]) {
+      const recent = await tx.order.findMany({
+        where: {
+          customerUserId: userId,
+          orderSource: "ONLINE",
+          placedAt: { gte: new Date(now - policy.windowMs) },
+        },
+        orderBy: { placedAt: "desc" },
+        take: policy.limit,
+        select: { placedAt: true },
+      });
+      if (recent.length >= policy.limit) {
+        const freesAt = recent[policy.limit - 1]!.placedAt.getTime() + policy.windowMs;
+        throw this.rateLimiter.exceeded(
+          policy,
+          { resetAtMs: freesAt },
+          "You've placed several orders recently, so new online orders are paused for a short time. Call the restaurant if you need to order sooner.",
+        );
+      }
+    }
+  }
 
   async placeOrder(params: PlaceOrderParams) {
     const collection = resolveCollectionPreference(
@@ -415,6 +456,13 @@ export class CheckoutService {
       }
     }
 
+    // After the replay paths above, so retrying an existing key is free.
+    await this.rateLimiter.enforce(
+      `rl:checkout:attempt:${rateLimitKeyPart(`user:${params.userId}`)}`,
+      RATE_LIMITS.checkoutAttemptCustomer,
+      "Too many checkout attempts.",
+    );
+
     const deliveryAddress =
       params.fulfillmentType === "DELIVERY"
         ? requireDeliveryAddress(params.addressSnapshotJson)
@@ -469,6 +517,11 @@ export class CheckoutService {
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });
+
+      // Serializes this customer's concurrent checkouts until commit so
+      // parallel requests cannot each see an allowance that only one may use.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`checkout-orders:${params.userId}`}, 0))`;
+      await this.assertCustomerOrderAllowance(tx, params.userId);
 
       const user = await tx.user.findUnique({
         where: { id: params.userId },

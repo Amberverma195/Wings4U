@@ -4,9 +4,11 @@ import {
   Fragment,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { cents } from "@/lib/format";
 import { useSession, withSilentRefresh } from "@/lib/session";
@@ -227,7 +229,10 @@ export function SupportTicketForm({
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingTicketId, setExistingTicketId] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // Blocks a second click that lands before the disabled state renders.
+  const inFlight = useRef(false);
 
   const selectedItems = useMemo(
     () => items.filter((item) => selectedItemIds.includes(item.id)),
@@ -247,7 +252,9 @@ export function SupportTicketForm({
   }, []);
 
   const submit = useCallback(async () => {
-    if (!description.trim() || !hasRequiredItemSelection) return;
+    if (!description.trim() || !hasRequiredItemSelection || existingTicketId) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -278,13 +285,21 @@ export function SupportTicketForm({
         session.clear,
       );
       if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body?.errors?.[0]?.message ?? `Failed (${res.status})`);
+        const body = await res.json().catch(() => null);
+        const first = body?.errors?.[0];
+        // The API only returns the requesting customer's own ticket here.
+        if (first?.code === "SUPPORT_TICKET_EXISTS" && typeof first.detail?.ticket_id === "string") {
+          setExistingTicketId(first.detail.ticket_id);
+          setError(first.message ?? "You already have a support ticket for this order.");
+          return;
+        }
+        throw new Error(first?.message ?? `Failed (${res.status})`);
       }
       setSuccess(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create ticket");
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   }, [
@@ -296,6 +311,7 @@ export function SupportTicketForm({
     selectedItems,
     description,
     hasRequiredItemSelection,
+    existingTicketId,
     session,
   ]);
 
@@ -520,6 +536,14 @@ export function SupportTicketForm({
       {error && (
         <p className="surface-error" style={{ marginBottom: "0.75rem" }}>
           {error}
+          {existingTicketId ? (
+            <>
+              {" "}
+              <Link href={`/account/support/${existingTicketId}`} style={{ fontWeight: 800 }}>
+                View your existing ticket
+              </Link>
+            </>
+          ) : null}
         </p>
       )}
 
@@ -538,11 +562,11 @@ export function SupportTicketForm({
           type="button"
           style={{
             ...supportFormStyles.primaryButton,
-            ...(submitting || !description.trim() || !hasRequiredItemSelection
+            ...(submitting || !description.trim() || !hasRequiredItemSelection || existingTicketId
               ? supportFormStyles.primaryButtonDisabled
               : null),
           }}
-          disabled={submitting || !description.trim() || !hasRequiredItemSelection}
+          disabled={submitting || !description.trim() || !hasRequiredItemSelection || Boolean(existingTicketId)}
           onClick={() => void submit()}
         >
           {submitting ? "Submitting..." : "Submit ticket"}

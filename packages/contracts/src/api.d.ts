@@ -4,6 +4,8 @@ export type ApiErrorBody = {
     message: string;
     field?: string;
     detail?: Record<string, unknown>;
+    /** Present on RATE_LIMITED errors; mirrors the Retry-After header. */
+    retry_after_seconds?: number;
 };
 export type ApiEnvelope<T> = {
     data: T | null;

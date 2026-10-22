@@ -22,7 +22,11 @@ import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
+import { RateLimiterService, rateLimitKeyPart } from "../rate-limit/rate-limit.service";
 import { ReviewsService } from "./reviews.service";
+
+const REVIEW_LIMIT_MESSAGE = "You're submitting reviews too quickly.";
 
 class CreateReviewDto {
   @IsInt()
@@ -65,7 +69,10 @@ class AdminListQueryDto {
 @Controller()
 @UseGuards(LocationScopeGuard)
 export class ReviewsController {
-  constructor(private readonly reviewsService: ReviewsService) {}
+  constructor(
+    private readonly reviewsService: ReviewsService,
+    private readonly rateLimiter: RateLimiterService,
+  ) {}
 
   @Post("orders/:orderId/order-items/:orderItemId/reviews")
   @Roles("CUSTOMER")
@@ -75,6 +82,17 @@ export class ReviewsController {
     @Body() body: CreateReviewDto,
     @CurrentUser() user: NonNullable<Request["user"]>,
   ) {
+    const customer = rateLimitKeyPart(`user:${user.userId}`);
+    await this.rateLimiter.enforce(
+      `rl:review:customer:${customer}`,
+      RATE_LIMITS.reviewCustomer,
+      REVIEW_LIMIT_MESSAGE,
+    );
+    await this.rateLimiter.enforce(
+      `rl:review:customer-hourly:${customer}`,
+      RATE_LIMITS.reviewCustomerHourly,
+      REVIEW_LIMIT_MESSAGE,
+    );
     return this.reviewsService.createReview({
       orderId,
       orderItemId,

@@ -3,18 +3,22 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from "@nestjs/websockets";
 import { Injectable, Logger, OnApplicationShutdown } from "@nestjs/common";
 import type { Request } from "express";
+import type { IncomingMessage } from "node:http";
 import { Server, Socket } from "socket.io";
 import { SessionValidator } from "../../common/session/session-validator.service";
 import { isAllowedCorsOrigin } from "../../common/utils/cors-origins";
 import { resolveLocationRef } from "../../common/utils/location-ref";
 import { extractClientIp, isAllowedStoreIp } from "../../common/utils/store-ip";
 import { PrismaService } from "../../database/prisma.service";
+import { RATE_LIMITS, type RateLimitPolicy } from "../rate-limit/rate-limit.policies";
+import { RateLimiterService, rateLimitKeyPart } from "../rate-limit/rate-limit.service";
 import {
   KDS_STATION_COOKIE_NAME,
   KdsAuthService,
@@ -66,6 +70,14 @@ const TERMINAL_ORDER_STATUSES = new Set([
 function kdsControlChannel(locationId: string): string {
   return `kds-control:${locationId}`;
 }
+
+const STORE_RANGES_CACHE_MS = 60_000;
+const SUBSCRIPTION_LIMITED_ERROR = "Too many subscription requests";
+
+type AllowRequest = (
+  req: IncomingMessage,
+  callback: (err: string | null | undefined, success: boolean) => void,
+) => void;
 
 interface SocketUser {
   userId: string;
@@ -121,9 +133,12 @@ function isTerminalOrderEvent(
   },
 })
 export class RealtimeGateway
-  implements OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
 {
   private readonly logger = new Logger(RealtimeGateway.name);
+  private storeRanges: { ranges: unknown[]; loadedAt: number } | null = null;
+  private storeRangesLoading: Promise<unknown[]> | null = null;
+  private slotHeartbeat: ReturnType<typeof setInterval> | null = null;
   private readonly sessionSockets = new Map<string, Set<string>>();
   private readonly kdsSocketsByLocation = new Map<string, Set<string>>();
   private readonly kdsClosingTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -142,10 +157,132 @@ export class RealtimeGateway
     private readonly kdsPresence: KdsPresenceService,
     private readonly posAuthService: PosAuthService,
     private readonly operatingHours: KdsOperatingHoursService,
+    private readonly rateLimiter: RateLimiterService,
   ) {}
 
   @WebSocketServer()
   server!: Server;
+
+  /* ------------------------------------------------------------------ */
+  /*  Abuse protection                                                   */
+  /* ------------------------------------------------------------------ */
+
+  afterInit(server: Server): void {
+    // Engine.IO runs allowRequest on the handshake HTTP request, before a
+    // Socket.IO session exists or any credential is validated. A rejection
+    // is a transport error, so clients keep their reconnect backoff.
+    const engine = (server as Server & { engine?: { opts?: { allowRequest?: AllowRequest } } }).engine;
+    if (engine?.opts) {
+      const previous = engine.opts.allowRequest;
+      engine.opts.allowRequest = (req, callback) => {
+        this.allowHandshake(req).then(
+          (allowed) => {
+            if (!allowed) return callback("Too many connection attempts", false);
+            if (previous) return previous(req, callback);
+            callback(null, true);
+          },
+          () => callback(null, true),
+        );
+      };
+    }
+
+    const leaseMs = RATE_LIMITS.realtimeCustomerConnections.windowMs;
+    this.slotHeartbeat = setInterval(() => void this.refreshCustomerSlots(), Math.max(1_000, leaseMs / 4));
+    this.slotHeartbeat.unref?.();
+  }
+
+  private requestClientIp(req: IncomingMessage): string {
+    return extractClientIp({
+      headers: req.headers as Request["headers"],
+      socket: req.socket as Request["socket"],
+    });
+  }
+
+  /** Loads every location's trusted ranges so in-store stations get the larger budgets. */
+  private async isStoreNetworkIp(ip: string): Promise<boolean> {
+    if (!ip) return false;
+    if (!this.storeRanges || Date.now() - this.storeRanges.loadedAt > STORE_RANGES_CACHE_MS) {
+      this.storeRangesLoading ??= (async () => {
+        try {
+          const rows = await this.prisma.locationSettings.findMany({ select: { trustedIpRanges: true } });
+          return rows.map((row) => row.trustedIpRanges as unknown);
+        } catch {
+          return this.storeRanges?.ranges ?? [];
+        }
+      })().finally(() => { this.storeRangesLoading = null; });
+      const ranges = await this.storeRangesLoading;
+      this.storeRanges = { ranges, loadedAt: Date.now() };
+    }
+    return this.storeRanges.ranges.some((ranges) => isAllowedStoreIp(ip, ranges));
+  }
+
+  private async ipBudget(ip: string): Promise<{
+    key: string;
+    handshake: RateLimitPolicy;
+    authFailure: RateLimitPolicy;
+  }> {
+    const store = await this.isStoreNetworkIp(ip);
+    return {
+      key: rateLimitKeyPart(`ip:${ip || "unknown"}`),
+      handshake: store ? RATE_LIMITS.realtimeHandshakeStoreIp : RATE_LIMITS.realtimeHandshakeIp,
+      authFailure: store ? RATE_LIMITS.realtimeAuthFailureStoreIp : RATE_LIMITS.realtimeAuthFailureIp,
+    };
+  }
+
+  private async allowHandshake(req: IncomingMessage): Promise<boolean> {
+    const budget = await this.ipBudget(this.requestClientIp(req));
+    const failures = await this.rateLimiter.peek(
+      `rl:ws:auth-failure:${budget.key}`,
+      budget.authFailure.limit,
+      budget.authFailure.windowMs,
+    );
+    if (!failures.allowed) return false;
+    const attempt = await this.rateLimiter.check(
+      `rl:ws:handshake:${budget.key}`,
+      budget.handshake.limit,
+      budget.handshake.windowMs,
+    );
+    return attempt.allowed;
+  }
+
+  private async recordAuthFailure(socket: Socket): Promise<void> {
+    const budget = await this.ipBudget(this.extractSocketClientIp(socket));
+    await this.rateLimiter.check(
+      `rl:ws:auth-failure:${budget.key}`,
+      budget.authFailure.limit,
+      budget.authFailure.windowMs,
+    );
+  }
+
+  private customerSlotKey(userId: string): string {
+    return `rl:ws:connections:${rateLimitKeyPart(`user:${userId}`)}`;
+  }
+
+  private async refreshCustomerSlots(): Promise<void> {
+    const leases: Array<{ key: string; member: string }> = [];
+    for (const socket of this.server?.sockets?.sockets?.values() ?? []) {
+      const key = socket.data.connectionSlotKey;
+      if (typeof key === "string") leases.push({ key, member: socket.id });
+    }
+    await this.rateLimiter
+      .refreshSlots(leases, RATE_LIMITS.realtimeCustomerConnections.windowMs)
+      .catch(() => undefined);
+  }
+
+  /** True when the socket has exhausted its subscribe/unsubscribe budget. */
+  private async subscriptionLimited(socket: Socket): Promise<boolean> {
+    const user = socket.data.user as SocketUser | undefined;
+    if (!user) return false;
+    const isCustomer = user.role === "CUSTOMER";
+    const policy = isCustomer ? RATE_LIMITS.realtimeSubscribeCustomer : RATE_LIMITS.realtimeSubscribeStaff;
+    const identity = isCustomer ? `user:${user.userId}` : `session:${user.sessionId}`;
+    const result = await this.rateLimiter.check(
+      `rl:ws:subscribe:${rateLimitKeyPart(identity)}`,
+      policy.limit,
+      policy.windowMs,
+    );
+    return !result.allowed;
+  }
 
   /* ------------------------------------------------------------------ */
   /*  Connection lifecycle                                               */
@@ -178,6 +315,7 @@ export class RealtimeGateway
       this.logger.warn(`Connection rejected - no auth credentials (${socket.id})`);
       socket.emit("error", { message: "Authentication required" });
       socket.disconnect(true);
+      void this.recordAuthFailure(socket).catch(() => undefined);
       return false;
     }
 
@@ -195,7 +333,27 @@ export class RealtimeGateway
       this.logger.warn(`Connection rejected - no valid auth session (${socket.id})`);
       socket.emit("error", { message: "Invalid or expired session" });
       socket.disconnect(true);
+      void this.recordAuthFailure(socket).catch(() => undefined);
       return false;
+    }
+
+    if (resolved.user.role === "CUSTOMER") {
+      const policy = RATE_LIMITS.realtimeCustomerConnections;
+      const slotKey = this.customerSlotKey(resolved.user.userId);
+      const acquired = await this.rateLimiter.acquireSlot(slotKey, socket.id, policy.limit, policy.windowMs);
+      if (!socket.connected) {
+        if (acquired) await this.rateLimiter.releaseSlot(slotKey, socket.id);
+        return false;
+      }
+      if (!acquired) {
+        this.logger.warn(`Connection rejected - customer connection limit (${socket.id})`);
+        socket.emit("error", { message: "Too many active connections", code: "WS_CONNECTION_LIMIT" });
+        // Transport close keeps automatic reconnect with backoff, so the
+        // client recovers once a stale or closed connection frees its slot.
+        socket.conn.close();
+        return false;
+      }
+      socket.data.connectionSlotKey = slotKey;
     }
 
     socket.data.accessToken = resolved.accessToken;
@@ -218,6 +376,11 @@ export class RealtimeGateway
 
   handleDisconnect(socket: Socket): void {
     const user = socket.data.user as SocketUser | undefined;
+    const slotKey = socket.data.connectionSlotKey;
+    if (typeof slotKey === "string") {
+      socket.data.connectionSlotKey = undefined;
+      void this.rateLimiter.releaseSlot(slotKey, socket.id).catch(() => undefined);
+    }
     this.kdsPresence.markDisconnected(socket.id);
     this.untrackKdsSocket(socket.id);
     if (user) {
@@ -230,6 +393,8 @@ export class RealtimeGateway
   }
 
   onApplicationShutdown(): void {
+    if (this.slotHeartbeat) clearInterval(this.slotHeartbeat);
+    this.slotHeartbeat = null;
     for (const timer of this.kdsClosingTimers.values()) {
       clearTimeout(timer);
     }
@@ -307,6 +472,11 @@ export class RealtimeGateway
       return { subscribed: false, channel, error: "Not authenticated" };
     }
 
+    // Before session revalidation and channel lookups, which hit the database.
+    if (await this.subscriptionLimited(socket)) {
+      return { subscribed: false, channel, error: SUBSCRIPTION_LIMITED_ERROR };
+    }
+
     const user = await this.revalidateSocketUser(socket);
     if (!user) {
       return { subscribed: false, channel, error: "Not authenticated" };
@@ -377,8 +547,11 @@ export class RealtimeGateway
   async handleUnsubscribe(
     @MessageBody() data: { channel: string },
     @ConnectedSocket() socket: Socket,
-  ): Promise<{ unsubscribed: boolean; channel: string }> {
+  ): Promise<{ unsubscribed: boolean; channel: string; error?: string }> {
     const channel = typeof data?.channel === "string" ? data.channel : "";
+    if (await this.subscriptionLimited(socket)) {
+      return { unsubscribed: false, channel, error: SUBSCRIPTION_LIMITED_ERROR };
+    }
     const match = CHANNEL_PATTERN.exec(channel);
     const normalized = match
       ? await this.normalizeSubscriptionChannel(match[1], match[2])

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHmac } from "node:crypto";
 import type { ApiEnvelope } from "@wings4u/contracts";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import type { MenuResponse } from "@/lib/types";
@@ -34,6 +35,19 @@ function getServerApiBase(): string {
   return "http://127.0.0.1:3001";
 }
 
+/**
+ * Constant per deployment, so it does not fragment the fetch cache key. The
+ * API gives these cached server fetches a shared server budget instead of
+ * the per-IP budget of the Vercel egress address.
+ */
+function catalogServerHeaders(): Record<string, string> {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (!secret) return {};
+  return {
+    "x-w4u-catalog-server": createHmac("sha256", secret).update("w4u-catalog-server:v1").digest("hex"),
+  };
+}
+
 function scheduleMinuteBucket(scheduledFor?: string): string {
   if (!scheduledFor) {
     return "now";
@@ -59,6 +73,7 @@ async function fetchCatalogJson<T>(
         "X-Location-Id": locationId,
         Accept: "application/json",
         "X-W4U-Catalog-Format": "customization-v2",
+        ...catalogServerHeaders(),
       },
       next: {
         tags,

@@ -27,6 +27,7 @@ function createGateway() {
     hasActiveTickets: jest.fn().mockResolvedValue(false),
   };
   const kdsAuth = {};
+  const rateLimiter = { check: jest.fn().mockResolvedValue({ allowed: true, remaining: 1, resetAtMs: 0 }) };
   const gateway = new RealtimeGateway(
     {} as never,
     prisma as never,
@@ -34,6 +35,7 @@ function createGateway() {
     kdsPresence as never,
     {} as never,
     operatingHours as never,
+    rateLimiter as never,
   );
 
   return { gateway, prisma, kdsPresence, operatingHours };

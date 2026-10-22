@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCachedWingFlavours } from "@/lib/catalog/server-catalog";
-import { DEFAULT_LOCATION_ID } from "@/lib/env";
+import { parseCatalogLocationId } from "@/lib/catalog/catalog-route-params";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const locationId = searchParams.get("location_id")?.trim() || DEFAULT_LOCATION_ID;
+  const locationId = parseCatalogLocationId(searchParams.get("location_id"));
+  if (!locationId) {
+    return NextResponse.json({ error: "location_id is invalid" }, { status: 400 });
+  }
   const flavours = await getCachedWingFlavours(locationId);
 
   if (!flavours) {

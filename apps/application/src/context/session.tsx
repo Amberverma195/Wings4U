@@ -199,6 +199,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 type RefreshResult = { refreshed: boolean; definitive: boolean };
 let inFlightRefresh: { generation: number; promise: Promise<RefreshResult> } | null = null;
 
+/**
+ * A throttled or timed-out refresh says nothing about the session: the
+ * server rejects it before touching tokens, so keep the user signed in.
+ */
+export function isDefinitiveRefreshFailure(status: number): boolean {
+  return status < 500 && status !== 408 && status !== 429;
+}
+
 async function performRefresh(generation: number): Promise<RefreshResult> {
   if (generation !== getSessionGeneration()) return { refreshed: false, definitive: false };
   if (inFlightRefresh?.generation === generation) {
@@ -217,7 +225,7 @@ async function performRefresh(generation: number): Promise<RefreshResult> {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!refreshRes.ok) {
-        return { refreshed: false, definitive: refreshRes.status < 500 };
+        return { refreshed: false, definitive: isDefinitiveRefreshFailure(refreshRes.status) };
       }
       const envelope = (await refreshRes.json()) as ApiEnvelope<{
         refreshed: boolean;

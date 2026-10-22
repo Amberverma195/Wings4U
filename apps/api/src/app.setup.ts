@@ -30,5 +30,7 @@ export function configureApp(app: INestApplication): void {
       callback(null, isAllowedCorsOrigin(origin));
     },
     credentials: true,
+    // Not CORS-safelisted; without this the cross-origin website cannot read it.
+    exposedHeaders: ["Retry-After"],
   });
 }

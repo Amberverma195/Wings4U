@@ -25,6 +25,18 @@ function resolveIncomingClientIp(requestHeaders: Headers): string | null {
   );
 }
 
+/** Lets the API attribute server-side proxied calls to the visitor, not the Vercel egress IP. */
+export function buildSignedClientIpHeaders(requestHeaders: Headers): Record<string, string> {
+  const clientIp = resolveIncomingClientIp(requestHeaders);
+  const signature = clientIp ? signClientIp(clientIp) : null;
+  return clientIp && signature
+    ? {
+        [SIGNED_CLIENT_IP_HEADER]: clientIp,
+        [SIGNED_CLIENT_IP_SIGNATURE_HEADER]: signature,
+      }
+    : {};
+}
+
 export function buildStationGateHeaders(
   requestHeaders: Headers,
   cookieHeader: string,

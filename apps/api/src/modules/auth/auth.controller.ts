@@ -24,8 +24,10 @@ import {
 import { Public } from "../../common/decorators/roles.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { parseEmailInput, parseLoginIdentifier } from "../../common/utils/auth-input";
 import { extractClientIp } from "../../common/utils/store-ip";
-import { RateLimiterService } from "../rate-limit/rate-limit.service";
+import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
+import { RateLimiterService, rateLimitKeyPart } from "../rate-limit/rate-limit.service";
 import { AuthService } from "./auth.service";
 
 /* ------------------------------------------------------------------ */
@@ -260,8 +262,12 @@ const CSRF_COOKIE_BASE = {
 const SIGNUP_DEVICE_COOKIE = "w4u_signup_device";
 const SIGNUP_DEVICE_HEADER = "x-w4u-signup-device";
 const SIGNUP_DEVICE_COOKIE_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
-const SIGNUP_ACCOUNT_LIMIT = 3;
-const SIGNUP_ACCOUNT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Identical for every limiter dimension so a 429 never says which one tripped.
+const LOGIN_LIMIT_MESSAGE = "Too many sign-in attempts.";
+const PASSWORD_RESET_LIMIT_MESSAGE = "Too many password reset attempts.";
+const REFRESH_LIMIT_MESSAGE = "Too many session refresh attempts.";
+const SIGNUP_LIMIT_MESSAGE = "Too many sign-up attempts from this network.";
 
 const SIGNUP_DEVICE_COOKIE_BASE = {
   httpOnly: true,
@@ -355,6 +361,31 @@ function setSignupDeviceCookie(res: Response, deviceId: string): void {
   });
 }
 
+function clientIpKey(req: Request): string {
+  return rateLimitKeyPart(`ip:${extractClientIp(req) || "unknown"}`);
+}
+
+/**
+ * Normalized phone/email identity for limiter keys, computed before any
+ * account lookup so existing and unknown accounts are throttled identically.
+ */
+function loginIdentityKey(identifier: string): string | null {
+  try {
+    const parsed = parseLoginIdentifier(identifier);
+    return rateLimitKeyPart(`${parsed.kind}:${parsed.value}`);
+  } catch {
+    return null;
+  }
+}
+
+function signupEmailKey(email: string): string | null {
+  try {
+    return rateLimitKeyPart(`email:${parseEmailInput(email)}`);
+  } catch {
+    return null;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Controller                                                        */
 /* ------------------------------------------------------------------ */
@@ -382,7 +413,7 @@ export class AuthController {
     if (body.password !== body.confirm_password) {
       throw new BadRequestException("Passwords do not match");
     }
-    await this.enforceSignupDeviceLimit(req, res);
+    await this.enforceSignupLimits(req, res, body.email);
 
     const result = await this.authService.signupWithPassword({
       fullName: body.full_name,
@@ -398,6 +429,39 @@ export class AuthController {
     };
   }
 
+  /**
+   * The device header is client-supplied and trivially rotated, so the IP and
+   * email budgets are independent checks that a new device id cannot reset.
+   * The narrowest budget (device) runs last so rejections by the broader
+   * checks do not consume it.
+   */
+  private async enforceSignupLimits(
+    req: Request,
+    res: Response,
+    email: string,
+  ): Promise<void> {
+    const ipKey = clientIpKey(req);
+    await this.rateLimiter.enforce(
+      `rl:auth:signup:ip-hour:${ipKey}`,
+      RATE_LIMITS.signupIpHourly,
+      SIGNUP_LIMIT_MESSAGE,
+    );
+    await this.rateLimiter.enforce(
+      `rl:auth:signup:ip-day:${ipKey}`,
+      RATE_LIMITS.signupIpDaily,
+      SIGNUP_LIMIT_MESSAGE,
+    );
+    const emailKey = signupEmailKey(email);
+    if (emailKey) {
+      await this.rateLimiter.enforce(
+        `rl:auth:signup:email:${emailKey}`,
+        RATE_LIMITS.signupEmail,
+        "Too many sign-up attempts for this email address.",
+      );
+    }
+    await this.enforceSignupDeviceLimit(req, res);
+  }
+
   private async enforceSignupDeviceLimit(
     req: Request,
     res: Response,
@@ -405,8 +469,8 @@ export class AuthController {
     const deviceKey = this.resolveSignupDeviceKey(req, res);
     const result = await this.rateLimiter.check(
       `auth:signup:create:${deviceKey}`,
-      SIGNUP_ACCOUNT_LIMIT,
-      SIGNUP_ACCOUNT_WINDOW_MS,
+      RATE_LIMITS.signupDevice.limit,
+      RATE_LIMITS.signupDevice.windowMs,
     );
 
     if (!result.allowed) {
@@ -467,12 +531,50 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() body: PasswordLoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.loginWithPassword(
-      body.identifier,
-      body.password,
+    await this.rateLimiter.enforce(
+      `rl:auth:login:ip:${clientIpKey(req)}`,
+      RATE_LIMITS.loginIp,
+      LOGIN_LIMIT_MESSAGE,
     );
+    const identityKey = loginIdentityKey(body.identifier);
+    const failureKey = identityKey ? `rl:auth:login:failures:${identityKey}` : null;
+    if (identityKey && failureKey) {
+      await this.rateLimiter.enforce(
+        `rl:auth:login:identity:${identityKey}`,
+        RATE_LIMITS.loginIdentity,
+        LOGIN_LIMIT_MESSAGE,
+      );
+      // Checked before bcrypt so a locked identity never reaches password verification.
+      await this.rateLimiter.assertAvailable(
+        failureKey,
+        RATE_LIMITS.loginIdentityFailures,
+        LOGIN_LIMIT_MESSAGE,
+      );
+    }
+
+    let result: Awaited<ReturnType<AuthService["loginWithPassword"]>>;
+    try {
+      result = await this.authService.loginWithPassword(
+        body.identifier,
+        body.password,
+      );
+    } catch (error) {
+      // Unknown, deactivated, and wrong-password outcomes all count, so the
+      // failure budget behaves the same whether or not the account exists.
+      if (failureKey && error instanceof UnauthorizedException) {
+        await this.rateLimiter.check(
+          failureKey,
+          RATE_LIMITS.loginIdentityFailures.limit,
+          RATE_LIMITS.loginIdentityFailures.windowMs,
+        );
+      }
+      throw error;
+    }
+    if (failureKey) await this.rateLimiter.clear(failureKey);
+
     // Correct password but the account's email isn't verified yet: do NOT
     // issue a session. Verification delivery was requested; the client
     // routes the user to the email-verification step.
@@ -511,7 +613,24 @@ export class AuthController {
   @Public()
   @Post("password-reset/request")
   @HttpCode(HttpStatus.OK)
-  async passwordResetRequest(@Body() body: PasswordResetRequestDto) {
+  async passwordResetRequest(
+    @Body() body: PasswordResetRequestDto,
+    @Req() req: Request,
+  ) {
+    // Before identity lookup and email delivery; identical for unknown accounts.
+    await this.rateLimiter.enforce(
+      `rl:auth:password-reset:request:ip:${clientIpKey(req)}`,
+      RATE_LIMITS.passwordResetRequestIp,
+      PASSWORD_RESET_LIMIT_MESSAGE,
+    );
+    const identityKey = loginIdentityKey(body.identifier);
+    if (identityKey) {
+      await this.rateLimiter.enforce(
+        `rl:auth:password-reset:request:identity:${identityKey}`,
+        RATE_LIMITS.passwordResetRequestIdentity,
+        PASSWORD_RESET_LIMIT_MESSAGE,
+      );
+    }
     const result = await this.authService.requestPasswordReset(body.identifier);
     return {
       otp_sent: result.otpSent,
@@ -526,16 +645,34 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async passwordResetConfirm(
     @Body() body: PasswordResetConfirmDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     if (body.new_password !== body.confirm_password) {
       throw new BadRequestException("Passwords do not match");
+    }
+    // Adds to, and does not replace, the per-code 5-attempt counter in AuthService.
+    await this.rateLimiter.enforce(
+      `rl:auth:password-reset:confirm:ip:${clientIpKey(req)}`,
+      RATE_LIMITS.passwordResetConfirmIp,
+      PASSWORD_RESET_LIMIT_MESSAGE,
+    );
+    const identityKey = loginIdentityKey(body.identifier);
+    if (identityKey) {
+      await this.rateLimiter.enforce(
+        `rl:auth:password-reset:confirm:identity:${identityKey}`,
+        RATE_LIMITS.passwordResetConfirmIdentity,
+        PASSWORD_RESET_LIMIT_MESSAGE,
+      );
     }
     const result = await this.authService.resetPassword(
       body.identifier,
       body.otp_code,
       body.new_password,
     );
+    // The owner proved control of the account, so earlier wrong passwords
+    // (possibly someone else's) must not keep them locked out.
+    if (identityKey) await this.rateLimiter.clear(`rl:auth:login:failures:${identityKey}`);
     setAuthCookies(res, result.accessToken, result.refreshToken, result.csrfToken);
     return {
       user: result.user,
@@ -569,6 +706,15 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    // A 429 is thrown before any cookie is touched, so throttling never
+    // clears or revokes a session that is still valid.
+    const ipKey = clientIpKey(req);
+    await this.rateLimiter.enforce(
+      `rl:auth:refresh:ip:${ipKey}`,
+      RATE_LIMITS.refreshIp,
+      REFRESH_LIMIT_MESSAGE,
+    );
+
     // Web clients use the httpOnly cookie; native mobile clients send the
     // refresh token explicitly because they do not have browser cookie storage.
     const refreshToken: string | undefined =
@@ -577,6 +723,18 @@ export class AuthController {
       clearAuthCookies(res);
       return { refreshed: false };
     }
+
+    const invalidKey = `rl:auth:refresh:invalid:${ipKey}`;
+    await this.rateLimiter.enforce(
+      `rl:auth:refresh:token:${rateLimitKeyPart(`refresh:${refreshToken}`)}`,
+      RATE_LIMITS.refreshToken,
+      REFRESH_LIMIT_MESSAGE,
+    );
+    await this.rateLimiter.assertAvailable(
+      invalidKey,
+      RATE_LIMITS.refreshInvalidIp,
+      REFRESH_LIMIT_MESSAGE,
+    );
 
     try {
       const result = await this.authService.refresh(refreshToken);
@@ -595,6 +753,11 @@ export class AuthController {
       };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
+        await this.rateLimiter.check(
+          invalidKey,
+          RATE_LIMITS.refreshInvalidIp.limit,
+          RATE_LIMITS.refreshInvalidIp.windowMs,
+        );
         clearAuthCookies(res);
         return { refreshed: false };
       }

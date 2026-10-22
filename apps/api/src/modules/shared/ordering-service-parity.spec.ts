@@ -32,7 +32,8 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       checkoutIdempotencyKey: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'customer', isActive: true, displayName: 'Fixture' }) },
       userIdentity: { findMany: jest.fn().mockResolvedValue([]) },
-      order: { create: jest.fn().mockRejectedValue(stop) },
+      order: { create: jest.fn().mockRejectedValue(stop), findMany: jest.fn().mockResolvedValue([]) },
+      $executeRaw: jest.fn().mockResolvedValue(0),
       $transaction: jest.fn(),
     };
     db.menuItem.findMany.mockImplementation(async (args: any) => args.include?.modifierGroups?.include ? [child] : [item]);
@@ -40,7 +41,7 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     const rewards = { computeEligibility: jest.fn().mockResolvedValue({ eligible: false, availableStamps: 0, poundsInCart: 0 }) };
     const promos = { isFirstOrderDealPublicCode: jest.fn().mockResolvedValue(false), evaluateFirstOrderDeal: jest.fn().mockResolvedValue(null) };
     const cart = new CartService(db as never, rewards as never, promos as never, {} as never);
-    const checkout = new CheckoutService(db as never, {} as never, {} as never, rewards as never, promos as never, {} as never, {} as never);
+    const checkout = new CheckoutService(db as never, {} as never, {} as never, rewards as never, promos as never, {} as never, {} as never, { enforce: jest.fn().mockResolvedValue(undefined) } as never);
     const pos = new PosService(db as never, {} as never);
     const payload: Record<string, unknown> = { builder_type: 'LUNCH_SPECIAL', child_menu_item_id: 'burger', child_addons: [{ modifier_option_id: 'cheese', price_delta_cents: -900 }] };
     const selectionIds: string[] = [];

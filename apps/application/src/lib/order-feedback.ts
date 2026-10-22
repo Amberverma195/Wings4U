@@ -2,6 +2,12 @@ import type { SessionState } from '../context/session';
 import type { OrderDetail, OrderItem, SupportTicketType } from './types';
 import { cents } from './format';
 
+/** The API's one-ticket-per-order rejection; it only ever refers to the customer's own ticket. */
+export function isExistingTicketConflict(cause: unknown): boolean {
+  const error = cause as { status?: number; body?: { errors?: Array<{ code?: string }> } } | null;
+  return error?.status === 409 && error.body?.errors?.[0]?.code === 'SUPPORT_TICKET_EXISTS';
+}
+
 export const ORDER_ISSUES: ReadonlyArray<{ value: SupportTicketType; label: string; subjectLabel: string }> = [
   { value: 'WRONG_ITEM', label: 'Wrong item', subjectLabel: 'Wrong item' },
   { value: 'MISSING_ITEM', label: 'Missing item', subjectLabel: 'Missing item' },

@@ -46,7 +46,8 @@ describe('authoritative coupon pricing through real quote and checkout services'
       modifierGroup: { findMany: jest.fn().mockResolvedValue(groups.map(group => group.modifierGroup)) },
       wingFlavour: { findMany: jest.fn().mockResolvedValue([{ id: 'plain', name: 'Plain', isPlain: true, heatLevel: 'PLAIN', isActive: true, archivedAt: null }]) },
       promoCode: { findFirst: jest.fn().mockResolvedValue(promo), findMany: jest.fn().mockResolvedValue(first) }, promoRedemption: { count: jest.fn().mockResolvedValue(0) },
-      order: { create: jest.fn().mockRejectedValue(stop), count: jest.fn().mockResolvedValue(0) },
+      order: { create: jest.fn().mockRejectedValue(stop), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      $executeRaw: jest.fn().mockResolvedValue(0),
       checkoutIdempotencyKey: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'customer', isActive: true, displayName: 'Fixture' }) },
       userIdentity: { findMany: jest.fn().mockResolvedValue([{ phoneE164: '+15195550123' }]) },
@@ -57,7 +58,7 @@ describe('authoritative coupon pricing through real quote and checkout services'
     const promotions = new PromotionsService(db as never);
     const verifier = { verifyForDelivery: jest.fn().mockReturnValue({ delivery_fee_cents: options.fee ?? 500 }) };
     const cart = new CartService(db as never, rewards as never, promotions, verifier as never);
-    const checkout = new CheckoutService(db as never, {} as never, {} as never, rewards as never, promotions, {} as never, verifier as never);
+    const checkout = new CheckoutService(db as never, {} as never, {} as never, rewards as never, promotions, {} as never, verifier as never, { enforce: jest.fn().mockResolvedValue(undefined) } as never);
     const payload = { builder_type: 'WINGS', weight_lb: slug === 'party-75-wings' ? 8 : 11, wing_type: 'BONE_IN', preparation: 'BREADED', saucing_method: 'ON_WINGS',
       flavour_slots: Array.from({ length: 5 }, (_, i) => ({ slot_no: i + 1, wing_flavour_id: 'plain', flavour_name: 'Plain', placement: 'ON_WINGS' })) };
     const items = [{ menu_item_id: 'party', quantity: 1, builder_payload: payload, modifier_selections: [{ modifier_option_id: 'breaded' }],

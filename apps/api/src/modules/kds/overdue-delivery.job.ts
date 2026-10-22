@@ -70,6 +70,7 @@ export class OverdueDeliveryJob {
             `${grace}-minute grace window.`,
           createdSource: "SYSTEM_OVERDUE_DELIVERY",
           priority: "HIGH",
+          allowAdditionalOrderTicket: true,
         });
         createdCount += 1;
       } catch (err) {

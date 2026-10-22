@@ -20,15 +20,19 @@ const ticket = (extra = {}) => ({ id: "ticket", locationId: "location", customer
     event("MESSAGE_ADDED", { payloadJson: { is_internal_note: true }, note: "Private audit note" }), event("ORDER_LINKED")],
   resolutions: [], ...extra });
 
+const allowAllLimits = { enforce: jest.fn().mockResolvedValue(undefined) };
+
 function mockPrisma() {
   const prisma = {
     supportTicket: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     supportTicketEvent: { create: jest.fn() }, supportTicketMessage: { create: jest.fn() }, supportTicketResolution: { create: jest.fn() },
-    order: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() }, $transaction: jest.fn(),
+    order: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation(async arg => typeof arg === "function" ? arg(prisma) : Promise.all(arg));
   prisma.supportTicket.findUnique.mockResolvedValue(ticket());
-  prisma.supportTicket.findFirst.mockResolvedValue({ id: "ticket" });
+  prisma.supportTicket.findFirst.mockResolvedValue(null);
   prisma.supportTicket.findMany.mockResolvedValue([ticket()]);
   prisma.supportTicket.create.mockResolvedValue(ticket());
   prisma.supportTicket.update.mockResolvedValue(ticket({ status: "IN_REVIEW" }));
@@ -43,7 +47,7 @@ function mockPrisma() {
 describe("Support context, ownership and existing workflows", () => {
   let prisma: ReturnType<typeof mockPrisma>;
   let service: SupportService;
-  beforeEach(() => { prisma = mockPrisma(); service = new SupportService(prisma as never); });
+  beforeEach(() => { prisma = mockPrisma(); service = new SupportService(prisma as never, allowAllLimits as never); });
 
   it("returns admin queue metadata with deterministic identities, safe order numbers and pagination", async () => {
     prisma.supportTicket.findMany.mockResolvedValue([ticket(), ticket({ id: "next" })]);
@@ -177,7 +181,7 @@ describe("Support context, ownership and existing workflows", () => {
 describe("Explicit admin order linking", () => {
   let prisma: ReturnType<typeof mockPrisma>;
   let service: SupportService;
-  beforeEach(() => { prisma = mockPrisma(); prisma.supportTicket.findUnique.mockResolvedValue(ticket({ orderId: null, order: null })); service = new SupportService(prisma as never); });
+  beforeEach(() => { prisma = mockPrisma(); prisma.supportTicket.findUnique.mockResolvedValue(ticket({ orderId: null, order: null })); service = new SupportService(prisma as never, allowAllLimits as never); });
   it("shows only the same customer's/location's orders", async () => {
     const result = await service.getEligibleOrders("ticket", "location");
     expect(result.orders[0].order_number).toBe("9007199254740993");

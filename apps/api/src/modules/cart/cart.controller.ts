@@ -17,7 +17,12 @@ import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Public } from "../../common/decorators/roles.decorator";
 import { assertRequestLocationMatches } from "../../common/utils/location-ref";
+import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
+import { RateLimiterService } from "../rate-limit/rate-limit.service";
+import { cartRequesterLimiterKeys } from "../saved-cart/cart-rate-limit";
 import { CartService } from "./cart.service";
+
+const QUOTE_LIMIT_MESSAGE = "Too many price checks. Your cart is saved.";
 
 class ModifierSelectionDto {
   @IsUUID()
@@ -114,13 +119,29 @@ class CartQuoteDto {
 
 @Controller("cart")
 export class CartController {
-  constructor(private readonly cartService: CartService) {}
+  constructor(
+    private readonly cartService: CartService,
+    private readonly rateLimiter: RateLimiterService,
+  ) {}
 
   @Post("quote")
   @Public()
   @UseGuards(LocationScopeGuard)
   async quote(@Body() body: CartQuoteDto, @Req() req: Request) {
     const locationId = assertRequestLocationMatches(body.location_id, req);
+    const requester = cartRequesterLimiterKeys(req);
+    if (requester.identity) {
+      await this.rateLimiter.enforce(
+        `rl:cart:quote:${requester.identity}`,
+        RATE_LIMITS.cartQuoteIdentity,
+        QUOTE_LIMIT_MESSAGE,
+      );
+    }
+    await this.rateLimiter.enforce(
+      `rl:cart:quote:ip:${requester.ip}`,
+      RATE_LIMITS.cartQuoteIp,
+      QUOTE_LIMIT_MESSAGE,
+    );
 
     return this.cartService.computeQuote(
       locationId,

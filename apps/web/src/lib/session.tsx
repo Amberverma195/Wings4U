@@ -321,6 +321,14 @@ interface RefreshResult {
 
 let inFlightRefresh: Promise<RefreshResult> | null = null;
 
+/**
+ * A throttled or timed-out refresh says nothing about the session: the
+ * server rejects it before touching cookies, so keep the user signed in.
+ */
+export function isDefinitiveRefreshFailure(status: number): boolean {
+  return status < 500 && status !== 408 && status !== 429;
+}
+
 async function performRefresh(): Promise<RefreshResult> {
   if (inFlightRefresh) {
     return inFlightRefresh;
@@ -332,7 +340,7 @@ async function performRefresh(): Promise<RefreshResult> {
         method: "POST",
       });
       if (!refreshRes.ok) {
-        return { refreshed: false, definitive: refreshRes.status < 500 };
+        return { refreshed: false, definitive: isDefinitiveRefreshFailure(refreshRes.status) };
       }
       const envelope = (await refreshRes.json()) as ApiEnvelope<{ refreshed: boolean }>;
       const refreshed = envelope.data?.refreshed === true;

@@ -219,7 +219,7 @@ describe("email OTP issuance and private resend acknowledgements", () => {
   });
   it("includes the recovery delay only in initial signup, without provider or OTP details", async () => {
     const controller = new AuthController(service, {} as any);
-    jest.spyOn(controller as any, "enforceSignupDeviceLimit").mockResolvedValue(undefined);
+    jest.spyOn(controller as any, "enforceSignupLimits").mockResolvedValue(undefined);
     jest.spyOn(service, "signupWithPassword").mockResolvedValue({ otpSent: false, email, expiresInSeconds: 300, retryAfterSeconds: 0 });
     expect(await controller.signup({ full_name: "Fictional Customer", phone: "5195550123", email,
       password: "Example123!", confirm_password: "Example123!" }, {} as any, {} as any)).toEqual({

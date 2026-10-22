@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Check, CheckCircle2, Square } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import type { OrderDetail, SupportTicketType } from '../lib/types';
 import { cents } from '../lib/format';
-import { feedbackItemSummary, feedbackItemTitle, ORDER_ISSUES, ticketPayload } from '../lib/order-feedback';
+import { feedbackItemSummary, feedbackItemTitle, isExistingTicketConflict, ORDER_ISSUES, ticketPayload } from '../lib/order-feedback';
 import { useOrderFeedbackRequest } from '../hooks/use-order-feedback-request';
 import { FeedbackButton, FeedbackError, OrderFeedbackSheet, feedbackStyles as s } from './order-feedback-sheet';
 
@@ -14,14 +15,16 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingTicket, setExistingTicket] = useState(false);
   const locked = useRef(false);
   const submitted = useRef(false);
   const scope = useOrderFeedbackRequest(order);
+  const router = useRouter();
   const items = order.items ?? [];
   const selected = items.filter(item => selectedIds.includes(item.id));
   const all = items.length > 0 && selected.length === items.length;
   const submit = async () => {
-    if (locked.current || submitted.current || (items.length > 0 && !selected.length) || !description.trim() || step !== 'details') return;
+    if (locked.current || submitted.current || existingTicket || (items.length > 0 && !selected.length) || !description.trim() || step !== 'details') return;
     const attempt = scope();
     if (!attempt.current()) return;
     locked.current = true; setBusy(true); setError(null);
@@ -33,7 +36,9 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
       submitted.current = true;
       setStep('success');
     } catch (cause) {
-      if (attempt.current()) setError(cause instanceof Error ? cause.message : 'Unable to submit your ticket. Please try again.');
+      if (!attempt.current()) return;
+      if (isExistingTicketConflict(cause)) setExistingTicket(true);
+      setError(cause instanceof Error ? cause.message : 'Unable to submit your ticket. Please try again.');
     } finally {
       if (attempt.current()) { locked.current = false; setBusy(false); }
     }
@@ -80,8 +85,12 @@ export function OrderHelpModal({ order, onClose }: { order: OrderDetail; onClose
         <TextInput accessibilityLabel="Please Explain the Issue" multiline placeholder="Tell us what happened..." placeholderTextColor="#777777"
           style={s.input} value={description} onChangeText={setDescription} editable={!busy} />
         <FeedbackError message={error} />
+        {existingTicket ? <FeedbackButton label="View my support tickets" secondary onPress={() => {
+          onClose();
+          router.push(`/profile?section=support&entry=${Date.now()}`);
+        }} /> : null}
         <View style={s.actions}>{items.length > 1 ? <FeedbackButton label="Back" secondary disabled={busy} onPress={() => setStep('items')} /> : null}
-          <FeedbackButton label="Submit ticket" disabled={(items.length > 0 && !selected.length) || !description.trim()} busy={busy} onPress={submit} />
+          <FeedbackButton label="Submit ticket" disabled={(items.length > 0 && !selected.length) || !description.trim() || existingTicket} busy={busy} onPress={submit} />
           <FeedbackButton label="Cancel" secondary disabled={busy} onPress={onClose} /></View>
       </>}
     </>}

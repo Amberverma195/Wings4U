@@ -70,6 +70,16 @@ test('a repeated 401 after retry does not create a refresh loop', async () => {
   expect((await withSilentRefresh(call, jest.fn(), jest.fn())).status).toBe(401);
   expect(call).toHaveBeenCalledTimes(2); expect(refreshCalls()).toHaveLength(1);
 });
+test('a rate-limited refresh keeps the signed-in session and its tokens', async () => {
+  await mount();
+  apiFetch.mockResolvedValueOnce(response({ authenticated: false })).mockResolvedValueOnce(response(null, 429));
+  await act(async () => { expect(await session.refresh()).toBe(false); });
+  expect(session.authenticated).toBe(true); expect(session.user.id).toBe('a');
+  expect(await tokens.getAccessToken()).toBe('a:access'); expect(await tokens.getRefreshToken()).toBe('a:refresh');
+  const clear = jest.fn(); apiFetch.mockResolvedValueOnce(response(null, 429));
+  expect((await withSilentRefresh(protectedCall(), jest.fn(), clear)).status).toBe(401);
+  expect(clear).not.toHaveBeenCalled();
+});
 test('temporary refresh failure preserves the active session', async () => {
   await mount(); apiFetch.mockResolvedValueOnce(response({ authenticated: false })).mockResolvedValueOnce(response(null, 503));
   await act(async () => { expect(await session.refresh()).toBe(false); }); expect(session.user.id).toBe('a');

@@ -28,11 +28,22 @@ import { Type } from "class-transformer";
 import type { Request, Response } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { Public } from "../../common/decorators/roles.decorator";
+import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
+import { RateLimiterService } from "../rate-limit/rate-limit.service";
+import { cartRequesterLimiterKeys } from "./cart-rate-limit";
 import { SavedCartService } from "./saved-cart.service";
 import {
   clearGuestTokenCookie,
   setGuestTokenCookie,
 } from "./guest-cart-cookie";
+
+const SAVED_CART_LIMIT_MESSAGE = "Too many cart requests.";
+
+const SAVED_CART_POLICIES = {
+  read: { identity: RATE_LIMITS.savedCartReadIdentity, ip: RATE_LIMITS.savedCartReadIp },
+  write: { identity: RATE_LIMITS.savedCartWriteIdentity, ip: RATE_LIMITS.savedCartWriteIp },
+  merge: { identity: RATE_LIMITS.savedCartMergeIdentity, ip: RATE_LIMITS.savedCartMergeIp },
+} as const;
 
 class ModifierSelectionBody {
   @IsUUID()
@@ -130,7 +141,27 @@ class SaveCartBody {
  */
 @Controller("cart")
 export class SavedCartController {
-  constructor(private readonly savedCartService: SavedCartService) {}
+  constructor(
+    private readonly savedCartService: SavedCartService,
+    private readonly rateLimiter: RateLimiterService,
+  ) {}
+
+  private async enforceLimit(req: Request, kind: keyof typeof SAVED_CART_POLICIES): Promise<void> {
+    const requester = cartRequesterLimiterKeys(req);
+    const policies = SAVED_CART_POLICIES[kind];
+    if (requester.identity) {
+      await this.rateLimiter.enforce(
+        `rl:saved-cart:${kind}:${requester.identity}`,
+        policies.identity,
+        SAVED_CART_LIMIT_MESSAGE,
+      );
+    }
+    await this.rateLimiter.enforce(
+      `rl:saved-cart:${kind}:ip:${requester.ip}`,
+      policies.ip,
+      SAVED_CART_LIMIT_MESSAGE,
+    );
+  }
 
   @Get("me")
   @Public()
@@ -139,6 +170,7 @@ export class SavedCartController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    await this.enforceLimit(req, "read");
     const { snapshot, cookies } = await this.savedCartService.getForRequest(
       req,
       req.locationId!,
@@ -155,6 +187,7 @@ export class SavedCartController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    await this.enforceLimit(req, "write");
     const { snapshot, cookies } = await this.savedCartService.saveForRequest(
       req,
       req.locationId!,
@@ -189,6 +222,7 @@ export class SavedCartController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    await this.enforceLimit(req, "write");
     const { cookies } = await this.savedCartService.clearForRequest(
       req,
       req.locationId!,
@@ -204,6 +238,7 @@ export class SavedCartController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    await this.enforceLimit(req, "merge");
     const { snapshot, mergeOutcome, cookies } =
       await this.savedCartService.mergeOnLogin(req, req.locationId!);
     applyCookies(res, cookies);

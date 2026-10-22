@@ -118,10 +118,27 @@ export async function apiJson<T>(
     if (res.status >= 500) {
       dispatchConnectivityFailure("server");
     }
-    throw new ApiRequestError(getApiErrorMessage(body, res.statusText), body, res.status);
+    throw new ApiRequestError(
+      getApiErrorMessage(body, res.statusText),
+      body,
+      res.status,
+      getRetryAfterSeconds(res, body),
+    );
   }
 
   return body;
+}
+
+/** Retry-After header, or the RATE_LIMITED envelope field when the header is missing. */
+export function getRetryAfterSeconds(
+  res: { headers?: { get(name: string): string | null } | null },
+  body?: unknown,
+): number | null {
+  const header = Number(res.headers?.get("Retry-After"));
+  if (Number.isFinite(header) && header > 0) return Math.ceil(header);
+  const fromBody = (body as { errors?: Array<{ retry_after_seconds?: unknown }> } | null)
+    ?.errors?.[0]?.retry_after_seconds;
+  return typeof fromBody === "number" && fromBody > 0 ? Math.ceil(fromBody) : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,5 +206,10 @@ export function describeApiFailure(status: number, body: unknown, fallback: stri
 export type { ApiEnvelope, ApiErrorBody };
 
 export class ApiRequestError extends Error {
-  constructor(message: string, public readonly body: unknown, public readonly status: number) { super(message); }
+  constructor(
+    message: string,
+    public readonly body: unknown,
+    public readonly status: number,
+    public readonly retryAfterSeconds: number | null = null,
+  ) { super(message); }
 }
