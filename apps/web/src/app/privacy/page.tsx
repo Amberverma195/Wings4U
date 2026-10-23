@@ -33,6 +33,19 @@ export default function PrivacyPage() {
       </section>
 
       <section>
+        <h2>Sign-up abuse prevention</h2>
+        <p>
+          We use a random browser device identifier to help limit abusive sign-up
+          attempts. The browser identifier and its matching server cookie each
+          have a 180-day lifetime. Reading the browser identifier does not renew
+          its lifetime. Expired identifiers are discarded when the website next
+          loads or attempts sign-up; local storage does not erase itself while
+          the website is closed. You can also remove this data by clearing site
+          data in your browser.
+        </p>
+      </section>
+
+      <section>
         <h2>Delivery addresses and Google Maps</h2>
         <p>
           When you request delivery pricing at checkout, we send the delivery

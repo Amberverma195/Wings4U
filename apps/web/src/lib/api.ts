@@ -1,6 +1,7 @@
 import type { ApiEnvelope, ApiErrorBody } from "@wings4u/contracts";
 import { dispatchConnectivityFailure } from "./connectivity-events";
 import { getPublicApiBase } from "./env";
+import { getSignupDeviceId } from "./signup-device";
 
 function readCookie(name: string): string | undefined {
   if (typeof document === "undefined") return undefined;
@@ -8,32 +9,7 @@ function readCookie(name: string): string | undefined {
   return m ? decodeURIComponent(m[1]) : undefined;
 }
 
-const SIGNUP_DEVICE_STORAGE_KEY = "w4u_signup_device_id";
 const SIGNUP_DEVICE_HEADER = "X-W4U-Signup-Device";
-
-function createSignupDeviceId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  const random = Math.random().toString(36).slice(2);
-  return `${Date.now().toString(36)}-${random}`;
-}
-
-function getSignupDeviceId(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-
-  try {
-    const existing = window.localStorage.getItem(SIGNUP_DEVICE_STORAGE_KEY);
-    if (existing && existing.length >= 16 && existing.length <= 128) {
-      return existing;
-    }
-    const created = createSignupDeviceId();
-    window.localStorage.setItem(SIGNUP_DEVICE_STORAGE_KEY, created);
-    return created;
-  } catch {
-    return undefined;
-  }
-}
 
 function isStoreNetworkApiPath(path: string): boolean {
   const pathname = path.split("?")[0] ?? path;
