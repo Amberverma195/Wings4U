@@ -1,5 +1,8 @@
 const { validateApiOrigin, isLocalDevelopmentOrigin, realtimeTargetsApi } = require('./config/api-origin.cjs');
 const { PUBLIC_WEBSITE_ORIGIN, validateWebsiteOrigin } = require('./config/website-origin.cjs');
+// Dormant Stripe Expo plugin, preserved here because app.json cannot contain comments:
+// ["@stripe/stripe-react-native", {}]
+// Original dormant extra: stripePublishableKey: "pk_test_placeholder"
 
 const REMOTE_DEVELOPMENT_OPT_IN = 'MOBILE_DEV_REMOTE_API';
 const REALTIME_ALIAS = 'MOBILE_REALTIME_SAME_BACKEND_AS';
@@ -58,6 +61,6 @@ module.exports = ({ config }) => {
     realtimeOrigin: validatedRealtimeOrigin,
     realtimeAliasOf,
     defaultLocationId: process.env.EXPO_PUBLIC_DEFAULT_LOCATION_ID || config.extra?.defaultLocationId,
-    stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || config.extra?.stripePublishableKey,
+    // stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || config.extra?.stripePublishableKey,
   } };
 };

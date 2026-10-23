@@ -30,14 +30,12 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router",
-      ["@stripe/stripe-react-native", {}]
+      "expo-router"
     ],
     "extra": {
       "websiteUrl": "https://www.wings4ulondon.ca",
       "defaultLocationId": "a68bcda6-3295-42d8-9e53-c2c49dcfc765",
-      "developmentApiOrigin": "http://10.0.0.192:3001",
-      "stripePublishableKey": "pk_test_placeholder"
+      "developmentApiOrigin": "http://10.0.0.192:3001"
     }
   }
 }

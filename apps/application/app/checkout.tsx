@@ -1,6 +1,6 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as Linking from "expo-linking";
+// import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
-import { initStripe, useStripe } from "@stripe/stripe-react-native";
+// import { initStripe, useStripe } from "@stripe/stripe-react-native";
 import {
   CreditCard,
   ArrowLeft,
@@ -40,7 +40,7 @@ import { cents } from "../src/lib/format";
 import { normalizeCanadianPostalCode, normalizeAddressText } from "../src/lib/delivery-address";
 import {
   checkoutPricingBlock,
-  paymentIntentPricingBlock,
+  // paymentIntentPricingBlock,
   customerPaymentOptions,
   defaultCollectionPreference,
   type CustomerCollectionPreference,
@@ -60,27 +60,29 @@ import type {
 } from "../src/lib/types";
 
 const FIXED_DELIVERY_CITY = "London";
-const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
-const STRIPE_RETURN_URL = Linking.createURL("stripe-redirect");
+// const STRIPE_MERCHANT_IDENTIFIER = "merchant.com.wings4u";
+// const STRIPE_RETURN_URL = Linking.createURL("stripe-redirect");
 
 type PaymentMethod = CustomerCollectionPreference | "ONLINE_CARD";
 
-type StripeConfigResponse = {
-  configured: boolean;
-  online_payments_enabled?: boolean;
-  publishable_key: string;
-  currency: string;
-  merchant_display_name: string;
-};
-
-type StripePaymentIntentResponse = StripeConfigResponse & {
-  payment_intent_id: string | null;
-  client_secret: string | null;
-  amount_cents: number | null;
-  message?: string;
-  quote?: CartQuoteResponse;
-};
-
+// Dormant Stripe integration: restore only after payment and privacy review.
+// type StripeConfigResponse = {
+//   configured: boolean;
+//   online_payments_enabled?: boolean;
+//   publishable_key: string;
+//   currency: string;
+//   merchant_display_name: string;
+// };
+//
+// type StripePaymentIntentResponse = StripeConfigResponse & {
+//   payment_intent_id: string | null;
+//   client_secret: string | null;
+//   amount_cents: number | null;
+//   message?: string;
+//   quote?: CartQuoteResponse;
+// };
+//
+//
 type DeliveryQuoteResponse = {
   delivery_quote_token: string;
   delivery_fee_cents: number;
@@ -135,7 +137,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
   const promo = usePromo();
   const account = useAccountData();
   const session = useSession();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  // const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
   const [pricedQuoteKey, setPricedQuoteKey] = useState<string | null>(null);
   const [lastDisplayPrice, setLastDisplayPrice] = useState<{ key: string; quote: CartQuoteResponse } | null>(null);
@@ -158,7 +160,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     defaultCollectionPreference("PICKUP"),
   );
   const submittingRef = useRef(false);
-  const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
+  // const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
   const [deliveryQuote, setDeliveryQuote] =
     useState<DeliveryQuoteResponse | null>(null);
   const [deliveryQuoteStatus, setDeliveryQuoteStatus] =
@@ -175,10 +177,10 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     fingerprint: string;
     idempotencyKey: string;
   } | null>(null);
-  const paidIntentRef = useRef<{
-    fingerprint: string;
-    paymentIntentId: string;
-  } | null>(null);
+  // const paidIntentRef = useRef<{
+  //   fingerprint: string;
+  //   paymentIntentId: string;
+  // } | null>(null);
 
   const deliveryAddress = useMemo(
     () => ({
@@ -269,36 +271,38 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     return priced;
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const envelope = await apiJson<StripeConfigResponse>(
-          "/api/v1/payments/stripe/config",
-        );
-        if (cancelled) return;
-        const config = envelope.data ?? null;
-        setStripeConfig(config);
-        if (
-          config?.online_payments_enabled &&
-          config.configured &&
-          config.publishable_key
-        ) {
-          await initStripe({
-            publishableKey: config.publishable_key,
-            merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
-          });
-        }
-      } catch {
-        if (!cancelled) setStripeConfig(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+// Dormant Stripe integration: restore only after payment and privacy review.
+//   useEffect(() => {
+//     let cancelled = false;
+//     void (async () => {
+//       try {
+//         const envelope = await apiJson<StripeConfigResponse>(
+//           "/api/v1/payments/stripe/config",
+//         );
+//         if (cancelled) return;
+//         const config = envelope.data ?? null;
+//         setStripeConfig(config);
+//         if (
+//           config?.online_payments_enabled &&
+//           config.configured &&
+//           config.publishable_key
+//         ) {
+//           await initStripe({
+//             publishableKey: config.publishable_key,
+//             merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
+//           });
+//         }
+//       } catch {
+//         if (!cancelled) setStripeConfig(null);
+//       }
+//     })();
+//
+//     return () => {
+//       cancelled = true;
+//     };
+//   }, []);
+//
+//
   useEffect(() => {
     if (
       cart.fulfillmentType !== "DELIVERY" ||
@@ -472,9 +476,12 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     promo.hydrated !== false && session.loaded !== false ? quote : null;
   const tipCents = currentQuote?.driver_tip_cents ?? 0;
   const rewardBlockedReason = wingsRewardBlockedReason(promo.applyWingsReward, currentQuote);
-  const onlinePaymentsEnabled = Boolean(
-    stripeConfig?.online_payments_enabled && stripeConfig.configured,
-  );
+// Dormant Stripe integration: restore only after payment and privacy review.
+//   const onlinePaymentsEnabled = Boolean(
+//     stripeConfig?.online_payments_enabled && stripeConfig.configured,
+//   );
+//
+  const onlinePaymentsEnabled = false; // In-person collection only; no Stripe initialization.
   const pricingBlock = checkoutPricingBlock({
     quoteIsCurrent: pricedQuoteKey === quoteKey && promo.hydrated !== false && session.loaded !== false,
     quoteLoading,
@@ -592,84 +599,86 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
         setQuote(freshQuote); setPricedQuoteKey(quoteKey);
         throw new Error('Your order total changed. Please review the updated total before placing your order.');
       }
-      let stripePaymentIntentId =
-        paidIntentRef.current?.fingerprint === submissionFingerprint
-          ? paidIntentRef.current.paymentIntentId
-          : null;
-      if (onlinePaymentsEnabled && paymentMethod === "ONLINE_CARD") {
-        if (!stripePaymentIntentId) {
-          const intentRes = await withSilentRefresh(
-          () =>
-            apiFetch("/api/v1/payments/stripe/payment-intent", {
-              method: "POST",
-              locationId: cart.locationId,
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                location_id: cart.locationId,
-                fulfillment_type: cart.fulfillmentType,
-                items: checkoutItems(cart.items),
-                scheduled_for: cart.scheduledFor ?? undefined,
-                driver_tip_cents: tipCents,
-                delivery_quote_token: deliveryQuote?.delivery_quote_token,
-                address_snapshot_json:
-                  cart.fulfillmentType === "DELIVERY"
-                    ? deliveryAddress
-                    : undefined,
-                ...quotePromoParams(promo),
-              }),
-            }),
-          session.refresh,
-          session.clear,
-        );
-          const intentBody = (await intentRes.json().catch(() => null)) as
-          | ApiEnvelope<StripePaymentIntentResponse>
-          | null;
-          const intent = intentBody?.data;
-          if (!intentRes.ok || !intent) {
-            throw new Error(getApiErrorMessage(intentBody, `Payment setup failed (${intentRes.status})`));
-          }
-          if (!intent.configured || !intent.client_secret || !intent.payment_intent_id) {
-            throw new Error(intent.message ?? "Online card payments are not configured yet.");
-          }
-          const paymentBlock = paymentIntentPricingBlock(intent.amount_cents, intent.quote, freshQuote, promo);
-          if (paymentBlock) {
-            if (intent.quote) { setQuote(intent.quote); setPricedQuoteKey(quoteKey); }
-            throw new Error(paymentBlock);
-          }
-
-          await initStripe({
-            publishableKey: intent.publishable_key,
-            merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
-          });
-
-          const sheet = await initPaymentSheet({
-            merchantDisplayName: intent.merchant_display_name || "Wings4U",
-            paymentIntentClientSecret: intent.client_secret,
-            returnURL: STRIPE_RETURN_URL,
-          });
-          if (sheet.error) {
-            throw new Error(sheet.error.message);
-          }
-
-          if (latestCheckoutKey.current !== quoteKey) throw new Error('Your cart or account changed. Review your total before payment.');
-          const payment = await presentPaymentSheet();
-          if (payment.error) {
-            throw new Error(payment.error.message || "Payment was cancelled.");
-          }
-          stripePaymentIntentId = intent.payment_intent_id;
-          paidIntentRef.current = {
-            fingerprint: submissionFingerprint,
-            paymentIntentId: stripePaymentIntentId,
-          };
-        }
-      } else {
-        paidIntentRef.current = null;
-      }
-
-      if (stripePaymentIntentId) {
-        payload.stripe_payment_intent_id = stripePaymentIntentId;
-      }
-
+// Dormant Stripe integration: restore only after payment and privacy review.
+//       let stripePaymentIntentId =
+//         paidIntentRef.current?.fingerprint === submissionFingerprint
+//           ? paidIntentRef.current.paymentIntentId
+//           : null;
+//       if (onlinePaymentsEnabled && paymentMethod === "ONLINE_CARD") {
+//         if (!stripePaymentIntentId) {
+//           const intentRes = await withSilentRefresh(
+//           () =>
+//             apiFetch("/api/v1/payments/stripe/payment-intent", {
+//               method: "POST",
+//               locationId: cart.locationId,
+//               headers: { "Content-Type": "application/json" },
+//               body: JSON.stringify({
+//                 location_id: cart.locationId,
+//                 fulfillment_type: cart.fulfillmentType,
+//                 items: checkoutItems(cart.items),
+//                 scheduled_for: cart.scheduledFor ?? undefined,
+//                 driver_tip_cents: tipCents,
+//                 delivery_quote_token: deliveryQuote?.delivery_quote_token,
+//                 address_snapshot_json:
+//                   cart.fulfillmentType === "DELIVERY"
+//                     ? deliveryAddress
+//                     : undefined,
+//                 ...quotePromoParams(promo),
+//               }),
+//             }),
+//           session.refresh,
+//           session.clear,
+//         );
+//           const intentBody = (await intentRes.json().catch(() => null)) as
+//           | ApiEnvelope<StripePaymentIntentResponse>
+//           | null;
+//           const intent = intentBody?.data;
+//           if (!intentRes.ok || !intent) {
+//             throw new Error(getApiErrorMessage(intentBody, `Payment setup failed (${intentRes.status})`));
+//           }
+//           if (!intent.configured || !intent.client_secret || !intent.payment_intent_id) {
+//             throw new Error(intent.message ?? "Online card payments are not configured yet.");
+//           }
+//           const paymentBlock = paymentIntentPricingBlock(intent.amount_cents, intent.quote, freshQuote, promo);
+//           if (paymentBlock) {
+//             if (intent.quote) { setQuote(intent.quote); setPricedQuoteKey(quoteKey); }
+//             throw new Error(paymentBlock);
+//           }
+//
+//           await initStripe({
+//             publishableKey: intent.publishable_key,
+//             merchantIdentifier: STRIPE_MERCHANT_IDENTIFIER,
+//           });
+//
+//           const sheet = await initPaymentSheet({
+//             merchantDisplayName: intent.merchant_display_name || "Wings4U",
+//             paymentIntentClientSecret: intent.client_secret,
+//             returnURL: STRIPE_RETURN_URL,
+//           });
+//           if (sheet.error) {
+//             throw new Error(sheet.error.message);
+//           }
+//
+//           if (latestCheckoutKey.current !== quoteKey) throw new Error('Your cart or account changed. Review your total before payment.');
+//           const payment = await presentPaymentSheet();
+//           if (payment.error) {
+//             throw new Error(payment.error.message || "Payment was cancelled.");
+//           }
+//           stripePaymentIntentId = intent.payment_intent_id;
+//           paidIntentRef.current = {
+//             fingerprint: submissionFingerprint,
+//             paymentIntentId: stripePaymentIntentId,
+//           };
+//         }
+//       } else {
+//         paidIntentRef.current = null;
+//       }
+//
+//       if (stripePaymentIntentId) {
+//         payload.stripe_payment_intent_id = stripePaymentIntentId;
+//       }
+//
+//
       if (latestCheckoutKey.current !== quoteKey) throw new Error('Your cart or account changed. Review your order before continuing.');
 
       const idempotencyKey = checkoutAttemptRef.current.idempotencyKey;
@@ -706,7 +715,7 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
       // invalidate setup, but must never hide a successfully created order.
       onSuccess(order);
       checkoutAttemptRef.current = null;
-      paidIntentRef.current = null;
+      // paidIntentRef.current = null;
       // Clear the applied promo/reward and refresh rewards + wallet so the
       // redeemed stamps / credit reflect immediately.
       promo.clearAll();
@@ -735,10 +744,10 @@ function CheckoutScreenContent({ onSuccess }: { onSuccess: (order: CheckoutRespo
     deliveryQuote,
     deliveryQuoteError,
     deliveryQuoteReady,
-    initPaymentSheet,
+    // initPaymentSheet,
     line1,
     postalCode,
-    presentPaymentSheet,
+    // presentPaymentSheet,
     promo,
     currentQuote,
     router,

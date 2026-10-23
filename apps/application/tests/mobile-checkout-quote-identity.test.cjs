@@ -630,13 +630,14 @@ test('a malformed success response never clears the cart or shows confirmation',
   expect(button('Track Order')).toBeUndefined();
 });
 
-test('Stripe initializes only with both backend flags and a publishable key; it remains unexposed', async () => {
+test('dormant Stripe never initializes or requests payment configuration even if backend flags are enabled', async () => {
   const { initStripe } = require('@stripe/stripe-react-native');
   await act(async () => renderer.unmount()); renderer = null;
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation(async (url, init) => url.includes('/stripe/config') ? { data: { configured: true, online_payments_enabled: true, publishable_key: 'pk_test_mock' } } : original(url, init));
   await act(async () => { renderer = create(React.createElement(Checkout)); }); await settle();
-  expect(initStripe).toHaveBeenCalledWith(expect.objectContaining({ publishableKey: 'pk_test_mock' }));
+  expect(initStripe).not.toHaveBeenCalled();
+  expect(apiJson.mock.calls.some(([url]) => url.includes('/stripe/'))).toBe(false);
   expect(text(renderer.toJSON())).not.toContain('Pay and place order');
   expect(mockInitSheet).not.toHaveBeenCalled(); expect(mockPresentSheet).not.toHaveBeenCalled();
 });

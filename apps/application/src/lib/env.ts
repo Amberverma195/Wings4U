@@ -92,14 +92,14 @@ export const DEFAULT_LOCATION_ID: string = (() => {
   return "00000000-0000-4000-8000-000000000000";
 })();
 
-export const STRIPE_PUBLISHABLE_KEY: string = (() => {
-  const extra = Constants.expoConfig?.extra as
-    | Record<string, unknown>
-    | undefined;
-  const key = extra?.stripePublishableKey;
-  if (typeof key === "string" && key.trim()) return key;
-  return "pk_test_placeholder";
-})();
+// export const STRIPE_PUBLISHABLE_KEY: string = (() => {
+//   const extra = Constants.expoConfig?.extra as
+//     | Record<string, unknown>
+//     | undefined;
+//   const key = extra?.stripePublishableKey;
+//   if (typeof key === "string" && key.trim()) return key;
+//   return "pk_test_placeholder";
+// })();
 
 /** Public legal documents always use the website, independently of the API host. */
 function getLegalWebsiteOrigin(): string {

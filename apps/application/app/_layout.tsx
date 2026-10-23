@@ -1,11 +1,12 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { StripeProvider } from "@stripe/stripe-react-native";
+// Stripe is dormant while customer payments are collected in person.
+// import { StripeProvider } from "@stripe/stripe-react-native";
 import { CartProvider } from "../src/context/cart";
 import { PromoProvider } from "../src/context/promo";
 import { SessionProvider } from "../src/context/session";
-import { STRIPE_PUBLISHABLE_KEY } from "../src/lib/env";
+// import { STRIPE_PUBLISHABLE_KEY } from "../src/lib/env";
 import { AccountDataProvider } from "../src/hooks/use-account-data";
 import { OrderSetupProvider } from "../src/context/order-setup";
 import { CartAddedToast } from "../src/components/cart-added-toast";
@@ -15,7 +16,7 @@ export const unstable_settings = { initialRouteName: '(tabs)' };
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
+      {/* <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}> */}
         <SessionProvider>
           <CartProvider>
             <AccountDataProvider>
@@ -65,7 +66,7 @@ export default function RootLayout() {
             </AccountDataProvider>
           </CartProvider>
         </SessionProvider>
-      </StripeProvider>
+      {/* </StripeProvider> */}
     </GestureHandlerRootView>
   );
 }

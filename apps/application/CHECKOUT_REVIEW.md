@@ -1,3 +1,7 @@
+# Stripe follow-up — October 23, 2026
+
+The historical checkout review below predates the Stripe dormancy change. Mobile Stripe imports/provider, initialization/config fetch and PaymentSheet/payment-intent code are now commented out, with the Expo plugin inactive and dependency retained. In-person checkout remains active. See [the current dormancy record](../../Docs/privacy/stripe-dormancy.md) for scope, release limits and restoration requirements. Earlier Stripe-gating test descriptions below are historical; current coverage asserts no initialization even when mocked backend flags are enabled.
+
 # Mobile checkout redesign review
 
 Implemented on `feat/mobile-checkout-redesign`. Website behavior was compared with the mobile checkout before making changes; the existing ordering and payment pipeline remains in place.
