@@ -83,6 +83,15 @@ describe("terminal fulfillment is independent of collection", () => {
     if (delivery) expect(f.tx.driverProfile.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ availabilityStatus: "AVAILABLE", isOnDelivery: false }),
     }));
+    if (status === "DELIVERED" || status === "NO_PIN_DELIVERY") {
+      expect(f.realtime.emitDriverEvent).toHaveBeenCalledWith("store", "driver.delivery_completed", expect.objectContaining({ order_id: "order" }));
+      expect(f.tx.driverProfile.update.mock.calls[0][0].data).toMatchObject({ totalDeliveriesCompleted: { increment: 1 }, lastDeliveryCompletedAt: expect.any(Date) });
+    }
+    if (status === "NO_SHOW_DELIVERY") {
+      expect(f.realtime.emitDriverEvent).toHaveBeenCalledWith("store", "driver.delivery_completed", expect.objectContaining({ no_show: true }));
+      expect(f.tx.driverProfile.update.mock.calls[0][0].data).not.toHaveProperty("totalDeliveriesCompleted");
+      expect(f.tx.driverProfile.update.mock.calls[0][0].data).not.toHaveProperty("lastDeliveryCompletedAt");
+    }
     await expect(f.complete(status)).rejects.toBeInstanceOf(UnprocessableEntityException);
     expect(f.tx.orderStatusEvent.create).toHaveBeenCalledTimes(1);
     expect(f.chat.closeConversation).toHaveBeenCalledTimes(1);
@@ -135,6 +144,9 @@ describe("terminal fulfillment is independent of collection", () => {
     expect(f.tx.orderDriverEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ eventType: "ORDER_CANCELLED" }) });
     expect(f.tx.customerProfile.upsert).not.toHaveBeenCalled();
     expect(f.writeForbidden).not.toHaveBeenCalled();
+    expect(f.realtime.emitDriverEvent.mock.calls.some(([, name]) => name === "driver.delivery_completed")).toBe(false);
+    expect(f.tx.driverProfile.update.mock.calls[0][0].data).not.toHaveProperty("lastDeliveryCompletedAt");
+    expect(f.realtime.emitDriverEvent).toHaveBeenCalledWith("store", "driver.availability_changed", expect.objectContaining({ availability_status: "AVAILABLE" }));
   });
 
   it("keeps PIN verification mandatory on ordinary status and completion routes", async () => {

@@ -27,7 +27,8 @@ export async function releaseClosedOrderDriver(
   } });
   await tx.driverProfile.update({ where: { userId: driverUserId }, data: {
     isOnDelivery: released.isOnDelivery, availabilityStatus: released.availabilityStatus,
-    lastDeliveryCompletedAt: now,
+    // Release is not a successful handoff. Successful completion paths own
+    // lastDeliveryCompletedAt and totalDeliveriesCompleted.
   } });
   return released;
 }

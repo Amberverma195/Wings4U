@@ -30,7 +30,7 @@ for (const workspace of ['api', 'web', 'application']) {
       ? '(kds/(kds\\.service|kds-terminal)|orders/.*|admin/admin-terminal|auth/account-deletion\\.service|payments/.*|refunds/.*|chat/.*|realtime/realtime\\.gateway|rewards/rewards\\.service)\\.spec\\.ts$'
       : undefined;
     if (workspace !== 'api') config.testMatch = (workspace === 'web'
-      ? ['terminal-orders', 'account-deletion', 'account-deletion-session', 'order-terminal-tracking', 'pickup-eta']
+      ? ['terminal-orders', 'account-deletion', 'account-deletion-session', 'order-terminal-tracking', 'pickup-eta', 'cancellation-terminal-review']
       : ['account-deletion', 'account-deletion-cleanup', 'order-detail-realtime', 'order-tracking-details', 'order-actions',
         'cancellation-eligibility', 'order-realtime', 'use-chat', 'payment-options', 'delivery-pin', 'account-orders-pagination'])
       .map(name => '<rootDir>/tests/' + name + '.test.cjs');

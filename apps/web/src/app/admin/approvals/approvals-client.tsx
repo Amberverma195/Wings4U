@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import { adminApiFetch, formatCents, formatDateTime } from "../admin-api";
+import { TERMINAL_STATUSES, type OrderStatus } from "@/lib/types";
 
 type OrderRef = {
   id: string;
@@ -54,11 +55,13 @@ function CancellationCard({
   onResolved: () => void;
 }) {
   const session = useSession();
+  const terminalOrder = Boolean(request.order && TERMINAL_STATUSES.has(request.order.status as OrderStatus));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const decide = async (action: "APPROVE" | "DENY") => {
+    if (busy || (terminalOrder && action === "APPROVE")) return;
     setBusy(action === "APPROVE" ? "approve" : "deny");
     setError(null);
     try {
@@ -141,6 +144,11 @@ function CancellationCard({
         </p>
       )}
 
+      {terminalOrder && <p role="note">
+        This order is already closed. Review the original request and record a rejection if appropriate.
+        This decision preserves its fulfillment history and does not issue a refund.
+        Leave the request pending while any dispute remains unresolved; handle refunds through the refund workflow.
+      </p>}
       <textarea
         rows={2}
         placeholder="Optional admin notes (visible in audit log)"
@@ -162,7 +170,7 @@ function CancellationCard({
         <button
           type="button"
           className="btn-primary"
-          disabled={busy !== null}
+          disabled={busy !== null || terminalOrder}
           onClick={() => void decide("APPROVE")}
           style={{ width: "auto" }}
         >

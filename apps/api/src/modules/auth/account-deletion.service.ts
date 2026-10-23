@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { eraseCustomerData } from "./account-deletion.cleanup";
+import { RESOLVED_CANCELLATION_STATUSES } from "../../common/orders/cancellation-lifecycle";
 import { ACCOUNT_DELETION_POLICY_VERSION, accountDeletionEnabled, DELETION_AUTHORIZATION_TTL_MS,
   DELETION_BLOCKERS, type DeletionBlockerCode, TERMINAL_ORDER_STATUSES } from "./account-deletion.policy";
 
@@ -162,7 +163,7 @@ export class AccountDeletionService {
       ["PENDING_REFUNDS", tx.refundRequest.count({ where: { OR: [{ requestedByUserId: id }, { order: customerOrder }], status: { in: ["PENDING", "APPROVED"] } } })],
       ["WALLET_BALANCE", tx.customerWallet.count({ where: { customerUserId: id, balanceCents: { not: 0 } } })],
       ["OPEN_SUPPORT", tx.supportTicket.count({ where: { ...openTicket, status: { notIn: ["RESOLVED", "CLOSED"] } } })],
-      ["OPEN_CANCELLATION", tx.cancellationRequest.count({ where: { OR: [{ order: customerOrder }, { requestedByUserId: id }], status: { notIn: ["APPROVED", "REJECTED", "CANCELLED", "WITHDRAWN"] } } })],
+      ["OPEN_CANCELLATION", tx.cancellationRequest.count({ where: { OR: [{ order: customerOrder }, { requestedByUserId: id }], status: { notIn: [...RESOLVED_CANCELLATION_STATUSES] } } })],
       ["OPEN_CATERING", tx.cateringInquiry.count({ where: { customerUserId: id, status: { notIn: ["CLOSED", "CANCELLED", "COMPLETED"] } } })],
       ["REWARD_NOTIFICATION", tx.wingsStampGrantEmail.count({ where: { grant: { customerUserId: id }, leaseUntil: { gt: new Date() } } })],
     ];

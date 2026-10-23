@@ -202,6 +202,23 @@ describe("atomic customer account deletion with only mocked dependencies", () =>
     expect(db.orderPayment.update).not.toHaveBeenCalled();
     expect(db.orderPayment.deleteMany).not.toHaveBeenCalled();
   });
+  it.each(["PICKED_UP", "DELIVERED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY", "CANCELLED"]
+    .flatMap(status => ["DENIED", "REJECTED"].map(decision => [status, decision])))
+  ("allows historical unpaid %s with a %s cancellation, without a backfill", async (status, decision) => {
+    storedOrder(status, "UNPAID");
+    db.cancellationRequest.count.mockImplementation(async ({ where }: any) => where.status.notIn.includes(decision) ? 0 : 1);
+    expect(await service.status(session)).toMatchObject({ status: "ready", blockers: [] });
+    expect((await remove(await verify())).status).toBe("completed");
+    expect(db.cancellationRequest.deleteMany).not.toHaveBeenCalled();
+  });
+  it.each(["PENDING", "UNKNOWN_FUTURE_STATUS"])("protects %s cancellations until genuinely resolved", async decision => {
+    storedOrder("PICKED_UP", "UNPAID");
+    let current = decision;
+    db.cancellationRequest.count.mockImplementation(async ({ where }: any) => where.status.notIn.includes(current) ? 0 : 1);
+    expect(await service.status(session)).toMatchObject({ status: "resolution_required", blockers: [{ code: "OPEN_CANCELLATION" }] });
+    current = "REJECTED";
+    expect(await service.status(session)).toMatchObject({ status: "ready", blockers: [] });
+  });
   it.each(["PLACED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"])
   ("preserves active-order and outstanding-balance blockers for %s", async status => {
     storedOrder(status, "UNPAID");

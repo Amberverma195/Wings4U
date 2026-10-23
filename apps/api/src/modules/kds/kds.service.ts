@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { REJECTED_CANCELLATION_STATUS } from "../../common/orders/cancellation-lifecycle";
 import { TERMINAL_STATUSES, rethrowOrderWriteConflict } from "../../common/orders/order-lifecycle";
 import { DRIVER_ACTIVE_ORDER_STATUSES, releaseClosedOrderDriver } from "../../common/orders/release-closed-order-driver";
 import { ChatService } from "../chat/chat.service";
@@ -884,7 +885,9 @@ export class KdsService {
       statusPayload,
     );
     if (releasedDriver) {
-      this.realtime.emitDriverEvent(locationId, "driver.delivery_completed", {
+      // Keep the established explicitly flagged unsuccessful-delivery event.
+      // Cancellations only publish availability and order.cancelled.
+      if (newStatus === "NO_SHOW_DELIVERY") this.realtime.emitDriverEvent(locationId, "driver.delivery_completed", {
         driver_user_id: releasedDriver.driverUserId,
         order_id: orderId,
         location_id: locationId,
@@ -1171,15 +1174,23 @@ export class KdsService {
         "CANCELLED",
       );
     } else {
-      await this.prisma.cancellationRequest.update({
-        where: { id: cancelRequest.id },
-        data: {
-          status: "DENIED",
-          reviewedByAdminUserId: actorUserId,
-          reviewedAt: now,
-          decisionNote: adminNotes,
-        },
-      });
+      await this.prisma.$transaction(async tx => {
+        await tx.cancellationRequest.update({
+          where: { id: cancelRequest.id, status: "PENDING" },
+          data: {
+            status: REJECTED_CANCELLATION_STATUS,
+            reviewedByAdminUserId: actorUserId,
+            reviewedAt: now,
+            decisionNote: adminNotes,
+          },
+        });
+        await tx.adminAuditLog.create({ data: {
+          locationId, actorUserId, actorRoleSnapshot: actorUserId ? "STAFF" : "KDS_STATION",
+          actionKey: "cancellation_request.deny", entityType: "CancellationRequest",
+          entityId: cancelRequest.id, reasonText: adminNotes,
+          payloadJson: { order_id: orderId, decision: "DENY" },
+        } });
+      }).catch(rethrowOrderWriteConflict);
     }
 
     this.realtime.emitOrderEvent(locationId, orderId, "cancellation.decided", {
@@ -1199,7 +1210,7 @@ export class KdsService {
     return {
       id: cancelRequest.id,
       order_id: cancelRequest.orderId,
-      status: action === "APPROVE" ? "APPROVED" : "DENIED",
+      status: action === "APPROVE" ? "APPROVED" : REJECTED_CANCELLATION_STATUS,
       reviewed_by_user_id: actorUserId,
       reviewed_at: now,
       decision_note: adminNotes ?? null,

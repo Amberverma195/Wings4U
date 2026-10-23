@@ -13,6 +13,7 @@ import { OrderStatusEmailService } from "../notifications/order-status-email.ser
 import { customerAccountWhere } from "./admin-customers.service";
 import { TERMINAL_STATUSES as TERMINAL_ORDER_STATUSES, rethrowOrderWriteConflict } from "../../common/orders/order-lifecycle";
 import { releaseClosedOrderDriver } from "../../common/orders/release-closed-order-driver";
+import { REJECTED_CANCELLATION_STATUS } from "../../common/orders/cancellation-lifecycle";
 
 /**
  * Prisma maps `Order.orderNumber` as BigInt. Express's `res.json()` calls
@@ -138,7 +139,7 @@ export class AdminService {
     }
 
     const now = new Date();
-    const newStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
+    const newStatus = action === "APPROVE" ? "APPROVED" : REJECTED_CANCELLATION_STATUS;
 
     if (action === "APPROVE") {
       const order = request.order;
@@ -209,13 +210,23 @@ export class AdminService {
         "CANCELLED",
       );
     } else {
-      await this.prisma.cancellationRequest.update({
-        where: { id: cancellationRequestId, status: "PENDING" },
-        data: { status: newStatus, reviewedByAdminUserId: actorUserId, reviewedAt: now, decisionNote: adminNotes },
+      // Rejecting a request is valid even after fulfillment closes. Record the
+      // decision and its audit atomically; never cancel/refund that order again.
+      await this.prisma.$transaction(async tx => {
+        await tx.cancellationRequest.update({
+          where: { id: cancellationRequestId, status: "PENDING" },
+          data: { status: newStatus, reviewedByAdminUserId: actorUserId, reviewedAt: now, decisionNote: adminNotes },
+        });
+        await tx.adminAuditLog.create({ data: {
+          locationId: locationId ?? request.locationId, actorUserId, actorRoleSnapshot: "ADMIN",
+          actionKey: "cancellation_request.deny", entityType: "CancellationRequest",
+          entityId: cancellationRequestId, reasonText: adminNotes,
+          payloadJson: { order_id: request.orderId, decision: action },
+        } });
       }).catch(rethrowOrderWriteConflict);
     }
 
-    await this.createAuditLog({
+    if (action === "APPROVE") await this.createAuditLog({
       locationId: locationId ?? request.locationId,
       actorUserId,
       actionKey: `cancellation_request.${action.toLowerCase()}`,

@@ -134,6 +134,9 @@ export type DriverAvailabilityChangedPayload = {
 export type DriverDeliveryCompletedPayload = {
   driver_user_id: string;
   order_id: string;
+  /** Legacy operational-closure notification; true means unsuccessful delivery. */
+  no_show?: boolean;
+  without_pin?: boolean;
 };
 
 export type OrderPlacedEvent = RealtimeEventEnvelope<"order.placed", OrderPlacedPayload>;
