@@ -100,3 +100,33 @@ export const STRIPE_PUBLISHABLE_KEY: string = (() => {
   if (typeof key === "string" && key.trim()) return key;
   return "pk_test_placeholder";
 })();
+
+/**
+ * Privacy policy URL for Wings4U.
+ *
+ * Uses `extra.privacyPolicyUrl`, `extra.websiteUrl`, or derives from `getApiBase()`.
+ */
+export function getPrivacyPolicyUrl(): string {
+  const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
+  if (typeof extra?.privacyPolicyUrl === "string" && extra.privacyPolicyUrl.trim()) {
+    return extra.privacyPolicyUrl.trim();
+  }
+  if (typeof extra?.websiteUrl === "string" && extra.websiteUrl.trim()) {
+    return `${extra.websiteUrl.trim().replace(/\/$/, "")}/privacy`;
+  }
+  try {
+    const apiBase = getApiBase();
+    if (apiBase.includes(":3001")) {
+      return `${apiBase.replace(":3001", ":3000").replace(/\/$/, "")}/privacy`;
+    }
+    const url = new URL(apiBase);
+    if (url.hostname.startsWith("api.")) {
+      url.hostname = url.hostname.slice(4);
+      url.pathname = "/privacy";
+      return url.toString();
+    }
+    return `${apiBase.replace(/\/$/, "")}/privacy`;
+  } catch {
+    return "https://wings4u.ca/privacy";
+  }
+}

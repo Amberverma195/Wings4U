@@ -3315,6 +3315,31 @@ export function WingKingsGlobalStyle() {
         font-weight: 600;
       }
 
+      .wk-method-privacy-notice {
+        margin: 14px 2px 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.75);
+      }
+
+      .wk-method-privacy-link {
+        color: #ffcd00;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        font-weight: 600;
+        border-radius: 2px;
+        transition: color 0.15s ease;
+      }
+
+      .wk-method-privacy-link:hover {
+        color: #ffffff;
+      }
+
+      .wk-method-privacy-link:focus-visible {
+        outline: 2px solid #ffcd00;
+        outline-offset: 2px;
+      }
+
       @keyframes wkMethodFormErrorPulse {
         0% {
           transform: translateX(0) scale(1);

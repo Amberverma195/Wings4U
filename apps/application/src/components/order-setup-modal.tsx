@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Bike, CalendarDays, CarFront, Check, ChevronRight, Clock3, MapPin, X } from 'lucide-react-native';
 import { useCart } from '../context/cart';
@@ -7,6 +7,7 @@ import { useMenu } from '../hooks/use-menu';
 import { useAccountData } from '../hooks/use-account-data';
 import { useSession } from '../context/session';
 import { apiJson } from '../lib/api';
+import { getPrivacyPolicyUrl } from '../lib/env';
 import { buildOrderSlots, DELIVERY_CITY, leadMinutes, normalizeDeliveryAddress, orderTimingLabel, orderTimeAvailable, validDeliveryAddress,
   type DeliveryAddress, type OrderSetupSelection } from '../lib/order-setup';
 import type { FulfillmentType } from '../lib/types';
@@ -139,6 +140,11 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
     onConfirm({ fulfillmentType: type, scheduledFor, deliveryAddress: type === 'DELIVERY' ? address : initialAddress,
       ...(type === 'DELIVERY' && addressMode === 'saved' && selectedId ? { savedAddressId: selectedId } : {}) });
   };
+  const openPrivacyPolicy = () => {
+    if (Linking && typeof Linking.openURL === 'function') {
+      void Linking.openURL(getPrivacyPolicyUrl()).catch(() => {});
+    }
+  };
 
   return <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={back}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
@@ -209,6 +215,17 @@ export function OrderSetupModal({ initialType, initialScheduledFor, initialAddre
                   <Text style={styles.error}>{deliveryEstimate.error}</Text>
                   <Pressable accessibilityRole="button" style={styles.retry} onPress={() => { setDeliveryEstimate(null); setEstimateRetry(value => value + 1); }}><Text style={styles.link}>Retry delivery estimate</Text></Pressable>
               </>}
+              <Text style={styles.privacyNotice}>
+                To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information.{' '}
+                <Text
+                  style={styles.privacyLink}
+                  accessibilityRole="link"
+                  accessibilityLabel="Privacy Policy"
+                  onPress={openPrivacyPolicy}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
             </View>}
 
             <Text style={styles.label}>When would you like it?</Text>
@@ -319,4 +336,6 @@ const styles = StyleSheet.create({
   primaryDisabled: { backgroundColor: '#D9C9C2' },
   primaryText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
   footerNote: { textAlign: 'center', color: '#9A8C82', fontSize: 11, marginTop: 10 },
+  privacyNotice: { marginTop: 12, fontSize: 11, lineHeight: 16, color: '#6E6057' },
+  privacyLink: { color: '#B42C2C', fontWeight: '700', textDecorationLine: 'underline' },
 });

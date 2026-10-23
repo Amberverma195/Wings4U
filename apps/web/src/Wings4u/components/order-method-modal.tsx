@@ -663,6 +663,18 @@ export function OrderMethodModal({
                 </div>
               </div>
 
+              <p className="wk-method-privacy-notice">
+                To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information.{" "}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="wk-method-privacy-link"
+                >
+                  Privacy Policy
+                </a>
+              </p>
+
               {addressError ? (
                 <p
                   key={addressErrorAnimKey}

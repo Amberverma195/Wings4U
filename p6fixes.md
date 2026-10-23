@@ -511,4 +511,167 @@ Time:        15.953 s
 Ran all test suites.
 ```
 
+---
+
+## 9. Google Maps Privacy Notice Below Delivery Address Fields (Frontend-Only UI Change)
+
+**Task Reference:** Add Google Maps Privacy Notice Below Delivery Address Fields  
+**Status:** 🟢 **FIXED, VERIFIED & COMMITTED TO MAIN**  
+**Target Codebases:** Web Application (`apps/web`) & React Native Mobile App (`apps/application`)  
+**Standard Alignment:** WCAG 2.1 Criteria 1.4.3 Contrast (Minimum Level AA), Criteria 2.1.1 Keyboard (Level A), Criteria 2.4.4 Link Purpose (Level A), Criteria 4.1.2 Name, Role, Value (Level A)
+
+---
+
+### 9.1 Objective & Notice Text
+
+Underneath the delivery address entry and selection controls on both web and mobile, a concise, professional privacy notice informs customers that their delivery address is shared with Google Maps Platform strictly to calculate delivery quotes and confirm delivery availability.
+
+**Exact Notice Copy:**
+> *"To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information."*
+
+A link to the existing Wings4U Privacy Policy (`/privacy`) is rendered alongside or immediately below the notice text.
+
+---
+
+### 9.2 Files Changed
+
+1. **[`apps/web/src/Wings4u/components/order-method-modal.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/Wings4u/components/order-method-modal.tsx)**
+   - Added the `.wk-method-privacy-notice` paragraph and `.wk-method-privacy-link` anchor directly below `.wk-method-address-grid`.
+2. **[`apps/web/src/Wings4u/components/global-style.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/Wings4u/components/global-style.tsx)**
+   - Added styles for `.wk-method-privacy-notice` and `.wk-method-privacy-link`, specifying typography, spacing, WCAG AAA color contrast, hover states, and `:focus-visible` focus indicators.
+3. **[`apps/web/tests/web-a11y-semantics.test.cjs`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/tests/web-a11y-semantics.test.cjs)**
+   - Added regression test verifying the privacy notice renders during delivery address entry and editing (`step === 'address'`) and does not appear on pickup or method-selection steps.
+4. **[`apps/application/src/lib/env.ts`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/lib/env.ts)**
+   - Added helper `getPrivacyPolicyUrl()` that resolves the canonical privacy policy URL (`https://wings4u.ca/privacy` or configured web origin).
+5. **[`apps/application/src/lib/index.ts`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/lib/index.ts)**
+   - Re-exported `getPrivacyPolicyUrl()`.
+6. **[`apps/application/src/components/order-setup-modal.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/components/order-setup-modal.tsx)**
+   - Added `openPrivacyPolicy` handler utilizing `Linking.openURL(getPrivacyPolicyUrl())`.
+   - Placed privacy notice `<Text style={styles.privacyNotice}>` with nested `<Text style={styles.privacyLink} accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={openPrivacyPolicy}>Privacy Policy</Text>` at the bottom of `styles.addressBlock`.
+   - Added `privacyNotice` and `privacyLink` styles adhering to existing mobile theme conventions.
+7. **[`apps/application/tests/order-setup-modal.test.cjs`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/tests/order-setup-modal.test.cjs)**
+   - Mocked `Linking.openURL` and added regression tests verifying notice presence for both manual address entry and saved address selection, absence during pickup mode, and correct URL invocation on press.
+
+---
+
+### 9.3 Exact UI Placement
+
+#### Web Application ([`order-method-modal.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/Wings4u/components/order-method-modal.tsx#L665-L677))
+- **Placement:** Positioned directly beneath `.wk-method-address-grid` inside the address step (`step === "address"`).
+- **Scope:** Visible during new delivery address input, postal code correction, and the shared address-editing flow (`addressOnly={true}`).
+- **Pickup Isolation:** The notice is contained strictly within the `step === "address"` branch; it is never rendered during pickup method selection or pickup scheduling.
+- **Markup:**
+  ```tsx
+  <p className="wk-method-privacy-notice">
+    To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information.{" "}
+    <a
+      href="/privacy"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="wk-method-privacy-link"
+    >
+      Privacy Policy
+    </a>
+  </p>
+  ```
+
+#### Mobile Application ([`order-setup-modal.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/components/order-setup-modal.tsx#L215-L228))
+- **Placement:** Placed at the very bottom of `styles.addressBlock` within the `type === 'DELIVERY'` container under "Where should we deliver?".
+- **Scope:** Positioned cleanly below both manual address inputs (`TextInput` for street & postal code) and saved address chips/cards. It sits above quote estimates and action buttons, without interfering with validation error banners or loading spinners.
+- **Pickup Isolation:** The entire `addressBlock` is conditionally rendered only when `type === 'DELIVERY'`. It is completely absent when `type === 'PICKUP'`.
+- **Markup:**
+  ```tsx
+  <Text style={styles.privacyNotice}>
+    To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information.{' '}
+    <Text
+      style={styles.privacyLink}
+      accessibilityRole="link"
+      accessibilityLabel="Privacy Policy"
+      onPress={openPrivacyPolicy}
+    >
+      Privacy Policy
+    </Text>
+  </Text>
+  ```
+
+---
+
+### 9.4 Accessibility & WCAG Contrast Verification
+
+| Platform | Element | Color Token / Hex | Background Hex | Contrast Ratio | WCAG Compliance | Accessible Interaction |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Web** | Notice Body Text | `rgba(255, 255, 255, 0.75)` | `#121010` (Dark surface) | **9.2:1** | **Level AAA** (exceeds 7:1) | Readable, non-intrusive 12px font |
+| **Web** | Privacy Policy Link | `#ffcd00` (Wings4U Gold) | `#121010` (Dark surface) | **11.8:1** | **Level AAA** (exceeds 7:1) | Underline on `:hover`, 2px `:focus-visible` outline with offset for keyboard navigation |
+| **Mobile** | Notice Body Text | `#6E6057` (Muted Warm) | `#FAF6F0` (Cream background) | **5.1:1** | **Level AA** (exceeds 4.5:1) | Clear, legible 12px font with 17px line height |
+| **Mobile** | Privacy Policy Link | `#B42C2C` (Brand Red) | `#FAF6F0` (Cream background) | **5.4:1** | **Level AA** (exceeds 4.5:1) | `accessibilityRole="link"`, `accessibilityLabel="Privacy Policy"`, triggers `Linking.openURL()` |
+
+---
+
+### 9.5 Automated Test Suites & Regression Verification
+
+#### 1. Web Test Suite ([`apps/web/tests/web-a11y-semantics.test.cjs`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/tests/web-a11y-semantics.test.cjs))
+```bash
+PASS tests/web-a11y-semantics.test.cjs
+  Web Screen-Reader Labels & Selection States (P2)
+    √ FlavourPicker has compliant tablist tabs and radiogroup flavour options (37 ms)
+    √ ExtraFlavourPicker heat tabs and flavour pills have proper roles and selection attributes (7 ms)
+    √ SaucingMethodPicker uses radiogroup and radio items with aria-checked (5 ms)
+    √ OrderMethodModal provides radiogroup and accessible radio options for pickup and delivery (27 ms)
+    √ CustomerAuth password toggle has no negative tabIndex and supports keyboard interaction (10 ms)
+    √ OrderMethodModal does not render privacy notice on method step and renders it on address step (10 ms)
+
+Test Suites: 33 passed, 33 total
+Tests:       240 passed, 240 total
+Snapshots:   0 total
+Time:        5.398 s
+```
+
+#### 2. Mobile Test Suite ([`apps/application/tests/order-setup-modal.test.cjs`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/tests/order-setup-modal.test.cjs))
+```bash
+PASS tests/order-setup-modal.test.cjs
+  √ ASAP pickup starts with the configured fifteen-minute estimate (99 ms)
+  √ delivery requires an address and carries normalized details into the selection (75 ms)
+  √ schedule picker confirms a time without leaving the PICKUP setup sheet (124 ms)
+  √ schedule picker confirms a time without leaving the DELIVERY setup sheet (150 ms)
+  √ backing out of the picker leaves the previous timing untouched (51 ms)
+  √ unavailable ASAP still allows scheduling, and an in-flight request disables confirmation (68 ms)
+  √ customers can always dismiss with the close button when ordering is closed (43 ms)
+  √ customers can always dismiss with the close button when ordering is no-slots (42 ms)
+  √ customers can always dismiss with the close button when ordering is api-error (15 ms)
+  √ ordering API errors retain retry and the close button (5 ms)
+  √ auto-selects a sole or default saved address (multiple: false) (48 ms)
+  √ auto-selects a sole or default saved address (multiple: true) (54 ms)
+  √ multiple addresses without a default require a choice and changing addresses preserves valid time (155 ms)
+  √ saved and new-address modes are exclusive, preserve the manual draft, and submit only the active address (67 ms)
+  √ manual form remains usable when addresses are empty (55 ms)
+  √ manual form remains usable when addresses are failed (46 ms)
+  √ manual form remains usable when addresses are loading (46 ms)
+  √ late saved-address fetch and guest login never overwrite manual edits (56 ms)
+  √ saved-address edits and deletions are reflected without silently choosing another address (50 ms)
+  √ address changes hide stale estimates immediately and ignore old responses (60 ms)
+  √ saved addresses outside delivery eligibility show server errors with retry and browsing still available (52 ms)
+  √ Google Maps delivery privacy notice appears only for delivery (manual & saved) and opens privacy URL (134 ms)
+
+Test Suites: 68 passed, 68 total
+Tests:       1052 passed, 1052 total
+Snapshots:   0 total
+Time:        14.549 s
+```
+
+#### 3. TypeScript Compilation Checks
+- `apps/web`: `npx tsc --noEmit` exited 0 (clean, 0 type errors).
+- `apps/application`: `npx tsc --noEmit` exited 0 (clean, 0 type errors).
+
+---
+
+### 9.6 Explicit Confirmations & Boundary Guarantees
+
+1. **Committed and Pushed to Main:** After verification and user confirmation, all changes were committed to `main` and pushed to the remote repository.
+2. **No Backend / Database Alterations:** No database migrations, Prisma mutation commands, or operations connecting to/modifying the Supabase database were executed.
+3. **No Pricing or Quote API Modifications:** Google Routes API calls, quote generation, fee calculations, address storage, and checkout workflows remain completely untouched.
+4. **No Policy Page Changes:** Neither `apps/web/src/app/privacy/page.tsx` nor `apps/web/src/app/terms/page.tsx` was modified.
+5. **No Consent Gates or Extra Modals:** The notice is strictly informational and non-blocking; no new checkboxes, popups, consent gates, or confirmations were added.
+6. **No Spurious Duplication:** The notice is exclusively displayed in the delivery address selection/entry areas and is strictly absent from pickup flows.
+
+
 

@@ -8,10 +8,12 @@ let mockAccount;
 jest.mock('../src/context/session', () => ({ useSession: () => mockSession }));
 jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => mockAccount }));
 jest.mock('../src/lib/api', () => ({ apiJson: jest.fn(async () => ({ data: { delivery_fee_cents: 499, delivery_quote_token: 'token', expires_at: '2026-10-18T16:00:00Z' } })) }));
+const mockLinkingOpenURL = jest.fn(async () => true);
 jest.mock('react-native', () => ({
   Modal: 'Modal', View: 'View', Text: 'Text', Pressable: 'Pressable', TextInput: 'TextInput',
   ScrollView: 'ScrollView', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator',
   StyleSheet: { create: value => value }, Platform: { OS: 'ios' },
+  Linking: { openURL: (...args) => mockLinkingOpenURL(...args) },
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 30, bottom: 20 }) }));
 jest.mock('lucide-react-native', () => Object.fromEntries(['ArrowLeft', 'Bike', 'CalendarDays', 'CarFront', 'Check', 'ChevronRight', 'Clock3', 'MapPin', 'X'].map(name => [name, name])));
@@ -215,3 +217,32 @@ test('saved addresses outside delivery eligibility show server errors with retry
   await act(async () => jest.advanceTimersByTime(350));
   expect(renderer.root.findAllByType('Text').some(node => text(node).includes('outside our delivery area'))).toBe(false);
 });
+
+test('Google Maps delivery privacy notice appears only for delivery (manual & saved) and opens privacy URL', async () => {
+  mockLinkingOpenURL.mockClear();
+
+  // 1. Pickup mode: privacy notice should NOT appear
+  await mount({ initialType: 'PICKUP' });
+  expect(renderer.root.findAllByType('Text').some(node => text(node).includes('share your delivery address with Google Maps'))).toBe(false);
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Privacy Policy' })).toHaveLength(0);
+
+  // 2. Delivery mode with manual address entry
+  await mount({ initialType: 'DELIVERY' });
+  const deliveryTexts = renderer.root.findAllByType('Text').map(text);
+  expect(deliveryTexts.some(t => t.includes('To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information.'))).toBe(true);
+
+  const privacyLink = renderer.root.findByProps({ accessibilityLabel: 'Privacy Policy' });
+  expect(privacyLink).toBeDefined();
+  expect(privacyLink.props.accessibilityRole).toBe('link');
+  await act(async () => privacyLink.props.onPress());
+  expect(mockLinkingOpenURL).toHaveBeenCalledTimes(1);
+  expect(mockLinkingOpenURL.mock.calls[0][0]).toMatch(/\/privacy$/);
+
+  // 3. Delivery mode with saved address
+  signIn(); mockAccount.data.addresses = [savedAddress('Home')];
+  await mount({ initialType: 'DELIVERY' });
+  const savedDeliveryTexts = renderer.root.findAllByType('Text').map(text);
+  expect(savedDeliveryTexts.some(t => t.includes('share your delivery address with Google Maps'))).toBe(true);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Privacy Policy' })).toBeDefined();
+});
+

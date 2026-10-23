@@ -189,4 +189,49 @@ describe('Web Screen-Reader Labels & Selection States (P2)', () => {
     expect(passwordToggle.props['aria-label']).toBe('Hide password');
     expect(passwordToggle.props['aria-pressed']).toBe(true);
   });
+
+  test('OrderMethodModal does not render privacy notice on method step and renders it on address step', async () => {
+    // 1. On method step
+    await act(async () => {
+      renderer = create(
+        React.createElement(OrderMethodModal, {
+          open: true,
+          defaultMethod: 'PICKUP',
+          onClose: jest.fn(),
+          onContinue: jest.fn(),
+        })
+      );
+    });
+
+    let privacyNotices = renderer.root.findAllByProps({ className: 'wk-method-privacy-notice' });
+    expect(privacyNotices.length).toBe(0);
+
+    // 2. On address step
+    await act(async () => {
+      renderer.update(
+        React.createElement(OrderMethodModal, {
+          open: true,
+          initialStep: 'address',
+          defaultMethod: 'DELIVERY',
+          onClose: jest.fn(),
+          onContinue: jest.fn(),
+        })
+      );
+    });
+
+    privacyNotices = renderer.root.findAllByProps({ className: 'wk-method-privacy-notice' });
+    expect(privacyNotices.length).toBe(1);
+    const noticeText = privacyNotices[0].children
+      .map(child => (typeof child === 'string' ? child : child.children ? child.children.join('') : ''))
+      .join(' ');
+    expect(noticeText).toContain('To calculate delivery fees and check delivery availability, we share your delivery address with Google Maps. We do not send your name, phone number, email, or payment information.');
+
+    const privacyLink = privacyNotices[0].findByProps({ className: 'wk-method-privacy-link' });
+    expect(privacyLink).toBeTruthy();
+    expect(privacyLink.props.href).toBe('/privacy');
+    expect(privacyLink.props.target).toBe('_blank');
+    expect(privacyLink.props.rel).toBe('noopener noreferrer');
+    expect(privacyLink.children).toEqual(['Privacy Policy']);
+  });
 });
+
