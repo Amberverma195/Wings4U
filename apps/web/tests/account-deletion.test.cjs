@@ -75,6 +75,18 @@ test('expired authorization requires verification again without deleting', async
   await verify(); await type('text', 'DELETE'); await consent(); await submit();
   expect(text(renderer.toJSON())).toContain('Verification expired'); expect(deleteCalls()).toHaveLength(0);
 });
+test('reopening deletion refreshes backend eligibility after an unpaid order closes', async () => {
+  await act(async () => renderer.unmount());
+  apiFetch.mockImplementationOnce(async () => response({ ...ready, status: 'resolution_required', blockers: [{ code: 'ACTIVE_ORDERS', message: 'An order is active.' }] }));
+  await mount();
+  expect(button('Continue to verification').props.disabled).toBe(true);
+  await act(async () => renderer.unmount());
+  await mount();
+  expect(button('Continue to verification').props.disabled).toBe(false);
+  expect(apiFetch.mock.calls.filter(([path]) => path === '/api/v1/auth/account-deletion')).toHaveLength(3);
+  expect(apiFetch).toHaveBeenLastCalledWith('/api/v1/auth/account-deletion', { cache: 'no-store' });
+});
+
 test('new obligations at confirmation show actual resolution requirements and preserve authentication', async () => {
   await verify(); await type('text', 'DELETE'); await consent();
   apiFetch.mockImplementationOnce(async () => response({ status: 'resolution_required', request_id: proof.request_id, blockers: [{ code: 'WALLET_BALANCE', message: 'Your wallet balance must be resolved.' }] }));

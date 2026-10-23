@@ -155,7 +155,9 @@ export class AccountDeletionService {
       ["ACCOUNT_HOLD", tx.accountDeletionHold.count({ where: { userId: id, releasedAt: null } })],
       ["ACTIVE_ORDERS", tx.order.count({ where: { ...customerOrder, status: { notIn: [...TERMINAL_ORDER_STATUSES] } } })],
       ["PENDING_PAYMENTS", tx.orderPayment.count({ where: { order: customerOrder, transactionStatus: "PENDING" } })],
-      ["OUTSTANDING_PAYMENTS", tx.order.count({ where: { ...customerOrder, status: { not: "CANCELLED" },
+      // Terminal summary balances remain available for staff reconciliation;
+      // actual pending transactions/refunds and holds are independent blockers.
+      ["OUTSTANDING_PAYMENTS", tx.order.count({ where: { ...customerOrder, status: { notIn: [...TERMINAL_ORDER_STATUSES] },
         paymentStatusSummary: { in: ["UNPAID", "PENDING", "PARTIALLY_PAID", "FAILED"] } } })],
       ["PENDING_REFUNDS", tx.refundRequest.count({ where: { OR: [{ requestedByUserId: id }, { order: customerOrder }], status: { in: ["PENDING", "APPROVED"] } } })],
       ["WALLET_BALANCE", tx.customerWallet.count({ where: { customerUserId: id, balanceCents: { not: 0 } } })],

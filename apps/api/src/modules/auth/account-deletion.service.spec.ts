@@ -177,6 +177,55 @@ describe("atomic customer account deletion with only mocked dependencies", () =>
     expect(db.order.update).not.toHaveBeenCalled(); expect(realtime.disconnectCustomer).not.toHaveBeenCalled();
     await expect(remove(proof)).rejects.toThrow("expired or was already used");
   });
+  function storedOrder(status: string, paymentStatusSummary: string) {
+    const row = { id: "historical-order", customerUserId: id, status, paymentStatusSummary, pricingSnapshotJson: {} };
+    db.order.findMany.mockResolvedValue([row]);
+    db.order.count.mockImplementation(async ({ where }: any) => {
+      const statusMatches = (!where.status?.notIn || !where.status.notIn.includes(row.status)) &&
+        (!where.status?.not || where.status.not !== row.status);
+      const paymentMatches = !where.paymentStatusSummary?.in || where.paymentStatusSummary.in.includes(row.paymentStatusSummary);
+      return statusMatches && paymentMatches ? 1 : 0;
+    });
+    return row;
+  }
+  it.each(["PICKED_UP", "DELIVERED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY", "CANCELLED"]
+    .flatMap(status => ["UNPAID", "PAID", "PENDING", "PARTIALLY_PAID", "FAILED"].map(payment => [status, payment])))
+  ("allows an existing %s / %s order without backfills or payment changes", async (status, payment) => {
+    const historical = storedOrder(status, payment);
+    expect(await service.status(session)).toMatchObject({ status: "ready", blockers: [] });
+    expect((await remove(await verify())).status).toBe("completed");
+    expect(historical).toMatchObject({ status, paymentStatusSummary: payment });
+    for (const call of db.order.update.mock.calls) {
+      expect(call[0].data).not.toHaveProperty("status");
+      expect(call[0].data).not.toHaveProperty("paymentStatusSummary");
+    }
+    expect(db.orderPayment.update).not.toHaveBeenCalled();
+    expect(db.orderPayment.deleteMany).not.toHaveBeenCalled();
+  });
+  it.each(["PLACED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"])
+  ("preserves active-order and outstanding-balance blockers for %s", async status => {
+    storedOrder(status, "UNPAID");
+    const result = await remove(await verify());
+    expect(result.blockers.map(b => b.code)).toEqual(expect.arrayContaining(["ACTIVE_ORDERS", "OUTSTANDING_PAYMENTS"]));
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["orderPayment", "PENDING_PAYMENTS"], ["refundRequest", "PENDING_REFUNDS"],
+    ["accountDeletionHold", "ACCOUNT_HOLD"], ["supportTicket", "OPEN_SUPPORT"],
+    ["cancellationRequest", "OPEN_CANCELLATION"],
+  ])("a terminal unpaid order still respects %s", async (model, code) => {
+    storedOrder("PICKED_UP", "UNPAID");
+    db[model].count.mockResolvedValue(1);
+    const result = await remove(await verify());
+    expect(result.blockers.map(b => b.code)).toEqual([code]);
+    expect(db.user.update).not.toHaveBeenCalled();
+    if (model === "orderPayment") expect(db.orderPayment.count).toHaveBeenCalledWith({ where: {
+      order: { customerUserId: id }, transactionStatus: "PENDING",
+    } });
+    if (model === "refundRequest") expect(db.refundRequest.count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { in: ["PENDING", "APPROVED"] } }),
+    }));
+  });
   it("requires explicit loss-of-rewards consent and never spends rewards as a deletion side effect", async () => {
     db.customerWingsRewards.findUnique.mockResolvedValue({ availableStamps: 8 }); const proof = await verify();
     await expect(remove(proof, { forfeit_rewards: false })).rejects.toThrow("available rewards will be lost");

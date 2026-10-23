@@ -11,15 +11,8 @@ import { DELETED_ACCOUNT_STORE_CREDIT_MESSAGE, WalletsService } from "../wallets
 import { RefundService } from "../refunds/refund.service";
 import { OrderStatusEmailService } from "../notifications/order-status-email.service";
 import { customerAccountWhere } from "./admin-customers.service";
-
-const TERMINAL_ORDER_STATUSES = new Set([
-  "CANCELLED",
-  "DELIVERED",
-  "PICKED_UP",
-  "NO_SHOW_PICKUP",
-  "NO_SHOW_DELIVERY",
-  "NO_PIN_DELIVERY",
-]);
+import { TERMINAL_STATUSES as TERMINAL_ORDER_STATUSES, rethrowOrderWriteConflict } from "../../common/orders/order-lifecycle";
+import { releaseClosedOrderDriver } from "../../common/orders/release-closed-order-driver";
 
 /**
  * Prisma maps `Order.orderNumber` as BigInt. Express's `res.json()` calls
@@ -147,18 +140,11 @@ export class AdminService {
     const now = new Date();
     const newStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
 
-    await this.prisma.cancellationRequest.update({
-      where: { id: cancellationRequestId },
-      data: {
-        status: newStatus,
-        reviewedByAdminUserId: actorUserId,
-        reviewedAt: now,
-        decisionNote: adminNotes,
-      },
-    });
-
     if (action === "APPROVE") {
       const order = request.order;
+      if (TERMINAL_ORDER_STATUSES.has(order.status)) {
+        throw new ConflictException("This order is already closed. Review the cancellation request separately.");
+      }
       const fromStatus = order.status;
       // PRD §12.3/§12.4: the order's cancellation_source is the *origin* of
       // the request (KDS_CANCEL_REQUEST or KDS_CHAT_REQUEST), not just "ADMIN".
@@ -170,9 +156,9 @@ export class AdminService {
             ? "KDS_CANCEL_REQUEST"
             : "ADMIN";
 
-      await this.prisma.$transaction([
-        this.prisma.order.update({
-          where: { id: order.id },
+      const releasedDriver = await this.prisma.$transaction(async tx => {
+        await tx.order.update({
+          where: { id: order.id, status: order.status, assignedDriverUserId: order.assignedDriverUserId },
           data: {
             status: "CANCELLED",
             cancelledAt: now,
@@ -180,8 +166,8 @@ export class AdminService {
             cancellationSource: orderCancellationSource,
             cancellationReason: request.reasonText,
           },
-        }),
-        this.prisma.orderStatusEvent.create({
+        });
+        await tx.orderStatusEvent.create({
           data: {
             orderId: order.id,
             locationId: order.locationId,
@@ -191,8 +177,19 @@ export class AdminService {
             actorUserId,
             reasonText: request.reasonText,
           },
-        }),
-      ]);
+        });
+        await tx.cancellationRequest.update({
+          where: { id: cancellationRequestId, status: "PENDING" },
+          data: { status: newStatus, reviewedByAdminUserId: actorUserId, reviewedAt: now, decisionNote: adminNotes },
+        });
+        return releaseClosedOrderDriver(tx, order, actorUserId, now, "ORDER_CANCELLED", request.reasonText);
+      }).catch(rethrowOrderWriteConflict);
+      if (releasedDriver) {
+        this.realtime.emitDriverEvent(order.locationId, "driver.availability_changed", {
+          driver_user_id: releasedDriver.driverUserId, location_id: order.locationId,
+          availability_status: releasedDriver.availabilityStatus, is_on_delivery: releasedDriver.isOnDelivery,
+        });
+      }
 
       // PRD §12.6: auto-create PENDING refund request for the remaining paid balance.
       await this.refundService.createForCancelledOrder({
@@ -211,6 +208,11 @@ export class AdminService {
         },
         "CANCELLED",
       );
+    } else {
+      await this.prisma.cancellationRequest.update({
+        where: { id: cancellationRequestId, status: "PENDING" },
+        data: { status: newStatus, reviewedByAdminUserId: actorUserId, reviewedAt: now, decisionNote: adminNotes },
+      }).catch(rethrowOrderWriteConflict);
     }
 
     await this.createAuditLog({
@@ -342,9 +344,9 @@ export class AdminService {
     const now = new Date();
     const fromStatus = order.status;
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: orderId },
+    const releasedDriver = await this.prisma.$transaction(async tx => {
+      await tx.order.update({
+        where: { id: orderId, status: order.status, assignedDriverUserId: order.assignedDriverUserId },
         data: {
           status: "CANCELLED",
           cancelledAt: now,
@@ -352,8 +354,8 @@ export class AdminService {
           cancellationSource: "ADMIN",
           cancellationReason: reason,
         },
-      }),
-      this.prisma.orderStatusEvent.create({
+      });
+      await tx.orderStatusEvent.create({
         data: {
           orderId,
           locationId: order.locationId,
@@ -363,8 +365,15 @@ export class AdminService {
           actorUserId,
           reasonText: reason,
         },
-      }),
-    ]);
+      });
+      return releaseClosedOrderDriver(tx, order, actorUserId, now, "ORDER_CANCELLED", reason);
+    }).catch(rethrowOrderWriteConflict);
+    if (releasedDriver) {
+      this.realtime.emitDriverEvent(order.locationId, "driver.availability_changed", {
+        driver_user_id: releasedDriver.driverUserId, location_id: order.locationId,
+        availability_status: releasedDriver.availabilityStatus, is_on_delivery: releasedDriver.isOnDelivery,
+      });
+    }
 
     await this.createAuditLog({
       locationId,

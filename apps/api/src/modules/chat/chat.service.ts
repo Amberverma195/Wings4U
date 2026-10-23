@@ -9,21 +9,13 @@ import {
 import { PrismaService } from "../../database/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RateLimiterService } from "../rate-limit/rate-limit.service";
+import { TERMINAL_STATUSES } from "../../common/orders/order-lifecycle";
 
 const CHAT_MESSAGE_RATE_LIMIT = 5;
 const CHAT_MESSAGE_RATE_WINDOW_MS = 60_000;
 
 type SenderSurface = "CUSTOMER" | "KDS" | "MANAGER" | "ADMIN" | "DRIVER";
 type ReaderSide = "CUSTOMER" | "STAFF";
-
-const TERMINAL_ORDER_STATUSES = new Set([
-  "CANCELLED",
-  "DELIVERED",
-  "PICKED_UP",
-  "NO_SHOW_PICKUP",
-  "NO_SHOW_DELIVERY",
-  "NO_PIN_DELIVERY",
-]);
 
 function serializeMessage(m: Record<string, unknown>) {
   return {
@@ -146,7 +138,7 @@ export class ChatService {
       throw new NotFoundException("Order not found");
     }
 
-    if (TERMINAL_ORDER_STATUSES.has(order.status)) {
+    if (TERMINAL_STATUSES.has(order.status)) {
       throw new ConflictException(
         "This order has reached a terminal status. Please open a support ticket for further help.",
       );

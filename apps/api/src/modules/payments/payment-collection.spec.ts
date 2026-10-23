@@ -587,6 +587,15 @@ describe("Payment collection: balances", () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it.each(["PICKED_UP", "DELIVERED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY"])
+  ("authorized staff may reconcile %s separately without reopening fulfillment", async status => {
+    const harness = createHarness([makeOrder({ status })]);
+    await harness.service.recordCollection(collection());
+    expect(harness.state.orders.get("order-1")).toMatchObject({ status, paymentStatusSummary: "PAID", netPaidAmountCents: 2500 });
+    expect(harness.state.payments).toHaveLength(1);
+    expect(harness.state.payments[0]).toMatchObject({ transactionType: "CAPTURE", transactionStatus: "SUCCESS", signedAmountCents: 2500 });
+  });
+
   it("13. final balance and status stay correct through a refund", async () => {
     const harness = createHarness([makeOrder({ status: "PICKED_UP" })]);
     await harness.service.recordCollection(collection());

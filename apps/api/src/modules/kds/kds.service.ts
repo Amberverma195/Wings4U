@@ -7,6 +7,8 @@ import {
 } from "@nestjs/common";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
+import { TERMINAL_STATUSES, rethrowOrderWriteConflict } from "../../common/orders/order-lifecycle";
+import { DRIVER_ACTIVE_ORDER_STATUSES, releaseClosedOrderDriver } from "../../common/orders/release-closed-order-driver";
 import { ChatService } from "../chat/chat.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { documentFuturePrepaymentPolicy } from "../customers/no-show-policy";
@@ -42,18 +44,6 @@ const DEFAULT_KDS_STATUSES: OrderStatus[] = [
   "READY",
 ];
 
-const TERMINAL_STATUSES = new Set<OrderStatus>([
-  "DELIVERED",
-  "PICKED_UP",
-  "CANCELLED",
-  "NO_SHOW_PICKUP",
-  "NO_SHOW_DELIVERY",
-  // Manual completion without PIN. Treated like DELIVERED for lifecycle
-  // purposes (chat closes, no further KDS transitions), but surfaced
-  // distinctly to ops and the customer.
-  "NO_PIN_DELIVERY",
-]);
-
 const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   ACCEPTED: ["PREPARING"],
   PREPARING: ["READY"],
@@ -62,7 +52,8 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   // dedicated /complete-delivery-without-pin endpoint for legacy locked PIN
   // records — it is deliberately not part of /status transitions
   // so generic PATCH calls can't sidestep the PIN challenge.
-  OUT_FOR_DELIVERY: ["DELIVERED", "NO_SHOW_DELIVERY"],
+  // Successful internal delivery must use completeDelivery's PIN checks.
+  OUT_FOR_DELIVERY: ["NO_SHOW_DELIVERY"],
 };
 
 const TIMESTAMP_FIELDS: Partial<Record<OrderStatus, string>> = {
@@ -74,13 +65,6 @@ const TIMESTAMP_FIELDS: Partial<Record<OrderStatus, string>> = {
   NO_SHOW_DELIVERY: "deliveryCompletedAt",
   NO_PIN_DELIVERY: "deliveryCompletedAt",
 };
-
-const DRIVER_ACTIVE_ORDER_STATUSES: OrderStatus[] = [
-  "ACCEPTED",
-  "PREPARING",
-  "READY",
-  "OUT_FOR_DELIVERY",
-];
 
 function serializeKdsOrder(
   order: Record<string, unknown>,
@@ -298,7 +282,7 @@ export class KdsService {
   async getKdsOrders(locationId: string, statuses?: string[]) {
     const filterStatuses =
       statuses && statuses.length > 0
-        ? (statuses as OrderStatus[])
+        ? (statuses.filter(status => !TERMINAL_STATUSES.has(status)) as OrderStatus[])
         : DEFAULT_KDS_STATUSES;
     const settings = await this.prisma.locationSettings.findUnique({
       where: { locationId },
@@ -816,7 +800,7 @@ export class KdsService {
     const { nextOrder: updated, releasedDriver } = await this.prisma.$transaction(async (tx) => {
       let releasedDriver: ReleasedDeliveryDriver | null = null;
       const nextOrder = await tx.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: currentStatus, assignedDriverUserId: order.assignedDriverUserId },
         data: updateData,
         include: {
           orderItems: {
@@ -854,41 +838,9 @@ export class KdsService {
         },
       });
 
-      if (newStatus === "NO_SHOW_DELIVERY" && order.assignedDriverUserId) {
-        const remainingAssignments = await tx.order.count({
-          where: {
-            assignedDriverUserId: order.assignedDriverUserId,
-            id: { not: orderId },
-            status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
-          },
-        });
-        const driverHasOtherActiveAssignments = remainingAssignments > 0;
-        releasedDriver = {
-          driverUserId: order.assignedDriverUserId,
-          isOnDelivery: driverHasOtherActiveAssignments,
-          availabilityStatus: driverHasOtherActiveAssignments
-            ? "ON_DELIVERY"
-            : "AVAILABLE",
-        };
-
-        await tx.orderDriverEvent.create({
-          data: {
-            orderId,
-            locationId,
-            driverUserId: order.assignedDriverUserId,
-            eventType: "DELIVERY_NO_SHOW",
-            actorUserId,
-            noteText: reason,
-          },
-        });
-        await tx.driverProfile.update({
-          where: { userId: order.assignedDriverUserId },
-          data: {
-            isOnDelivery: releasedDriver.isOnDelivery,
-            availabilityStatus: releasedDriver.availabilityStatus,
-            lastDeliveryCompletedAt: now,
-          },
-        });
+      if (newStatus === "NO_SHOW_DELIVERY" || newStatus === "CANCELLED") {
+        releasedDriver = await releaseClosedOrderDriver(tx, order, actorUserId, now,
+          newStatus === "CANCELLED" ? "ORDER_CANCELLED" : "DELIVERY_NO_SHOW", reason);
       }
 
       if (isNoShowTransition && order.customerUserId) {
@@ -913,7 +865,7 @@ export class KdsService {
       }
 
       return { nextOrder, releasedDriver };
-    });
+    }).catch(rethrowOrderWriteConflict);
 
     if (TERMINAL_STATUSES.has(newStatus as OrderStatus)) {
       await this.chatService.closeConversation(orderId);
@@ -936,7 +888,7 @@ export class KdsService {
         driver_user_id: releasedDriver.driverUserId,
         order_id: orderId,
         location_id: locationId,
-        no_show: true,
+        no_show: newStatus === "NO_SHOW_DELIVERY",
       });
       this.realtime.emitDriverEvent(locationId, "driver.availability_changed", {
         driver_user_id: releasedDriver.driverUserId,
@@ -1143,25 +1095,30 @@ export class KdsService {
         select: {
           id: true,
           status: true,
+          locationId: true,
+          assignedDriverUserId: true,
           orderNumber: true,
           customerNameSnapshot: true,
           customerEmailSnapshot: true,
         },
       });
       fromStatus = order.status;
+      if (TERMINAL_STATUSES.has(order.status)) {
+        throw new ConflictException("This order is already closed. Review the cancellation request separately.");
+      }
 
-      await this.prisma.$transaction([
-        this.prisma.cancellationRequest.update({
-          where: { id: cancelRequest.id },
+      const releasedDriver = await this.prisma.$transaction(async tx => {
+        await tx.cancellationRequest.update({
+          where: { id: cancelRequest.id, status: "PENDING" },
           data: {
             status: "APPROVED",
             reviewedByAdminUserId: actorUserId,
             reviewedAt: now,
             decisionNote: adminNotes,
           },
-        }),
-        this.prisma.order.update({
-          where: { id: orderId },
+        });
+        await tx.order.update({
+          where: { id: orderId, status: order.status, assignedDriverUserId: order.assignedDriverUserId },
           data: {
             status: "CANCELLED",
             cancelledAt: now,
@@ -1172,8 +1129,8 @@ export class KdsService {
                 : "KDS_CANCEL_REQUEST",
             cancellationReason: cancelRequest.reasonText,
           },
-        }),
-        this.prisma.orderStatusEvent.create({
+        });
+        await tx.orderStatusEvent.create({
           data: {
             orderId,
             locationId,
@@ -1183,8 +1140,15 @@ export class KdsService {
             actorUserId,
             reasonText: cancelRequest.reasonText,
           },
-        }),
-      ]);
+        });
+        return releaseClosedOrderDriver(tx, order, actorUserId, now, "ORDER_CANCELLED", cancelRequest.reasonText);
+      }).catch(rethrowOrderWriteConflict);
+      if (releasedDriver) {
+        this.realtime.emitDriverEvent(locationId, "driver.availability_changed", {
+          driver_user_id: releasedDriver.driverUserId, location_id: locationId,
+          availability_status: releasedDriver.availabilityStatus, is_on_delivery: releasedDriver.isOnDelivery,
+        });
+      }
 
       // PRD §12.6: auto-create PENDING refund request if there's a paid balance.
       await this.refundService.createForCancelledOrder({
@@ -1311,7 +1275,7 @@ export class KdsService {
     const now = new Date();
     const [updated] = await this.prisma.$transaction([
       this.prisma.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: order.status, assignedDriverUserId: order.assignedDriverUserId },
         data: { assignedDriverUserId: driverUserId },
         include: {
           orderItems: {
@@ -1341,7 +1305,7 @@ export class KdsService {
           lastAssignedAt: now,
         },
       }),
-    ]);
+    ]).catch(rethrowOrderWriteConflict);
 
     this.realtime.emitOrderEvent(locationId, orderId, "order.driver_assigned", {
       order_id: orderId,
@@ -1387,7 +1351,7 @@ export class KdsService {
     const now = new Date();
     const [updated] = await this.prisma.$transaction([
       this.prisma.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: "READY", assignedDriverUserId: order.assignedDriverUserId },
         data: { status: "OUT_FOR_DELIVERY", deliveryStartedAt: now },
         include: {
           orderItems: {
@@ -1419,7 +1383,7 @@ export class KdsService {
           actorUserId,
         },
       }),
-    ]);
+    ]).catch(rethrowOrderWriteConflict);
 
     // PRD §7.8.5: on OUT_FOR_DELIVERY, generate the customer's stable
     // 4-digit PIN from the last four digits of their phone snapshot.
@@ -1507,18 +1471,9 @@ export class KdsService {
 
     const now = new Date();
     const driverUserId = order.assignedDriverUserId;
-    const remainingAssignments = await this.prisma.order.count({
-      where: {
-        assignedDriverUserId: driverUserId,
-        id: { not: orderId },
-        status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
-      },
-    });
-    const driverHasOtherActiveAssignments = remainingAssignments > 0;
-
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { nextOrder: updated, driverHasOtherActiveAssignments } = await this.prisma.$transaction(async (tx) => {
       const nextOrder = await tx.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: "OUT_FOR_DELIVERY", assignedDriverUserId: driverUserId },
         data: {
           status: "DELIVERED",
           deliveryCompletedAt: now,
@@ -1536,6 +1491,15 @@ export class KdsService {
           ...KDS_PAYMENT_INCLUDE,
         },
       });
+      const remainingAssignments = await tx.order.count({
+        where: {
+          assignedDriverUserId: driverUserId,
+          id: { not: orderId },
+          status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
+        },
+      });
+      const driverHasOtherActiveAssignments = remainingAssignments > 0;
+
       await this.auditUnpaidCompletion(tx, order, "DELIVERED", actorUserId);
       await tx.orderStatusEvent.create({
         data: {
@@ -1573,8 +1537,8 @@ export class KdsService {
       // (e.g. if the transaction retries).
       await this.rewardsService.accrueForOrderInTransaction(tx, orderId);
 
-      return nextOrder;
-    });
+      return { nextOrder, driverHasOtherActiveAssignments };
+    }).catch(rethrowOrderWriteConflict);
 
     await this.chatService.closeConversation(orderId);
 
@@ -1666,18 +1630,9 @@ export class KdsService {
 
     const now = new Date();
     const driverUserId = order.assignedDriverUserId;
-    const remainingAssignments = await this.prisma.order.count({
-      where: {
-        assignedDriverUserId: driverUserId,
-        id: { not: orderId },
-        status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
-      },
-    });
-    const driverHasOtherActiveAssignments = remainingAssignments > 0;
-
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { nextOrder: updated, driverHasOtherActiveAssignments } = await this.prisma.$transaction(async (tx) => {
       const nextOrder = await tx.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: "OUT_FOR_DELIVERY", assignedDriverUserId: driverUserId },
         data: {
           status: "NO_PIN_DELIVERY",
           deliveryCompletedAt: now,
@@ -1692,6 +1647,15 @@ export class KdsService {
           ...KDS_PAYMENT_INCLUDE,
         },
       });
+      const remainingAssignments = await tx.order.count({
+        where: {
+          assignedDriverUserId: driverUserId,
+          id: { not: orderId },
+          status: { in: DRIVER_ACTIVE_ORDER_STATUSES },
+        },
+      });
+      const driverHasOtherActiveAssignments = remainingAssignments > 0;
+
       await this.auditUnpaidCompletion(tx, order, "NO_PIN_DELIVERY", actorUserId);
       await tx.orderStatusEvent.create({
         data: {
@@ -1740,12 +1704,11 @@ export class KdsService {
         },
       });
 
-      // Stamps still accrue — the customer paid for these wings, the PIN
-      // failure is purely a handoff-authentication miss.
+      // Preserve fulfillment-based rewards; payment reconciliation is separate.
       await this.rewardsService.accrueForOrderInTransaction(tx, orderId);
 
-      return nextOrder;
-    });
+      return { nextOrder, driverHasOtherActiveAssignments };
+    }).catch(rethrowOrderWriteConflict);
 
     await this.chatService.closeConversation(orderId);
 
@@ -1782,6 +1745,9 @@ export class KdsService {
       where: { id: orderId },
     });
     if (!order) throw new NotFoundException("Order not found");
+    if (TERMINAL_STATUSES.has(order.status)) {
+      throw new UnprocessableEntityException("A closed order cannot have its ETA changed");
+    }
 
     const now = new Date();
     const newEstimatedReadyAt = new Date(
@@ -1799,13 +1765,13 @@ export class KdsService {
         },
       }),
       this.prisma.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: order.status },
         data: {
           estimatedTravelMinutes: estimatedMinutes,
           estimatedArrivalAt: newEstimatedReadyAt,
         },
       }),
-    ]);
+    ]).catch(rethrowOrderWriteConflict);
 
     this.realtime.emitOrderEvent(
       order.locationId,
@@ -2009,14 +1975,14 @@ export class KdsService {
         },
       }),
       this.prisma.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: order.status },
         data: {
           estimatedReadyAt: newReadyAt,
           estimatedWindowMinMinutes: newWindowMin,
           estimatedWindowMaxMinutes: newWindowMax,
         },
       }),
-    ]);
+    ]).catch(rethrowOrderWriteConflict);
 
     this.realtime.emitOrderEvent(
       order.locationId,

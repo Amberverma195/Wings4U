@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
+import { TERMINAL_STATUSES, type OrderStatus } from "@/lib/types";
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { OrderChat } from "@/components/order-chat";
 import {
@@ -1077,12 +1078,7 @@ function KdsOrderCard({
     order.status === "PLACED" &&
     placedEtaSecondsRemaining != null &&
     placedEtaSecondsRemaining <= 0;
-  const etaControlsVisible =
-    order.status !== "CANCELLED" &&
-    order.status !== "DELIVERED" &&
-    order.status !== "PICKED_UP" &&
-    order.status !== "NO_SHOW_PICKUP" &&
-    order.status !== "NO_SHOW_DELIVERY";
+  const etaControlsVisible = !TERMINAL_STATUSES.has(order.status as OrderStatus);
 
   /* ----- Action buttons per status (PRD §7.5) ----- */
   const actions: React.ReactNode[] = [];
@@ -1838,7 +1834,7 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
   }, [onRefresh]);
 
   const placedDate = new Date(order.placed_at);
-  const isTerminal = ["DELIVERED", "PICKED_UP", "CANCELLED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY"].includes(order.status);
+  const isTerminal = TERMINAL_STATUSES.has(order.status as OrderStatus);
   const customerCounters = formatKdsCustomerCounters(order);
   const deliveryAddress =
     order.fulfillment_type === "DELIVERY"
@@ -3465,24 +3461,13 @@ export function KdsClient() {
             let order = activeOrder;
 
             if (!order) {
-              try {
-                order = await kdsJson<KdsOrder>(
-                  sessionControls,
-                  `/api/v1/kds/orders/${historyOrder.id}`,
-                  { method: "GET", locationId: DEFAULT_LOCATION_ID },
-                );
-              } catch {
-                const statusOrders = await kdsJson<KdsOrder[]>(
-                  sessionControls,
-                  `/api/v1/kds/orders?statuses=${encodeURIComponent(historyOrder.status)}`,
-                  { method: "GET", locationId: DEFAULT_LOCATION_ID },
-                );
-                order = statusOrders.find(
-                  (candidate) =>
-                    candidate.id === historyOrder.id ||
-                    candidate.order_number === historyOrder.order_number,
-                );
-              }
+              // Historical cards use the detail endpoint; the active queue
+              // excludes terminal orders regardless of the requested statuses.
+              order = await kdsJson<KdsOrder>(
+                sessionControls,
+                `/api/v1/kds/orders/${historyOrder.id}`,
+                { method: "GET", locationId: DEFAULT_LOCATION_ID },
+              );
             }
 
             if (!order) {

@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { CartService } from "../cart/cart.service";
+import { TERMINAL_STATUSES, rethrowOrderWriteConflict } from "../../common/orders/order-lifecycle";
 import { previewReorder, type ReorderContext } from "./reorder-preview";
 import { TZDate } from "@date-fns/tz";
 import { isUUID } from "class-validator";
@@ -24,13 +25,6 @@ import {
 
 // PRD §12.1: fixed default reason string for customer self-cancellations.
 const SELF_CANCEL_DEFAULT_REASON = "Customer cancelled within window";
-
-const TERMINAL_STATUSES = [
-  "COMPLETED",
-  "CANCELLED",
-  "NO_SHOW",
-  "REFUNDED",
-] as const;
 
 const PLACED_ON_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -372,7 +366,7 @@ export class OrdersService {
       throw new ForbiddenException("You do not have access to this order");
     }
 
-    if (TERMINAL_STATUSES.includes(order.status as (typeof TERMINAL_STATUSES)[number])) {
+    if (TERMINAL_STATUSES.has(order.status)) {
       throw new UnprocessableEntityException({
         message: `Order is already in terminal status "${order.status}" and cannot be cancelled.`,
         field: "status",
@@ -404,7 +398,7 @@ export class OrdersService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const cancelled = await tx.order.update({
-        where: { id: orderId },
+        where: { id: orderId, status: order.status },
         data: {
           status: "CANCELLED",
           cancelledAt: now,
@@ -427,7 +421,7 @@ export class OrdersService {
       });
 
       return cancelled;
-    });
+    }).catch(rethrowOrderWriteConflict);
 
     await this.chatService.closeConversation(orderId);
     await this.orderStatusEmails.send(updated, "CANCELLED");

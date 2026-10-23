@@ -17,6 +17,7 @@ import { isAllowedCorsOrigin } from "../../common/utils/cors-origins";
 import { resolveLocationRef } from "../../common/utils/location-ref";
 import { extractClientIp, isAllowedStoreIp } from "../../common/utils/store-ip";
 import { PrismaService } from "../../database/prisma.service";
+import { TERMINAL_STATUSES as TERMINAL_ORDER_STATUSES } from "../../common/orders/order-lifecycle";
 import { RATE_LIMITS, type RateLimitPolicy } from "../rate-limit/rate-limit.policies";
 import { RateLimiterService, rateLimitKeyPart } from "../rate-limit/rate-limit.service";
 import {
@@ -58,14 +59,6 @@ type RealtimeEventName =
 const CHANNEL_PATTERN = /^(orders|order|chat|admin|drivers):(.+)$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TERMINAL_ORDER_STATUSES = new Set([
-  "PICKED_UP",
-  "DELIVERED",
-  "NO_SHOW_PICKUP",
-  "NO_SHOW_DELIVERY",
-  "NO_PIN_DELIVERY",
-  "CANCELLED",
-]);
 
 function kdsControlChannel(locationId: string): string {
   return `kds-control:${locationId}`;

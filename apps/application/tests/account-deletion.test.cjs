@@ -31,6 +31,17 @@ beforeEach(async () => {
 });
 afterEach(async () => act(async () => renderer.unmount()));
 
+test('reopening refreshes backend eligibility after an unpaid order closes', async () => {
+  await act(async () => renderer.update(React.createElement(AccountDeletionModal, { ...props(), visible: false })));
+  apiFetch.mockImplementationOnce(async () => response({ ...ready, status: 'resolution_required', blockers: [{ code: 'ACTIVE_ORDERS', message: 'An order is active.' }] }));
+  await act(async () => renderer.update(React.createElement(AccountDeletionModal, props())));
+  expect(button('Continue to verification').props.disabled).toBe(true);
+  await act(async () => renderer.update(React.createElement(AccountDeletionModal, { ...props(), visible: false })));
+  await act(async () => renderer.update(React.createElement(AccountDeletionModal, props())));
+  expect(button('Continue to verification').props.disabled).toBe(false);
+  expect(apiFetch.mock.calls.filter(([path]) => path === '/api/v1/auth/account-deletion')).toHaveLength(3);
+});
+
 test('opening and dismissing the modal never sends a destructive request', async () => {
   expect(deletes()).toHaveLength(0); expect(text(renderer.toJSON())).toContain('Deleting your account is permanent');
   await tap('Keep My Account'); expect(onClose).toHaveBeenCalledTimes(1); expect(deletes()).toHaveLength(0);

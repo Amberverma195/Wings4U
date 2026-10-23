@@ -9,6 +9,7 @@ import { cents, orderStatusCustomerLabel, shortTime, statusLabel } from "@/lib/f
 import { createOrdersSocket, subscribeToChannels } from "@/lib/realtime";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderDetail, OrderStatus } from "@/lib/types";
+import { TERMINAL_STATUSES } from "@/lib/types";
 import { OrderChat } from "@/components/order-chat";
 import { OrderReviews } from "@/components/order-reviews";
 import { OrderStatusTimelineChakra } from "@/components/order-status-timeline-chakra";
@@ -18,15 +19,7 @@ import { OrderSkeleton } from "./order-skeleton";
 import styles from "./order-detail.module.css";
 
 function isTerminal(status: OrderStatus): boolean {
-  const terminalStatuses: ReadonlySet<string> = new Set([
-    "PICKED_UP",
-    "DELIVERED",
-    "NO_SHOW_PICKUP",
-    "NO_SHOW_DELIVERY",
-    "NO_PIN_DELIVERY",
-    "CANCELLED",
-  ]);
-  return terminalStatuses.has(status);
+  return TERMINAL_STATUSES.has(status);
 }
 
 function canOpenPostOrderSupport(status: OrderStatus): boolean {
@@ -300,12 +293,22 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     fetchOrderRef.current = fetchOrder;
   }, [fetchOrder]);
 
+  const terminalOrder = order ? isTerminal(order.status) : false;
+
+  useEffect(() => {
+    if (!terminalOrder) return;
+    setShowCancelConfirm(false);
+    setShowHelpModal(false);
+    setShowChatModal(false);
+    setShowDriverChatModal(false);
+  }, [terminalOrder]);
+
   // Realtime: subscribe to `order:${orderId}` so the customer sees status
   // changes (accepted / ready / out-for-delivery / delivered) without a
   // manual reload. `subscribeToChannels` keeps the subscription alive
   // across reconnects.
   useEffect(() => {
-    if (!session.loaded || !session.authenticated || !session.user?.id) return;
+    if (!session.loaded || !session.authenticated || !session.user?.id || terminalOrder) return;
 
     const socket = createOrdersSocket();
 
@@ -331,7 +334,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
       disposeSubscription();
       socket.disconnect();
     };
-  }, [orderId, session.loaded, session.authenticated, session.user?.id]);
+  }, [orderId, session.loaded, session.authenticated, session.user?.id, terminalOrder]);
 
   const handleCancel = useCallback(() => {
     if (cancelling) return;
@@ -340,6 +343,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
   }, [cancelling]);
 
   const confirmCancel = useCallback(async () => {
+    if (!order || !cancelStillAllowed(order) || cancelling) return;
     setCancelling(true);
     setCancelError(null);
     try {
@@ -365,7 +369,7 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
     } finally {
       setCancelling(false);
     }
-  }, [orderId, fetchOrder, session]);
+  }, [orderId, fetchOrder, session, order, cancelling]);
 
   useLayoutEffect(() => {
     if (!orderStatusHistoryOpen) {

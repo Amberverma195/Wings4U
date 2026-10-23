@@ -14,9 +14,7 @@ export function accountDeletionEnabled(): boolean {
     !onlinePaymentsEnabled();
 }
 
-export const TERMINAL_ORDER_STATUSES = [
-  "PICKED_UP", "DELIVERED", "NO_SHOW_PICKUP", "NO_SHOW_DELIVERY", "NO_PIN_DELIVERY", "CANCELLED",
-] as const;
+export { TERMINAL_ORDER_STATUSES } from "../../common/orders/order-lifecycle";
 
 export const DELETION_BLOCKERS = {
   ACTIVE_ORDERS: "You have active or scheduled orders. Complete them before trying again; deletion will not cancel them.",

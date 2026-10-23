@@ -6,7 +6,7 @@ import { rebuildReorderBuilder } from './reorder-builder';
 import { SIDE_POP_BUNDLE_PRICE_CENTS } from '../shared/pricing';
 
 export type ReorderContext = { fulfillment_type?: 'PICKUP' | 'DELIVERY'; scheduled_for?: string };
-const terminal = new Set(['PICKED_UP', 'DELIVERED', 'NO_SHOW_PICKUP', 'NO_SHOW_DELIVERY', 'NO_PIN_DELIVERY', 'CANCELLED']);
+import { TERMINAL_STATUSES as terminal } from '../../common/orders/order-lifecycle';
 
 /** Reads only. Uses the very same item validation and prices as Cart Quote. */
 export async function previewReorder(db: PrismaService, cart: CartService, orderId: string, userId: string,

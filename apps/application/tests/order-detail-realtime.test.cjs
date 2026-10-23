@@ -87,6 +87,26 @@ afterEach(async () => {
   jest.useRealTimers();
 });
 
+test.each([
+  ['PICKED_UP', 'Picked up'], ['DELIVERED', 'Delivered'],
+  ['NO_SHOW_PICKUP', 'No-show (not picked up)'], ['NO_SHOW_DELIVERY', 'Delivery not completed'],
+  ['NO_PIN_DELIVERY', 'Delivery completed without PIN'], ['CANCELLED', 'Order cancelled'],
+])('KDS %s shows the final status, stops tracking, and preserves unpaid history', async (status, label) => {
+  const socket = await mountLive();
+  server.status = status;
+  server.orderOverrides = { payment_status_summary: 'UNPAID', payment_summary: { outstanding_cents: 1130 } };
+  await act(async () => socket.emitEvent('order.status_changed'));
+  await advance(REFRESH_COALESCE_MS);
+  expect(texts()).toContain(label);
+  expect(socket.socket.disconnect).toHaveBeenCalledTimes(1);
+  expect(socket.listenerCount()).toBe(0);
+  const requests = gets(ORDER_PATH);
+  await advance(120_000);
+  expect(gets(ORDER_PATH)).toBe(requests);
+  expect(byLabel('Cancel order')).toBeUndefined();
+  expect(renderer.root.findByType('ScrollView').props.refreshControl).toBeUndefined();
+});
+
 test('a KDS accept moves the open order to Preparing without a manual refresh', async () => {
   await mount();
   expect(texts()).toContain('Order placed');
