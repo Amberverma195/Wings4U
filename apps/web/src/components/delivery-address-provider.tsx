@@ -72,6 +72,9 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (!session.loaded) return;
+    setAddressModalOpen(false);
+    setAddressPickerOpen(false);
+    setEditingSavedAddressId(null);
     const changed = setDeliveryAddressAuthState(session.authenticated, session.user?.id);
     if (session.authenticated) {
       void (async () => {
@@ -117,7 +120,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
     setAddressState(next);
   }, []);
 
-  const openAddressEditor = useCallback(() => setAddressModalOpen(true), []);
+  const openAddressEditor = useCallback(() => { setEditingSavedAddressId(null); setAddressModalOpen(true); }, []);
 
   const openAddressPicker = useCallback(() => setAddressPickerOpen(true), []);
 
@@ -170,13 +173,9 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
           setAddressModalOpen(false);
         }}
         onContinue={() => {
-          const reopenPickerAfterSave = editingSavedAddressId === null;
           setEditingSavedAddressId(null);
           setAddressModalOpen(false);
           refresh();
-          if (reopenPickerAfterSave) {
-            setAddressPickerOpen(true);
-          }
         }}
         refresh={session.refresh}
         clear={session.clear}

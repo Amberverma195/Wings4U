@@ -42,7 +42,7 @@ const DELIVERY_ADDRESS_STORAGE_KEY = "wings4u.delivery-address";
 const DELIVERY_ADDRESSES_LIST_KEY = "wings4u.delivery-addresses";
 
 const PENDING_GUEST_DELIVERY_ADDRESS_KEY =
-  "wings4u.pending-guest-delivery-address";
+  "wings4u.pending-guest-delivery-address.explicit-v2";
 
 /** Fired when the saved-address list changes (same tab + sessionStorage). */
 export const DELIVERY_ADDRESSES_UPDATED_EVENT = "wings4u-delivery-addresses-updated";
@@ -140,6 +140,9 @@ export function setDeliveryAddressAuthState(authed: boolean, userId?: string): b
   addressSessionVersion += 1;
   pendingGuestAddressMigration = null;
 
+  if (authed && !switchedAccount && typeof window !== "undefined") {
+    saveSavedAddressesList([]);
+  }
   if ((!authed || switchedAccount) && typeof window !== "undefined") {
     window.sessionStorage.removeItem(DELIVERY_ADDRESSES_LIST_KEY);
     window.sessionStorage.removeItem(DELIVERY_ADDRESS_STORAGE_KEY);
@@ -169,6 +172,7 @@ function loadPendingGuestDeliveryAddress(): DeliveryAddressDraft | null {
 export function clearPendingGuestDeliveryAddress(): void {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(PENDING_GUEST_DELIVERY_ADDRESS_KEY);
+  window.sessionStorage.removeItem("wings4u.pending-guest-delivery-address");
 }
 
 /**
@@ -224,6 +228,7 @@ export async function persistPendingGuestDeliveryAddress(
       ) {
         clearPendingGuestDeliveryAddress();
       }
+      window.dispatchEvent(new Event(DELIVERY_ADDRESS_SAVED_EVENT));
       return true;
     } catch (error) {
       console.warn("[Addresses] Guest address migration failed", error);
@@ -338,63 +343,57 @@ export function loadDeliveryAddressDraft(): DeliveryAddressDraft | null {
 }
 
 /**
- * All addresses saved in this session. Guests get a one-time migration from
- * the legacy single-address key; signed-in users use the server-backed cache
- * only so a checkout draft is never mistaken for a persisted address row.
+ * The address book cache is separate from the temporary checkout draft.
  */
 export function loadSavedAddresses(): SavedDeliveryAddress[] {
   if (typeof window === "undefined") return [];
 
-  let list = loadSavedAddressesRaw();
-  if (list.length === 0 && !isAuthenticatedForAddresses) {
-    const legacy = loadDeliveryAddressDraft();
-    if (legacy) {
-      list = [{ id: crypto.randomUUID(), ...legacy }];
-      saveSavedAddressesList(list);
-    }
-  }
-  return list;
+  return loadSavedAddressesRaw();
 }
 
 /** Signed-in saves wait for the server and cache only its real address ID. */
 export async function upsertSavedAddressFromDraft(
   draft: DeliveryAddressDraft, refresh?: () => Promise<void | boolean>, clear?: () => void,
-): Promise<void> {
-  if (typeof window === "undefined") return;
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
   const normalized = normalizeAddressDraft(draft);
   if (isAuthenticatedForAddresses) {
     await persistAddressOnServer(normalized, undefined, refresh, clear);
-    return;
+    return true;
   }
+  window.sessionStorage.setItem(PENDING_GUEST_DELIVERY_ADDRESS_KEY, JSON.stringify(normalized));
   const list = loadSavedAddresses();
   const key = deliveryAddressDedupeKey(normalized);
   const existing = list.find(address => deliveryAddressDedupeKey(address) === key);
   saveSavedAddressesList([...list.filter(address => deliveryAddressDedupeKey(address) !== key),
     { id: existing?.id ?? crypto.randomUUID(), ...normalized }]);
+  return false;
 }
 export function upsertSavedAddressFromDraftSync(
   draft: DeliveryAddressDraft, refresh: () => Promise<void | boolean>, clear: () => void,
-): Promise<void> { return upsertSavedAddressFromDraft(draft, refresh, clear); }
+): Promise<boolean> { return upsertSavedAddressFromDraft(draft, refresh, clear); }
 
 /** Failed edits preserve both the original cache and the active checkout draft. */
 export async function replaceSavedAddressById(
   id: string, draft: DeliveryAddressDraft, refresh?: () => Promise<void | boolean>, clear?: () => void,
-): Promise<void> {
-  if (typeof window === "undefined") return;
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
   const normalized = normalizeAddressDraft(draft);
   if (isAuthenticatedForAddresses) {
     await persistAddressOnServer(normalized, id, refresh, clear);
-    return;
+    return true;
   }
   const list = loadSavedAddresses();
   const key = deliveryAddressDedupeKey(normalized);
   if (list.some(address => address.id !== id && deliveryAddressDedupeKey(address) === key)) throw new Error("This address is already saved.");
   if (!list.some(address => address.id === id)) throw new Error("Address not found. Please reopen the address list.");
   saveSavedAddressesList(list.map(address => address.id === id ? { id, ...normalized } : address));
+  window.sessionStorage.setItem(PENDING_GUEST_DELIVERY_ADDRESS_KEY, JSON.stringify(normalized));
+  return false;
 }
 export function replaceSavedAddressByIdSync(
   id: string, draft: DeliveryAddressDraft, refresh: () => Promise<void | boolean>, clear: () => void,
-): Promise<void> { return replaceSavedAddressById(id, draft, refresh, clear); }
+): Promise<boolean> { return replaceSavedAddressById(id, draft, refresh, clear); }
 
 /** Remove one saved address. If the active checkout draft matched it, switch or clear. */
 function removeSavedAddressLocally(id: string): void {
@@ -454,19 +453,14 @@ export async function removeSavedAddressByIdSync(
   removeSavedAddressLocally(id);
 }
 
-export function saveDeliveryAddressDraft(address: DeliveryAddressDraft): void {
+export function saveDeliveryAddressDraft(address: DeliveryAddressDraft, preservePendingSave = false): void {
   if (typeof window === "undefined") return;
 
   window.sessionStorage.setItem(
     DELIVERY_ADDRESS_STORAGE_KEY,
     JSON.stringify(normalizeAddressDraft(address)),
   );
-  if (!isAuthenticatedForAddresses) {
-    window.sessionStorage.setItem(
-      PENDING_GUEST_DELIVERY_ADDRESS_KEY,
-      JSON.stringify(normalizeAddressDraft(address)),
-    );
-  }
+  if (!preservePendingSave) clearPendingGuestDeliveryAddress();
   window.dispatchEvent(new Event(DELIVERY_ADDRESS_UPDATED_EVENT));
 }
 

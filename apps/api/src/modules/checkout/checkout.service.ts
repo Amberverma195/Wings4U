@@ -22,7 +22,6 @@ import {
   getDeliveryEligibilityForCustomer,
 } from "../customers/no-show-policy";
 import {
-  ensureCustomerAddressExists,
   type UpsertCustomerAddressInput,
 } from "../customers/customer-addresses.service";
 import {
@@ -1352,13 +1351,7 @@ export class CheckoutService {
         }
       }
 
-      if (deliveryAddress) {
-        await ensureCustomerAddressExists(
-          tx,
-          params.userId,
-          deliveryAddress,
-        );
-      }
+      // Delivery snapshots belong to the order; address-book saves require explicit consent.
 
       const createdOrder = await tx.order.create({
         data: {

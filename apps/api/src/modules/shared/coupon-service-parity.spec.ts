@@ -1,6 +1,7 @@
 jest.mock('../../database/prisma.service', () => ({ PrismaService: class {} }));
 jest.mock('../../database/order-number', () => ({ allocateNextOrderNumber: jest.fn().mockResolvedValue(1) }));
 jest.mock('../customers/customer-addresses.service', () => ({ ensureCustomerAddressExists: jest.fn().mockResolvedValue({}) }));
+import { ensureCustomerAddressExists } from '../customers/customer-addresses.service';
 import { CartService } from '../cart/cart.service';
 import { CheckoutService } from '../checkout/checkout.service';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -76,6 +77,15 @@ describe('authoritative coupon pricing through real quote and checkout services'
           modifierSelections: item.modifier_selections.map(selection => ({ modifierOptionId: selection.modifier_option_id })) })) } as never),
     };
   }
+
+  it.each([true, false])('checkout delivery=%s keeps only the order snapshot without saving an address-book row', async delivery => {
+    const f = fixture('PERCENT', { delivery, noCoupon: true });
+    jest.mocked(ensureCustomerAddressExists).mockClear();
+    await expect(f.place()).rejects.toBe(stop);
+    const data = f.db.order.create.mock.calls[0][0].data;
+    expect(data.addressSnapshotJson).toEqual(delivery ? { line1: '12 Main St', city: 'London', postal_code: 'N5Y 4J7' } : undefined);
+    expect(ensureCustomerAddressExists).not.toHaveBeenCalled();
+  });
 
   it.each([
     { type: 'PERCENT', discount: 150, subtotal: 10500, tax: 1346, total: 11696 },

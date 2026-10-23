@@ -91,6 +91,7 @@ export function OrderMethodModal({
   defaultMethod = "DELIVERY",
   initialStep: initialStepProp,
   addressOnly = false,
+  addressContext = "order",
   editingSavedAddressId = null,
   initialScheduledFor = null,
   onClose,
@@ -102,6 +103,7 @@ export function OrderMethodModal({
   defaultMethod?: FulfillmentType;
   initialStep?: ModalStep;
   addressOnly?: boolean;
+  addressContext?: "account" | "order";
   editingSavedAddressId?: string | null;
   initialScheduledFor?: string | null;
   onClose: () => void;
@@ -117,6 +119,7 @@ export function OrderMethodModal({
   const [addressLine1, setAddressLine1] = useState("");
   const [addressPostal, setAddressPostal] = useState("");
   const [addressError, setAddressError] = useState<string | null>(null);
+  const [saveToAccount, setSaveToAccount] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
   const savingAddressRef = useRef(false);
   const addressEditorGeneration = useRef(0);
@@ -170,7 +173,7 @@ export function OrderMethodModal({
     addressEditorGeneration.current += 1;
     savingAddressRef.current = false;
     setSavingAddress(false);
-  }, [open, editingSavedAddressId]);
+  }, [open, editingSavedAddressId, addressContext, addressOnly]);
 
   useEffect(() => {
     if (!open) return;
@@ -192,13 +195,14 @@ export function OrderMethodModal({
     setMethod(nextStep === "address" ? "DELIVERY" : defaultMethod);
     setStep(nextStep);
     setAddressError(null);
+    setSaveToAccount(false);
     setAddressErrorAnimKey(0);
     setAddressLine1(initialAddress?.line1 ?? EMPTY_DELIVERY_ADDRESS.line1);
     setAddressPostal(initialAddress?.postalCode ?? EMPTY_DELIVERY_ADDRESS.postalCode);
     setScheduleDateKey(getSelectedDateKey(initialScheduledFor));
     setScheduleTimeValue(initialScheduledFor ?? "ASAP");
     setDeliveryUnavailableMessage(null);
-  }, [open, defaultMethod, initialStepProp, addressOnly, initialScheduledFor, editingSavedAddressId]);
+  }, [open, defaultMethod, initialStepProp, addressOnly, initialScheduledFor, editingSavedAddressId, addressContext]);
 
   useEffect(() => {
     if (!open || addressOnly) return;
@@ -277,7 +281,8 @@ export function OrderMethodModal({
         ? 2
         : totalSteps;
   const showStepLabel = addressOnly || step !== "method" || method === "DELIVERY";
-  const addressEditMode = addressOnly && step === "address";
+  const addressEditMode = Boolean(editingSavedAddressId) && step === "address";
+  const explicitSave = addressContext === "account" || addressEditMode || saveToAccount;
   const stepLabel = addressEditMode
     ? "EDIT ADDRESS"
     : `STEP ${currentStepNumber} OF ${totalSteps}`;
@@ -285,7 +290,7 @@ export function OrderMethodModal({
     step === "address"
       ? addressEditMode
         ? "UPDATE DELIVERY ADDRESS"
-        : "WHERE SHOULD WE DELIVER?"
+        : addressOnly ? "ADD DELIVERY ADDRESS" : "WHERE SHOULD WE DELIVER?"
       : step === "schedule"
         ? "WHEN SHOULD WE HAVE IT READY?"
         : "HOW DO YOU WANT YOUR WINGS?";
@@ -341,7 +346,10 @@ export function OrderMethodModal({
 
   const continueLabel = useMemo(() => {
     if (step === "address") {
-      return addressEditMode ? "SAVE ADDRESS ->" : "CONTINUE TO MENU ->";
+      if (addressEditMode) return "SAVE CHANGES";
+      if (addressContext === "account") return "ADD ADDRESS";
+      if (addressOnly) return saveToAccount ? "SAVE & USE ADDRESS" : "USE ADDRESS";
+      return "CONTINUE TO MENU";
     }
     if (step === "schedule") {
       return method === "DELIVERY"
@@ -349,7 +357,7 @@ export function OrderMethodModal({
         : "CONTINUE TO MENU ->";
     }
     return "CONTINUE TO SCHEDULE ->";
-  }, [addressEditMode, method, step]);
+  }, [addressEditMode, addressContext, addressOnly, saveToAccount, method, step]);
 
   const continueDisabled = savingAddress || (
     step === "schedule" &&
@@ -404,33 +412,42 @@ export function OrderMethodModal({
       return;
     }
 
+    if (editingSavedAddressId && !loadSavedAddresses().some(address => address.id === editingSavedAddressId)) {
+      setAddressError("Address not found. Please reopen your address book.");
+      return;
+    }
     savingAddressRef.current = true;
     const editorGeneration = addressEditorGeneration.current;
     setSavingAddress(true);
     setAddressError(null);
     try {
-    if (editingSavedAddressId) {
-      if (refresh && clear) {
-        await replaceSavedAddressByIdSync(editingSavedAddressId, normalizedAddress, refresh, clear);
-      } else {
-        await replaceSavedAddressById(editingSavedAddressId, normalizedAddress);
+      let savedToAccount = false;
+      if (editingSavedAddressId) {
+        if (refresh && clear) {
+          savedToAccount = await replaceSavedAddressByIdSync(editingSavedAddressId, normalizedAddress, refresh, clear);
+        } else {
+          savedToAccount = await replaceSavedAddressById(editingSavedAddressId, normalizedAddress);
+        }
+      } else if (explicitSave) {
+        // Set the draft before recording guest consent, since draft changes revoke old consent.
+        if (addressContext === "order") saveDeliveryAddressDraft(normalizedAddress);
+        if (refresh && clear) {
+          savedToAccount = await upsertSavedAddressFromDraftSync(normalizedAddress, refresh, clear);
+        } else {
+          savedToAccount = await upsertSavedAddressFromDraft(normalizedAddress);
+        }
       }
-    } else {
-      if (refresh && clear) {
-        await upsertSavedAddressFromDraftSync(normalizedAddress, refresh, clear);
-      } else {
-        await upsertSavedAddressFromDraft(normalizedAddress);
+      if (editorGeneration !== addressEditorGeneration.current) return;
+      if (addressContext === "order" && (editingSavedAddressId || !explicitSave)) {
+        saveDeliveryAddressDraft(normalizedAddress, Boolean(editingSavedAddressId) && !savedToAccount);
       }
-    }
-    if (editorGeneration !== addressEditorGeneration.current) return;
-    saveDeliveryAddressDraft(normalizedAddress);
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event(DELIVERY_ADDRESS_SAVED_EVENT));
-    }
-    onContinue({
-      fulfillment_type: "DELIVERY",
-      scheduled_for: committedScheduledFor,
-    });
+      if (savedToAccount && typeof window !== "undefined") {
+        window.dispatchEvent(new Event(DELIVERY_ADDRESS_SAVED_EVENT));
+      }
+      onContinue({
+        fulfillment_type: "DELIVERY",
+        scheduled_for: committedScheduledFor,
+      });
     } catch (error) {
       if (editorGeneration !== addressEditorGeneration.current) return;
       setAddressError(error instanceof Error ? error.message : "Unable to save this address. Please try again.");
@@ -674,6 +691,17 @@ export function OrderMethodModal({
                   Privacy Policy
                 </a>
               </p>
+
+              {addressContext === "order" && !editingSavedAddressId ? (
+                <div className="wk-address-save-preference">
+                  <label className="wk-address-save-label">
+                    <input type="checkbox" checked={saveToAccount} disabled={savingAddress}
+                      onChange={event => setSaveToAccount(event.target.checked)} />
+                    <span>Save this address to my account for future orders</span>
+                  </label>
+                  <p>We'll use this address for your delivery even if you don't save it. You can manage saved addresses anytime in Profile {"\u2192"} Addresses.</p>
+                </div>
+              ) : null}
 
               {addressError ? (
                 <p

@@ -129,3 +129,27 @@ test('failed network deletion can be retried, and a row already deleted on anoth
   await addresses.removeSavedAddressByIdSync('real-database-id');
   expect(addresses.loadSavedAddresses()).toEqual([]);
 });
+
+test('temporary guest draft and legacy automatic pending state never migrate on sign-in',async()=>{
+  addresses.saveDeliveryAddressDraft(draft);
+  window.sessionStorage.setItem('wings4u.pending-guest-delivery-address',JSON.stringify(draft));
+  expect(addresses.loadSavedAddresses()).toEqual([]);
+  addresses.setDeliveryAddressAuthState(true,'customer');
+  expect(await addresses.persistPendingGuestDeliveryAddress()).toBe(false);
+  expect(apiFetch).not.toHaveBeenCalled();expect(addresses.loadDeliveryAddressDraft().line1).toBe(draft.line1);
+});
+test('using a different temporary draft revokes earlier guest opt-in',async()=>{
+  await addresses.upsertSavedAddressFromDraft(draft);
+  addresses.saveDeliveryAddressDraft({...draft,line1:'Different address'});
+  addresses.setDeliveryAddressAuthState(true,'customer');
+  expect(await addresses.persistPendingGuestDeliveryAddress()).toBe(false);expect(apiFetch).not.toHaveBeenCalled();
+});
+test('logout and account switching clear draft, explicit pending consent and private cache',async()=>{
+  await addresses.upsertSavedAddressFromDraft(draft);
+  addresses.setDeliveryAddressAuthState(true,'customer');await addresses.persistPendingGuestDeliveryAddress();
+  addresses.setDeliveryAddressAuthState(true,'other');
+  expect(addresses.loadSavedAddresses()).toEqual([]);expect(addresses.loadDeliveryAddressDraft()).toBeNull();
+  addresses.setDeliveryAddressAuthState(false);
+  addresses.setDeliveryAddressAuthState(true,'third');
+  expect(await addresses.persistPendingGuestDeliveryAddress()).toBe(false);
+});

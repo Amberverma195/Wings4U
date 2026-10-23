@@ -2674,6 +2674,21 @@ export function WingKingsGlobalStyle() {
         line-height: 1.4;
       }
 
+      .wk-address-save-preference {
+        margin: 20px 0;
+        padding: 16px;
+        border: 1px solid rgba(245,166,35,0.35);
+        border-radius: 12px;
+        background: rgba(245,166,35,0.08);
+        color: #fff3dc;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .wk-address-save-label { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; font-weight: 700; }
+      .wk-address-save-label input { accent-color: #ffb52e; width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+      .wk-address-save-label input:focus-visible { outline: 2px solid #ffcd00; outline-offset: 3px; }
+      .wk-address-save-preference p { margin: 10px 0 0; color: #ead9bf; }
+
       .wk-address-picker-card {
         width: min(440px, 100%);
       }
