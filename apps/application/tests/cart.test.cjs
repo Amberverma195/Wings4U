@@ -132,3 +132,43 @@ test.each([10, 15, 20])('tip %i survives saved-cart persistence and hydration', 
   await act(async () => { renderer = create(tree()); });
   expect(cart.driverTipPercent).toBe(tip);
 });
+
+test('expired server cart cannot be recovered from a recent native draft', async () => {
+  await act(async()=>renderer.unmount());
+  const storage=require('@react-native-async-storage/async-storage');
+  storage.getItem.mockResolvedValueOnce(JSON.stringify({v:1,savedAt:Date.now(),locationId:'location',items:[item],fulfillmentType:'PICKUP',locationTimezone:'America/Toronto',scheduledFor:null,driverTipPercent:'none'}));
+  api.fetchSavedCart.mockResolvedValue({...snapshot([]),expired:true});api.putSavedCart.mockClear();
+  await act(async()=>{renderer=create(tree());});await act(async()=>jest.advanceTimersByTime(1000));
+  expect(cart.items).toEqual([]);expect(api.putSavedCart).not.toHaveBeenCalled();
+  expect(storage.removeItem).toHaveBeenCalledWith('wings4u.mobile-cart-draft-v1:location');
+});
+test('expired cart on login is never written back from in-memory guest items',async()=>{
+  api.mergeSavedCartOnLogin.mockResolvedValue({snapshot:{...snapshot([],false),expired:true},merge_outcome:'no_guest'});
+  api.putSavedCart.mockClear();session={loaded:true,authenticated:true,user:{id:'customer'}};
+  await act(async()=>renderer.update(tree()));await act(async()=>jest.advanceTimersByTime(1000));
+  expect(cart.items).toEqual([]);expect(api.putSavedCart).not.toHaveBeenCalled();
+});
+test('direct account switch clears prior customer items',async()=>{
+  api.mergeSavedCartOnLogin.mockResolvedValue({snapshot:snapshot([item],false),merge_outcome:'merged'});
+  session={loaded:true,authenticated:true,user:{id:'customer-a'}};await act(async()=>renderer.update(tree()));
+  api.fetchSavedCart.mockResolvedValue(snapshot([],false));api.putSavedCart.mockClear();
+  session={loaded:true,authenticated:true,user:{id:'customer-b'}};await act(async()=>renderer.update(tree()));
+  expect(cart.items).toEqual([]);expect(api.putSavedCart).not.toHaveBeenCalled();
+});
+test('fresh failed-save drafts recover normally, but another account cannot recover an owned draft',async()=>{
+  await act(async()=>renderer.unmount());
+  const storage=require('@react-native-async-storage/async-storage');
+  const draft={v:1,ownerId:null,savedAt:Date.now(),locationId:'location',items:[item],fulfillmentType:'PICKUP',locationTimezone:'America/Toronto',scheduledFor:null,driverTipPercent:'none'};
+  storage.getItem.mockResolvedValueOnce(JSON.stringify(draft));api.fetchSavedCart.mockResolvedValue(snapshot([]));api.putSavedCart.mockClear();
+  await act(async()=>{renderer=create(tree());});expect(cart.items).toHaveLength(1);expect(api.putSavedCart).toHaveBeenCalledTimes(1);
+  await act(async()=>renderer.unmount());session={loaded:true,authenticated:true,user:{id:'other'}};
+  storage.getItem.mockResolvedValueOnce(JSON.stringify({...draft,ownerId:'customer'}));api.putSavedCart.mockClear();
+  await act(async()=>{renderer=create(tree());});expect(cart.items).toEqual([]);expect(api.putSavedCart).not.toHaveBeenCalled();
+});
+
+test('an open idle app clears its cart at the deadline without extending it',async()=>{
+  await act(async()=>renderer.unmount());
+  api.fetchSavedCart.mockResolvedValue({...snapshot([item]),expires_at:new Date(Date.now()+1000).toISOString()});
+  await act(async()=>{renderer=create(tree());});api.putSavedCart.mockClear();
+  await act(async()=>jest.advanceTimersByTime(1000));expect(cart.items).toEqual([]);expect(api.putSavedCart).not.toHaveBeenCalled();
+});

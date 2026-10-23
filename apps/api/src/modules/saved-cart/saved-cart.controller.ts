@@ -249,13 +249,13 @@ export class SavedCartController {
 function applyCookies(
   res: Response,
   cookies: Array<
-    | { action: "set"; name: string; token: string }
+    | { action: "set"; name: string; token: string; expiresAt?: string | null }
     | { action: "clear"; name: string }
   >,
 ): void {
   for (const cookie of cookies) {
     if (cookie.action === "set") {
-      setGuestTokenCookie(res, cookie.token);
+      setGuestTokenCookie(res, cookie.token, cookie.expiresAt);
     } else {
       clearGuestTokenCookie(res);
     }

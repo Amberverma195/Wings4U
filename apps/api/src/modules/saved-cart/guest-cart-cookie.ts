@@ -18,13 +18,13 @@ export function readGuestToken(req: Request): string | null {
   return raw;
 }
 
-export function setGuestTokenCookie(res: Response, token: string): void {
+export function setGuestTokenCookie(res: Response, token: string, expiresAt?: string | null): void {
   res.cookie(GUEST_CART_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: GUEST_CART_TTL_MS,
+    maxAge: expiresAt ? Math.max(0, Date.parse(expiresAt) - Date.now()) : GUEST_CART_TTL_MS,
   });
 }
 

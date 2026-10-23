@@ -7,7 +7,7 @@ import type { CartIdentity, CartSnapshot } from "./saved-cart.types";
  * this interface — it caches *snapshots* of what the DB already holds.
  */
 export interface CartStore {
-  /** Return the active cart snapshot for this identity+location, or null. */
+  /** Return a usable snapshot, an empty expired tombstone, or null if no ACTIVE row exists. */
   getSnapshot(
     identity: CartIdentity,
     locationId: string,
@@ -15,7 +15,7 @@ export interface CartStore {
 
   /**
    * Replace the entire active cart for identity+location with the given
-   * snapshot. Creates the cart row if it does not yet exist. Always a full
+   * snapshot. Reuses an expired ACTIVE row transactionally; creates a row only if absent. Always a full
    * replace — callers compute merges themselves.
    */
   saveSnapshot(
@@ -43,7 +43,7 @@ export interface CartStore {
    * Returned `mergeOutcome`:
    *   - "merged":     same location; items combined, guest cart deleted
    *   - "kept_both":  different location or no overlap; guest cart left intact
-   *   - "no_guest":   no active guest cart existed
+   *   - "no_guest":   no usable guest cart existed
    */
   mergeGuestIntoUser(
     guestToken: string,

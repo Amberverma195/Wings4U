@@ -24,7 +24,7 @@ type SaveInput = {
 
 type SessionResponse = {
   cookies: Array<
-    | { action: "set"; name: string; token: string }
+    | { action: "set"; name: string; token: string; expiresAt?: string | null }
     | { action: "clear"; name: string }
   >;
 };
@@ -85,7 +85,7 @@ export class SavedCartService {
     locationId: string,
     input: SaveInput,
   ): Promise<CartResult> {
-    const { identity, mintedGuestToken } = this.identityForWrite(req);
+    const { identity } = this.identityForWrite(req);
     const snapshot = await this.store.saveSnapshot(identity, locationId, {
       items: input.items,
       fulfillment_type: input.fulfillment_type,
@@ -95,8 +95,8 @@ export class SavedCartService {
     });
     return {
       snapshot,
-      cookies: mintedGuestToken
-        ? [{ action: "set", name: GUEST_CART_COOKIE, token: mintedGuestToken }]
+      cookies: identity.kind === "guest"
+        ? [{ action: "set", name: GUEST_CART_COOKIE, token: identity.guestToken, expiresAt: snapshot.expires_at }]
         : [],
     };
   }

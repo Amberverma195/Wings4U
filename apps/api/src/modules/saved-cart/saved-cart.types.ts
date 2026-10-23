@@ -42,9 +42,12 @@ export type CartSnapshot = {
   location_timezone: string;
   scheduled_for: string | null;
   driver_tip_percent: DriverTipPercentSnapshot;
-  /** ISO string. Present only for guest carts (user carts never expire). */
+  /** Effective inactivity deadline for both guest and customer carts. */
   expires_at: string | null;
   is_guest: boolean;
+  /** Expired ACTIVE row exists; clients must discard recovery drafts. */
+  expired?: boolean;
 };
 
+export const CUSTOMER_CART_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const GUEST_CART_TTL_MS = 7 * 24 * 60 * 60 * 1000;

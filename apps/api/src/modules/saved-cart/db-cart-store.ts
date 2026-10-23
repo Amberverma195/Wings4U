@@ -1,9 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
 import { Injectable } from "@nestjs/common";
 import { Prisma, SavedCartStatus } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import type { CartStore } from "./cart-store.interface";
 import {
   GUEST_CART_TTL_MS,
+  CUSTOMER_CART_TTL_MS,
   type CartIdentity,
   type CartItemSnapshot,
   type CartSnapshot,
@@ -24,11 +26,9 @@ export class DbCartStore implements CartStore {
     identity: CartIdentity,
     locationId: string,
   ): Promise<CartSnapshot | null> {
-    const cart = await this.findActive(this.prisma, identity, locationId);
+    const cart = await this.findActiveRow(this.prisma, identity, locationId);
     if (!cart) return null;
-    if (identity.kind === "guest") {
-      await this.extendGuestExpiry(this.prisma, cart.id);
-    }
+    if (!isUsable(cart)) return expiredSnapshot(cart, identity.kind === "guest");
     return toSnapshot(cart, identity.kind === "guest");
   }
 
@@ -38,8 +38,10 @@ export class DbCartStore implements CartStore {
     snapshot: Omit<CartSnapshot, "expires_at" | "is_guest">,
   ): Promise<CartSnapshot> {
     const cart = await this.prisma.$transaction(async (tx) => {
-      const existing = await this.findActive(tx, identity, locationId);
-      const nowPlusTtl = new Date(Date.now() + GUEST_CART_TTL_MS);
+      await lockCart(tx, identity, locationId);
+      const existing = await this.findActiveRow(tx, identity, locationId);
+      if (existing && isUsable(existing) && sameContent(existing, snapshot)) return existing;
+      const nowPlusTtl = new Date(Date.now() + cartTtl(identity.kind === "guest"));
       const metadata = {
         fulfillmentType: snapshot.fulfillment_type,
         locationTimezone: snapshot.location_timezone,
@@ -58,7 +60,7 @@ export class DbCartStore implements CartStore {
           where: { id: existing.id },
           data: {
             ...metadata,
-            ...(identity.kind === "guest" ? { expiresAt: nowPlusTtl } : {}),
+            expiresAt: nowPlusTtl,
           },
           include: { items: { orderBy: { sortOrder: "asc" } } },
         });
@@ -71,7 +73,7 @@ export class DbCartStore implements CartStore {
           locationId,
           ...metadata,
           status: SavedCartStatus.ACTIVE,
-          expiresAt: identity.kind === "guest" ? nowPlusTtl : null,
+          expiresAt: nowPlusTtl,
           items: {
             create: snapshot.items.map((item, index) => toItemNestedCreate(item, index)),
           },
@@ -84,16 +86,15 @@ export class DbCartStore implements CartStore {
   }
 
   async clear(identity: CartIdentity, locationId: string): Promise<void> {
-    const existing = await this.findActive(this.prisma, identity, locationId);
-    if (!existing) return;
     // Phase 4: Mark as CONVERTED instead of delete for checkout history.
     await this.markConverted(identity, locationId);
   }
 
   async markConverted(identity: CartIdentity, locationId: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const existing = await this.findActive(tx, identity, locationId);
-      if (!existing) return;
+      await lockCart(tx, identity, locationId);
+      const existing = await this.findActiveRow(tx, identity, locationId);
+      if (!existing || !isUsable(existing)) return;
 
       const identityWhere =
         identity.kind === "user"
@@ -125,33 +126,35 @@ export class DbCartStore implements CartStore {
     mergeOutcome: "merged" | "kept_both" | "no_guest";
   }> {
     return this.prisma.$transaction(async (tx) => {
+      await lockCart(tx, { kind: "guest", guestToken }, locationId);
+      await lockCart(tx, { kind: "user", userId }, locationId);
       const guestCart = await tx.savedCart.findFirst({
-        where: { guestToken, status: SavedCartStatus.ACTIVE },
+        where: { guestToken, userId: null, locationId, status: SavedCartStatus.ACTIVE },
         include: { items: { orderBy: { sortOrder: "asc" } } },
       });
 
-      if (!guestCart) {
-        const userCart = await this.findActive(tx, { kind: "user", userId }, locationId);
+      if (!guestCart || !isUsable(guestCart)) {
+        const otherGuest = !guestCart ? await tx.savedCart.findFirst({
+          where: { guestToken, userId: null, locationId: { not: locationId }, status: SavedCartStatus.ACTIVE },
+          include: { items: { orderBy: { sortOrder: "asc" } } },
+        }) : null;
+        const userCart = await this.findActiveRow(tx, { kind: "user", userId }, locationId);
+        let snapshot = userCart
+          ? (isUsable(userCart) ? toSnapshot(userCart, false) : expiredSnapshot(userCart, false))
+          : guestCart ? expiredSnapshot(guestCart, false) : null;
+        // An empty user cart must not cause native clients to write back stale guest memory.
+        if (guestCart && snapshot?.items.length === 0) snapshot = { ...snapshot, expired: true };
         return {
-          snapshot: userCart ? toSnapshot(userCart, false) : null,
-          mergeOutcome: "no_guest" as const,
-        };
-      }
-
-      // Guest cart exists but at a different location: leave it alone,
-      // return the user's cart for the *current* location.
-      if (guestCart.locationId !== locationId) {
-        const userCart = await this.findActive(tx, { kind: "user", userId }, locationId);
-        return {
-          snapshot: userCart ? toSnapshot(userCart, false) : null,
-          mergeOutcome: "kept_both" as const,
+          snapshot,
+          mergeOutcome: otherGuest && isUsable(otherGuest) ? "kept_both" as const : "no_guest" as const,
         };
       }
 
       // Same location: merge items by lineKey (sum quantities on collisions,
       // add guest-only lines). Write the merged set to the user cart, then
       // delete the guest cart so we never merge the same items twice.
-      const userCart = await this.findActive(tx, { kind: "user", userId }, locationId);
+      const existingUserCart = await this.findActiveRow(tx, { kind: "user", userId }, locationId);
+      const userCart = existingUserCart && isUsable(existingUserCart) ? existingUserCart : null;
       const mergedItems = mergeItemsByLineKey(
         userCart?.items.map(rowToSnapshotItem) ?? [],
         guestCart.items.map(rowToSnapshotItem),
@@ -164,17 +167,23 @@ export class DbCartStore implements CartStore {
         driverTipPercent: userCart?.driverTipPercent ?? guestCart.driverTipPercent,
       };
 
+      const expiresAt = new Date(Date.now() + CUSTOMER_CART_TTL_MS);
       let savedUserCart: CartWithItems;
-      if (userCart) {
-        await tx.savedCartItem.deleteMany({ where: { cartId: userCart.id } });
+      const mergedSnapshot = { items: mergedItems, fulfillment_type: metadata.fulfillmentType,
+        location_timezone: metadata.locationTimezone, scheduled_for: metadata.scheduledFor?.toISOString() ?? null,
+        driver_tip_percent: normalizeDriverTip(metadata.driverTipPercent) };
+      if (userCart && sameContent(userCart, mergedSnapshot)) {
+        savedUserCart = userCart;
+      } else if (existingUserCart) {
+        await tx.savedCartItem.deleteMany({ where: { cartId: existingUserCart.id } });
         if (mergedItems.length > 0) {
           await tx.savedCartItem.createMany({
-            data: mergedItems.map((item, index) => toItemCreateRow(userCart.id, item, index)),
+            data: mergedItems.map((item, index) => toItemCreateRow(existingUserCart.id, item, index)),
           });
         }
         savedUserCart = await tx.savedCart.update({
-          where: { id: userCart.id },
-          data: metadata,
+          where: { id: existingUserCart.id },
+          data: { ...metadata, expiresAt },
           include: { items: { orderBy: { sortOrder: "asc" } } },
         });
       } else {
@@ -182,6 +191,7 @@ export class DbCartStore implements CartStore {
           data: {
             userId,
             locationId,
+            expiresAt,
             ...metadata,
             status: SavedCartStatus.ACTIVE,
             items: {
@@ -201,7 +211,8 @@ export class DbCartStore implements CartStore {
     });
   }
 
-  private async findActive(
+  /** Raw ACTIVE slot, including expired rows. Only explicit saves may reuse stale contents. */
+  private async findActiveRow(
     tx: Prisma.TransactionClient | PrismaService,
     identity: CartIdentity,
     locationId: string,
@@ -220,19 +231,40 @@ export class DbCartStore implements CartStore {
       include: { items: { orderBy: { sortOrder: "asc" } } },
     });
   }
+}
 
-  private async extendGuestExpiry(
-    tx: Prisma.TransactionClient | PrismaService,
-    cartId: string,
-  ): Promise<void> {
-    // Sliding TTL: every read bumps expiry to now + 7d. Prevents active
-    // guests from losing their cart while the expiry job is free to clean
-    // up truly abandoned ones.
-    await tx.savedCart.update({
-      where: { id: cartId },
-      data: { expiresAt: new Date(Date.now() + GUEST_CART_TTL_MS) },
-    });
+function cartTtl(isGuest: boolean): number {
+  return isGuest ? GUEST_CART_TTL_MS : CUSTOMER_CART_TTL_MS;
+}
+
+/** Legacy null deadlines use the last persisted update, never the time of a read. */
+export function effectiveCartExpiry(cart: Pick<CartWithItems, "expiresAt" | "updatedAt" | "userId">): Date | null {
+  if (cart.expiresAt != null) {
+    return Number.isFinite(cart.expiresAt.getTime()) ? cart.expiresAt : null;
   }
+  if (!cart.updatedAt || !Number.isFinite(cart.updatedAt.getTime())) return null;
+  return new Date(cart.updatedAt.getTime() + cartTtl(cart.userId === null));
+}
+
+function isUsable(cart: CartWithItems): boolean {
+  const expiry = effectiveCartExpiry(cart);
+  return expiry !== null && expiry.getTime() > Date.now();
+}
+
+function expiredSnapshot(cart: CartWithItems, isGuest: boolean): CartSnapshot {
+  return { items: [], fulfillment_type: "PICKUP", location_timezone: "America/Toronto",
+    scheduled_for: null, driver_tip_percent: "none", is_guest: isGuest,
+    expires_at: effectiveCartExpiry(cart)?.toISOString() ?? null, expired: true };
+}
+
+async function lockCart(tx: Prisma.TransactionClient, identity: CartIdentity, locationId: string): Promise<void> {
+  const key = JSON.stringify([identity.kind, identity.kind === "guest" ? identity.guestToken : identity.userId, locationId]);
+  await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${key}::text, 84543))`;
+}
+
+function sameContent(cart: CartWithItems, snapshot: Omit<CartSnapshot, "expires_at" | "is_guest">): boolean {
+  const { expires_at: _expiry, is_guest: _guest, ...content } = toSnapshot(cart, cart.userId === null);
+  return isDeepStrictEqual(content, snapshot);
 }
 
 function toSnapshot(cart: CartWithItems, isGuest: boolean): CartSnapshot {
@@ -242,7 +274,7 @@ function toSnapshot(cart: CartWithItems, isGuest: boolean): CartSnapshot {
     location_timezone: cart.locationTimezone,
     scheduled_for: cart.scheduledFor ? cart.scheduledFor.toISOString() : null,
     driver_tip_percent: normalizeDriverTip(cart.driverTipPercent),
-    expires_at: cart.expiresAt ? cart.expiresAt.toISOString() : null,
+    expires_at: effectiveCartExpiry(cart)?.toISOString() ?? null,
     is_guest: isGuest,
   };
 }

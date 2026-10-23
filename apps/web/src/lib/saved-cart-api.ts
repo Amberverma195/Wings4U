@@ -33,6 +33,7 @@ export type SavedCartSnapshot = {
   driver_tip_percent: "none" | "10" | "15" | "20";
   expires_at: string | null;
   is_guest: boolean;
+  expired?: boolean;
 };
 
 export type MergeResult = {

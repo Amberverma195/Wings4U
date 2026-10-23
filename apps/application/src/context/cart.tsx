@@ -29,6 +29,8 @@ import { useSession } from "./session";
 import { getSessionGeneration } from "../lib/token-store";
 
 type PersistedCartDraft = {
+  ownerId?: string | null;
+  expiresAt?: string | null;
   v: 1;
   locationId: string;
   savedAt: number;
@@ -99,7 +101,7 @@ function draftStorageKey(locationId: string): string {
   return `${CART_DRAFT_KEY}:${locationId}`;
 }
 
-async function loadPersistedDraft(locationId: string): Promise<PersistedCartDraft | null> {
+async function loadPersistedDraft(locationId: string, ownerId: string | null): Promise<PersistedCartDraft | null> {
   try {
     const raw = await AsyncStorage.getItem(draftStorageKey(locationId));
     if (!raw) return null;
@@ -112,7 +114,7 @@ async function loadPersistedDraft(locationId: string): Promise<PersistedCartDraf
     ) {
       return null;
     }
-    if (Date.now() - parsed.savedAt > CART_DRAFT_MAX_AGE_MS) {
+    if ((parsed.expiresAt && Date.parse(parsed.expiresAt) <= Date.now()) || (parsed.ownerId ?? null) !== ownerId || !Number.isFinite(parsed.savedAt) || parsed.savedAt > Date.now() || Date.now() - parsed.savedAt > CART_DRAFT_MAX_AGE_MS) {
       await AsyncStorage.removeItem(draftStorageKey(locationId));
       return null;
     }
@@ -251,6 +253,7 @@ function draftToSnapshot(
 }
 
 function shouldUseDraft(server: SavedCartSnapshot | null, draft: PersistedCartDraft | null): boolean {
+  if (server?.expired || (server?.expires_at && Date.parse(server.expires_at) <= Date.now())) return false;
   if (!draft || draft.items.length === 0) return false;
   if (!server) return true;
   return server.items.length === 0;
@@ -284,6 +287,8 @@ export function CartProvider({
   const [cartAddNonce, setCartAddNonce] = useState(0);
 
   const skipNextSyncRef = useRef(false);
+  const hydrationLocationRef = useRef<string | null>(null);
+  const lastOwnerRef = useRef(session.user?.id);
   const lastAuthenticatedRef = useRef<boolean | null>(null);
   const localCartRef = useRef({
     items, fulfillmentType, locationTimezone, scheduledFor, driverTipPercent,
@@ -309,22 +314,40 @@ export function CartProvider({
     setLocationTimezone(snapshot.location_timezone || DEFAULT_CART_CONTEXT.locationTimezone);
     setScheduledFor(snapshot.scheduled_for);
     setDriverTipPercent(parseDriverTipPercent(snapshot.driver_tip_percent));
-    setCartExpiresAt(snapshot.expires_at);
+    setCartExpiresAt(snapshot.expired ? null : snapshot.expires_at);
     setIsGuestCart(snapshot.is_guest);
   }, []);
 
   useEffect(() => {
+    if (!cartExpiresAt || !Number.isFinite(Date.parse(cartExpiresAt))) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = () => {
+      const remaining = Date.parse(cartExpiresAt) - Date.now();
+      if (remaining > 0) { timer = setTimeout(check, Math.min(remaining, 2_147_483_647)); return; }
+      skipNextSyncRef.current = true;
+      void clearPersistedDraft(locationId);
+      applySnapshot({ items: [], fulfillment_type: "PICKUP", location_timezone: "America/Toronto",
+        scheduled_for: null, driver_tip_percent: "none", expires_at: null, is_guest: !session.authenticated, expired: true });
+    };
+    check();
+    return () => clearTimeout(timer);
+  }, [cartExpiresAt, applySnapshot, locationId, session.authenticated]);
+
+  useEffect(() => {
     if (!session.loaded) return;
+    if (hydrationLocationRef.current === locationId) return;
     let cancelled = false;
 
     setIsCartHydrated(false);
     void (async () => {
       const [server, draft] = await Promise.all([
         fetchSavedCart(locationId),
-        loadPersistedDraft(locationId),
+        loadPersistedDraft(locationId, session.user?.id ?? null),
       ]);
       if (cancelled) return;
 
+      if (server?.expired) await clearPersistedDraft(locationId);
+      if (cancelled) return;
       const useDraft = shouldUseDraft(server, draft);
       const snapshot = useDraft && draft ? draftToSnapshot(draft, session.authenticated) : server;
       applySnapshot(snapshot);
@@ -332,6 +355,7 @@ export function CartProvider({
       lastAuthenticatedRef.current = session.authenticated;
       setIsCartHydrated(true);
       setHydratedLocationId(locationId);
+      hydrationLocationRef.current = locationId;
 
       if (useDraft && draft) {
         const written = await putSavedCart(locationId, {
@@ -351,12 +375,14 @@ export function CartProvider({
     return () => {
       cancelled = true;
     };
-  }, [applySnapshot, locationId, session.loaded]);
+  }, [applySnapshot, locationId, session.loaded, session.authenticated, session.user?.id]);
 
   useEffect(() => {
     if (!session.loaded || hydratedLocationId !== locationId) return;
+    const switchedOwner = lastOwnerRef.current !== session.user?.id;
+    lastOwnerRef.current = session.user?.id;
     const previous = lastAuthenticatedRef.current;
-    if (previous === null || previous === session.authenticated) {
+    if (previous === null || (previous === session.authenticated && !switchedOwner)) {
       lastAuthenticatedRef.current = session.authenticated;
       return;
     }
@@ -371,7 +397,7 @@ export function CartProvider({
         try {
           const merged = await mergeSavedCartOnLogin(locationId);
           let snapshot = merged.snapshot ?? (await fetchSavedCart(locationId));
-          if ((!snapshot || snapshot.items.length === 0) && localPayload.items.length > 0) {
+          if (!snapshot?.expired && (!snapshot || snapshot.items.length === 0) && localPayload.items.length > 0) {
             // Keep the local cart if saving it fails during sign-in.
             snapshot = (await putSavedCart(locationId, localPayload)) ?? snapshot;
             if (!snapshot || snapshot.items.length === 0) return;
@@ -385,11 +411,14 @@ export function CartProvider({
           if (!cancelled) setIsCartHydrated(true);
         }
       })();
-    } else if (previous === true && !session.authenticated) {
+    } else if (previous === true && (!session.authenticated || switchedOwner)) {
       skipNextSyncRef.current = true;
       applySnapshot(null);
       setIsCartHydrated(true);
       void clearPersistedDraft(locationId);
+      if (session.authenticated) {
+        void fetchSavedCart(locationId).then(snapshot => { if (!cancelled) { skipNextSyncRef.current = true; applySnapshot(snapshot); } });
+      }
     }
 
     return () => {
@@ -400,6 +429,7 @@ export function CartProvider({
     hydratedLocationId,
     locationId,
     session.authenticated,
+    session.user?.id,
     session.loaded,
   ]);
 
@@ -414,6 +444,8 @@ export function CartProvider({
     const timeout = setTimeout(() => {
       if (generation !== getSessionGeneration()) return;
       const payload = {
+        ownerId: session.user?.id ?? null,
+        expiresAt: cartExpiresAt,
         locationId,
         items,
         fulfillmentType,
@@ -435,6 +467,7 @@ export function CartProvider({
   }, [
     driverTipPercent,
     fulfillmentType,
+    session.user?.id,
     isCartHydrated,
     items,
     locationId,
