@@ -189,6 +189,49 @@ describe('Web Screen-Reader Labels & Selection States (P2)', () => {
     expect(deliveryRadio.props['aria-label']).toContain('Delivery');
   });
 
+  test('schedule dropdowns expose Date and Time accessible names', async () => {
+    await act(async () => {
+      renderer = create(React.createElement(OrderMethodModal, {
+        open: true, initialStep: 'schedule', defaultMethod: 'PICKUP',
+        onClose: jest.fn(), onContinue: jest.fn(),
+      }));
+    });
+    expect(renderer.root.findAllByType('select').map(node => node.props['aria-label'])).toEqual(['Date', 'Time']);
+  });
+
+  test('saucing radios expose one tab stop and arrow selection updates checked state', async () => {
+    const onChange = jest.fn();
+    const render = value => React.createElement(SaucingMethodPicker, { effectiveSaucedCount: 1, slotCount: 1, value, onChange });
+    await act(async () => { renderer = create(render('ON_WINGS')); });
+    let radios = renderer.root.findAllByProps({ role: 'radio' });
+    expect(radios.map(r=>r.props.tabIndex)).toEqual([0,-1]);
+    const group = {};
+    const buttons = radios.map(r=>({ disabled: false, closest:()=>group, getAttribute:()=>null, focus:jest.fn(), click:r.props.onClick }));
+    group.querySelectorAll=()=>buttons;
+    renderer.root.findByProps({ role: 'radiogroup' }).props.onKeyDown({key:'ArrowRight',target:buttons[0],currentTarget:group,preventDefault:jest.fn()});
+    expect(buttons[1].focus).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith('ON_SIDE');
+    await act(async () => renderer.update(render('ON_SIDE')));
+    radios=renderer.root.findAllByProps({ role: 'radio' });
+    expect(radios.map(r=>r.props.tabIndex)).toEqual([-1,0]);
+    expect(radios.map(r=>r.props['aria-checked'])).toEqual([false,true]);
+  });
+
+  test.each(['order-method-modal.tsx', 'menu-page.tsx'])('%s gives scheduling selects explicit accessible names', file => {
+    const fs = require('node:fs'), path = require('node:path'), ts = require('typescript');
+    const source = ts.createSourceFile(file, fs.readFileSync(path.join(__dirname, '../src/Wings4u/components', file), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const names = [];
+    const visit = node => {
+      if (ts.isJsxOpeningElement(node) && node.tagName.getText(source) === 'select') {
+        const label = node.attributes.properties.find(prop => ts.isJsxAttribute(prop) && prop.name.getText(source) === 'aria-label');
+        names.push(label?.initializer && ts.isStringLiteral(label.initializer) ? label.initializer.text : undefined);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    expect(names).toEqual(['Date', 'Time']);
+  });
+
   test('CustomerAuth password toggle has no negative tabIndex and supports keyboard interaction', async () => {
     await act(async () => {
       renderer = create(

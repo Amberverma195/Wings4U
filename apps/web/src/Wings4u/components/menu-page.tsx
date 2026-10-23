@@ -1,4 +1,6 @@
 "use client";
+import { FulfillmentPicker } from "@/components/fulfillment-picker";
+import { OrderSettingsPanel } from "@/components/order-settings-panel";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -9,7 +11,7 @@ import { hasCompleteDeliveryAddress } from "@/lib/delivery-address";
 import {
   getDeliveryUnavailableMessage,
 } from "@/lib/delivery-restrictions";
-import { isFocusInsideWkMethodOverlay, isTargetInsideWkMethodOverlay } from "@/lib/wk-overlay";
+import { isTargetInsideWkMethodOverlay } from "@/lib/wk-overlay";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import {
   buildScheduleDateOptions,
@@ -646,18 +648,12 @@ export function MenuPage({
       dismissOrderSettings();
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (isTargetInsideWkMethodOverlay(event.target) || isFocusInsideWkMethodOverlay()) return;
-      dismissOrderSettings();
-    }
-
     document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
+
 
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
+
     };
   }, [dismissOrderSettings, orderSettingsOpen]);
 
@@ -1247,34 +1243,12 @@ export function MenuPage({
             </div>
 
             {orderSettingsOpen && (
-              <div className="wk-order-settings-panel" role="dialog" aria-label="Order settings">
+              <OrderSettingsPanel onClose={dismissOrderSettings}>
                 <div className="wk-order-settings-panel-header">
                   <span className="wk-order-settings-panel-title">Order settings</span>
                 </div>
 
-                <div
-                  className="wk-order-settings-panel-toggle"
-                  role="tablist"
-                  aria-label="Edit fulfillment type"
-                >
-                  {(["PICKUP", "DELIVERY"] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      className="wk-order-fulfillment-btn"
-                      role="tab"
-                      aria-selected={draftFulfillmentType === option}
-                      data-active={draftFulfillmentType === option ? "true" : "false"}
-                      data-disabled={
-                        option === "DELIVERY" && deliveryUnavailable ? "true" : "false"
-                      }
-                      onClick={() => handleDraftFulfillmentTypeChange(option)}
-                      disabled={option === "DELIVERY" && deliveryUnavailable}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
+                <FulfillmentPicker value={draftFulfillmentType} onChange={handleDraftFulfillmentTypeChange} deliveryUnavailable={deliveryUnavailable} />
 
                 {deliveryUnavailableMessage ? (
                   <p className="wk-order-settings-restriction-note">
@@ -1295,6 +1269,7 @@ export function MenuPage({
                       <select
                         className="wk-order-settings-select"
                         value={draftDateKey}
+                        aria-label="Date"
                         onChange={(event) => setDraftDateKey(event.target.value)}
                       >
                         {draftDateOptions.map((option) => (
@@ -1315,6 +1290,7 @@ export function MenuPage({
                       <select
                         className="wk-order-settings-select"
                         value={draftTimeValue}
+                        aria-label="Time"
                         onChange={(event) => setDraftTimeValue(event.target.value)}
                       >
                         {draftTimeOptions.map((option) => (
@@ -1360,7 +1336,7 @@ export function MenuPage({
                     ) : null}
                   </div>
                 )}
-              </div>
+              </OrderSettingsPanel>
             )}
           </div>
 

@@ -1,4 +1,6 @@
 "use client";
+import { FulfillmentPicker } from "@/components/fulfillment-picker";
+import { OrderSettingsPanel } from "@/components/order-settings-panel";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeliveryAddress } from "@/components/delivery-address-provider";
@@ -16,7 +18,7 @@ import {
   getSelectedDateKey,
   normalizeSchedulingConfig,
 } from "@/lib/order-scheduling";
-import { isFocusInsideWkMethodOverlay, isTargetInsideWkMethodOverlay } from "@/lib/wk-overlay";
+import { isTargetInsideWkMethodOverlay } from "@/lib/wk-overlay";
 import type { FulfillmentType, MenuResponse } from "@/lib/types";
 
 function OrderMetaIcon({ kind }: { kind: "date" | "time" | "address" }) {
@@ -230,18 +232,12 @@ export function CartOrderSettings({ menu }: Props) {
       dismissOrderSettings();
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (isTargetInsideWkMethodOverlay(event.target) || isFocusInsideWkMethodOverlay()) return;
-      dismissOrderSettings();
-    }
-
     document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
+
 
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
+
     };
   }, [dismissOrderSettings, orderSettingsOpen]);
 
@@ -362,34 +358,12 @@ export function CartOrderSettings({ menu }: Props) {
       </div>
 
       {orderSettingsOpen && menu && (
-        <div className="wk-order-settings-panel" role="dialog" aria-label="Order settings">
+        <OrderSettingsPanel onClose={dismissOrderSettings}>
           <div className="wk-order-settings-panel-header">
             <span className="wk-order-settings-panel-title">Order settings</span>
           </div>
 
-          <div
-            className="wk-order-settings-panel-toggle"
-            role="tablist"
-            aria-label="Edit fulfillment type"
-          >
-            {(["PICKUP", "DELIVERY"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                className="wk-order-fulfillment-btn"
-                role="tab"
-                aria-selected={draftFulfillmentType === option}
-                data-active={draftFulfillmentType === option ? "true" : "false"}
-                data-disabled={
-                  option === "DELIVERY" && deliveryUnavailable ? "true" : "false"
-                }
-                onClick={() => handleDraftFulfillmentTypeChange(option)}
-                disabled={option === "DELIVERY" && deliveryUnavailable}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
+          <FulfillmentPicker value={draftFulfillmentType} onChange={handleDraftFulfillmentTypeChange} deliveryUnavailable={deliveryUnavailable} />
 
           {deliveryUnavailableMessage ? (
             <p className="wk-order-settings-restriction-note">
@@ -475,7 +449,7 @@ export function CartOrderSettings({ menu }: Props) {
               ) : null}
             </div>
           )}
-        </div>
+        </OrderSettingsPanel>
       )}
     </div>
   );

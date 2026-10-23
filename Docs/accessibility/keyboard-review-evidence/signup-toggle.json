@@ -1,0 +1,27 @@
+{
+  "focused": {
+    "tag": "BUTTON",
+    "text": "Hide password",
+    "role": null,
+    "type": "button",
+    "id": "",
+    "href": null,
+    "class": "wk-password-toggle",
+    "visibleFocus": true,
+    "outline": "rgb(247, 233, 200) none 3px",
+    "shadow": "none",
+    "rect": {
+      "x": 1179.34375,
+      "y": 551.75,
+      "width": 36,
+      "height": 36
+    }
+  },
+  "passwordTypes": [
+    "text",
+    "tel",
+    "email",
+    "text",
+    "password"
+  ]
+}

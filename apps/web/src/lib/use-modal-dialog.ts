@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, type RefObject } from "react";
 
+const modalStack: Array<{ dialog: HTMLElement; focus: () => void }> = [];
+let scrollLocks = 0;
+let unlockedOverflow = "";
+
 export type ModalDialogOptions = {
   dialogRef: RefObject<HTMLElement | null>;
   initialFocusRef?: RefObject<HTMLElement | null>;
@@ -47,8 +51,8 @@ export function useModalDialog({
       (document.activeElement instanceof HTMLElement ? document.activeElement : null);
 
     // 2. Lock body scroll if requested
-    const previousOverflow = document.body.style.overflow;
     if (lockScroll) {
+      if (scrollLocks++ === 0) unlockedOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
     }
 
@@ -70,12 +74,16 @@ export function useModalDialog({
 
     // 4. Initial focus placement
     const focusTarget = initialFocusRef?.current ?? getFocusable()[0] ?? dialog;
+    const entry = { dialog, focus: () => (getFocusable()[0] ?? dialog).focus() };
+    modalStack.push(entry);
+    const isTop = () => modalStack[modalStack.length - 1] === entry;
     if (focusTarget && typeof focusTarget.focus === "function") {
       focusTarget.focus();
     }
 
     // 5. Keyboard event handler (Tab trapping & Escape closing)
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTop()) return;
       if (event.key === "Escape" && closeOnEscape && onCloseRef.current) {
         event.preventDefault();
         event.stopPropagation();
@@ -104,6 +112,7 @@ export function useModalDialog({
 
     // 6. Focus containment handler (prevents focus from leaking outside dialog)
     const onFocusIn = (event: FocusEvent) => {
+      if (!isTop()) return;
       if (dialog && !dialog.contains(event.target as Node)) {
         const elements = getFocusable();
         const target = elements[0] ?? dialog;
@@ -120,10 +129,16 @@ export function useModalDialog({
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("focusin", onFocusIn);
+      const wasTop = isTop();
+      modalStack.splice(modalStack.indexOf(entry), 1);
       if (lockScroll) {
-        document.body.style.overflow = previousOverflow;
+        if (--scrollLocks === 0) document.body.style.overflow = unlockedOverflow;
       }
-      if (previousFocus && typeof previousFocus.focus === "function" && previousFocus.isConnected) {
+      if (!wasTop) return;
+      const remaining = modalStack[modalStack.length - 1];
+      if (remaining && (!previousFocus?.isConnected || !remaining.dialog.contains(previousFocus))) {
+        remaining.focus();
+      } else if (previousFocus && typeof previousFocus.focus === "function" && previousFocus.isConnected) {
         previousFocus.focus();
       }
     };

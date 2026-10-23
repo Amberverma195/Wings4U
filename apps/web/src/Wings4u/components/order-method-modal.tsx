@@ -1,4 +1,5 @@
 "use client";
+import { handleRadioGroupKeyDown } from "@/lib/radio-group";
 
 import { PICKUP_ETA_RANGE } from "@/lib/pickup-eta";
 
@@ -508,12 +509,13 @@ export function OrderMethodModal({
           </div>
 
           {step === "method" ? (
-            <div className="wk-method-options" role="radiogroup" aria-label="Order fulfillment method">
+            <div className="wk-method-options" role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label="Order fulfillment method">
               <button
                 type="button"
                 className="wk-method-option"
                 role="radio"
                 aria-checked={method === "PICKUP"}
+                tabIndex={method === "PICKUP" || deliveryUnavailableMessage ? 0 : -1}
                 aria-label={`Pickup, free, ${PICKUP_ETA_RANGE} minutes`}
                 data-selected={method === "PICKUP" ? "true" : "false"}
                 onClick={() => setMethod("PICKUP")}
@@ -541,6 +543,7 @@ export function OrderMethodModal({
                 className="wk-method-option"
                 role="radio"
                 aria-checked={method === "DELIVERY"}
+                tabIndex={method === "DELIVERY" && !deliveryUnavailableMessage ? 0 : -1}
                 aria-label={
                   deliveryUnavailableMessage
                     ? `Delivery, currently unavailable: ${deliveryUnavailableMessage}`
@@ -586,6 +589,7 @@ export function OrderMethodModal({
                     <select
                       className="wk-order-settings-select"
                       value={scheduleDateKey}
+                      aria-label="Date"
                       onChange={(event) => setScheduleDateKey(event.target.value)}
                       disabled={scheduleLoading || scheduleDateOptions.length === 0}
                     >
@@ -607,6 +611,7 @@ export function OrderMethodModal({
                     <select
                       className="wk-order-settings-select"
                       value={scheduleTimeValue}
+                      aria-label="Time"
                       onChange={(event) => setScheduleTimeValue(event.target.value)}
                       disabled={scheduleLoading || scheduleTimeOptions.length === 0}
                     >

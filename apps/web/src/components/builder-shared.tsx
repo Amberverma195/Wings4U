@@ -1,4 +1,5 @@
 "use client";
+import { handleRadioGroupKeyDown } from "@/lib/radio-group";
 
 import {
   forwardRef,
@@ -623,7 +624,7 @@ export function FlavourPicker({
       >
         <div
           className="builder-flavour-pills"
-          role="radiogroup"
+          role="radiogroup" onKeyDown={handleRadioGroupKeyDown}
           aria-label={`${activeGroup?.level.replace(/_/g, " ")} flavours`}
         >
           {activeGroup?.items.map((flavour) => (
@@ -632,6 +633,7 @@ export function FlavourPicker({
               type="button"
               role="radio"
               aria-checked={flavour.id === selectedFlavourId}
+              tabIndex={flavour.id === (activeGroup?.items.find(item => item.id === selectedFlavourId)?.id ?? activeGroup?.items[0]?.id) ? 0 : -1}
               className={`builder-flavour-pill${flavour.id === selectedFlavourId ? " builder-flavour-pill-active" : ""}`}
               onClick={() => onSelect(flavour)}
               disabled={disabled}
@@ -673,13 +675,14 @@ export function SaucingMethodPicker({
 
   return (
     <div className="builder-saucing-picker">
-      <div className="builder-option-pills" role="radiogroup" aria-label="Saucing method">
+      <div className="builder-option-pills" role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label="Saucing method">
         {options.map((option) => (
           <button
             key={option.value}
             type="button"
             role="radio"
             aria-checked={value === option.value}
+            tabIndex={option.value === (options.find(item => item.value === value)?.value ?? options[0]?.value) ? 0 : -1}
             className={`builder-option-pill${value === option.value ? " builder-option-pill-active" : ""}`}
             onClick={() => onChange(option.value)}
           >
@@ -693,7 +696,7 @@ export function SaucingMethodPicker({
           <p className="builder-inline-copy" style={{ marginBottom: "0.5rem" }}>
             {sideQuestionLabel}
           </p>
-          <div className="builder-option-pills" role="radiogroup" aria-label={sideQuestionLabel}>
+          <div className="builder-option-pills" role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label={sideQuestionLabel}>
             {sideFlavourOptions.map(({ slotNo, label }) => {
               return (
                 <button
@@ -701,6 +704,7 @@ export function SaucingMethodPicker({
                   type="button"
                   role="radio"
                   aria-checked={sideFlavourSlot === slotNo}
+                  tabIndex={slotNo === (sideFlavourOptions.find(item => item.slotNo === sideFlavourSlot)?.slotNo ?? sideFlavourOptions[0]?.slotNo) ? 0 : -1}
                   className={`builder-option-pill${sideFlavourSlot === slotNo ? " builder-option-pill-active" : ""}`}
                   onClick={() => onSideFlavourSlotChange?.(slotNo)}
                   disabled={!onSideFlavourSlotChange}
@@ -847,13 +851,14 @@ export function ExtraFlavourPicker({
         className="builder-heat-tabpanel"
         tabIndex={0}
       >
-        <div className="builder-flavour-pills" role="radiogroup" aria-label={`${activeGroup?.label} flavours`}>
+        <div className="builder-flavour-pills" role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label={`${activeGroup?.label} flavours`}>
           {activeGroup?.items.map((flavour) => (
             <button
               key={flavour.id}
               type="button"
               role="radio"
               aria-checked={flavour.id === selectedFlavourId}
+              tabIndex={flavour.id === (activeGroup?.items.find(item => item.id === selectedFlavourId)?.id ?? activeGroup?.items[0]?.id) ? 0 : -1}
               className={`builder-flavour-pill${flavour.id === selectedFlavourId ? " builder-flavour-pill-active" : ""}`}
               onClick={() => onSelect(flavour)}
               disabled={disabled}

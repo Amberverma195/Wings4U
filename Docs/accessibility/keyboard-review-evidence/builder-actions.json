@@ -1,0 +1,72 @@
+{
+  "flavourSelected": {
+    "name": "Honey BBQ",
+    "checked": "true"
+  },
+  "arrow": {
+    "tag": "BUTTON",
+    "text": "MEDIUM",
+    "role": "tab",
+    "type": "button",
+    "id": "flavour-tab-_r_0_-medium",
+    "href": null,
+    "class": "builder-heat-tab builder-heat-tab-active",
+    "visibleFocus": true,
+    "outline": "rgb(16, 16, 16) auto 1px",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+    "rect": {
+      "x": 494.328125,
+      "y": 368.0625,
+      "width": 77.546875,
+      "height": 30.375
+    }
+  },
+  "tabs": [
+    {
+      "name": "PLAIN",
+      "selected": "false",
+      "tabIndex": -1
+    },
+    {
+      "name": "MILD",
+      "selected": "false",
+      "tabIndex": -1
+    },
+    {
+      "name": "MEDIUM",
+      "selected": "true",
+      "tabIndex": 0
+    },
+    {
+      "name": "HOT",
+      "selected": "false",
+      "tabIndex": -1
+    },
+    {
+      "name": "DRY RUB",
+      "selected": "false",
+      "tabIndex": -1
+    }
+  ],
+  "escape": {
+    "dialogs": 0,
+    "focus": {
+      "tag": "BUTTON",
+      "text": "Add Wings (By the Pound) to cart",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "menu-add-to-cart-btn",
+      "visibleFocus": true,
+      "outline": "rgba(245, 166, 35, 0.95) solid 2px",
+      "shadow": "none",
+      "rect": {
+        "x": 238.0625,
+        "y": 431.171875,
+        "width": 104,
+        "height": 37
+      }
+    }
+  }
+}

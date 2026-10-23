@@ -1,0 +1,334 @@
+{
+  "opened": 1,
+  "initial": {
+    "tag": "BUTTON",
+    "text": "DONE",
+    "role": null,
+    "type": "button",
+    "id": "",
+    "href": null,
+    "class": "wk-order-settings-action",
+    "visibleFocus": true,
+    "outline": "rgb(16, 16, 16) auto 1px",
+    "shadow": "none",
+    "rect": {
+      "x": 589.578125,
+      "y": -255.84375,
+      "width": 74.484375,
+      "height": 40
+    }
+  },
+  "forward": [
+    {
+      "tag": "BUTTON",
+      "text": "PICKUP",
+      "role": "tab",
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-order-fulfillment-btn",
+      "visibleFocus": true,
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "shadow": "rgba(245, 166, 35, 0.2) 0px 10px 22px 0px",
+      "rect": {
+        "x": 82.421875,
+        "y": -129.84375,
+        "width": 167,
+        "height": 38
+      }
+    },
+    {
+      "tag": "SELECT",
+      "text": "Today, Oct 23\nSat, Oct 24\nSun, Oct 25\nMon, Oct 26\nTue, Oct 27\nWed, Oct 28\nThu, Oct 29",
+      "role": null,
+      "type": null,
+      "id": "",
+      "href": null,
+      "class": "wk-order-settings-select",
+      "visibleFocus": true,
+      "outline": "rgb(255, 255, 255) none 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 130.421875,
+        "y": 1,
+        "width": 87,
+        "height": 20
+      }
+    },
+    {
+      "tag": "SELECT",
+      "text": "11:00 AM\n11:15 AM\n11:30 AM\n11:45 AM\n12:00 PM\n12:15 PM\n12:30 PM\n12:45 PM\n1:00 PM\n1:15 PM\n1:",
+      "role": null,
+      "type": null,
+      "id": "",
+      "href": null,
+      "class": "wk-order-settings-select",
+      "visibleFocus": true,
+      "outline": "rgb(255, 255, 255) none 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 308.421875,
+        "y": 1,
+        "width": 87,
+        "height": 20
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Wings",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(28, 28, 28) auto 3px",
+      "shadow": "rgba(255, 107, 53, 0.32) 0px 4px 14px 0px",
+      "rect": {
+        "x": 70.421875,
+        "y": 79,
+        "width": 53.171875,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Wing Combos",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 151.15625,
+        "y": 79,
+        "width": 82.0625,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Burgers",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 260.765625,
+        "y": 79,
+        "width": 52.90625,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Tenders",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 341.234375,
+        "y": 79,
+        "width": 53.46875,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Wraps",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 422.25,
+        "y": 79,
+        "width": 46.875,
+        "height": 30
+      }
+    }
+  ],
+  "backward": [
+    {
+      "tag": "BUTTON",
+      "text": "Tenders",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 341.234375,
+        "y": 79,
+        "width": 53.46875,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Burgers",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 260.765625,
+        "y": 79,
+        "width": 52.90625,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Wing Combos",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(170, 170, 170) auto 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 151.15625,
+        "y": 79,
+        "width": 82.0625,
+        "height": 30
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Wings",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-cat-btn",
+      "visibleFocus": true,
+      "outline": "rgb(28, 28, 28) auto 3px",
+      "shadow": "rgba(255, 107, 53, 0.32) 0px 4px 14px 0px",
+      "rect": {
+        "x": 70.421875,
+        "y": 79,
+        "width": 53.171875,
+        "height": 30
+      }
+    },
+    {
+      "tag": "SELECT",
+      "text": "11:00 AM\n11:15 AM\n11:30 AM\n11:45 AM\n12:00 PM\n12:15 PM\n12:30 PM\n12:45 PM\n1:00 PM\n1:15 PM\n1:",
+      "role": null,
+      "type": null,
+      "id": "",
+      "href": null,
+      "class": "wk-order-settings-select",
+      "visibleFocus": true,
+      "outline": "rgb(255, 255, 255) none 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 308.421875,
+        "y": 1,
+        "width": 87,
+        "height": 20
+      }
+    },
+    {
+      "tag": "SELECT",
+      "text": "Today, Oct 23\nSat, Oct 24\nSun, Oct 25\nMon, Oct 26\nTue, Oct 27\nWed, Oct 28\nThu, Oct 29",
+      "role": null,
+      "type": null,
+      "id": "",
+      "href": null,
+      "class": "wk-order-settings-select",
+      "visibleFocus": true,
+      "outline": "rgb(255, 255, 255) none 3px",
+      "shadow": "none",
+      "rect": {
+        "x": 130.421875,
+        "y": 1,
+        "width": 87,
+        "height": 20
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "PICKUP",
+      "role": "tab",
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-order-fulfillment-btn",
+      "visibleFocus": true,
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "shadow": "rgba(245, 166, 35, 0.2) 0px 10px 22px 0px",
+      "rect": {
+        "x": 82.421875,
+        "y": -129.84375,
+        "width": 167,
+        "height": 38
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "text": "DONE",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-order-settings-action",
+      "visibleFocus": true,
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "shadow": "none",
+      "rect": {
+        "x": 589.578125,
+        "y": -255.84375,
+        "width": 74.484375,
+        "height": 40
+      }
+    }
+  ],
+  "escape": {
+    "dialogs": 0,
+    "focus": {
+      "tag": "BUTTON",
+      "text": "CHANGE",
+      "role": null,
+      "type": "button",
+      "id": "",
+      "href": null,
+      "class": "wk-order-settings-action",
+      "visibleFocus": true,
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "shadow": "none",
+      "rect": {
+        "x": 589.578125,
+        "y": 9,
+        "width": 93.515625,
+        "height": 40
+      }
+    }
+  }
+}

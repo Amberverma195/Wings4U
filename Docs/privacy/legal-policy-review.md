@@ -1,6 +1,6 @@
 # Privacy, terms and storage disclosure review
 
-Reviewed October 23, 2026. Local implementation only; not published or legally certified.
+Reviewed October 23, 2026. Source review and dated verification evidence; deployment status and legal compliance are not certified by this report.
 
 ## Result and scope
 
@@ -8,7 +8,7 @@ The existing `/privacy` and `/terms` routes now contain comprehensive, linked po
 
 No cookie banner was added. Source inspection and the limited unauthenticated website network check identified essential ordering/authentication/security storage, with no optional advertising or behavioural analytics integration identified. This is a scoped engineering finding, not a determination that every processing activity satisfies Canadian privacy law.
 
-No production database mutations, migrations, seeds, cleanup, database-connected tests, environment changes, deployments, merges, commits or pushes were performed. No project dependencies were added. Browser review tooling ran outside the repository against isolated static renderings and read-only public pages. The pre-existing change to `Docs/account-deletion.md` was left untouched and is outside this task.
+During the initial policy implementation/validation, no production database mutations, migrations, seeds, cleanup, database-connected tests, environment changes or deployments were performed, and no project dependencies were added. Source changes were subsequently committed and pushed at the owner's request. Browser review tooling ran outside the repository against isolated static renderings and read-only public pages. The separate account-deletion documentation correction was subsequently published in commit `fd201b7`; its dated activation evidence is reflected below.
 
 ## Baseline audit and corrections
 
@@ -49,7 +49,7 @@ Pickup payment is cash or a physical terminal at the store. Delivery payment is 
 
 Promotion rules come from current server eligibility. Party specials are excluded from coupon-eligible merchandise; lunch has its own schedule/configured eligibility rather than an invented universal coupon exclusion. Coupons and Wings redemption do not stack. A configured first-order offer can bundle benefits within that one offer. Regular wings, wing combos and configured party packs can earn paid-weight stamps; lunch and Wings 4 U Special do not. Fractional qualifying paid pounds round down. Current redemption requires eight available stamps and an eligible individual 1 lb item, with eligibility rechecked at checkout. These facts are documented, not changed.
 
-Deletion links lead to `/account/delete` and the existing mobile profile flow. Documentation explains eligibility/status checks, password confirmation, unresolved obligations, explicit rewards-loss confirmation, session removal and minimized retained records. No real account deletion or production gate verification was performed in this task.
+Deletion links lead to `/account/delete` and the existing mobile profile flow. Documentation explains eligibility/status checks, password confirmation, unresolved obligations, explicit rewards-loss confirmation, session removal and minimized retained records. The initial policy-editing task did not perform a real deletion or verify production gates. The separate [account-deletion activation review](../account-deletion.md) subsequently records read-only production verification on October 23, 2026: the public API reports `enabled: true` with policy version `2026-10-20-review-2`. Current classification is **implemented and enabled**, with remaining operational/evidence gaps. No real production deletion has been independently exercised; that limit does not mean activation is pending.
 
 ## Complete application cookie inventory
 
@@ -129,6 +129,8 @@ This does not establish absence of optional tracking after authentication, conse
 
 ## Verification results
 
+Follow-up keyboard review: [Website keyboard testing](../accessibility/keyboard-testing.md) records live public route checks, pickup/wings-builder keyboard actions, focused regression results and the remaining authenticated/screen-reader coverage gaps. This extends the isolated policy previews below; it does not certify complete site accessibility.
+
 | Check | Actual result |
 |---|---|
 | Web Jest: legal-pages, signup-device, web-a11y-semantics, delivery-address, cart-hydration-expiration, account-deletion-session | **PASS: six suites, 64 tests.** API/session dependencies mocked; no live database tests. |
@@ -163,8 +165,8 @@ Review artifacts: [Privacy desktop](review-artifacts/privacy-1365.png), [Privacy
 4. Review actual promotional and rewards-email content and any offline marketing lists under CASL. No general newsletter consent ledger or automated unsubscribe pipeline was identified; the website's newsletter-labelled component is an ordering promotion. Service-related labels alone do not decide a message's legal classification. The [CRTC CASL FAQ](https://crtc.gc.ca/eng/com500/faq500.htm) describes consent, sender identification and unsubscribe requirements for commercial electronic messages. No claim of a verified CASL exemption or compliance is made.
 5. Confirm provider accounts, regions, subprocessors, logs, backup retention and contractual privacy terms. Perform native device network review of Stripe initialization and other SDK behaviour before asserting absence of nonessential native telemetry.
 6. Decide the intended age/audience and appropriate consent handling with legal advice; no minimum age or parental-consent mechanism was invented.
-7. Recheck live deletion gating/status and store-app legal URL configuration without deleting a real account. This task verifies documentation/entry points and mocked regressions, not a production deletion transaction.
+7. Production deletion activation was verified by the dated read-only configuration response in the [deletion review](../account-deletion.md). Recheck only when assessing a newer deployment/configuration; do not describe the dated activation as unverified or pending. A real deletion transaction, operational approval evidence and provider/backups handling remain independently unverified. Mobile legal origins were separately corrected to use the explicit public website configuration with Railway regression coverage; installed release configuration still needs release-specific verification.
 8. Review allergy/ingredient, cancellation, reward/promotion and consumer-law wording against actual restaurant procedures before release. Policy text is not evidence of full legal compliance.
 9. The pages say **Last updated October 23, 2026**, the local revision date. They do not claim this draft is already effective in production. Check/update the date to the actual release date when publication is authorized, and provide material-change notice/consent where applicable.
 
-The implementation and reviewable diff are complete locally. Publication and any additional operational/legal work above have not been performed.
+The source implementation and review record are available in the repository. This report does not establish deployment completion or supply the additional operational/legal evidence listed above.
