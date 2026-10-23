@@ -7,26 +7,30 @@ exports[`Branded order email templates preserves the Wings Rewards reference out
       <div style="max-width:560px;margin:0 auto;padding:24px;">
         <div style="background:#321a12;color:#fff4e4;padding:24px;border-radius:16px 16px 0 0;font-size:26px;font-weight:bold;">Wings 4 U</div>
         <div style="background:#fffdf9;padding:24px;border-radius:0 0 16px 16px;">
-          <p>Hello, Jamie &amp; Sam! 🍗</p><h1 style="font-size:24px;color:#983315;">We&#39;ve added 2 bonus stamps to your Wings 4 U stamp collection!</h1>
-          <p style="padding:16px;background:#fce9d5;border-radius:10px;font-size:20px;font-weight:bold;">Your new balance is 6 out of 8 stamps.</p>
-          <p>Every stamp brings you closer to something delicious. Collect 8 stamps and unlock 1 lb of wings on us!</p><p>Thanks for being part of the Wings 4 U family. We can&#39;t wait to serve you again.</p>
-          <p style="margin:28px 0;"><a href="https://orders.example.com/menu" style="display:inline-block;background:#a73713;color:#fff;padding:12px 24px;border-radius:8px;font-weight:bold;text-decoration:none;">Order Now</a></p>
-          <p>See you soon,<br>The Wings 4 U Team ❤️</p>
+          <p style="margin:0 0 16px;font-size:16px;">Hello, Jamie &amp; Sam!</p>
+          <p style="margin:0 0 16px;font-size:16px;">We&#39;ve added 2 bonus stamps to your Wings4U rewards account.</p>
+          <p style="padding:16px;background:#fce9d5;border-radius:10px;font-size:20px;font-weight:bold;margin:0 0 16px;">Your updated stamp balance: 6 / 8</p>
+          <p style="margin:0 0 16px;font-size:16px;">Your rewards account has been updated successfully. No action is required.</p>
+          
+          <p style="margin:24px 0 0;font-size:16px;line-height:1.6;">Thank you,<br>The Wings4U Team ❤️</p>
+          <div style="margin:20px 0 0;padding-top:16px;border-top:1px solid #e8ded2;font-size:13px;color:#7a6b63;line-height:1.4;">
+            Wings 4 U<br>
+            1544 Dundas St, London, ON N5W 3C1
+          </div>
         </div></div></body></html>",
-  "subject": "🍗 A little something extra for you | Wings 4 U",
-  "text": "Hello, Jamie & Sam! 🍗
+  "subject": "Wings4U — Bonus Stamps Added to Your Account",
+  "text": "Hello, Jamie & Sam!
 
-We've added 2 bonus stamps to your Wings 4 U stamp collection!
+We've added 2 bonus stamps to your Wings4U rewards account.
 
-Your new balance is 6 out of 8 stamps.
+Your updated stamp balance: 6 / 8
 
-Every stamp brings you closer to something delicious. Collect 8 stamps and unlock 1 lb of wings on us!
+Your rewards account has been updated successfully. No action is required.
 
-Thanks for being part of the Wings 4 U family. We can't wait to serve you again.
+Thank you,
+The Wings4U Team ❤️
 
-Order Now: https://orders.example.com/menu
-
-See you soon,
-The Wings 4 U Team ❤️",
+Wings 4 U
+1544 Dundas St, London, ON N5W 3C1",
 }
 `;

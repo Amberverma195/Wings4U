@@ -9,42 +9,49 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 })[char]!);
 
-/** Only an operator-configured public HTTPS origin, with a fixed ordering path. */
-export function stampOrderUrl(): string {
-  const value = process.env.PUBLIC_SITE_URL?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (!value) throw new Error("Public ordering URL is not configured.");
-  const url = new URL(value);
-  const host = url.hostname.toLowerCase();
-  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash ||
-    url.pathname !== "/" || url.port || !host.includes(".") ||
-    /(^|\.)(localhost|local|internal|test|invalid)$/.test(host) ||
-    /^[\d.]+$/.test(host) || host.includes(":")) {
-    throw new Error("Public ordering URL must be a public HTTPS site origin.");
-  }
-  return new URL("/menu", url.origin).href;
-}
-
-export function renderStampGrantEmail(name: string, stamps: number, balance: number, orderUrl: string) {
-  const greeting = `Hello, ${name.trim() || "fellow wing lover"}! 🍗`;
-  const award = `We've added ${stamps} bonus ${stamps === 1 ? "stamp" : "stamps"} to your Wings 4 U stamp collection!`;
-  const progress = `Your new balance is ${balance} out of ${STAMPS_PER_REWARD} stamps.`;
+export function renderStampGrantEmail(
+  name: string,
+  stamps: number,
+  balance: number,
+  _orderUrl?: string,
+) {
+  const customerName = name.trim() || "Customer";
+  const greeting = `Hello, ${customerName}!`;
+  const stampWord = stamps === 1 ? "stamp" : "stamps";
+  const award = `We've added ${stamps} bonus ${stampWord} to your Wings4U rewards account.`;
+  const progress = `Your updated stamp balance: ${balance} / ${STAMPS_PER_REWARD}`;
+  const status = "Your rewards account has been updated successfully. No action is required.";
   const reward = balance >= STAMPS_PER_REWARD
-    ? "Your stamp card is full! 🎉 You have a free 1 lb Wings reward ready to redeem on your next eligible order."
-    : `Every stamp brings you closer to something delicious. Collect ${STAMPS_PER_REWARD} stamps and unlock 1 lb of wings on us!`;
-  const thanks = "Thanks for being part of the Wings 4 U family. We can't wait to serve you again.";
+    ? `You have reached the reward threshold of ${STAMPS_PER_REWARD} stamps. A complimentary 1 lb wings reward is available in your account.`
+    : null;
+
+  const textSections = [
+    greeting,
+    award,
+    progress,
+    status,
+    ...(reward ? [reward] : []),
+    "Thank you,\nThe Wings4U Team ❤️\n\nWings 4 U\n1544 Dundas St, London, ON N5W 3C1",
+  ];
+
   return {
-    subject: "🍗 A little something extra for you | Wings 4 U",
-    text: `${greeting}\n\n${award}\n\n${progress}\n\n${reward}\n\n${thanks}\n\nOrder Now: ${orderUrl}\n\nSee you soon,\nThe Wings 4 U Team ❤️`,
+    subject: "Wings4U — Bonus Stamps Added to Your Account",
+    text: textSections.join("\n\n"),
     html: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
       <body style="margin:0;background:#f7f1e9;color:#30251e;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">
       <div style="max-width:560px;margin:0 auto;padding:24px;">
         <div style="background:#321a12;color:#fff4e4;padding:24px;border-radius:16px 16px 0 0;font-size:26px;font-weight:bold;">Wings 4 U</div>
         <div style="background:#fffdf9;padding:24px;border-radius:0 0 16px 16px;">
-          <p>${escapeHtml(greeting)}</p><h1 style="font-size:24px;color:#983315;">${escapeHtml(award)}</h1>
-          <p style="padding:16px;background:#fce9d5;border-radius:10px;font-size:20px;font-weight:bold;">${escapeHtml(progress)}</p>
-          <p>${escapeHtml(reward)}</p><p>${escapeHtml(thanks)}</p>
-          <p style="margin:28px 0;"><a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#a73713;color:#fff;padding:12px 24px;border-radius:8px;font-weight:bold;text-decoration:none;">Order Now</a></p>
-          <p>See you soon,<br>The Wings 4 U Team ❤️</p>
+          <p style="margin:0 0 16px;font-size:16px;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 16px;font-size:16px;">${escapeHtml(award)}</p>
+          <p style="padding:16px;background:#fce9d5;border-radius:10px;font-size:20px;font-weight:bold;margin:0 0 16px;">${escapeHtml(progress)}</p>
+          <p style="margin:0 0 16px;font-size:16px;">${escapeHtml(status)}</p>
+          ${reward ? `<p style="margin:0 0 16px;font-size:16px;">${escapeHtml(reward)}</p>` : ""}
+          <p style="margin:24px 0 0;font-size:16px;line-height:1.6;">Thank you,<br>The Wings4U Team ❤️</p>
+          <div style="margin:20px 0 0;padding-top:16px;border-top:1px solid #e8ded2;font-size:13px;color:#7a6b63;line-height:1.4;">
+            Wings 4 U<br>
+            1544 Dundas St, London, ON N5W 3C1
+          </div>
         </div></div></body></html>`,
   };
 }
@@ -103,10 +110,15 @@ export class StampGrantEmailService {
       return finish(result("SKIPPED", "Verified email changed. The original notification will not be sent to an old contact."));
     }
     if (!payload) {
-      let url: string;
-      try { url = stampOrderUrl(); }
-      catch { return finish(result("SKIPPED", "Public ordering URL is missing or invalid.", true)); }
-      payload = { from, to: [recipient], ...renderStampGrantEmail(customer!.displayName, record.grant.deltaStamps, record.grant.balanceAfterStamps, url) };
+      payload = {
+        from,
+        to: [recipient],
+        ...renderStampGrantEmail(
+          customer!.displayName,
+          record.grant.deltaStamps,
+          record.grant.balanceAfterStamps,
+        ),
+      };
     }
     // Persist the exact request before talking to Resend; a crash can safely replay the same bytes/key.
     const prepared = await this.prisma.wingsStampGrantEmail.updateMany({ where: { grantId, attemptToken: token },

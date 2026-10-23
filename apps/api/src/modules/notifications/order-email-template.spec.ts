@@ -82,6 +82,6 @@ describe("Branded order email templates", () => {
   });
 
   it("preserves the Wings Rewards reference output exactly", () => {
-    expect(renderStampGrantEmail("Jamie & Sam", 2, 6, "https://orders.example.com/menu")).toMatchSnapshot();
+    expect(renderStampGrantEmail("Jamie & Sam", 2, 6)).toMatchSnapshot();
   });
 });

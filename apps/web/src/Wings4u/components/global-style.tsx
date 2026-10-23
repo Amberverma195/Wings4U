@@ -1538,15 +1538,6 @@ export function WingKingsGlobalStyle() {
         }
       }
 
-      @keyframes tickerScroll {
-        from {
-          transform: translateX(0);
-        }
-        to {
-          transform: translateX(-50%);
-        }
-      }
-
       /* ── Testimonials (#testimonials) ─────────────────────────────── */
 
       #testimonials {
@@ -1609,69 +1600,34 @@ export function WingKingsGlobalStyle() {
         border-radius: 1px;
       }
 
-      #testimonials .testimonials-track-wrapper {
-        position: relative;
-        overflow: hidden;
-      }
-
-      #testimonials .testimonials-track-wrapper::before,
-      #testimonials .testimonials-track-wrapper::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: 100px;
-        z-index: 2;
-        pointer-events: none;
-      }
-
-      #testimonials .testimonials-track-wrapper::before {
-        left: 0;
-        background: linear-gradient(90deg, #000, transparent);
-      }
-
-      #testimonials .testimonials-track-wrapper::after {
-        right: 0;
-        background: linear-gradient(-90deg, #000, transparent);
-      }
-
-      #testimonials .testimonials-track-wrapper--static {
-        overflow: visible;
-      }
-
-      #testimonials .testimonials-track-wrapper--static::before,
-      #testimonials .testimonials-track-wrapper--static::after {
-        display: none;
-      }
-
-      #testimonials .testimonials-track {
+      #testimonials .testimonials-grid {
         display: flex;
-        gap: 16px;
-        padding: 8px 7% 20px;
-        width: max-content;
-        animation: tickerScroll 60s linear infinite;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-      }
-
-      #testimonials .testimonials-track::-webkit-scrollbar {
-        display: none;
-      }
-
-      #testimonials .testimonials-track--static {
-        animation: none;
-        width: 100%;
-        max-width: 1200px;
-        margin: 0 auto;
         flex-wrap: wrap;
         justify-content: center;
+        gap: 24px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 8px 7% 40px;
+        box-sizing: border-box;
+      }
+
+      #testimonials .testimonials-track-wrapper,
+      #testimonials .testimonials-track {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 24px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 8px 7% 40px;
         box-sizing: border-box;
       }
 
       #testimonials .tcard {
-        min-width: 290px;
-        max-width: 310px;
-        flex-shrink: 0;
+        flex: 1 1 300px;
+        max-width: 380px;
+        min-width: 280px;
+        box-sizing: border-box;
         padding: 28px;
         border-radius: 16px;
         position: relative;
@@ -1739,22 +1695,65 @@ export function WingKingsGlobalStyle() {
         font-weight: 700;
       }
 
-      #testimonials .tcard-handle {
-        font-size: 11px;
-        color: #8a6030;
+      #testimonials .testimonials-single-wrapper {
+        display: flex;
+        justify-content: center;
+        padding: 8px 7% 24px;
+        box-sizing: border-box;
       }
 
-      #testimonials .tcard-source {
+      #testimonials .tcard--single {
+        min-width: unset;
+        max-width: 560px;
+        width: 100%;
+        padding: 32px;
+      }
+
+      #testimonials .tcard-item-tag {
         display: inline-block;
-        margin-top: 10px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 2px;
-        padding: 3px 8px;
-        border-radius: 3px;
-        background: rgba(255, 107, 0, 0.15);
-        border: 1px solid rgba(255, 107, 0, 0.3);
+        font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
+        font-size: 12px;
+        letter-spacing: 1px;
         color: #ffaa00;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+      }
+
+      #testimonials .tcard-item-tag strong {
+        color: #ffd500;
+      }
+
+      #testimonials .tcard-date {
+        font-size: 11px;
+        color: #8a6030;
+        margin-top: 2px;
+      }
+
+      #testimonials .tcard-admin-reply {
+        margin-top: 16px;
+        padding: 12px 14px;
+        background: rgba(255, 107, 0, 0.08);
+        border-left: 3px solid #ff6b00;
+        border-radius: 0 8px 8px 0;
+      }
+
+      #testimonials .tcard-admin-reply__label {
+        display: block;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
+        font-size: 11px;
+        letter-spacing: 1px;
+        color: #ffd500;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      #testimonials .tcard-admin-reply__text {
+        font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+        font-size: 13px;
+        color: #eedd99;
+        margin: 0;
+        line-height: 1.5;
       }
 
       #testimonials .testimonials-sr-list {
@@ -1769,10 +1768,6 @@ export function WingKingsGlobalStyle() {
         border: 0;
       }
 
-      #testimonials .testimonials-newsletter {
-        margin-top: 72px;
-      }
-
       @media (prefers-reduced-motion: reduce) {
         #testimonials .testimonials-head.reveal {
           opacity: 1;
@@ -1780,27 +1775,40 @@ export function WingKingsGlobalStyle() {
           transition: none;
         }
 
-        #testimonials .testimonials-track-wrapper {
-          overflow: visible;
-        }
-
-        #testimonials .testimonials-track-wrapper::before,
-        #testimonials .testimonials-track-wrapper::after {
-          display: none;
-        }
-
-        #testimonials .testimonials-track {
-          animation: none;
-          width: 100%;
-          max-width: 1200px;
-          margin: 0 auto;
-          flex-wrap: wrap;
-          justify-content: center;
-          box-sizing: border-box;
-        }
-
         #testimonials .tcard:hover {
           transform: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        #testimonials {
+          padding: 60px 0 0;
+        }
+
+        #testimonials .testimonials-head {
+          padding: 0 4%;
+          margin-bottom: 32px;
+        }
+
+        #testimonials .testimonials-grid,
+        #testimonials .testimonials-track-wrapper,
+        #testimonials .testimonials-track {
+          padding: 8px 4% 32px;
+          gap: 16px;
+        }
+
+        #testimonials .testimonials-single-wrapper {
+          padding: 8px 4% 24px;
+        }
+
+        #testimonials .tcard {
+          min-width: 100%;
+          max-width: 100%;
+          padding: 20px;
+        }
+
+        #testimonials .tcard--single {
+          padding: 24px;
         }
       }
 
