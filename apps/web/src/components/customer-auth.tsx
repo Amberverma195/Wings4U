@@ -382,12 +382,14 @@ function AuthHeading({ children }: { children: ReactNode }) {
 }
 
 function PasswordInput({
+  id,
   value,
   onChange,
   placeholder,
   autoComplete,
   autoFocus,
 }: {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -399,6 +401,7 @@ function PasswordInput({
   return (
     <div style={s.passwordWrap}>
       <input
+        id={id}
         className="wk-password-input"
         style={s.passwordInput}
         type={visible ? "text" : "password"}
@@ -1011,8 +1014,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           <div style={s.field}>
-            <label style={s.label}>Full name</label>
+            <label htmlFor="signup-full-name" style={s.label}>Full name</label>
             <input
+              id="signup-full-name"
               style={s.input}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -1022,8 +1026,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           </div>
 
           <div style={s.field}>
-            <label style={s.label}>Phone number</label>
+            <label htmlFor="signup-phone" style={s.label}>Phone number</label>
             <input
+              id="signup-phone"
               style={s.input}
               type="tel"
               inputMode="tel"
@@ -1036,8 +1041,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           </div>
 
           <div style={s.field}>
-            <label style={s.label}>Email</label>
+            <label htmlFor="signup-email" style={s.label}>Email</label>
             <input
+              id="signup-email"
               style={s.input}
               type="email"
               autoComplete="email"
@@ -1048,8 +1054,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           </div>
 
           <div style={s.field}>
-            <label style={s.label}>Password</label>
+            <label htmlFor="signup-password" style={s.label}>Password</label>
             <PasswordInput
+              id="signup-password"
               value={password}
               onChange={setPassword}
               placeholder="At least 8 characters"
@@ -1059,8 +1066,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           </div>
 
           <div style={s.field}>
-            <label style={s.label}>Confirm password</label>
+            <label htmlFor="signup-confirm-password" style={s.label}>Confirm password</label>
             <PasswordInput
+              id="signup-confirm-password"
               value={confirmPassword}
               onChange={setConfirmPassword}
               placeholder="Re-enter your password"
@@ -1112,8 +1120,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           <div style={s.field}>
-            <label style={s.label}>Phone or email</label>
+            <label htmlFor="login-identifier" style={s.label}>Phone or email</label>
             <input
+              id="login-identifier"
               style={s.input}
               type={isPhoneIdentifier(identifier) ? "tel" : "text"}
               inputMode={isPhoneIdentifier(identifier) ? "tel" : "email"}
@@ -1176,8 +1185,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           <div style={s.field}>
-            <label style={s.label}>Password</label>
+            <label htmlFor="login-password" style={s.label}>Password</label>
             <PasswordInput
+              id="login-password"
               value={loginPassword}
               onChange={setLoginPassword}
               placeholder="Your password"
@@ -1251,7 +1261,11 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           <div style={s.field}>
+            <label htmlFor="verify-email-otp" className="wk-visually-hidden">
+              Verification code
+            </label>
             <input
+              id="verify-email-otp"
               className="wk-otp-input"
               style={{ ...s.input, ...s.otpInput }}
               value={otpCode}
@@ -1262,6 +1276,7 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
               inputMode="numeric"
               autoComplete="one-time-code"
               name="otp"
+              aria-label="Verification code"
             />
           </div>
 
@@ -1312,8 +1327,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           <div style={s.field}>
-            <label style={s.label}>Phone or email</label>
+            <label htmlFor="reset-identifier" style={s.label}>Phone or email</label>
             <input
+              id="reset-identifier"
               style={s.input}
               type={isPhoneIdentifier(identifier) ? "tel" : "text"}
               inputMode={isPhoneIdentifier(identifier) ? "tel" : "email"}
@@ -1371,8 +1387,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           }}
         >
           <div style={s.field}>
-            <label style={s.label}>Verification code</label>
+            <label htmlFor="reset-otp" style={s.label}>Verification code</label>
             <input
+              id="reset-otp"
               className="wk-otp-input"
               style={{ ...s.input, ...s.otpInput }}
               value={otpCode}
@@ -1383,12 +1400,14 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
               inputMode="numeric"
               autoComplete="one-time-code"
               name="otp"
+              aria-label="Verification code"
             />
           </div>
 
           <div style={s.field}>
-            <label style={s.label}>New password</label>
+            <label htmlFor="reset-new-password" style={s.label}>New password</label>
             <PasswordInput
+              id="reset-new-password"
               value={newPassword}
               onChange={setNewPassword}
               placeholder="At least 8 characters"
@@ -1398,8 +1417,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
           </div>
 
           <div style={s.field}>
-            <label style={s.label}>Confirm new password</label>
+            <label htmlFor="reset-confirm-new-password" style={s.label}>Confirm new password</label>
             <PasswordInput
+              id="reset-confirm-new-password"
               value={confirmNewPassword}
               onChange={setConfirmNewPassword}
               placeholder="Re-enter your password"
@@ -1446,8 +1466,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         }}
       >
         <div style={s.field}>
-          <label style={s.label}>Full name</label>
+          <label htmlFor="profile-full-name" style={s.label}>Full name</label>
           <input
+            id="profile-full-name"
             style={s.input}
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -1457,8 +1478,9 @@ export function CustomerAuth({ mode, onComplete, onCancel }: Props) {
         </div>
 
         <div style={s.field}>
-          <label style={s.label}>Email</label>
+          <label htmlFor="profile-email" style={s.label}>Email</label>
           <input
+            id="profile-email"
             style={s.input}
             type="email"
             value={email}
