@@ -14,39 +14,287 @@
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid #e5e7eb;
+  color: #111827;
 }
 
 .deleteAccountBtn {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   text-decoration: none;
   width: 100%;
-  min-height: 44px;
-  padding: 0.75rem 1rem;
-  border: 1px solid #b91c1c;
+  min-height: 46px;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid #dc2626;
   border-radius: 12px;
   background: #fef2f2;
   color: #b91c1c;
   font: inherit;
   font-weight: 700;
+  font-size: 0.95rem;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.deleteAccountBtn:hover:not(:disabled) {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
 }
 
 .deleteAccountBtn:disabled {
   cursor: not-allowed;
-  opacity: 0.65;
+  opacity: 0.6;
+  background: #fef2f2;
+  color: #f87171;
+  border-color: #fca5a5;
 }
 
 .deleteAccountBtn:focus-visible {
-  outline: 3px solid #b91c1c;
-  outline-offset: 3px;
+  outline: 3px solid rgba(220, 38, 38, 0.4);
+  outline-offset: 2px;
+}
+
+.deleteAccountFinalBtn {
+  background: #dc2626;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 4px 14px -2px rgba(220, 38, 38, 0.4);
+}
+
+.deleteAccountFinalBtn:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
+}
+
+.deleteAccountFinalBtn:disabled {
+  background: #fca5a5;
+  border-color: #fca5a5;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .deletionPage {
   max-width: 760px;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 2.5rem 1rem 4rem;
   line-height: 1.65;
+  color: #111827;
+}
+
+.deletionNoticeBox {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin: 1.25rem 0 1.75rem;
+}
+
+.deletionNoticeBox p {
+  color: #7c2d12 !important;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  margin: 0 0 0.85rem;
+}
+
+.deletionNoticeBox p:last-child {
+  margin-bottom: 0;
+}
+
+.deletionActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
+}
+
+.formActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.cancelAction {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.statusUnavailable {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 1.15rem 1.35rem;
+  border-radius: 14px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 1.25rem 0 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.statusUnavailable svg {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 0.15rem;
+  color: #d97706;
+}
+
+.statusUnavailable strong {
+  display: block;
+  font-size: 1rem;
+  color: #78350f;
+  margin-bottom: 0.25rem;
+}
+
+.statusUnavailable p {
+  color: #92400e !important;
+  margin: 0 !important;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.blockersBox {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin: 1.25rem 0 1.5rem;
+  color: #991b1b;
+}
+
+.blockersBox h2 {
+  color: #991b1b !important;
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.blockersBox ul {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  color: #b91c1c;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.blockersBox li {
+  margin-bottom: 0.35rem;
+}
+
+.blockersBox p {
+  color: #7f1d1d !important;
+  font-size: 0.88rem;
+  margin: 0 0 1rem;
+}
+
+.feedbackError {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 0.85rem 1.1rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
+.fieldHelp {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: -0.5rem 0 0.5rem;
+  line-height: 1.4;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #374151;
+  line-height: 1.45;
+  user-select: none;
+}
+
+.checkboxLabel input[type="checkbox"] {
+  margin-top: 0.2rem;
+  width: 18px;
+  height: 18px;
+  accent-color: #dc2626;
+  cursor: pointer;
+}
+
+.retryBtn {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  padding: 0.75rem 1.25rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.retryBtn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.completedCard {
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.completedCard h2 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #059669 !important;
+  margin: 0 0 0.75rem;
+}
+
+.completedCard p {
+  color: #4b5563 !important;
+  margin: 0 0 1.5rem;
+}
+
+.statusLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 0;
+  color: #6b7280;
+}
+
+.statusLoading p {
+  color: #6b7280 !important;
+  font-weight: 600;
+  margin: 0;
+}
+
+.signInPrompt {
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.authContainer {
+  margin: 1.5rem 0;
 }
 
 .deleteAccountStatus {
@@ -361,8 +609,33 @@
   background: white;
   border-radius: 24px;
   border: 1px solid #e5e7eb;
-  padding: 2rem;
+  padding: 2.25rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  color: #111827;
+}
+
+.settingsCard h1 {
+  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+  margin: 0.25rem 0 1rem;
+  line-height: 1.25;
+}
+
+.settingsCard h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
+}
+
+.settingsCard p {
+  color: #4b5563;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 1rem;
 }
 
 .cardHeader {
@@ -407,12 +680,31 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  color: #111827;
+}
+
+.form h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
+}
+
+.form p {
+  color: #4b5563;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 1rem;
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  color: #111827;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .field input {
@@ -420,6 +712,8 @@
   border-radius: 12px;
   border: 1px solid #d1d5db;
   font-size: 1rem;
+  color: #111827;
+  background: #ffffff;
   transition: all 0.2s ease;
 }
 
@@ -773,20 +1067,30 @@
 }
 
 .logoutCancelBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   background: #f3f4f6;
   color: #4b5563;
   border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  padding: 10px 20px;
+  border-radius: 12px;
+  padding: 0.85rem 1.5rem;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 150ms ease;
+  min-height: 44px;
 }
 
 .logoutCancelBtn:hover {
   background: #e5e7eb;
   color: #111827;
+}
+
+.logoutCancelBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .stampModalSummary {

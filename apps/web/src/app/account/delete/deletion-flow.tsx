@@ -123,49 +123,200 @@ export function AccountDeletionFlow() {
     } finally { if (version === epoch.current) { inFlight.current = false; setBusy(false); } }
   }
 
-  if (step === "completed") return <div role="status"><h2>Your account has been deleted.</h2>
-    <p>You have been signed out on all devices.</p>
-    <a href="/" className={styles.logoutCancelBtn}>Return home</a></div>;
-  if (!session.loaded) return <p role="status">Checking your session…</p>;
-  if (!session.authenticated) return showLogin ? <CustomerAuth mode="login" onCancel={() => setShowLogin(false)} /> :
-    <button type="button" className={styles.saveBtn} onClick={() => setShowLogin(true)}>Sign in to delete account</button>;
-  if (session.user?.role !== "CUSTOMER") return <p role="alert">Account deletion is available for customer accounts only.</p>;
+  if (step === "completed") {
+    return (
+      <div role="status" className={styles.completedCard}>
+        <h2>Your account has been deleted.</h2>
+        <p>You have been signed out on all devices.</p>
+        <a href="/" className={styles.logoutCancelBtn}>Return home</a>
+      </div>
+    );
+  }
+
+  if (!session.loaded) {
+    return (
+      <div className={styles.statusLoading}>
+        <p role="status">Checking your session…</p>
+      </div>
+    );
+  }
+
+  if (!session.authenticated) {
+    return showLogin ? (
+      <div className={styles.authContainer}>
+        <CustomerAuth mode="login" onCancel={() => setShowLogin(false)} />
+      </div>
+    ) : (
+      <div className={styles.signInPrompt}>
+        <button type="button" className={styles.saveBtn} onClick={() => setShowLogin(true)}>
+          Sign in to delete account
+        </button>
+      </div>
+    );
+  }
+
+  if (session.user?.role !== "CUSTOMER") {
+    return (
+      <p role="alert" className={styles.feedbackError}>
+        Account deletion is available for customer accounts only.
+      </p>
+    );
+  }
 
   return (
     <div className={styles.accountDeletion} aria-busy={busy}>
       {error ? <p role="alert" className={styles.feedbackError}>{error}</p> : null}
-      {!status ? <><p role="status">{error ? "Account status could not be loaded." : "Checking account status…"}</p>
-        {error ? <button type="button" onClick={() => setReload(value => value + 1)}>Try again</button> : null}</> :
-        !status.enabled ? <p role="status">Account deletion is not available yet. Your account and data have not been deleted.</p> : <>
-          {status.blockers.length ? <div role="status"><h2>Resolve these items before deletion</h2>
-            <ul>{status.blockers.map(blocker => <li key={blocker.code}>{blocker.message}</li>)}</ul>
-            <p>Your account remains available. Deletion has not completed.</p>
-            <button type="button" onClick={() => setReload(value => value + 1)}>Check again</button>
-          </div> : null}
-          {step === "review" ? <button type="button" className={styles.deleteAccountBtn}
-            disabled={status.blockers.length > 0} onClick={() => setStep("password")}>Continue to verification</button> : null}
-          {step === "password" ? <form onSubmit={verify} className={styles.form}>
-            <h2>Verify it is you</h2>
-            <label className={styles.field}>Current password<input type="password" autoComplete="current-password"
-              value={password} maxLength={128} onChange={event => setPassword(event.target.value)} disabled={busy} required /></label>
-            <p>If you need to set or reset your password, use Forgot password on the sign-in form.</p>
-            <button type="submit" className={styles.saveBtn} disabled={busy || !password}>{busy ? "Verifying…" : "Verify password"}</button>
-            <button type="button" className={styles.logoutCancelBtn} disabled={busy} onClick={cancel}>Keep My Account</button>
-          </form> : null}
-          {step === "confirm" ? <form onSubmit={remove} className={styles.form}>
-            <h2>Final confirmation</h2>
-            <p>Deletion is permanent. Your eligible personal data will be removed and all sessions will end.</p>
-            <label><input type="checkbox" checked={forfeitRewards} disabled={busy}
-              onChange={event => setForfeitRewards(event.target.checked)} /> I understand my saved information and rewards will be lost.</label>
-            <label className={styles.field}>Type DELETE to confirm<input value={confirmation} autoComplete="off"
-              onChange={event => setConfirmation(event.target.value)} disabled={busy} required /></label>
-            <button type="button" className={styles.logoutCancelBtn} disabled={busy} onClick={cancel}>Keep My Account</button>
-            <button type="submit" className={styles.deleteAccountBtn} disabled={busy || confirmation !== "DELETE" || !forfeitRewards}>
-              {busy ? "Deleting…" : "Delete My Account"}</button>
-            {error ? <button type="button" disabled={busy} onClick={() => { cancel(); setStep("password"); }}>Verify again</button> : null}
-          </form> : null}
-        </>}
-      {step === "review" ? <Link href="/account/profile" className={styles.logoutCancelBtn}>Keep My Account</Link> : null}
+      {!status ? (
+        <div className={styles.statusLoading}>
+          <p role="status">{error ? "Account status could not be loaded." : "Checking account status…"}</p>
+          {error ? (
+            <button type="button" className={styles.retryBtn} onClick={() => setReload(value => value + 1)}>
+              Try again
+            </button>
+          ) : null}
+        </div>
+      ) : !status.enabled ? (
+        <div className={styles.statusUnavailable} role="status">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div>
+            <strong>Feature Not Active Yet</strong>
+            <p>Account deletion is not available yet. Your account and data have not been deleted.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {status.blockers.length ? (
+            <div role="status" className={styles.blockersBox}>
+              <h2>Resolve these items before deletion</h2>
+              <ul>
+                {status.blockers.map(blocker => (
+                  <li key={blocker.code}>{blocker.message}</li>
+                ))}
+              </ul>
+              <p>Your account remains available. Deletion has not completed.</p>
+              <button type="button" className={styles.retryBtn} onClick={() => setReload(value => value + 1)}>
+                Check again
+              </button>
+            </div>
+          ) : null}
+
+          {step === "review" ? (
+            <div className={styles.deletionActions}>
+              <button
+                type="button"
+                className={styles.deleteAccountBtn}
+                disabled={status.blockers.length > 0}
+                onClick={() => setStep("password")}
+              >
+                Continue to verification
+              </button>
+            </div>
+          ) : null}
+
+          {step === "password" ? (
+            <form onSubmit={verify} className={styles.form}>
+              <h2>Verify it is you</h2>
+              <label className={styles.field}>
+                <span>Current password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  maxLength={128}
+                  onChange={event => setPassword(event.target.value)}
+                  disabled={busy}
+                  required
+                />
+              </label>
+              <p className={styles.fieldHelp}>
+                If you need to set or reset your password, use Forgot password on the sign-in form.
+              </p>
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.saveBtn}
+                  disabled={busy || !password}
+                >
+                  {busy ? "Verifying…" : "Verify password"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.logoutCancelBtn}
+                  disabled={busy}
+                  onClick={cancel}
+                >
+                  Keep My Account
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          {step === "confirm" ? (
+            <form onSubmit={remove} className={styles.form}>
+              <h2>Final confirmation</h2>
+              <p>Deletion is permanent. Your eligible personal data will be removed and all sessions will end.</p>
+              <label className={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={forfeitRewards}
+                  disabled={busy}
+                  onChange={event => setForfeitRewards(event.target.checked)}
+                />
+                <span>I understand my saved information and rewards will be lost.</span>
+              </label>
+              <label className={styles.field}>
+                <span>Type DELETE to confirm</span>
+                <input
+                  value={confirmation}
+                  autoComplete="off"
+                  onChange={event => setConfirmation(event.target.value)}
+                  disabled={busy}
+                  required
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.logoutCancelBtn}
+                  disabled={busy}
+                  onClick={cancel}
+                >
+                  Keep My Account
+                </button>
+                <button
+                  type="submit"
+                  className={`${styles.deleteAccountBtn} ${styles.deleteAccountFinalBtn}`}
+                  disabled={busy || confirmation !== "DELETE" || !forfeitRewards}
+                >
+                  {busy ? "Deleting…" : "Delete My Account"}
+                </button>
+              </div>
+              {error ? (
+                <button
+                  type="button"
+                  className={styles.retryBtn}
+                  disabled={busy}
+                  onClick={() => { cancel(); setStep("password"); }}
+                >
+                  Verify again
+                </button>
+              ) : null}
+            </form>
+          ) : null}
+        </>
+      )}
+
+      {step === "review" ? (
+        <div className={styles.cancelAction}>
+          <Link href="/account/profile" className={styles.logoutCancelBtn}>
+            Keep My Account
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }
