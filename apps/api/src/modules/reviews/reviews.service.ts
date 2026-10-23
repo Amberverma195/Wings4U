@@ -46,12 +46,19 @@ function serialize(r: Record<string, unknown>) {
   };
 }
 
+function serializeOrderNumber(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "bigint") return val.toString();
+  if (typeof val === "number" || typeof val === "string") return String(val);
+  return null;
+}
+
 function serializeAdminReview(r: Record<string, unknown>) {
   const order = r.order as Record<string, unknown> | undefined;
   const orderItem = r.orderItem as Record<string, unknown> | undefined;
   return {
     ...serialize(r),
-    order_number: (order?.orderNumber as string) ?? null,
+    order_number: serializeOrderNumber(order?.orderNumber),
     customer_name: (order?.customerNameSnapshot as string) ?? null,
     customer_phone: (order?.customerPhoneSnapshot as string) ?? null,
     customer_email: (order?.customerEmailSnapshot as string) ?? null,
@@ -281,7 +288,6 @@ export class ReviewsService {
       orderBy: { createdAt: "desc" },
       take,
       select: {
-        id: true,
         rating: true,
         reviewBody: true,
         createdAt: true,
@@ -296,7 +302,6 @@ export class ReviewsService {
     });
 
     return rows.map((r) => ({
-      id: r.id,
       rating: r.rating,
       comment: r.reviewBody,
       item_name: r.orderItem?.productNameSnapshot ?? null,

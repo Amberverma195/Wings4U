@@ -95,6 +95,10 @@ describe('Admin Reviews Dashboard Enrichment and Reply Audit', () => {
     // Reply button uses honest wording (does NOT claim to send email/SMS)
     expect(text).toContain('Save reply');
     expect(text).not.toContain('Send reply');
+
+    // Check presence of publication policy and customer privacy safeguards banner
+    expect(text).toContain('Publication Policy & Customer Privacy Safeguards');
+    expect(text).toContain('Reviews are internal by default and never published automatically');
   });
 
   test('posting an admin reply updates review state and preserves customer enrichment', async () => {
@@ -156,7 +160,7 @@ describe('Admin Reviews Dashboard Enrichment and Reply Audit', () => {
     expect(updatedText).toContain('#1042');
   });
 
-  test('publishing a review toggles publication state and calls publish endpoint', async () => {
+  test('publishing a review requires informed consent & privacy confirmation before calling API', async () => {
     adminApiFetch
       .mockResolvedValueOnce({
         ok: true,
@@ -187,8 +191,32 @@ describe('Admin Reviews Dashboard Enrichment and Reply Audit', () => {
     });
     expect(publishBtn).toBeDefined();
 
+    // Clicking 'Publish' triggers the informed confirmation dialog
     await act(async () => {
       publishBtn.props.onClick();
+    });
+
+    const confirmText = JSON.stringify(renderer.toJSON());
+    expect(confirmText).toContain('Verify Publication Permission & Privacy Check');
+    expect(confirmText).toContain('Consent Verification');
+    expect(confirmText).toContain('Privacy Check');
+    expect(confirmText).toContain('Confirm & Publish');
+
+    // API has NOT yet been called prior to explicit confirmation
+    expect(adminApiFetch).not.toHaveBeenCalledWith(
+      '/api/v1/admin/reviews/rev-uuid-001/publish',
+      expect.anything(),
+    );
+
+    // Click 'Confirm & Publish'
+    const confirmBtn = renderer.root.findAllByType('button').find((b) => {
+      const c = Array.isArray(b.children) ? b.children.join('') : b.children;
+      return c === 'Confirm & Publish';
+    });
+    expect(confirmBtn).toBeDefined();
+
+    await act(async () => {
+      confirmBtn.props.onClick();
     });
 
     expect(adminApiFetch).toHaveBeenCalledWith(

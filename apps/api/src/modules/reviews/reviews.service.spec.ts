@@ -44,13 +44,12 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
 
       const result = await service.listPublicApproved(10);
 
-      // Verify Prisma query strictly enforces isApprovedPublic = true
+      // Verify Prisma query strictly enforces isApprovedPublic = true and omits internal IDs
       expect(mockPrisma.itemReview.findMany).toHaveBeenCalledWith({
         where: { isApprovedPublic: true },
         orderBy: { createdAt: "desc" },
         take: 10,
         select: {
-          id: true,
           rating: true,
           reviewBody: true,
           createdAt: true,
@@ -66,7 +65,7 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
 
       expect(result).toHaveLength(1);
       const item = result[0];
-      expect(item.id).toBe("review-1");
+      expect((item as any).id).toBeUndefined();
       expect(item.rating).toBe(5);
       expect(item.comment).toBe("Crispy and juicy!");
       expect(item.item_name).toBe("Honey Gold Wings");
@@ -91,7 +90,7 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
   });
 
   describe("listAllForAdmin", () => {
-    it("enriches admin review list with customer snapshot and order details", async () => {
+    it("enriches admin review list with customer snapshot and safely serializes BigInt orderNumber (1055n)", async () => {
       const mockRows = [
         {
           id: "rev-uuid-1",
@@ -107,7 +106,7 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
           createdAt: new Date("2026-10-21T14:00:00Z"),
           updatedAt: new Date("2026-10-21T14:00:00Z"),
           order: {
-            orderNumber: "1055",
+            orderNumber: 1055n, // Real JavaScript BigInt
             customerNameSnapshot: "John Doe",
             customerPhoneSnapshot: "+15195550199",
             customerEmailSnapshot: "john.doe@example.com",
@@ -152,9 +151,14 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
       expect(row.customer_email).toBe("john.doe@example.com");
       expect(row.item_name).toBe("1lb Traditional Wings");
       expect(row.is_approved_public).toBe(false);
+
+      // Verify that the response serializes into valid JSON without throwing BigInt serialization error
+      expect(() => JSON.stringify(result)).not.toThrow();
+      const parsed = JSON.parse(JSON.stringify(result));
+      expect(parsed.items[0].order_number).toBe("1055");
     });
 
-    it("respects anonymized deleted customers without restoring PII", async () => {
+    it("respects anonymized deleted customers without restoring PII and handles BigInt", async () => {
       const mockRows = [
         {
           id: "rev-uuid-2",
@@ -170,7 +174,7 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
           createdAt: new Date("2026-10-21T14:00:00Z"),
           updatedAt: new Date("2026-10-21T14:00:00Z"),
           order: {
-            orderNumber: "1056",
+            orderNumber: 1056n, // Real BigInt
             customerNameSnapshot: "Deleted customer",
             customerPhoneSnapshot: "",
             customerEmailSnapshot: null,
@@ -188,11 +192,13 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
       expect(result.items[0].customer_name).toBe("Deleted customer");
       expect(result.items[0].customer_phone).toBe("");
       expect(result.items[0].customer_email).toBeNull();
+      expect(result.items[0].order_number).toBe("1056");
+      expect(() => JSON.stringify(result)).not.toThrow();
     });
   });
 
   describe("adminReply", () => {
-    it("saves reply and updates adminRepliedAt and adminRepliedByUserId", async () => {
+    it("saves reply, updates timestamps, and serializes BigInt orderNumber (1057n) safely to JSON", async () => {
       mockPrisma.itemReview.findUnique.mockResolvedValueOnce({ id: "rev-1" });
       mockPrisma.itemReview.update.mockResolvedValueOnce({
         id: "rev-1",
@@ -208,7 +214,7 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         order: {
-          orderNumber: "1057",
+          orderNumber: 1057n, // Real JavaScript BigInt
           customerNameSnapshot: "Alice",
           customerPhoneSnapshot: "+15195550123",
           customerEmailSnapshot: "alice@example.com",
@@ -227,6 +233,12 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
       expect(updated.admin_reply).toBe("Thanks for coming in!");
       expect(updated.admin_replied_by_user_id).toBe("admin-user-1");
       expect(updated.customer_name).toBe("Alice");
+      expect(updated.order_number).toBe("1057");
+
+      // Verify JSON serialization
+      expect(() => JSON.stringify(updated)).not.toThrow();
+      const parsed = JSON.parse(JSON.stringify(updated));
+      expect(parsed.order_number).toBe("1057");
     });
 
     it("rejects blank or empty replies", async () => {
@@ -237,6 +249,48 @@ describe("ReviewsService (Isolated Mock Unit Tests)", () => {
           reply: "   ",
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("setPublish", () => {
+    it("toggles publication state, serializes BigInt orderNumber (1058n) safely, and returns valid JSON", async () => {
+      mockPrisma.itemReview.findUnique.mockResolvedValueOnce({ id: "rev-1" });
+      mockPrisma.itemReview.update.mockResolvedValueOnce({
+        id: "rev-1",
+        orderId: "ord-1",
+        orderItemId: "item-1",
+        customerUserId: "user-1",
+        rating: 5,
+        reviewBody: "Loved it!",
+        isApprovedPublic: true,
+        adminReply: null,
+        adminRepliedAt: null,
+        adminRepliedByUserId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        order: {
+          orderNumber: 1058n, // Real JavaScript BigInt
+          customerNameSnapshot: "Bob",
+          customerPhoneSnapshot: "+15195550999",
+          customerEmailSnapshot: "bob@example.com",
+        },
+        orderItem: {
+          productNameSnapshot: "BBQ Wings",
+        },
+      });
+
+      const updated = await service.setPublish({
+        reviewId: "rev-1",
+        publish: true,
+      });
+
+      expect(updated.is_approved_public).toBe(true);
+      expect(updated.order_number).toBe("1058");
+
+      // Verify JSON serialization
+      expect(() => JSON.stringify(updated)).not.toThrow();
+      const parsed = JSON.parse(JSON.stringify(updated));
+      expect(parsed.order_number).toBe("1058");
     });
   });
 

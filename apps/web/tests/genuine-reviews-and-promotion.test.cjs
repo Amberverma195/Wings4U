@@ -97,9 +97,8 @@ describe('Genuine Reviews and 15% Promotion Verification', () => {
       expect(renderer.toJSON()).toBeNull();
     });
 
-    test('renders a single genuine review without artificial duplication or fake source badges', async () => {
+    test('renders a single genuine review without internal UUIDs, artificial duplication or tickerScroll', async () => {
       const singleReview = {
-        id: 'real-rev-101',
         rating: 5,
         comment: 'Best honey gold wings in London. Absolutely phenomenal crispiness.',
         item_name: 'Honey Gold Wings',
@@ -120,16 +119,20 @@ describe('Genuine Reviews and 15% Promotion Verification', () => {
 
       const treeStr = JSON.stringify(renderer.toJSON());
 
-      // Contains the authentic comment and rating
+      // Contains authentic content
       expect(treeStr).toContain('Best honey gold wings in London');
       expect(treeStr).toContain('Honey Gold Wings');
       expect(treeStr).toContain('Verified Wings4U Customer');
       expect(treeStr).toContain('Wings 4 U Replied');
       expect(treeStr).toContain('Thank you for the wonderful feedback');
 
-      // Exactly ONE article rendered (no duplication)
+      // Exactly ONE article rendered in testimonials-single-wrapper (no duplication, no tickerScroll)
       const articles = renderer.root.findAllByType('article');
       expect(articles).toHaveLength(1);
+      expect(articles[0].props.className).toContain('tcard--single');
+      expect(treeStr).toContain('testimonials-single-wrapper');
+      expect(treeStr).not.toContain('tickerScroll');
+      expect(treeStr).not.toContain('real-rev');
 
       // No fake third-party source badges or usernames
       expect(treeStr).not.toContain('Google');
@@ -137,10 +140,9 @@ describe('Genuine Reviews and 15% Promotion Verification', () => {
       expect(treeStr).not.toContain('@');
     });
 
-    test('renders multiple genuine reviews when available', async () => {
-      const genuineReviews = [
+    test('renders 2 reviews in a static responsive grid without tickerScroll', async () => {
+      const reviews = [
         {
-          id: 'real-rev-1',
           rating: 5,
           comment: 'Incredible flavor on the cajun dry rub.',
           item_name: 'Cajun Dry Rub Wings',
@@ -150,7 +152,6 @@ describe('Genuine Reviews and 15% Promotion Verification', () => {
           admin_replied_at: null,
         },
         {
-          id: 'real-rev-2',
           rating: 4,
           comment: 'Very fast delivery and hot food.',
           item_name: 'Buffalo Mild Wings',
@@ -163,7 +164,7 @@ describe('Genuine Reviews and 15% Promotion Verification', () => {
 
       apiFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: genuineReviews }),
+        json: async () => ({ data: reviews }),
       });
 
       await act(async () => {
@@ -173,8 +174,40 @@ describe('Genuine Reviews and 15% Promotion Verification', () => {
       const articles = renderer.root.findAllByType('article');
       expect(articles).toHaveLength(2);
       const treeStr = JSON.stringify(renderer.toJSON());
-      expect(treeStr).toContain('Incredible flavor on the cajun dry rub');
-      expect(treeStr).toContain('Very fast delivery and hot food');
+      expect(treeStr).toContain('testimonials-grid');
+      expect(treeStr).not.toContain('testimonials-single-wrapper');
+      expect(treeStr).not.toContain('tickerScroll');
+    });
+
+    test('renders 3 and multiple reviews in a static responsive grid without tickerScroll or blank void', async () => {
+      const threeReviews = [
+        { rating: 5, comment: 'Review 1', item_name: 'Item 1', attribution: 'Cust 1', created_at: '2026-10-01T00:00:00Z', admin_reply: null, admin_replied_at: null },
+        { rating: 4, comment: 'Review 2', item_name: 'Item 2', attribution: 'Cust 2', created_at: '2026-10-02T00:00:00Z', admin_reply: null, admin_replied_at: null },
+        { rating: 5, comment: 'Review 3', item_name: 'Item 3', attribution: 'Cust 3', created_at: '2026-10-03T00:00:00Z', admin_reply: null, admin_replied_at: null },
+      ];
+
+      apiFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: threeReviews }),
+      });
+
+      await act(async () => {
+        renderer = create(React.createElement(TestimonialsSection));
+      });
+
+      const articles = renderer.root.findAllByType('article');
+      expect(articles).toHaveLength(3);
+      const treeStr = JSON.stringify(renderer.toJSON());
+      expect(treeStr).toContain('testimonials-grid');
+      expect(treeStr).not.toContain('tickerScroll');
+
+      // Verify global styles have completely removed tickerScroll
+      const globalCss = fs.readFileSync(
+        path.resolve(__dirname, '../src/Wings4u/components/global-style.tsx'),
+        'utf8',
+      );
+      expect(globalCss).not.toContain('tickerScroll');
+      expect(globalCss).not.toContain('@keyframes tickerScroll');
     });
   });
 

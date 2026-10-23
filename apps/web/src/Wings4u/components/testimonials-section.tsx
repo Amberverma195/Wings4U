@@ -5,7 +5,6 @@ import { apiFetch } from "@/lib/api";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 
 export type PublicReview = {
-  id: string;
   rating: number;
   comment: string | null;
   item_name: string | null;
@@ -39,7 +38,6 @@ export function TestimonialsSection() {
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +78,6 @@ export function TestimonialsSection() {
     if (typeof window === "undefined") return;
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setReduceMotion(true);
       setVisible(true);
       return;
     }
@@ -127,11 +124,11 @@ export function TestimonialsSection() {
 
       {isSingle ? (
         <div className="testimonials-single-wrapper">
-          {reviews.map((review) => {
+          {reviews.map((review, idx) => {
             const dateStr = formatReviewDate(review.created_at);
             const attribution = review.attribution || "Verified Wings4U Customer";
             return (
-              <article key={review.id} className="tcard tcard--single">
+              <article key={`pub-rev-${idx}-${review.created_at}`} className="tcard tcard--single">
                 <div
                   className="tcard-stars"
                   aria-label={`${review.rating} of 5 stars`}
@@ -175,73 +172,55 @@ export function TestimonialsSection() {
           })}
         </div>
       ) : (
-        <div
-          className={`testimonials-track-wrapper${reduceMotion ? " testimonials-track-wrapper--static" : ""}`}
-        >
-          <div
-            className={`testimonials-track${reduceMotion ? " testimonials-track--static" : ""}`}
-            aria-hidden={reduceMotion ? undefined : true}
-          >
-            {reviews.map((review) => {
-              const dateStr = formatReviewDate(review.created_at);
-              const attribution = review.attribution || "Verified Wings4U Customer";
-              return (
-                <article key={review.id} className="tcard">
-                  <div
-                    className="tcard-stars"
-                    aria-label={`${review.rating} of 5 stars`}
-                  >
-                    {"★".repeat(Math.max(1, Math.min(5, review.rating)))}
-                    <span style={{ color: "rgba(255, 213, 0, 0.25)" }}>
-                      {"★".repeat(Math.max(0, 5 - review.rating))}
-                    </span>
+        <div className="testimonials-grid">
+          {reviews.map((review, idx) => {
+            const dateStr = formatReviewDate(review.created_at);
+            const attribution = review.attribution || "Verified Wings4U Customer";
+            return (
+              <article key={`pub-rev-${idx}-${review.created_at}`} className="tcard">
+                <div
+                  className="tcard-stars"
+                  aria-label={`${review.rating} of 5 stars`}
+                >
+                  {"★".repeat(Math.max(1, Math.min(5, review.rating)))}
+                  <span style={{ color: "rgba(255, 213, 0, 0.25)" }}>
+                    {"★".repeat(Math.max(0, 5 - review.rating))}
+                  </span>
+                </div>
+
+                {review.item_name && (
+                  <div className="tcard-item-tag">
+                    Reviewed: <strong>{review.item_name}</strong>
                   </div>
+                )}
 
-                  {review.item_name && (
-                    <div className="tcard-item-tag">
-                      Reviewed: <strong>{review.item_name}</strong>
-                    </div>
-                  )}
+                {review.comment && (
+                  <p className="tcard-text">&ldquo;{review.comment}&rdquo;</p>
+                )}
 
-                  {review.comment && (
-                    <p className="tcard-text">&ldquo;{review.comment}&rdquo;</p>
-                  )}
-
-                  <div className="tcard-author">
-                    <div className="tcard-avatar" aria-hidden="true">
-                      {avatarInitial(attribution)}
-                    </div>
-                    <div>
-                      <div className="tcard-name">{attribution}</div>
-                      {dateStr ? (
-                        <div className="tcard-date">{dateStr}</div>
-                      ) : null}
-                    </div>
+                <div className="tcard-author">
+                  <div className="tcard-avatar" aria-hidden="true">
+                    {avatarInitial(attribution)}
                   </div>
+                  <div>
+                    <div className="tcard-name">{attribution}</div>
+                    {dateStr ? (
+                      <div className="tcard-date">{dateStr}</div>
+                    ) : null}
+                  </div>
+                </div>
 
-                  {review.admin_reply && (
-                    <div className="tcard-admin-reply">
-                      <span className="tcard-admin-reply__label">Wings 4 U Replied</span>
-                      <p className="tcard-admin-reply__text">{review.admin_reply}</p>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
+                {review.admin_reply && (
+                  <div className="tcard-admin-reply">
+                    <span className="tcard-admin-reply__label">Wings 4 U Replied</span>
+                    <p className="tcard-admin-reply__text">{review.admin_reply}</p>
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
-
-      {!reduceMotion && !isSingle ? (
-        <ul className="testimonials-sr-list">
-          {reviews.map((review) => (
-            <li key={review.id}>
-              {review.comment ? `"${review.comment}" — ` : ""}
-              {review.attribution}, {review.rating} of 5 stars
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 }

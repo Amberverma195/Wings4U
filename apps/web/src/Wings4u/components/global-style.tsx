@@ -1538,15 +1538,6 @@ export function WingKingsGlobalStyle() {
         }
       }
 
-      @keyframes tickerScroll {
-        from {
-          transform: translateX(0);
-        }
-        to {
-          transform: translateX(-50%);
-        }
-      }
-
       /* ── Testimonials (#testimonials) ─────────────────────────────── */
 
       #testimonials {
@@ -1609,69 +1600,34 @@ export function WingKingsGlobalStyle() {
         border-radius: 1px;
       }
 
-      #testimonials .testimonials-track-wrapper {
-        position: relative;
-        overflow: hidden;
-      }
-
-      #testimonials .testimonials-track-wrapper::before,
-      #testimonials .testimonials-track-wrapper::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: 100px;
-        z-index: 2;
-        pointer-events: none;
-      }
-
-      #testimonials .testimonials-track-wrapper::before {
-        left: 0;
-        background: linear-gradient(90deg, #000, transparent);
-      }
-
-      #testimonials .testimonials-track-wrapper::after {
-        right: 0;
-        background: linear-gradient(-90deg, #000, transparent);
-      }
-
-      #testimonials .testimonials-track-wrapper--static {
-        overflow: visible;
-      }
-
-      #testimonials .testimonials-track-wrapper--static::before,
-      #testimonials .testimonials-track-wrapper--static::after {
-        display: none;
-      }
-
-      #testimonials .testimonials-track {
+      #testimonials .testimonials-grid {
         display: flex;
-        gap: 16px;
-        padding: 8px 7% 20px;
-        width: max-content;
-        animation: tickerScroll 60s linear infinite;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-      }
-
-      #testimonials .testimonials-track::-webkit-scrollbar {
-        display: none;
-      }
-
-      #testimonials .testimonials-track--static {
-        animation: none;
-        width: 100%;
-        max-width: 1200px;
-        margin: 0 auto;
         flex-wrap: wrap;
         justify-content: center;
+        gap: 24px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 8px 7% 40px;
+        box-sizing: border-box;
+      }
+
+      #testimonials .testimonials-track-wrapper,
+      #testimonials .testimonials-track {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 24px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 8px 7% 40px;
         box-sizing: border-box;
       }
 
       #testimonials .tcard {
-        min-width: 290px;
-        max-width: 310px;
-        flex-shrink: 0;
+        flex: 1 1 300px;
+        max-width: 380px;
+        min-width: 280px;
+        box-sizing: border-box;
         padding: 28px;
         border-radius: 16px;
         position: relative;
@@ -1819,27 +1775,40 @@ export function WingKingsGlobalStyle() {
           transition: none;
         }
 
-        #testimonials .testimonials-track-wrapper {
-          overflow: visible;
-        }
-
-        #testimonials .testimonials-track-wrapper::before,
-        #testimonials .testimonials-track-wrapper::after {
-          display: none;
-        }
-
-        #testimonials .testimonials-track {
-          animation: none;
-          width: 100%;
-          max-width: 1200px;
-          margin: 0 auto;
-          flex-wrap: wrap;
-          justify-content: center;
-          box-sizing: border-box;
-        }
-
         #testimonials .tcard:hover {
           transform: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        #testimonials {
+          padding: 60px 0 0;
+        }
+
+        #testimonials .testimonials-head {
+          padding: 0 4%;
+          margin-bottom: 32px;
+        }
+
+        #testimonials .testimonials-grid,
+        #testimonials .testimonials-track-wrapper,
+        #testimonials .testimonials-track {
+          padding: 8px 4% 32px;
+          gap: 16px;
+        }
+
+        #testimonials .testimonials-single-wrapper {
+          padding: 8px 4% 24px;
+        }
+
+        #testimonials .tcard {
+          min-width: 100%;
+          max-width: 100%;
+          padding: 20px;
+        }
+
+        #testimonials .tcard--single {
+          padding: 24px;
         }
       }
 
