@@ -32,8 +32,8 @@ This report documents the resolution of all accessibility and environment issues
 | **4** | [`apps/web/src/Wings4u/components/sauces-skeleton.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/Wings4u/components/sauces-skeleton.tsx) | Sauces Loading Skeleton | P1: Skeleton brand link label | Changed `ariaLabel` to `"Wings 4 U — Home"` |
 | **5** | [`apps/web/src/Wings4u/components/cart-page.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/Wings4u/components/cart-page.tsx) | Customer Cart (Web) | P2: Duplicate name announcement before `<h3>` | Set `alt=""` and `aria-hidden="true"` on thumbnail `<img>` |
 | **6** | [`apps/web/src/Wings4u/components/landing.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/Wings4u/components/landing.tsx) | Homepage Landing Hero | P4: Raw chicken leg emoji announced as "poultry leg" | Added `aria-hidden="true"` to `wingEmojis` wrapper |
-| **7** | [`apps/web/src/app/admin/menu/menu-item-modal.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/app/admin/menu/menu-item-modal.tsx) | Admin Menu Management | P5: Empty alt in active image upload preview | Set `alt={`Preview for ${name.trim() \|\| "menu item"}`}` |
-| **8** | [`apps/web/src/app/admin/menu/admin-menu-client.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/app/admin/menu/admin-menu-client.tsx) | Admin Builder Management | P5: Empty alt in category picture preview | Set `alt={`Category image preview for ${selectedCategory?.name \|\| "category"}`}` |
+| **7** | [`apps/web/src/app/admin/menu/menu-item-modal.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/app/admin/menu/menu-item-modal.tsx) | Admin Menu Management | P5: Empty alt in active image upload preview | Set `alt={`Preview for ${form.name.trim() \|\| "menu item"}`}` |
+| **8** | [`apps/web/src/app/admin/menu/admin-menu-client.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/app/admin/menu/admin-menu-client.tsx) | Admin Builder Management | P5: Empty alt in category picture preview | Set `alt={`Category image preview for ${category.name \|\| "category"}`}` |
 | **9** | [`apps/web/src/app/account/profile/page.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/app/account/profile/page.tsx) | Account Profile | Polish: Internal SVG node traversal in `role="img"` | Added `aria-hidden="true"` to inner `<svg>` |
 | **10** | [`apps/web/src/components/builder-shared.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/src/components/builder-shared.tsx) | Wing & Combo Builders | P2 Issue B: Incomplete tab keyboard navigation & redundant `aria-pressed` | Added arrow key navigation (`ArrowRight`, `ArrowLeft`, `Home`, `End`), `role="tabpanel"`, `aria-controls`, and removed `aria-pressed` from radios |
 | **11** | [`apps/web/tests/web-a11y-semantics.test.cjs`](file:///d:/Projects/Websites/Wings4U/Code/apps/web/tests/web-a11y-semantics.test.cjs) | Web Accessibility Tests | P2 Issue B: Validation of tabs pattern and radio attributes | Updated assertions to test arrow navigation, tabpanel IDs, and absence of `aria-pressed` |
@@ -260,7 +260,7 @@ The production web platform domain is `wings4ulondon.ca` (not `wings4u.ca`). If 
 - **P4 Decorative Hero Drumstick Emoji (`landing.tsx`):**  
   Wrapped `wingEmojis` in `aria-hidden="true"`, preventing screen readers from speaking `"poultry leg"`.
 - **P5 Admin Modal Upload Previews (`menu-item-modal.tsx`, `admin-menu-client.tsx`):**  
-  Added dynamic `alt={`Preview for ${name.trim() \|\| "menu item"}`}` and `alt={`Category image preview for ${selectedCategory?.name \|\| "category"}`}`.
+  Added dynamic `alt={`Preview for ${form.name.trim() || "menu item"}`}` and `alt={`Category image preview for ${category.name || "category"}`}`.
 - **Profile Stamp Progress Ring SVG (`profile/page.tsx`):**  
   Added `aria-hidden="true"` to `<svg>` inside `<div className={styles.progressRing} role="img">`.
 
