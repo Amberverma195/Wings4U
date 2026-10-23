@@ -59,6 +59,7 @@ import { ProfileSkeleton, ProfileSectionSkeleton, OrdersPaginationSkeleton } fro
 import { ProfileTabGuard } from '../../src/components/profile-tab-guard';
 import { AccountDeletionModal } from '../../src/components/account-deletion';
 import { forgetDeletedAccount } from '../../src/lib/account-deletion';
+import { LegalLinks } from '../../src/components/legal-links';
 
 type TabKey = 'overview' | 'profile' | 'orders' | 'addresses' | 'support' | 'cards';
 type OrderFilter = 'active' | 'past';
@@ -542,6 +543,7 @@ function ProfileScreen() {
           {/* {activeTab === 'cards' && <CardsTab orders={account.data.orders} />} */}
           </>}
         </View>
+        <LegalLinks />
       </ScrollView>
 
       <View style={styles.logoutBar}>

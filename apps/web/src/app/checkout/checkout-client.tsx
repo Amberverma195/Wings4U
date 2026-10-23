@@ -1057,11 +1057,15 @@ export function CheckoutClient() {
                     style={{
                       display: "block",
                       marginTop: 2,
-                      fontSize: "0.72rem",
-                      opacity: 0.7,
+                      fontSize: 12,
+                      fontFamily: "sans-serif",
+                      fontWeight: 400,
+                      fontStyle: "normal",
+                      letterSpacing: "normal",
+                      color: "#1f1f1f",
                     }}
                   >
-                    Calculated using Google Maps
+                    Calculated using <span translate="no" style={{ whiteSpace: "nowrap" }}>Google Maps</span>
                   </small>
                 ) : null}
               </span>

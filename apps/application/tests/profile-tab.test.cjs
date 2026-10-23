@@ -25,6 +25,7 @@ jest.mock('../src/hooks/use-auth', () => ({ useAuth: () => mockAuth }));
 jest.mock('../src/hooks/use-account-data', () => ({ useAccountData: () => mockAccount }));
 jest.mock('../src/components/auth-sheet', () => ({ AuthSheet: 'AuthSheet' }));
 jest.mock('../src/lib/account-deletion', () => ({ forgetDeletedAccount: jest.fn(async () => {}) }));
+jest.mock('../src/lib/env', () => ({ getPrivacyPolicyUrl: () => 'https://www.wings4ulondon.ca/privacy', getTermsOfServiceUrl: () => 'https://www.wings4ulondon.ca/terms' }));
 
 const ProfileTab = require('../app/(tabs)/profile').default;
 const user = { id: 'customer', role: 'CUSTOMER', displayName: 'Wing Fan', email: 'wings@example.com', phone: '+15195550123' };

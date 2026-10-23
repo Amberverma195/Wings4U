@@ -2,9 +2,14 @@ let mockExtra;
 const mockPlatform = { OS: 'ios' };
 jest.mock('expo-constants', () => ({ __esModule: true, default: { get expoConfig() { return { extra: mockExtra }; } } }));
 jest.mock('react-native', () => ({ Platform: mockPlatform }));
-const { getApiBase, getRealtimeOrigin, getPrivacyPolicyUrl } = require('../src/lib/env');
+const { getApiBase, getRealtimeOrigin, getPrivacyPolicyUrl, getTermsOfServiceUrl } = require('../src/lib/env');
 const previousDev = global.__DEV__;
 beforeEach(() => { mockExtra = {}; mockPlatform.OS = 'ios'; });
+
+test('legal terms use the configured public policy website without query or fragment', () => {
+  mockExtra.privacyPolicyUrl = 'https://www.wings4ulondon.ca/privacy?source=app#rights';
+  expect(getTermsOfServiceUrl()).toBe('https://www.wings4ulondon.ca/terms');
+});
 afterEach(() => { global.__DEV__ = previousDev; });
 test('release runtime cannot fall back to a local development origin', () => {
   global.__DEV__ = false;

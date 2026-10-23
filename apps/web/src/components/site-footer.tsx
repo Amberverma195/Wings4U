@@ -1,6 +1,8 @@
 import { WingsBrandLockup } from "@/components/wings-brand-lockup";
 import { FooterMenuLinks } from "@/components/footer-menu-links";
 import { FooterStoreHours } from "@/components/footer-store-hours";
+import Link from "next/link";
+import styles from "./site-footer-legal.module.css";
 
 export function SiteFooter() {
   return (
@@ -41,6 +43,10 @@ export function SiteFooter() {
         <p>
           {"\u00A9"} {new Date().getFullYear()} Wings4U. All rights reserved. All wings hand-breaded daily.
         </p>
+        <nav className={styles.links} aria-label="Legal information">
+          <Link href="/privacy">Privacy Policy</Link>
+          <Link href="/terms">Terms of Service</Link>
+        </nav>
       </div>
     </footer>
   );

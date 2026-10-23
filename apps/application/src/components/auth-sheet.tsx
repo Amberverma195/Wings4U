@@ -13,6 +13,7 @@ import {
   normalizeFullName, validateLoginPassword, validateNewPassword, validateOtp,
 } from '../lib/auth-validation';
 import { formatPhoneForDisplay } from '../lib/phone';
+import { LegalLinks } from './legal-links';
 
 type AuthStep = 'login-id' | 'login-password' | 'signup' | 'verify-email' |
   'reset-request' | 'reset-verify' | 'profile';
@@ -343,6 +344,7 @@ export function AuthSheet({
               disabled={busy} style={s.linkButton} onPress={() => changeStep('login-id')}>
               <Text style={s.link}>Back to sign in</Text>
             </TouchableOpacity>}
+            <LegalLinks />
           </ScrollView>
         </View>
       </KeyboardAvoidingView>

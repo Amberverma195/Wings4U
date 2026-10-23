@@ -130,3 +130,12 @@ export function getPrivacyPolicyUrl(): string {
     return "https://www.wings4ulondon.ca/privacy";
   }
 }
+
+/** Terms live on the same website as the public privacy policy, including configured website origins. */
+export function getTermsOfServiceUrl(): string {
+  const url = new URL(getPrivacyPolicyUrl());
+  url.pathname = "/terms";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
