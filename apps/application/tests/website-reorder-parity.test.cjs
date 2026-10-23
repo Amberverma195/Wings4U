@@ -10,6 +10,7 @@ jest.mock('react-dom', () => ({ createPortal: children => children }));
 jest.mock('@/lib/cart', () => ({ useCart: () => mockCart }), { virtual: true });
 jest.mock('@/lib/session', () => ({ useSession: () => mockSession, withSilentRefresh: call => call() }), { virtual: true });
 jest.mock('@/lib/api', () => ({ apiFetch: jest.fn() }), { virtual: true });
+jest.mock('@/lib/use-modal-dialog', () => ({ useModalDialog: jest.fn() }), { virtual: true });
 const { apiFetch } = require('@/lib/api');
 const { ReorderButton } = require('../../web/src/components/' + 'reorder-button');
 let renderer;

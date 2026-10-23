@@ -350,7 +350,7 @@ const buttonContainingText = (substr) =>
 const submitButton = () =>
   renderer.root.findAllByType('TouchableOpacity').find((node) =>
     node.props.accessibilityRole === 'button' &&
-    (node.props.accessibilityLabel === 'Add to cart' || node.props.accessibilityLabel === 'Save changes'),
+    (node.props.accessibilityLabel?.startsWith('Add to cart') || node.props.accessibilityLabel?.startsWith('Save changes')),
   );
 
 beforeEach(() => {
@@ -890,7 +890,7 @@ describe('Critical Wing Builder Bug Fixes and Parity', () => {
       );
     });
 
-    expect(submitButton().props.accessibilityLabel).toBe('Save changes');
+    expect(submitButton().props.accessibilityLabel).toBe('Save changes, $14.99');
     await act(async () => submitButton().props.onPress());
 
     expect(mockCart.replaceItem).toHaveBeenCalledWith(

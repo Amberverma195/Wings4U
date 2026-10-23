@@ -394,3 +394,121 @@ Ran all test suites.
 
 TypeScript validation (`npx tsc --noEmit`) passes cleanly with 0 type errors across all files.
 
+---
+
+## 8. Resolution Report: Mobile Accessibility Gaps & Clarifications (P2)
+
+**Issues Reference:** P2 — Fix three mobile accessibility gaps  
+**Target Codebase:** Wings4U Mobile Native Application (`apps/application`)  
+**Standard Alignment:**
+- **WCAG 2.1 Criteria 4.1.2 Name, Role, Value (Level A)**
+- **WCAG 2.1 Criteria 1.3.1 Info and Relationships (Level A)**
+- **Mobile Platform A11y Standards:** iOS VoiceOver & Android TalkBack explicit roles and state announcements.
+
+### 8.1 Gap Analysis & Status Clarification
+
+| Item # | Identified Defect / Inquiry | Status | Technical Resolution |
+| :- | :--- | :--- | :--- |
+| **1** | Menu product card lacked explicit accessibility role and label | 🟢 **FIXED** | Added `accessibilityRole="button"`, `accessibilityState={{ disabled: isUnavailable }}`, and descriptive label: `${name}, ${price / status}${description}`. |
+| **2** | Builder plus/minus quantity controls lacked button roles | 🟢 **FIXED** | Added `accessibilityRole="button"` and `accessibilityState={{ disabled: ... }}` to both decrease and increase controls in `MobileBuilderShell`. |
+| **3** | Builder Add to Cart label omitted total price | 🟢 **FIXED** | Updated `accessibilityLabel` from `{submitLabel}` to `${submitLabel}, ${formatCents(totalCents)}` (e.g. `"Add to Cart, $14.99"`). |
+| **4** | Mobile category chips selection state | 🟢 **VERIFIED (COMPLIANT)** | Verified in [`menu-screen.tsx:597`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/screens/menu-screen.tsx#L597) that chips already declare `accessibilityState={{ selected: isActive }}` and `accessibilityRole="button"`. Removed from pending list. |
+
+---
+
+### 8.2 Code Modifications
+
+#### 1. Menu Product Card Accessibility Role and Descriptive Label
+* **File:** [`apps/application/src/screens/menu-screen.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/screens/menu-screen.tsx#L720-L730)
+* **Implementation:**
+```tsx
+<TouchableOpacity
+  style={[styles.itemCard, isUnavailable && styles.itemCardUnavailable]}
+  disabled={isUnavailable}
+  activeOpacity={0.7}
+  onPress={onPress}
+  accessibilityRole="button"
+  accessibilityLabel={`${details.name}, ${isUnavailable ? 'currently unavailable' : priceLabel}${details.description ? `. ${details.description}` : ''}`}
+  accessibilityState={{ disabled: isUnavailable }}
+>
+```
+* **VoiceOver / TalkBack Announcement:**
+  - In stock: *"Single Wings, $14.99. Crispy seasoned chicken wings, button"*
+  - Sold out: *"Sold Out Wings, currently unavailable. Popular limited flavour, button, dimmed"*
+
+#### 2. Builder Quantity Controls Explicit Button Roles & States
+* **File:** [`apps/application/src/components/mobile-builder-shell.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/components/mobile-builder-shell.tsx#L130-L148)
+* **Implementation:**
+```tsx
+<TouchableOpacity
+  style={[sh.qtyBtn, decreaseDisabled && sh.qtyBtnDisabled]}
+  onPress={onDecrease}
+  disabled={Boolean(decreaseDisabled)}
+  accessibilityRole="button"
+  accessibilityLabel="Decrease quantity"
+  accessibilityState={{ disabled: Boolean(decreaseDisabled) }}
+>
+  <Text style={[sh.qtyBtnText, decreaseDisabled && sh.qtyBtnTextDisabled]}>−</Text>
+</TouchableOpacity>
+
+<Text style={sh.qtyNum}>{quantity}</Text>
+
+<TouchableOpacity
+  style={[sh.qtyBtn, quantityDisabled && sh.qtyBtnDisabled]}
+  onPress={onIncrease}
+  disabled={Boolean(quantityDisabled)}
+  accessibilityRole="button"
+  accessibilityLabel="Increase quantity"
+  accessibilityState={{ disabled: Boolean(quantityDisabled) }}
+>
+  <Text style={[sh.qtyBtnText, quantityDisabled && sh.qtyBtnTextDisabled]}>+</Text>
+</TouchableOpacity>
+```
+
+#### 3. Builder Add to Cart Total Price Announcement
+* **File:** [`apps/application/src/components/mobile-builder-shell.tsx`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/src/components/mobile-builder-shell.tsx#L150-L162)
+* **Implementation:**
+```tsx
+<TouchableOpacity
+  style={[sh.addBtn, submitDisabled && sh.addBtnDisabled]}
+  onPress={onSubmit}
+  disabled={Boolean(submitDisabled)}
+  activeOpacity={submitDisabled ? 1 : 0.82}
+  accessibilityRole="button"
+  accessibilityState={{ disabled: Boolean(submitDisabled) }}
+  accessibilityLabel={`${submitLabel}, ${formatCents(totalCents)}`}
+>
+  <Text style={[sh.addBtnText, compactFooter && { fontSize: 14 }]}>{submitLabel}</Text>
+  <View style={sh.addBtnSep} />
+  <Text style={[sh.addBtnPrice, compactFooter && { fontSize: 14, paddingHorizontal: 10 }]}>{formatCents(totalCents)}</Text>
+</TouchableOpacity>
+```
+* **VoiceOver / TalkBack Announcement:** Screen reader announces e.g. *"Add to Cart, $15.99, button"* or *"Save changes, $14.99, button"*, exactly matching visual display.
+
+---
+
+### 8.3 Automated Test Suite & Verification Results
+
+A dedicated automated test suite was created in [`apps/application/tests/mobile-a11y-semantics.test.cjs`](file:///d:/Projects/Websites/Wings4U/Code/apps/application/tests/mobile-a11y-semantics.test.cjs) verifying:
+1. `MobileBuilderShell` quantity controls provide `accessibilityRole="button"` and accurate `accessibilityState.disabled` based on quantity boundaries.
+2. `MobileBuilderShell` submit button announces both the action label and total formatted price (`"Add to Cart, $15.99"`).
+3. `MenuScreen` product card renders `accessibilityRole="button"` with complete name, price, and description, as well as dimmed state for sold-out items.
+4. `MenuScreen` category chips preserve `accessibilityRole="button"` and `accessibilityState={{ selected: isActive }}`.
+
+#### Test Execution Run
+```bash
+> jest --runInBand
+
+PASS tests/mobile-a11y-semantics.test.cjs
+  Mobile Accessibility Semantics (P2)
+    √ MobileBuilderShell quantity controls have button roles and Add to Cart includes total price (39 ms)
+    √ MenuScreen product cards and category chips have explicit button roles and labels (13 ms)
+
+Test Suites: 68 passed, 68 total
+Tests:       1051 passed, 1051 total
+Snapshots:   0 total
+Time:        15.953 s
+Ran all test suites.
+```
+
+

@@ -723,6 +723,9 @@ function MenuItemCard({
       disabled={isUnavailable}
       activeOpacity={0.7}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${details.name}, ${isUnavailable ? 'currently unavailable' : priceLabel}${details.description ? `. ${details.description}` : ''}`}
+      accessibilityState={{ disabled: isUnavailable }}
     >
       {/* Catalog image, with the existing local category image as the offline fallback. */}
       {hasImage ? (

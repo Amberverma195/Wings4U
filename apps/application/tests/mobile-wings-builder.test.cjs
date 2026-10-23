@@ -135,7 +135,7 @@ const buttonByText = (label) =>
   renderer.root.findAllByType('TouchableOpacity').find((node) => texts(node).trim() === label);
 const submitButton = () =>
   renderer.root.findAllByType('TouchableOpacity').find((node) =>
-    node.props.accessibilityRole === 'button' && (node.props.accessibilityLabel === 'Add to cart' || node.props.accessibilityLabel === 'Save changes'),
+    node.props.accessibilityRole === 'button' && (node.props.accessibilityLabel?.startsWith('Add to cart') || node.props.accessibilityLabel?.startsWith('Save changes')),
   );
 
 const mount = async (item, editingLine = null) =>

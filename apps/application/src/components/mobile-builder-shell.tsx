@@ -132,7 +132,9 @@ export function MobileBuilderShell({
                 style={[sh.qtyBtn, decreaseDisabled && sh.qtyBtnDisabled]}
                 onPress={onDecrease}
                 disabled={Boolean(decreaseDisabled)}
+                accessibilityRole="button"
                 accessibilityLabel="Decrease quantity"
+                accessibilityState={{ disabled: Boolean(decreaseDisabled) }}
               >
                 <Text style={[sh.qtyBtnText, decreaseDisabled && sh.qtyBtnTextDisabled]}>−</Text>
               </TouchableOpacity>
@@ -141,7 +143,9 @@ export function MobileBuilderShell({
                 style={[sh.qtyBtn, quantityDisabled && sh.qtyBtnDisabled]}
                 onPress={onIncrease}
                 disabled={Boolean(quantityDisabled)}
+                accessibilityRole="button"
                 accessibilityLabel="Increase quantity"
+                accessibilityState={{ disabled: Boolean(quantityDisabled) }}
               >
                 <Text style={[sh.qtyBtnText, quantityDisabled && sh.qtyBtnTextDisabled]}>+</Text>
               </TouchableOpacity>
@@ -153,7 +157,7 @@ export function MobileBuilderShell({
               activeOpacity={submitDisabled ? 1 : 0.82}
               accessibilityRole="button"
               accessibilityState={{ disabled: Boolean(submitDisabled) }}
-              accessibilityLabel={submitLabel}
+              accessibilityLabel={`${submitLabel}, ${formatCents(totalCents)}`}
             >
               <Text style={[sh.addBtnText, compactFooter && { fontSize: 14 }]}>{submitLabel}</Text>
               <View style={sh.addBtnSep} />
