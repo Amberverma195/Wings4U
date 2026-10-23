@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Info } from 'lucide-react-native';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -120,14 +121,18 @@ export function CartCoupons({ quote, requestSelection, onValidated, disabled, co
                 <Text style={s.meta}>Ready to redeem on an individual 1LB wings item.</Text></View>
               <Text style={s.action}>{busy === 'reward' ? 'Validating…' : rewardApplied ? 'Applied' : 'Apply'}</Text>
             </TouchableOpacity> : null}
-            {!loading && livePromos.length > 0 ? <Text style={s.meta}>Party Specials are excluded from coupons.</Text> : null}
             {!loading ? livePromos.map(coupon => {
               const applied = hasAppliedPromo(quote, coupon.code), automatic = Boolean(coupon.autoApply);
               const bxgy = formatBxgyDetails(coupon), fulfillment = promoFulfillmentLabel(coupon.eligibleFulfillmentType);
               return <TouchableOpacity key={coupon.id} style={[s.card, applied && s.appliedCard]} accessibilityRole="button" accessibilityLabel={`Apply coupon ${coupon.code}`}
+                accessibilityHint={coupon.id.startsWith('first-order-deal:') ? 'First order only. Pickup & delivery · Lunch Specials eligible. Excludes 75 & 100 Wing Party Specials.' : undefined}
                 disabled={automatic || applied || Boolean(busy)} accessibilityState={{ disabled: automatic || applied || Boolean(busy), selected: applied }}
                 onPress={() => { if (!automatic) void apply({ promoCode: coupon.code, applyWingsReward: false }, coupon.code); }}>
                 <View style={s.info}><Text style={s.cardTitle}>{coupon.code}</Text><Text style={s.meta}>{coupon.name}</Text>
+                  {coupon.id.startsWith('first-order-deal:') ? <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 6 }}>
+                    <Info size={15} color="#666666" accessible={false} importantForAccessibility="no" style={{ marginTop: 2 }} />
+                    <Text style={[s.meta, { flex: 1, marginTop: 0 }]}>First order only. Pickup &amp; delivery · Lunch Specials eligible. Excludes 75 &amp; 100 Wing Party Specials.</Text>
+                  </View> : null}
                   <Text style={s.meta}>{promoBenefitLabel(coupon)}{coupon.minSubtotalCents > 0 ? ` (Min $${(coupon.minSubtotalCents / 100).toFixed(2)})` : ''}</Text>
                   {bxgy ? <Text style={s.meta}>{bxgy}</Text> : null}{fulfillment ? <Text style={s.meta}>{fulfillment}</Text> : null}
                 </View><Text style={s.action}>{busy === coupon.code ? 'Validating…' : automatic ? (applied ? 'Auto · Applied' : 'Auto') : applied ? 'Applied' : 'Apply'}</Text>

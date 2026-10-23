@@ -50,6 +50,9 @@ export function NewsletterSection() {
         <button type="button" className="newsletter-btn newsletter-btn--order" onClick={handleOrderNow}>
           ORDER NOW
         </button>
+        <p style={{ margin: "1rem 0 0", color: "#e2c8b8", fontSize: "0.875rem", lineHeight: 1.6 }}>
+          First order only. Valid for pickup and delivery, including Lunch Specials. Excludes 75 &amp; 100 Wing Party Specials. Sign in and apply the offer from Coupons in your cart.
+        </p>
       </div>
     </section>
   );

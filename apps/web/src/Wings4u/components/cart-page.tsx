@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Info } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiJson } from "@/lib/api";
@@ -1177,7 +1178,6 @@ export function CartPage() {
               </button>
             ) : null}
 
-            {activePromos.length > 0 ? <p style={styles.couponCardMeta}>Party Specials are excluded from coupons.</p> : null}
             {!couponsRefreshing ? activePromos.map((promo) => {
               const isApplied = confirmedPromoCodes.has(promo.code.toUpperCase());
               const isAutomatic = Boolean(promo.autoApply);
@@ -1209,6 +1209,12 @@ export function CartPage() {
                   <div style={styles.couponCardBody}>
                     <strong style={styles.couponCardTitle}>{promo.code}</strong>
                     <span style={styles.couponCardSubtitle}>{promo.name}</span>
+                    {promo.id.startsWith("first-order-deal:") ? (
+                      <span style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 6, color: "#5f5146", fontSize: 13, lineHeight: 1.5 }}>
+                        <Info size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>First order only. Pickup &amp; delivery · Lunch Specials eligible. Excludes 75 &amp; 100 Wing Party Specials.</span>
+                      </span>
+                    ) : null}
                     <span style={styles.couponCardMeta}>
                       {promo.benefitSummary ||
                         (promo.discountType === "PERCENT" && `${promo.discountValue}% OFF`)}
