@@ -953,7 +953,7 @@ export function CheckoutClient() {
       <div className="checkout-section checkout-order-summary-section">
         <h3
           style={{
-            fontFamily: "'Libre Baskerville', Georgia, 'Times New Roman', serif",
+            fontFamily: "var(--font-libre-baskerville), 'Libre Baskerville', Georgia, 'Times New Roman', serif",
             fontSize: "22px",
             fontWeight: 700,
             color: "#111827",

@@ -100,7 +100,7 @@ export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = f
                 <Timeline.Title
                   textStyle={readable ? "md" : "sm"}
                   fontWeight={readable ? "semibold" : "700"}
-                  fontFamily="'DM Sans', sans-serif"
+                  fontFamily="var(--font-dm-sans), 'DM Sans', sans-serif"
                 >
                   {title}
                 </Timeline.Title>
@@ -108,7 +108,7 @@ export function OrderStatusTimelineChakra({ events, getStatusLabel, readable = f
                   color="fg"
                   textStyle="sm"
                   fontWeight="semibold"
-                  fontFamily="'DM Sans', sans-serif"
+                  fontFamily="var(--font-dm-sans), 'DM Sans', sans-serif"
                   mt="0.1rem"
                 >
                   {when}

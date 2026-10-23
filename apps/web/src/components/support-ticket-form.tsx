@@ -33,7 +33,7 @@ const CUSTOMER_SUPPORT_ISSUES: Array<{
 const supportFormStyles = {
   shell: {
     color: "#111827",
-    fontFamily: "'DM Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-dm-sans), 'DM Sans', system-ui, sans-serif",
   },
   title: {
     margin: "0 0 0.35rem",

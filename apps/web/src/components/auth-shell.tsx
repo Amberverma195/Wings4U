@@ -274,7 +274,7 @@ const AUTH_PAGE_STYLES = `
     min-height: 100vh;
     overflow: hidden;
     color: #f7e9c8;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
     /* Solid fill so the global app shell’s orange dot texture does not tint this page */
     background: #0a0a0a;
   }
@@ -373,7 +373,7 @@ const AUTH_PAGE_STYLES = `
   }
 
   .wk-auth-headline {
-    font-family: 'Bebas Neue', 'DM Sans', sans-serif;
+    font-family: 'Bebas Neue', var(--font-dm-sans), 'DM Sans', sans-serif;
     font-size: clamp(3rem, 8vw, 5.5rem);
     line-height: 0.92;
     letter-spacing: 1px;

@@ -128,7 +128,7 @@ main {
   border: none;
   background: transparent;
   color: rgba(247, 233, 200, 0.85);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -804,7 +804,7 @@ main {
   border: 1px solid rgba(194, 73, 20, 0.22);
   background: rgba(255, 255, 255, 0.72);
   color: #2a1a08;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.35;
@@ -818,7 +818,7 @@ main {
   border-radius: 14px;
   background: var(--accent);
   color: #fff;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   font-size: 0.95rem;
   font-weight: 800;
   letter-spacing: 0;
@@ -841,7 +841,7 @@ main {
   width: 100%;
   margin-bottom: 1.1rem;
   color: #111827;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   font-weight: 900;
   letter-spacing: 0;
   text-align: center;
@@ -1076,7 +1076,7 @@ main {
 .checkout-success-eyebrow {
   margin: 0;
   color: rgba(160, 70, 0, 0.85);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.22em;
@@ -1085,7 +1085,7 @@ main {
 
 .checkout-success-title {
   margin: 0.1rem 0 0;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: clamp(2.4rem, 5.5vw, 3.6rem);
   letter-spacing: 0.06em;
   line-height: 1;
@@ -1114,7 +1114,7 @@ main {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.6),
     0 8px 18px -10px rgba(255, 106, 0, 0.35);
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   letter-spacing: 0.06em;
   line-height: 1;
 }
@@ -1175,7 +1175,7 @@ main {
   justify-content: center;
   gap: 0.4rem;
   color: #0c0300;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1221,7 +1221,7 @@ main {
   align-items: center;
   gap: 0.5rem;
   color: #320F00;
-  font: 700 16px 'Rajdhani', sans-serif;
+  font: 700 16px var(--font-rajdhani), 'Rajdhani', sans-serif;
   letter-spacing: 2px;
   text-transform: uppercase;
   text-decoration: none;
@@ -1304,7 +1304,7 @@ main {
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
   border-radius: clamp(20px, 2.5vw, 32px);
   color: #0c0300;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   line-height: 1.55;
   padding: clamp(1.5rem, 4vw, 2.5rem);
 }
@@ -1416,7 +1416,7 @@ main {
 
 .checkout-page .checkout-order-summary-section .cart-line-info h3 {
   color: #0C0300;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: clamp(17px, 1.85vw, 20px);
   font-weight: 700;
   line-height: 1.3;
@@ -1448,7 +1448,7 @@ main {
   margin: 0;
   line-height: 1;
   color: #EA580C;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: clamp(19px, 2.2vw, 22px);
   font-weight: 400;
   letter-spacing: 1px;
@@ -1469,7 +1469,7 @@ main {
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 0;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 1rem;
   color: #4b5563;
 }
@@ -1514,7 +1514,7 @@ main {
 }
 
 .checkout-page .checkout-schedule-summary-row--primary {
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   font-size: clamp(16px, 1.65vw, 18px);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1523,7 +1523,7 @@ main {
 }
 
 .checkout-page .checkout-schedule-summary-row--time {
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   font-size: clamp(14px, 1.45vw, 16px);
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -1533,7 +1533,7 @@ main {
 
 .checkout-page .checkout-section h3 {
   color: #0c0300;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   letter-spacing: 0.08em;
   font-size: clamp(1.25rem, 2.2vw, 1.5rem);
 }
@@ -1571,7 +1571,7 @@ main {
   flex-shrink: 0;
   padding: 0.5rem 1.1rem;
   border-radius: 999px;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-weight: 700;
   font-size: clamp(14px, 1.35vw, 15px);
   letter-spacing: 0.03em;
@@ -1677,7 +1677,7 @@ main {
 }
 
 .checkout-page .btn-primary {
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.05rem;
   letter-spacing: 0.08em;
   background: linear-gradient(135deg, #f5a623, #ff9a1a);
@@ -1711,7 +1711,7 @@ main {
   border: 1px solid rgba(12, 3, 0, 0.14);
   background: #fff;
   color: #1a1510;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -1766,7 +1766,7 @@ main {
 
 .checkout-page .cart-empty h2 {
   color: #0c0300;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   letter-spacing: 0.05em;
   font-size: clamp(2rem, 4vw, 2.75rem);
   margin-bottom: 0.5rem;
@@ -1901,7 +1901,7 @@ main {
   flex-direction: column;
   gap: clamp(1rem, 2vw, 1.5rem);
   color: #f7e9c8;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
 }
 
 /* Warm yellow/amber wash above the global dotted bg, behind every card */
@@ -1962,7 +1962,7 @@ main {
 .orders-hero-eyebrow {
   margin: 0;
   color: rgba(255, 196, 105, 0.85);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.28em;
@@ -1974,7 +1974,7 @@ main {
   align-items: center;
   gap: 0.85rem;
   margin: 0;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: clamp(2.2rem, 4.6vw, 3rem);
   letter-spacing: 0.08em;
   line-height: 1;
@@ -2037,7 +2037,7 @@ main {
 }
 
 .orders-hero-stat-value {
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.85rem;
   letter-spacing: 0.05em;
   line-height: 1;
@@ -2116,7 +2116,7 @@ main {
   border: none;
   background: transparent;
   color: rgba(247, 233, 200, 0.7);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2161,7 +2161,7 @@ main {
   border: 1px solid rgba(245, 166, 35, 0.45);
   background: rgba(255, 196, 0, 0.08);
   color: #ffd166;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2255,7 +2255,7 @@ main {
   display: inline-flex;
   align-items: baseline;
   gap: 0.1rem;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   letter-spacing: 0.06em;
   line-height: 1;
 }
@@ -2287,7 +2287,7 @@ main {
   border-radius: 999px;
   background: #e11d48;
   color: #fff;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -2301,7 +2301,7 @@ main {
   gap: 0.4rem;
   padding: 0.3rem 0.75rem;
   border-radius: 999px;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -2367,7 +2367,7 @@ main {
 
 .orders-meta-value {
   color: rgba(247, 233, 200, 0.92);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -2375,7 +2375,7 @@ main {
 }
 
 .orders-meta-value--total {
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.35rem;
   letter-spacing: 0.04em;
   color: #ffd166;
@@ -2404,7 +2404,7 @@ main {
 }
 
 .orders-card-eta-value {
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.1rem;
   letter-spacing: 0.05em;
   color: #fff5d6;
@@ -2423,7 +2423,7 @@ main {
   border: 1px solid rgba(245, 166, 35, 0.4);
   background: rgba(255, 196, 0, 0.08);
   color: #ffd166;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2473,7 +2473,7 @@ main {
 
 .orders-empty-title {
   margin: 0.25rem 0 0;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: clamp(1.6rem, 3vw, 2rem);
   letter-spacing: 0.06em;
   color: #fff5d6;
@@ -2496,7 +2496,7 @@ main {
   border-radius: 999px;
   background: linear-gradient(135deg, #ff7d12 0%, #f5a623 50%, #eab308 100%);
   color: #160600;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2562,7 +2562,7 @@ main {
   border: 1px solid rgba(245, 166, 35, 0.4);
   background: rgba(20, 17, 11, 0.85);
   color: #ffd166;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2937,7 +2937,7 @@ main {
 
 .wk-builder-header h2 {
   margin: 0;
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
   font-size: 24px;
   letter-spacing: 2px;
   color: #170f09;
@@ -3048,7 +3048,7 @@ main {
   border-radius: 10px;
   background: linear-gradient(135deg, #f5a623, #ffbd00);
   color: #0a0a0a;
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
   font-size: 18px;
   letter-spacing: 2px;
   cursor: pointer;
@@ -3124,7 +3124,7 @@ main {
   background: #F9FAFB;
   border: 1px solid #e5e7eb;
   color: #4b5563;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
@@ -4026,7 +4026,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: clamp(0.85rem, 1.6vw, 1.15rem);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   color: #17120d;
 }
 
@@ -4155,7 +4155,7 @@ main {
 }
 
 .od-hero-eyebrow-text {
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.32em;
@@ -4199,7 +4199,7 @@ main {
 
 .od-hero-title {
   margin: 0;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: clamp(2rem, 4.5vw, 2.85rem);
   letter-spacing: 0.06em;
   line-height: 1;
@@ -4353,7 +4353,7 @@ main {
 
 .od-pin-value {
   margin: 0;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.85rem;
   letter-spacing: 0.55rem;
   font-weight: 800;
@@ -4381,7 +4381,7 @@ main {
 
 .od-section-title {
   margin: 0 0 0.85rem;
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.25rem;
   letter-spacing: 0.08em;
   color: #fff5d6;
@@ -4414,7 +4414,7 @@ main {
 
 .order-detail-shell .od-hero-card .cart-line-info h3 {
   color: #fff5d6;
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   font-weight: 700;
   font-size: 1rem;
   margin: 0 0 0.15rem;
@@ -4476,7 +4476,7 @@ main {
 }
 
 .order-detail-shell .od-summary .quote-row.quote-total > span:last-child {
-  font-family: "Bebas Neue", sans-serif;
+  font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
   font-size: 1.5rem;
   letter-spacing: 0.04em;
   background: linear-gradient(180deg, #ffe7a3 0%, #ff9f1c 100%);
@@ -4797,7 +4797,7 @@ main {
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.55),
     0 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
-  font-family: Outfit, Poppins, system-ui, sans-serif !important;
+  font-family: var(--font-outfit), var(--font-poppins), Outfit, Poppins, system-ui, sans-serif !important;
   padding: 12px 18px !important;
   min-width: 320px !important;
 }
@@ -4830,7 +4830,7 @@ main {
 }
 
 .checkout-page-title {
-  font-family: 'Bebas Neue', sans-serif !important;
+  font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif !important;
   font-size: clamp(48px, 6vw, 72px) !important;
   letter-spacing: 6px !important;
   margin: 0 !important;
@@ -4840,7 +4840,7 @@ main {
 
 .checkout-page-lede {
   margin: 1.5rem 0 1.5rem !important;
-  font-family: 'DM Sans', sans-serif !important;
+  font-family: var(--font-dm-sans), 'DM Sans', sans-serif !important;
   font-weight: 700 !important;
   font-size: 0.95rem !important;
   color: rgba(12, 3, 0, 0.8) !important;

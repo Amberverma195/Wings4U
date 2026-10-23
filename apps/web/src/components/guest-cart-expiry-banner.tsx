@@ -55,7 +55,7 @@ export function GuestCartExpiryBanner() {
         alignItems: "flex-start",
         gap: "0.75rem",
         boxShadow: "0 4px 20px rgba(245, 166, 35, 0.18)",
-        fontFamily: "'DM Sans', sans-serif",
+        fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
         color: "#fff",
         fontSize: 14,
         lineHeight: 1.45,

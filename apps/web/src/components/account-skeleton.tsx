@@ -7,7 +7,7 @@ export function AccountSkeleton({ isLoggingOut }: { isLoggingOut?: boolean }) {
 
   return (
     <div className="wk-account-skeleton" style={{ minHeight: '100vh', backgroundColor: '#F8C676', paddingBottom: '4rem' }}>
-      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '3rem 1.5rem', fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '3rem 1.5rem', fontFamily: 'var(--font-dm-sans), "DM Sans", system-ui, sans-serif' }}>
         <div className="wk-account-main-grid" style={{ display: 'grid', gap: '2rem', alignItems: 'start' }}>
           {/* Sidebar Skeleton */}
           <aside style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

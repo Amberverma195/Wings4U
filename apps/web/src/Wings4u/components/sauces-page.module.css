@@ -62,7 +62,7 @@
 .navBack {
   position: relative;
   color: #b8863a;
-  font: 700 12px 'Rajdhani', sans-serif;
+  font: 700 12px var(--font-rajdhani), 'Rajdhani', sans-serif;
   letter-spacing: 2px;
   text-decoration: none;
   text-transform: uppercase;
@@ -126,7 +126,7 @@
   flex-wrap: wrap;
   gap: 14px;
   margin: 0 0 16px;
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: clamp(48px, 8vw, 96px);
   letter-spacing: 3px;
   line-height: 0.95;
@@ -161,7 +161,7 @@
 }
 
 .sauceStatNum {
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: clamp(36px, 5vw, 52px);
   line-height: 1;
   animation: countPulse 3s ease-in-out infinite;
@@ -184,7 +184,7 @@
 }
 
 .sauceStatLabel {
-  font-family: 'Oswald', sans-serif;
+  font-family: var(--font-oswald), 'Oswald', sans-serif;
   font-size: 11px;
   letter-spacing: 2px;
   color: #b8863a;
@@ -223,7 +223,7 @@
   );
   border: 2px solid rgba(255, 107, 0, 0.5);
   color: #ffe9b8;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
   font-size: 17px;
   font-weight: 600;
   padding: 17px 128px 17px 54px;
@@ -265,7 +265,7 @@
   right: 18px;
   top: 50%;
   transform: translateY(-50%);
-  font-family: 'Oswald', sans-serif;
+  font-family: var(--font-oswald), 'Oswald', sans-serif;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -293,7 +293,7 @@
   );
   border: 2px solid rgba(255, 107, 0, 0.45);
   color: #f2dcb0;
-  font-family: 'Oswald', sans-serif;
+  font-family: var(--font-oswald), 'Oswald', sans-serif;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 1.5px;
@@ -384,7 +384,7 @@
 }
 
 .categoryName {
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: clamp(24px, 3vw, 36px);
   letter-spacing: 3px;
   margin: 0;
@@ -392,7 +392,7 @@
 
 .categoryCount {
   margin-left: 4px;
-  font-family: 'Oswald', sans-serif;
+  font-family: var(--font-oswald), 'Oswald', sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 1.5px;
@@ -473,7 +473,7 @@
   position: absolute;
   top: 12px;
   right: 12px;
-  font-family: 'Oswald', sans-serif;
+  font-family: var(--font-oswald), 'Oswald', sans-serif;
   font-size: 10px;
   letter-spacing: 1px;
   color: #4a2510;
@@ -484,7 +484,7 @@
   align-items: center;
   justify-content: center;
   margin: 0;
-  font-family: 'Oswald', sans-serif;
+  font-family: var(--font-oswald), 'Oswald', sans-serif;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -557,7 +557,7 @@
 }
 
 .noResultsText {
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: 28px;
   letter-spacing: 2px;
   margin-bottom: 8px;
@@ -591,7 +591,7 @@
 .bottomCtaTitle {
   position: relative;
   margin: 0 0 16px;
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: clamp(32px, 5vw, 56px);
   letter-spacing: 3px;
 }
@@ -636,7 +636,7 @@
   background: linear-gradient(135deg, #ff4d00, #ff6b00, #ffaa00);
   border: none;
   color: #000;
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: 18px;
   letter-spacing: 3px;
   padding: 16px 42px;
@@ -665,7 +665,7 @@
   background: transparent;
   border: 2px solid #ff6b00;
   color: #ff6b00;
-  font-family: 'Black Han Sans', sans-serif;
+  font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
   font-size: 18px;
   letter-spacing: 3px;
   padding: 14px 38px;

@@ -70,7 +70,7 @@ const GLOBAL_STYLES = `
       radial-gradient(circle at 50% 50%, rgba(255,170,40,0.04) 0px, transparent 13.5px) !important;
     background-size: 40px 40px !important;
     color: #fff;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
     overflow-x: hidden;
     min-height: 100vh;
     color-scheme: dark;

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/lib/session";
 import { getSiteUrl, SITE_NAME } from "@/lib/seo/site";
 import { WingKingsShell } from "@/components/wingkings-shell";
+import { fontVariables } from "./fonts";
 import "./globals.css";
 
 const siteUrl = getSiteUrl();
@@ -64,7 +65,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={fontVariables} suppressHydrationWarning>
       {/* suppressHydrationWarning: extensions (e.g. ColorZilla) inject attrs like cz-shortcut-listen on <body> */}
       <body suppressHydrationWarning>
         <SessionProvider>

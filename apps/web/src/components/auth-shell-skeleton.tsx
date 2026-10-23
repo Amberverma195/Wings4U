@@ -106,7 +106,7 @@ const AUTH_SKELETON_STYLES = `
     min-height: calc(100vh - 64px);
     overflow: hidden;
     color: #f7e9c8;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
     background: #0a0a0a;
   }
 

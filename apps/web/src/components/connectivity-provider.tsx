@@ -176,7 +176,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
               style={{
                 position: "relative",
                 zIndex: 2,
-                fontFamily: "'Bebas Neue', sans-serif",
+                fontFamily: "var(--font-bebas-neue), 'Bebas Neue', sans-serif",
                 fontSize: "clamp(1.85rem, 6vw, 2.5rem)",
                 letterSpacing: "0.08em",
                 margin: "0 0 14px",
@@ -197,7 +197,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
                 color: "#ffd28a",
                 fontSize: 15,
                 lineHeight: 1.6,
-                fontFamily: "'DM Sans', system-ui, sans-serif",
+                fontFamily: "var(--font-dm-sans), 'DM Sans', system-ui, sans-serif",
                 fontWeight: 500,
                 letterSpacing: "0.01em",
               }}
@@ -217,7 +217,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
                 color: "#0a0a0a",
                 fontWeight: 700,
                 fontSize: 15,
-                fontFamily: "'DM Sans', system-ui, sans-serif",
+                fontFamily: "var(--font-dm-sans), 'DM Sans', system-ui, sans-serif",
                 letterSpacing: "0.04em",
                 textTransform: "uppercase",
                 cursor: "pointer",

@@ -1,7 +1,7 @@
 export function WingKingsGlobalStyle() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Black+Han+Sans&family=DM+Sans:wght@400;600&family=Libre+Baskerville:wght@700&family=Oswald:wght@400;600;700&family=Outfit:wght@500;800&family=Poppins:wght@500;800&family=Rajdhani:wght@500;600;700&display=swap');
+      /* Google Fonts are self-hosted via next/font/google in app/fonts.ts */
       @keyframes float { 0%,100%{transform:translate3d(0,0,0)} 50%{transform:translate3d(0,-18px,0)} }
       @keyframes gentleFloat {
         0%,100% { transform: translateY(0) rotate(-3deg); }
@@ -190,7 +190,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .hero-proof-val {
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: 18px;
         font-weight: 700;
         color: #ff6b00;
@@ -271,7 +271,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .hero-newsletter-promo__text {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(15px, 2vw, 19px);
         letter-spacing: 0.12em;
         color: #ffd102;
@@ -624,7 +624,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .wk-hero-marquee-item {
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: clamp(18px, 2.35vw, 24px);
         font-weight: 600;
         letter-spacing: 0.06em;
@@ -808,7 +808,7 @@ export function WingKingsGlobalStyle() {
       .brand-stat-num {
         grid-column: 1;
         justify-self: start;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(52px, 6vw, 80px);
         line-height: 1;
         font-weight: 700;
@@ -828,7 +828,7 @@ export function WingKingsGlobalStyle() {
         grid-column: 2;
         min-width: 0;
         padding-left: 0;
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: 16px;
         color: #ffd500;
         letter-spacing: 2px;
@@ -847,7 +847,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .brand-heading {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(38px, 4.5vw, 60px);
         line-height: 1.05;
         letter-spacing: 2px;
@@ -871,7 +871,7 @@ export function WingKingsGlobalStyle() {
       .brand-flavour-subtitle {
         margin: -6px 0 22px;
         color: #cc8855;
-        font-family: 'DM Sans', sans-serif;
+        font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
         font-size: 18px;
         line-height: 1.5;
       }
@@ -1024,7 +1024,7 @@ export function WingKingsGlobalStyle() {
       .sauce-count-hero {
         position: relative;
         display: inline-block;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(88px, 12vw, 160px);
         line-height: 1;
         color: transparent;
@@ -1061,7 +1061,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .sauce-count-sub-main {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(28px, 3.5vw, 48px);
         letter-spacing: 4px;
         color: #fff;
@@ -1069,7 +1069,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .sauce-zero-excuses {
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: clamp(14px, 1.6vw, 20px);
         letter-spacing: 6px;
         color: #ffcc33;
@@ -1221,7 +1221,7 @@ export function WingKingsGlobalStyle() {
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: 13px;
         letter-spacing: 1px;
         color: #ddd;
@@ -1344,7 +1344,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #how .section-head h2 {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(42px, 5.5vw, 72px);
         letter-spacing: 3px;
         line-height: 1;
@@ -1431,7 +1431,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #how .step-num {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 11px;
         letter-spacing: 4px;
         color: rgba(255, 77, 0, 0.4);
@@ -1451,7 +1451,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #how .step-title {
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: 22px;
         font-weight: 700;
         letter-spacing: 2px;
@@ -1462,7 +1462,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #how .step-desc {
-        font-family: 'Rajdhani', sans-serif;
+        font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
         font-size: 15px;
         color: #ffd966;
         line-height: 1.65;
@@ -1584,7 +1584,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #testimonials .testimonials-head h2 {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(40px, 5vw, 64px);
         letter-spacing: 3px;
         line-height: 1.1;
@@ -1701,7 +1701,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #testimonials .tcard-text {
-        font-family: 'Rajdhani', sans-serif;
+        font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
         font-size: 15px;
         color: #eedd99;
         line-height: 1.65;
@@ -1724,7 +1724,7 @@ export function WingKingsGlobalStyle() {
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-weight: 700;
         font-size: 15px;
         color: #ff6b00;
@@ -1732,7 +1732,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #testimonials .tcard-name {
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: 14px;
         letter-spacing: 1px;
         color: #ffd500;
@@ -1824,7 +1824,7 @@ export function WingKingsGlobalStyle() {
         align-items: center;
         justify-content: center;
         padding: 14px 32px;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 18px;
         text-transform: uppercase;
         cursor: pointer;
@@ -1921,7 +1921,7 @@ export function WingKingsGlobalStyle() {
         justify-content: center;
         font-size: 0.8125rem;
         font-weight: 800;
-        font-family: 'DM Sans', sans-serif;
+        font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
         line-height: 1;
       }
 
@@ -2216,7 +2216,7 @@ export function WingKingsGlobalStyle() {
         justify-content: center;
         min-height: 30px;
         padding: 5px 8px;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: clamp(10px, 0.78vw, 11px);
         font-weight: 500;
         letter-spacing: 0;
@@ -2302,7 +2302,7 @@ export function WingKingsGlobalStyle() {
         border-radius: 10px;
         background: transparent;
         color: rgba(255,255,255,0.56);
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 13px;
         font-weight: 700;
         letter-spacing: 0.04em;
@@ -2363,7 +2363,7 @@ export function WingKingsGlobalStyle() {
         min-width: 0;
         padding: 0 14px;
         color: #f3efe9;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 14px;
         font-weight: 600;
         white-space: nowrap;
@@ -2412,7 +2412,7 @@ export function WingKingsGlobalStyle() {
         border: 1px solid rgba(245,166,35,0.8);
         background: transparent;
         color: #f5a623;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 13px;
         font-weight: 700;
         letter-spacing: 0.05em;
@@ -2449,7 +2449,7 @@ export function WingKingsGlobalStyle() {
 
       .wk-order-settings-panel-title {
         color: #fff;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 22px;
         font-weight: 800;
       }
@@ -2474,7 +2474,7 @@ export function WingKingsGlobalStyle() {
       .wk-order-settings-restriction-note {
         margin: 10px 2px 0;
         color: #ffb2a7;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 13px;
         font-weight: 700;
         line-height: 1.45;
@@ -2491,7 +2491,7 @@ export function WingKingsGlobalStyle() {
         display: block;
         margin-bottom: 8px;
         color: rgba(255,255,255,0.45);
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.08em;
@@ -2504,7 +2504,7 @@ export function WingKingsGlobalStyle() {
         justify-content: space-between;
         gap: 10px;
         color: #fff;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 16px;
         font-weight: 700;
       }
@@ -2563,7 +2563,7 @@ export function WingKingsGlobalStyle() {
         background: transparent;
         color-scheme: dark;
         color: #fff;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 16px;
         font-weight: 700;
         line-height: 1.25;
@@ -2579,7 +2579,7 @@ export function WingKingsGlobalStyle() {
       .wk-order-settings-select option {
         background: #221d19;
         color: #fff3e3;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-weight: 600;
       }
 
@@ -2619,7 +2619,7 @@ export function WingKingsGlobalStyle() {
         border: 1px solid rgba(245,166,35,0.45);
         background: rgba(245,166,35,0.12);
         color: rgba(245,190,120,0.98);
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 12px;
         font-weight: 700;
         letter-spacing: 0.06em;
@@ -2637,7 +2637,7 @@ export function WingKingsGlobalStyle() {
         display: grid;
         gap: 4px;
         color: #fff;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 15px;
         font-weight: 700;
         line-height: 1.4;
@@ -2651,7 +2651,7 @@ export function WingKingsGlobalStyle() {
 
       .wk-order-settings-address-empty {
         color: rgba(255,255,255,0.62);
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 14px;
         font-weight: 600;
         line-height: 1.4;
@@ -2660,7 +2660,7 @@ export function WingKingsGlobalStyle() {
       .wk-order-settings-address-error {
         margin: 10px 0 0;
         color: #ffb2a7;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 13px;
         font-weight: 700;
         line-height: 1.4;
@@ -2707,7 +2707,7 @@ export function WingKingsGlobalStyle() {
         background: rgba(0,0,0,0.35);
         padding: 8px 8px 8px 12px;
         color: #fff;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         transition: border-color 0.15s ease, background 0.15s ease;
       }
 
@@ -2790,7 +2790,7 @@ export function WingKingsGlobalStyle() {
 
       .wk-address-picker-empty {
         color: rgba(255,255,255,0.58);
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 14px;
         font-weight: 600;
         margin: 0 0 12px;
@@ -2806,7 +2806,7 @@ export function WingKingsGlobalStyle() {
         border: 1px dashed rgba(245,166,35,0.45);
         background: rgba(245,166,35,0.08);
         color: rgba(245,190,120,0.98);
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 13px;
         font-weight: 700;
         letter-spacing: 0.05em;
@@ -2827,7 +2827,7 @@ export function WingKingsGlobalStyle() {
         border: 1px solid rgba(245,166,35,0.25);
         background: rgba(0,0,0,0.35);
         color: #f5a623;
-        font-family: 'Bebas Neue', sans-serif;
+        font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
         letter-spacing: 4px;
         text-align: center;
       }
@@ -2878,7 +2878,7 @@ export function WingKingsGlobalStyle() {
 
       .wk-section-heading {
         position: relative;
-        font-family: 'Bebas Neue', sans-serif;
+        font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
         font-size: clamp(22px, 6vw, 32px);
         letter-spacing: clamp(1px, 0.6vw, 4px);
         line-height: 1.05;
@@ -2924,7 +2924,7 @@ export function WingKingsGlobalStyle() {
         background: rgba(12,12,12,0.7);
         border-color: rgba(255,166,35,0.22);
         color: #fff6e8;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 16px;
         font-weight: 700;
         line-height: 1.45;
@@ -2935,7 +2935,7 @@ export function WingKingsGlobalStyle() {
         display: block;
         margin-bottom: 4px;
         color: #f5a623;
-        font-family: 'Bebas Neue', sans-serif;
+        font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
         font-size: 16px;
         letter-spacing: 2px;
         text-transform: uppercase;
@@ -2971,7 +2971,7 @@ export function WingKingsGlobalStyle() {
         background: rgba(14, 12, 10, 0.94);
         box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
         color: #ffbc00;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 15px;
         font-weight: 700;
         text-align: center;
@@ -3079,7 +3079,7 @@ export function WingKingsGlobalStyle() {
       }
 
       .wk-method-step {
-        font-family: 'Bebas Neue', sans-serif;
+        font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
         letter-spacing: 4px;
         font-size: 16px;
         color: #ffcd00;
@@ -3087,7 +3087,7 @@ export function WingKingsGlobalStyle() {
 
       .wk-method-title {
         margin: 10px 0 6px;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         letter-spacing: 2px;
         font-size: clamp(28px, 3.4vw, 44px);
         line-height: 1.05;
@@ -3219,13 +3219,13 @@ export function WingKingsGlobalStyle() {
         border: 1px solid rgba(245,166,35,0.35);
         background: rgba(245,166,35,0.12);
         color: rgba(245,166,35,0.95);
-        font-family: 'Bebas Neue', sans-serif;
+        font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
         font-size: 14px;
         letter-spacing: 2px;
       }
 
       .wk-method-option-name {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         letter-spacing: 2px;
         font-size: 22px;
         margin-bottom: 6px;
@@ -3277,7 +3277,7 @@ export function WingKingsGlobalStyle() {
         display: block;
         margin-bottom: 8px;
         color: #ffcd00;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.08em;
@@ -3291,7 +3291,7 @@ export function WingKingsGlobalStyle() {
         outline: none;
         background: transparent;
         color: #fff;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 16px;
         font-weight: 700;
       }
@@ -3347,7 +3347,7 @@ export function WingKingsGlobalStyle() {
         border: none;
         background: transparent;
         color: #ffcd00;
-        font-family: 'Outfit', 'Poppins', sans-serif;
+        font-family: var(--font-outfit), var(--font-poppins), 'Outfit', 'Poppins', sans-serif;
         font-size: 14px;
         font-weight: 700;
         cursor: pointer;
@@ -3365,7 +3365,7 @@ export function WingKingsGlobalStyle() {
         border: 1px solid rgba(245,166,35,0.55);
         background: linear-gradient(135deg, #ff4d00 0%, #ff8c00 45%, #ffd700 100%);
         color: #111;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         letter-spacing: 2px;
         text-transform: uppercase;
         cursor: pointer;
@@ -3470,7 +3470,7 @@ export function WingKingsGlobalStyle() {
         right: 20px;
         background: linear-gradient(135deg, #ff4d00, #ffaa00);
         color: #000;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 12px;
         letter-spacing: 3px;
         font-weight: 700;
@@ -3503,7 +3503,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #spotlight .spotlight-title {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(40px, 4.5vw, 64px);
         letter-spacing: 2px;
         line-height: 1;
@@ -3553,7 +3553,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #spotlight .spotlight-price {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(38px, 4vw, 56px);
         line-height: 1;
         margin: 0 0 28px;
@@ -3574,7 +3574,7 @@ export function WingKingsGlobalStyle() {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 18px;
         letter-spacing: 3px;
         text-transform: uppercase;
@@ -3742,7 +3742,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #newsletter .newsletter-inner h3 {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(28px, 4vw, 42px);
         letter-spacing: 3px;
         margin: 0 0 12px;
@@ -3761,7 +3761,7 @@ export function WingKingsGlobalStyle() {
         background: linear-gradient(135deg, #ff4d00, #ffaa00);
         border: none;
         color: #000;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 14px;
         letter-spacing: 2px;
         padding: 14px 28px;
@@ -3832,7 +3832,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #cta .order-cta-title {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         text-transform: uppercase;
         margin: 0;
         line-height: 1.02;
@@ -3913,7 +3913,7 @@ export function WingKingsGlobalStyle() {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 18px;
         letter-spacing: 3px;
         text-transform: uppercase;
@@ -4153,7 +4153,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #footer .nav-brand {
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: 32px;
         letter-spacing: 3px;
         margin-bottom: 8px;
@@ -4177,7 +4177,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #footer .footer-col h3 {
-        font-family: 'Oswald', sans-serif;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
         font-size: clamp(15px, 1.25vw, 18px);
         letter-spacing: 2.4px;
         color: #ff4d00;
@@ -4214,7 +4214,7 @@ export function WingKingsGlobalStyle() {
       #footer .footer-col a,
       #footer .footer-col p,
       #footer .footer-hours-toggle {
-        font-family: 'Rajdhani', sans-serif;
+        font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
         font-size: 15px;
         color: #ffd500;
         text-decoration: none;
@@ -4235,7 +4235,7 @@ export function WingKingsGlobalStyle() {
       }
 
       #footer .footer-menu-loading {
-        font-family: 'Rajdhani', sans-serif;
+        font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
         font-size: 15px;
         color: rgba(255, 213, 0, 0.55);
       }
@@ -4720,7 +4720,7 @@ export function WingKingsGlobalStyle() {
         border: none;
         background: rgba(255, 255, 255, 0.08);
         color: #ff9a5c;
-        font-family: 'Bebas Neue', sans-serif;
+        font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
         font-size: 18px;
         line-height: 1;
         display: flex;
@@ -4768,7 +4768,7 @@ export function WingKingsGlobalStyle() {
         margin-top: 0;
         padding: 0.75rem 1.6rem 0.75rem 1.4rem;
         border-radius: 999px;
-        font-family: 'DM Sans', sans-serif;
+        font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
         font-weight: 700;
         font-size: 1.05rem;
         letter-spacing: 0.03em;
@@ -4822,7 +4822,7 @@ export function WingKingsGlobalStyle() {
         cursor: pointer;
         background: linear-gradient(135deg, #ff4d00, #ff6b00, #ffaa00);
         color: #000;
-        font-family: 'Black Han Sans', sans-serif;
+        font-family: var(--font-black-han-sans), 'Black Han Sans', sans-serif;
         font-size: clamp(16px, 2vw, 18px);
         letter-spacing: 3px;
         text-transform: uppercase;
