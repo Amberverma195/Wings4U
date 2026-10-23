@@ -51,6 +51,7 @@ test('only the identified first-order card gets disclosures and still applies it
   await act(async () => jest.advanceTimersByTime(300));
   await act(async () => renderer.root.findByProps({ className: 'cart-see-coupons-btn' }).props.onClick());
   const cards = renderer.root.findAllByType('button');
+  expect(text(renderer.root.findByProps({ 'aria-labelledby': 'coupons-modal-title' }))).toContain('75 & 100 Wing Party Specials are excluded from all coupons.');
   const first = cards.find(n => text(n).includes('CUSTOMWELCOME'));
   const other = cards.find(n => text(n).includes('MYFIRSTORDER'));
   expect(text(first)).toContain(note); expect(text(other)).not.toContain(note);

@@ -1178,6 +1178,7 @@ export function CartPage() {
               </button>
             ) : null}
 
+            <p style={{ margin: "12px 0 0", color: "#5f5146", fontSize: 13, lineHeight: 1.5 }}>75 &amp; 100 Wing Party Specials are excluded from all coupons.</p>
             {!couponsRefreshing ? activePromos.map((promo) => {
               const isApplied = confirmedPromoCodes.has(promo.code.toUpperCase());
               const isAutomatic = Boolean(promo.autoApply);

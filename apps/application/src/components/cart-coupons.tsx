@@ -113,6 +113,7 @@ export function CartCoupons({ quote, requestSelection, onValidated, disabled, co
           <View style={s.header}><Text accessibilityRole="header" style={s.title}>Available Coupons</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close coupons" onPress={close} style={s.close}><Text>Close</Text></TouchableOpacity></View>
           <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+            <Text style={s.meta}>75 &amp; 100 Wing Party Specials are excluded from all coupons.</Text>
             {loading ? <View accessibilityLiveRegion="polite"><ActivityIndicator color="#F97316" /><Text>Checking coupons</Text></View> : null}
             {rewardAvailable ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Apply Wings Reward" disabled={Boolean(busy) || rewardApplied || loading}
               accessibilityState={{ disabled: Boolean(busy) || rewardApplied || loading, selected: rewardApplied }} style={[s.card, rewardApplied && s.appliedCard]}

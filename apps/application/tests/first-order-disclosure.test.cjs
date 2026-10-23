@@ -27,6 +27,7 @@ test.each(['PICKUP', 'DELIVERY'])('first-order details are associated by ID and 
   await act(async () => { renderer = create(React.createElement(CartCoupons, { quote: null, requestSelection })); });
   await act(async () => renderer.root.findByProps({ accessibilityLabel: 'See coupons & rewards' }).props.onPress());
   const first = renderer.root.findByProps({ accessibilityLabel: 'Apply coupon CUSTOMWELCOME' });
+  expect(text(renderer.root.findByType('ScrollView'))).toContain('75 & 100 Wing Party Specials are excluded from all coupons.');
   const other = renderer.root.findByProps({ accessibilityLabel: 'Apply coupon MYFIRSTORDER' });
   const note = 'First order only. Pickup & delivery · Lunch Specials eligible. Excludes 75 & 100 Wing Party Specials.';
   expect(text(first)).toContain(note); expect(text(other)).not.toContain(note);
