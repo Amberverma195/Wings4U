@@ -46,6 +46,19 @@ function serialize(r: Record<string, unknown>) {
   };
 }
 
+function serializeAdminReview(r: Record<string, unknown>) {
+  const order = r.order as Record<string, unknown> | undefined;
+  const orderItem = r.orderItem as Record<string, unknown> | undefined;
+  return {
+    ...serialize(r),
+    order_number: (order?.orderNumber as string) ?? null,
+    customer_name: (order?.customerNameSnapshot as string) ?? null,
+    customer_phone: (order?.customerPhoneSnapshot as string) ?? null,
+    customer_email: (order?.customerEmailSnapshot as string) ?? null,
+    item_name: (orderItem?.productNameSnapshot as string) ?? null,
+  };
+}
+
 @Injectable()
 export class ReviewsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -131,6 +144,9 @@ export class ReviewsService {
 
   /**
    * Admin list — paginated across all reviews, newest first.
+   * Enriches review records with associated order and item snapshots
+   * (orderNumber, customer name/phone/email snapshots, item name)
+   * while respecting customer data erasure/anonymization.
    */
   async listAllForAdmin(params: {
     limit?: number;
@@ -150,12 +166,28 @@ export class ReviewsService {
       orderBy: { createdAt: "desc" },
       take: take + 1,
       ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            customerNameSnapshot: true,
+            customerPhoneSnapshot: true,
+            customerEmailSnapshot: true,
+          },
+        },
+        orderItem: {
+          select: {
+            productNameSnapshot: true,
+            categoryNameSnapshot: true,
+          },
+        },
+      },
     });
 
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
     return {
-      items: page.map((r) => serialize(r as unknown as Record<string, unknown>)),
+      items: page.map((r) => serializeAdminReview(r as unknown as Record<string, unknown>)),
       next_cursor: hasMore ? page[page.length - 1].id : null,
     };
   }
@@ -181,13 +213,29 @@ export class ReviewsService {
         adminRepliedAt: new Date(),
         adminRepliedByUserId: params.adminUserId,
       },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            customerNameSnapshot: true,
+            customerPhoneSnapshot: true,
+            customerEmailSnapshot: true,
+          },
+        },
+        orderItem: {
+          select: {
+            productNameSnapshot: true,
+            categoryNameSnapshot: true,
+          },
+        },
+      },
     });
-    return serialize(updated as unknown as Record<string, unknown>);
+    return serializeAdminReview(updated as unknown as Record<string, unknown>);
   }
 
   /**
    * PRD §14.3 — reviews are internal by default; `is_approved_public` is
-   * toggled by the owner to publish a review externally.
+   * toggled by the owner/admin to publish a review externally.
    */
   async setPublish(params: SetPublishParams) {
     const existing = await this.prisma.itemReview.findUnique({
@@ -198,7 +246,64 @@ export class ReviewsService {
     const updated = await this.prisma.itemReview.update({
       where: { id: params.reviewId },
       data: { isApprovedPublic: params.publish },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            customerNameSnapshot: true,
+            customerPhoneSnapshot: true,
+            customerEmailSnapshot: true,
+          },
+        },
+        orderItem: {
+          select: {
+            productNameSnapshot: true,
+            categoryNameSnapshot: true,
+          },
+        },
+      },
     });
-    return serialize(updated as unknown as Record<string, unknown>);
+    return serializeAdminReview(updated as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Public genuine customer testimonials for homepage.
+   * STRICT PRIVACY REQUIREMENTS:
+   * - Retrieves ONLY records with `isApprovedPublic = true`.
+   * - Never exposes private customer identifiers, email, phone, order IDs, or order item IDs.
+   * - Provides neutral attribution ("Verified Wings4U Customer").
+   * - Returns original rating, comment, reviewed item name, and admin reply if present.
+   */
+  async listPublicApproved(limit = 10) {
+    const take = Math.min(Math.max(limit, 1), 50);
+    const rows = await this.prisma.itemReview.findMany({
+      where: { isApprovedPublic: true },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        rating: true,
+        reviewBody: true,
+        createdAt: true,
+        adminReply: true,
+        adminRepliedAt: true,
+        orderItem: {
+          select: {
+            productNameSnapshot: true,
+          },
+        },
+      },
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.reviewBody,
+      item_name: r.orderItem?.productNameSnapshot ?? null,
+      attribution: "Verified Wings4U Customer",
+      created_at: r.createdAt,
+      admin_reply: r.adminReply,
+      admin_replied_at: r.adminRepliedAt,
+    }));
   }
 }

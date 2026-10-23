@@ -7,6 +7,7 @@ import { WingKingsGlobalStyle } from "@/Wings4u/components/global-style";
 import { OrderCtaSection } from "@/Wings4u/components/order-cta-section";
 // import { SpotlightSection } from "@/Wings4u/components/spotlight-section";
 import { TestimonialsSection } from "@/Wings4u/components/testimonials-section";
+import { NewsletterSection } from "@/Wings4u/components/newsletter-section";
 import { GuestCartExpiryBanner } from "@/components/guest-cart-expiry-banner";
 import { AuthHandoffErrorToast } from "@/components/auth-handoff-error-toast";
 import { SiteFooter } from "@/components/site-footer";
@@ -127,6 +128,7 @@ export function WingKingsShell({ children }: { children: ReactNode }) {
         {children}
         {/* {showMarketingSections ? <SpotlightSection /> : null} */}
         {showMarketingSections ? <TestimonialsSection /> : null}
+        {showMarketingSections ? <NewsletterSection /> : null}
         {showMarketingSections ? <OrderCtaSection /> : null}
       </ContentShell>
       <SiteFooter />

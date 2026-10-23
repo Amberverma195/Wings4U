@@ -20,7 +20,7 @@ import {
 } from "class-validator";
 import type { Request } from "express";
 import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
-import { Roles } from "../../common/decorators/roles.decorator";
+import { Public, Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { RATE_LIMITS } from "../rate-limit/rate-limit.policies";
 import { RateLimiterService, rateLimitKeyPart } from "../rate-limit/rate-limit.service";
@@ -67,14 +67,25 @@ class AdminListQueryDto {
 }
 
 @Controller()
-@UseGuards(LocationScopeGuard)
 export class ReviewsController {
   constructor(
     private readonly reviewsService: ReviewsService,
     private readonly rateLimiter: RateLimiterService,
   ) {}
 
+  /**
+   * Public customer testimonials for the homepage.
+   * Only returns reviews explicitly approved for public display (`isApprovedPublic = true`).
+   * Omits all customer PII, emails, phone numbers, and internal IDs.
+   */
+  @Get("reviews/public")
+  @Public()
+  async listPublicReviews() {
+    return this.reviewsService.listPublicApproved();
+  }
+
   @Post("orders/:orderId/order-items/:orderItemId/reviews")
+  @UseGuards(LocationScopeGuard)
   @Roles("CUSTOMER")
   async create(
     @Param("orderId", ParseUUIDPipe) orderId: string,
@@ -103,6 +114,7 @@ export class ReviewsController {
   }
 
   @Get("orders/:orderId/reviews")
+  @UseGuards(LocationScopeGuard)
   @Roles("CUSTOMER", "STAFF", "ADMIN")
   async listForOrder(
     @Param("orderId", ParseUUIDPipe) orderId: string,
@@ -112,6 +124,7 @@ export class ReviewsController {
   }
 
   @Get("admin/reviews")
+  @UseGuards(LocationScopeGuard)
   @Roles("ADMIN")
   async adminList(@Query() query: AdminListQueryDto) {
     const limit = query.limit ? parseInt(query.limit, 10) : undefined;
@@ -127,6 +140,7 @@ export class ReviewsController {
   }
 
   @Post("admin/reviews/:id/reply")
+  @UseGuards(LocationScopeGuard)
   @Roles("ADMIN")
   async reply(
     @Param("id", ParseUUIDPipe) reviewId: string,
@@ -141,6 +155,7 @@ export class ReviewsController {
   }
 
   @Post("admin/reviews/:id/publish")
+  @UseGuards(LocationScopeGuard)
   @Roles("ADMIN")
   async setPublish(
     @Param("id", ParseUUIDPipe) reviewId: string,

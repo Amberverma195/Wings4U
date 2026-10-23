@@ -17,6 +17,11 @@ type ReviewRecord = {
   admin_replied_by_user_id: string | null;
   created_at: string;
   updated_at: string;
+  order_number?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
+  item_name?: string | null;
 };
 
 type ListResponse = {
@@ -65,13 +70,13 @@ function ReviewCard({
           body?.errors?.[0]?.message ?? `Reply failed (${res.status})`,
         );
       }
-      onUpdated(body.data as ReviewRecord);
+      onUpdated({ ...review, ...(body.data as ReviewRecord) });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Reply failed");
     } finally {
       setBusy(null);
     }
-  }, [review.id, reply, session, onUpdated]);
+  }, [review, reply, session, onUpdated]);
 
   const togglePublish = useCallback(async () => {
     setBusy("publish");
@@ -93,58 +98,137 @@ function ReviewCard({
           body?.errors?.[0]?.message ?? `Publish failed (${res.status})`,
         );
       }
-      onUpdated(body.data as ReviewRecord);
+      onUpdated({ ...review, ...(body.data as ReviewRecord) });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Publish failed");
     } finally {
       setBusy(null);
     }
-  }, [review.id, review.is_approved_public, session, onUpdated]);
+  }, [review, session, onUpdated]);
+
+  const customerName = review.customer_name || "Customer";
+  const orderNumber = review.order_number ? `#${review.order_number}` : review.order_id.slice(0, 8);
+  const itemName = review.item_name || "Menu item";
 
   return (
     <div
       className="surface-card"
-      style={{ marginBottom: "1rem", padding: "1rem" }}
+      style={{ marginBottom: "1rem", padding: "1.25rem" }}
     >
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "space-between",
-          marginBottom: "0.5rem",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+          marginBottom: "0.75rem",
         }}
       >
         <div>
-          <Stars value={review.rating} />
-          <span
-            className="surface-muted"
-            style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}
-          >
-            {new Date(review.created_at).toLocaleString()}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Stars value={review.rating} />
+            <span
+              className="surface-muted"
+              style={{ fontSize: "0.85rem" }}
+            >
+              {new Date(review.created_at).toLocaleString()}
+            </span>
+          </div>
+          <div style={{ marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                padding: "2px 8px",
+                borderRadius: "4px",
+                background: review.is_approved_public
+                  ? "rgba(38, 166, 91, 0.15)"
+                  : "rgba(180, 100, 0, 0.15)",
+                color: review.is_approved_public ? "#26a65b" : "#d97706",
+                border: review.is_approved_public
+                  ? "1px solid rgba(38, 166, 91, 0.3)"
+                  : "1px solid rgba(180, 100, 0, 0.3)",
+              }}
+            >
+              {review.is_approved_public ? "Published Publicly" : "Internal Only (Unpublished)"}
+            </span>
+          </div>
         </div>
+
         <button
           type="button"
           className={review.is_approved_public ? "btn-secondary" : "btn-primary"}
           disabled={busy !== null}
           onClick={togglePublish}
         >
-          {review.is_approved_public ? "Unpublish" : "Publish"}
+          {busy === "publish"
+            ? "Updating…"
+            : review.is_approved_public
+              ? "Unpublish"
+              : "Publish"}
         </button>
       </div>
-      {review.review_body && (
-        <p style={{ margin: "0 0 0.75rem" }}>{review.review_body}</p>
+
+      {/* Customer & Order Context */}
+      <div
+        style={{
+          padding: "0.75rem",
+          borderRadius: "0.375rem",
+          background: "rgba(255, 255, 255, 0.04)",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          marginBottom: "0.75rem",
+          fontSize: "0.85rem",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "0.5rem",
+        }}
+      >
+        <div>
+          <strong style={{ color: "#ffd500" }}>Customer:</strong> {customerName}
+          {review.customer_phone ? (
+            <div className="surface-muted" style={{ fontSize: "0.8rem" }}>
+              Phone: {review.customer_phone}
+            </div>
+          ) : null}
+          {review.customer_email ? (
+            <div className="surface-muted" style={{ fontSize: "0.8rem" }}>
+              Email: {review.customer_email}
+            </div>
+          ) : null}
+        </div>
+        <div>
+          <strong style={{ color: "#ffd500" }}>Order:</strong> {orderNumber}
+          <div className="surface-muted" style={{ fontSize: "0.8rem" }}>
+            Reviewed item: <strong>{itemName}</strong>
+          </div>
+        </div>
+      </div>
+
+      {review.review_body ? (
+        <p style={{ margin: "0 0 0.75rem", fontStyle: "italic", fontSize: "0.95rem" }}>
+          &ldquo;{review.review_body}&rdquo;
+        </p>
+      ) : (
+        <p className="surface-muted" style={{ margin: "0 0 0.75rem", fontStyle: "italic", fontSize: "0.85rem" }}>
+          (No written comment provided)
+        </p>
       )}
-      <p className="surface-muted" style={{ fontSize: "0.75rem", margin: 0 }}>
-        Order: {review.order_id} — Item: {review.order_item_id}
-      </p>
+
+      {/* Collapsible Technical IDs for Troubleshooting */}
+      <details className="surface-muted" style={{ fontSize: "0.75rem", margin: "0.5rem 0" }}>
+        <summary style={{ cursor: "pointer" }}>Technical IDs for troubleshooting</summary>
+        <div style={{ marginTop: "0.25rem", paddingLeft: "0.5rem", borderLeft: "2px solid rgba(255, 255, 255, 0.1)" }}>
+          Order ID: {review.order_id} · Item ID: {review.order_item_id} · User ID: {review.customer_user_id} · Review ID: {review.id}
+        </div>
+      </details>
 
       <div style={{ marginTop: "0.75rem" }}>
         <label
           htmlFor={`reply-${review.id}`}
           style={{ fontSize: "0.85rem", fontWeight: 600 }}
         >
-          Reply
+          Admin Reply
         </label>
         <textarea
           id={`reply-${review.id}`}
@@ -152,6 +236,7 @@ function ReviewCard({
           onChange={(e) => setReply(e.target.value)}
           rows={2}
           maxLength={2000}
+          placeholder="Write a reply visible to the customer on their order details..."
           style={{
             display: "block",
             width: "100%",
@@ -163,27 +248,28 @@ function ReviewCard({
             resize: "vertical",
           }}
         />
-        <button
-          type="button"
-          className="btn-primary"
-          style={{ marginTop: "0.5rem" }}
-          disabled={busy !== null || reply.trim().length < 1}
-          onClick={submitReply}
-        >
-          {busy === "reply"
-            ? "Saving…"
-            : review.admin_reply
-              ? "Update reply"
-              : "Send reply"}
-        </button>
-        {review.admin_replied_at && (
-          <span
-            className="surface-muted"
-            style={{ marginLeft: "0.5rem", fontSize: "0.8rem" }}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy !== null || reply.trim().length < 1}
+            onClick={submitReply}
           >
-            Last replied {new Date(review.admin_replied_at).toLocaleString()}
-          </span>
-        )}
+            {busy === "reply"
+              ? "Saving…"
+              : review.admin_reply
+                ? "Update reply"
+                : "Save reply"}
+          </button>
+          {review.admin_replied_at && (
+            <span
+              className="surface-muted"
+              style={{ fontSize: "0.8rem" }}
+            >
+              Last replied {new Date(review.admin_replied_at).toLocaleString()}
+            </span>
+          )}
+        </div>
       </div>
       {error && (
         <p

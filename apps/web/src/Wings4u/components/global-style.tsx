@@ -1739,22 +1739,65 @@ export function WingKingsGlobalStyle() {
         font-weight: 700;
       }
 
-      #testimonials .tcard-handle {
-        font-size: 11px;
-        color: #8a6030;
+      #testimonials .testimonials-single-wrapper {
+        display: flex;
+        justify-content: center;
+        padding: 8px 7% 24px;
+        box-sizing: border-box;
       }
 
-      #testimonials .tcard-source {
+      #testimonials .tcard--single {
+        min-width: unset;
+        max-width: 560px;
+        width: 100%;
+        padding: 32px;
+      }
+
+      #testimonials .tcard-item-tag {
         display: inline-block;
-        margin-top: 10px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 2px;
-        padding: 3px 8px;
-        border-radius: 3px;
-        background: rgba(255, 107, 0, 0.15);
-        border: 1px solid rgba(255, 107, 0, 0.3);
+        font-family: var(--font-rajdhani), 'Rajdhani', sans-serif;
+        font-size: 12px;
+        letter-spacing: 1px;
         color: #ffaa00;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+      }
+
+      #testimonials .tcard-item-tag strong {
+        color: #ffd500;
+      }
+
+      #testimonials .tcard-date {
+        font-size: 11px;
+        color: #8a6030;
+        margin-top: 2px;
+      }
+
+      #testimonials .tcard-admin-reply {
+        margin-top: 16px;
+        padding: 12px 14px;
+        background: rgba(255, 107, 0, 0.08);
+        border-left: 3px solid #ff6b00;
+        border-radius: 0 8px 8px 0;
+      }
+
+      #testimonials .tcard-admin-reply__label {
+        display: block;
+        font-family: var(--font-oswald), 'Oswald', sans-serif;
+        font-size: 11px;
+        letter-spacing: 1px;
+        color: #ffd500;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      #testimonials .tcard-admin-reply__text {
+        font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+        font-size: 13px;
+        color: #eedd99;
+        margin: 0;
+        line-height: 1.5;
       }
 
       #testimonials .testimonials-sr-list {
@@ -1767,10 +1810,6 @@ export function WingKingsGlobalStyle() {
         clip: rect(0, 0, 0, 0);
         white-space: nowrap;
         border: 0;
-      }
-
-      #testimonials .testimonials-newsletter {
-        margin-top: 72px;
       }
 
       @media (prefers-reduced-motion: reduce) {
