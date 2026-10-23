@@ -9,7 +9,7 @@ jest.mock('expo-device', () => ({ get isDevice() { return mockIsDevice; } }));
 jest.mock('react-native', () => ({ Platform: mockPlatform }));
 const configure = require('../app.config');
 const appJson = require('../app.json').expo;
-const { getApiBase, getRealtimeOrigin } = require('../src/lib/env');
+const { getApiBase, getRealtimeOrigin, getPrivacyPolicyUrl, getTermsOfServiceUrl } = require('../src/lib/env');
 
 const VARS = ['EAS_BUILD_PROFILE', 'MOBILE_APP_ENV', 'EXPO_PUBLIC_API_ORIGIN', 'EXPO_PUBLIC_REALTIME_ORIGIN', 'MOBILE_DEV_REMOTE_API', 'MOBILE_REALTIME_SAME_BACKEND_AS'];
 const original = process.env;
@@ -33,6 +33,14 @@ function resolve({ env = {}, device, developmentApiOrigin = LAN_DEFAULT, release
 }
 
 afterEach(() => { process.env = original; global.__DEV__ = previousDev; });
+
+test('release config feeds website legal URLs to the runtime while REST uses Railway', () => {
+  const apiOrigin = 'https://wings4uapi-production.up.railway.app';
+  expect(resolve({ device: ANDROID_PHONE, release: true, env: { EXPO_PUBLIC_API_ORIGIN: apiOrigin } }))
+    .toEqual({ rest: apiOrigin, realtime: apiOrigin });
+  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/privacy');
+  expect(getTermsOfServiceUrl()).toBe('https://www.wings4ulondon.ca/terms');
+});
 
 describe('development', () => {
   test('Android emulator with the default LAN settings uses the host loopback for both', () => {

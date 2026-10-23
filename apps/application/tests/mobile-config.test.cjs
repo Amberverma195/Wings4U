@@ -4,6 +4,20 @@ const config = require('../app.json').expo;
 const original = process.env;
 beforeEach(() => { process.env = { ...original, NODE_ENV: 'test' }; for (const key of ['EAS_BUILD_PROFILE', 'MOBILE_APP_ENV', 'EXPO_PUBLIC_API_ORIGIN', 'EXPO_PUBLIC_REALTIME_ORIGIN', 'MOBILE_DEV_REMOTE_API', 'MOBILE_REALTIME_SAME_BACKEND_AS']) delete process.env[key]; });
 afterEach(() => { process.env = original; });
+
+test.each(['production', 'preview'])('%s explicitly configures the public website with a Railway API', profile => {
+  process.env.EAS_BUILD_PROFILE = profile;
+  process.env.EXPO_PUBLIC_API_ORIGIN = 'https://wings4uapi-production.up.railway.app';
+  const extra = configure({ config }).extra;
+  expect(extra.websiteUrl).toBe('https://www.wings4ulondon.ca');
+  expect(extra.apiOrigin).toBe('https://wings4uapi-production.up.railway.app');
+});
+
+test.each([undefined, '', 'http://www.wings4ulondon.ca', 'https://localhost', 'https://example.com/privacy', 'https://user:pass@example.com', 'https://example.com?x=1', 'https://example.com#x'])('production rejects missing or invalid website origin %s', websiteUrl => {
+  process.env.EAS_BUILD_PROFILE = 'production';
+  process.env.EXPO_PUBLIC_API_ORIGIN = 'https://wings4uapi-production.up.railway.app';
+  expect(() => configure({ config: { ...config, extra: { ...config.extra, websiteUrl } } })).toThrow('websiteUrl');
+});
 test('local development retains the configured LAN workflow', () => {
   expect(configure({ config }).extra.apiOrigin).toBe('http://10.0.0.192:3001');
 });

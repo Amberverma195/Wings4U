@@ -1,4 +1,5 @@
 const { validateApiOrigin, isLocalDevelopmentOrigin, realtimeTargetsApi } = require('./config/api-origin.cjs');
+const { PUBLIC_WEBSITE_ORIGIN, validateWebsiteOrigin } = require('./config/website-origin.cjs');
 
 const REMOTE_DEVELOPMENT_OPT_IN = 'MOBILE_DEV_REMOTE_API';
 const REALTIME_ALIAS = 'MOBILE_REALTIME_SAME_BACKEND_AS';
@@ -32,6 +33,7 @@ module.exports = ({ config }) => {
     (profile ? (profile === 'development' ? 'development' : 'production') : process.env.NODE_ENV === 'production' ? 'production' : 'development');
   if (!['development', 'production'].includes(environment)) throw new Error('MOBILE_APP_ENV must be development or production.');
   const production = environment === 'production';
+  const websiteUrl = validateWebsiteOrigin(config.extra?.websiteUrl ?? (production ? '' : PUBLIC_WEBSITE_ORIGIN), production);
   const explicitApiOrigin = process.env.EXPO_PUBLIC_API_ORIGIN;
   const apiOrigin = explicitApiOrigin || (production ? '' : config.extra?.developmentApiOrigin);
   if (production && !apiOrigin) throw new Error('Set EXPO_PUBLIC_API_ORIGIN to the website\'s deployed NestJS API origin for production mobile builds.');
@@ -50,6 +52,7 @@ module.exports = ({ config }) => {
   }
   const realtimeAliasOf = validateRealtimePairing(validatedApiOrigin, validatedRealtimeOrigin, production);
   return { ...config, extra: { ...config.extra, environment,
+    websiteUrl,
     apiOrigin: validatedApiOrigin,
     apiOriginExplicit: Boolean(explicitApiOrigin),
     realtimeOrigin: validatedRealtimeOrigin,

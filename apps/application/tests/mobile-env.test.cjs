@@ -4,10 +4,10 @@ jest.mock('expo-constants', () => ({ __esModule: true, default: { get expoConfig
 jest.mock('react-native', () => ({ Platform: mockPlatform }));
 const { getApiBase, getRealtimeOrigin, getPrivacyPolicyUrl, getTermsOfServiceUrl } = require('../src/lib/env');
 const previousDev = global.__DEV__;
-beforeEach(() => { mockExtra = {}; mockPlatform.OS = 'ios'; });
+beforeEach(() => { mockExtra = {}; mockPlatform.OS = 'ios'; global.__DEV__ = true; });
 
 test('legal terms use the configured public policy website without query or fragment', () => {
-  mockExtra.privacyPolicyUrl = 'https://www.wings4ulondon.ca/privacy?source=app#rights';
+  mockExtra.websiteUrl = 'https://www.wings4ulondon.ca/';
   expect(getTermsOfServiceUrl()).toBe('https://www.wings4ulondon.ca/terms');
 });
 afterEach(() => { global.__DEV__ = previousDev; });
@@ -66,12 +66,12 @@ test('production environment cannot use the Android emulator override', () => {
   expect(getApiBase()).toBe('https://api.example.com');
 });
 
-test('getPrivacyPolicyUrl derives the wings4ulondon.ca website domain from the api subdomain', () => {
+test('legal URLs never derive their website from the API subdomain', () => {
   global.__DEV__ = false;
   mockExtra = { environment: 'production', apiOrigin: 'https://api.wings4ulondon.ca' };
   const url = getPrivacyPolicyUrl();
-  expect(url).toBe('https://wings4ulondon.ca/privacy');
-  expect(new URL(url).hostname).toBe('wings4ulondon.ca');
+  expect(url).toBe('https://www.wings4ulondon.ca/privacy');
+  expect(new URL(url).hostname).toBe('www.wings4ulondon.ca');
   expect(new URL(url).pathname).toBe('/privacy');
 });
 
@@ -89,5 +89,22 @@ test('getPrivacyPolicyUrl derives from explicit websiteUrl or privacyPolicyUrl w
   expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/privacy');
 
   mockExtra = { privacyPolicyUrl: 'https://www.wings4ulondon.ca/legal/privacy' };
-  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/legal/privacy');
+  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/privacy');
+});
+
+test.each(['https://wings4uapi-production.up.railway.app', 'https://api.wings4ulondon.ca'])('production legal links stay on the website with API %s', apiOrigin => {
+  global.__DEV__ = false;
+  mockExtra = { environment: 'production', apiOrigin, websiteUrl: 'https://www.wings4ulondon.ca' };
+  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/privacy');
+  expect(getTermsOfServiceUrl()).toBe('https://www.wings4ulondon.ca/terms');
+  delete mockExtra.websiteUrl;
+  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/privacy');
+  expect(getTermsOfServiceUrl()).toBe('https://www.wings4ulondon.ca/terms');
+});
+
+test('both helpers honor a validated website origin independently of legacy privacy/API extras', () => {
+  global.__DEV__ = false;
+  mockExtra = { websiteUrl: 'https://preview.wings4ulondon.ca/', privacyPolicyUrl: 'https://wrong.example/privacy', apiOrigin: 'https://wings4uapi-production.up.railway.app' };
+  expect(getPrivacyPolicyUrl()).toBe('https://preview.wings4ulondon.ca/privacy');
+  expect(getTermsOfServiceUrl()).toBe('https://preview.wings4ulondon.ca/terms');
 });

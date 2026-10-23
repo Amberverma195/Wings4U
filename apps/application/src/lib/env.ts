@@ -101,41 +101,21 @@ export const STRIPE_PUBLISHABLE_KEY: string = (() => {
   return "pk_test_placeholder";
 })();
 
-/**
- * Privacy policy URL for Wings4U.
- *
- * Uses `extra.privacyPolicyUrl`, `extra.websiteUrl`, or derives from `getApiBase()`.
- */
-export function getPrivacyPolicyUrl(): string {
+/** Public legal documents always use the website, independently of the API host. */
+function getLegalWebsiteOrigin(): string {
+  const { PUBLIC_WEBSITE_ORIGIN, validateWebsiteOrigin } = require('../../config/website-origin.cjs') as {
+    PUBLIC_WEBSITE_ORIGIN: string;
+    validateWebsiteOrigin: (value: unknown, production: boolean) => string;
+  };
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
-  if (typeof extra?.privacyPolicyUrl === "string" && extra.privacyPolicyUrl.trim()) {
-    return extra.privacyPolicyUrl.trim();
-  }
-  if (typeof extra?.websiteUrl === "string" && extra.websiteUrl.trim()) {
-    return `${extra.websiteUrl.trim().replace(/\/$/, "")}/privacy`;
-  }
-  try {
-    const apiBase = getApiBase();
-    if (apiBase.includes(":3001")) {
-      return `${apiBase.replace(":3001", ":3000").replace(/\/$/, "")}/privacy`;
-    }
-    const url = new URL(apiBase);
-    if (url.hostname.startsWith("api.")) {
-      url.hostname = url.hostname.slice(4);
-      url.pathname = "/privacy";
-      return url.toString();
-    }
-    return `${apiBase.replace(/\/$/, "")}/privacy`;
-  } catch {
-    return "https://www.wings4ulondon.ca/privacy";
-  }
+  // Canonical fallback also protects installed builds whose extras predate websiteUrl.
+  return validateWebsiteOrigin(extra?.websiteUrl ?? PUBLIC_WEBSITE_ORIGIN, !__DEV__ || extra?.environment === 'production');
 }
 
-/** Terms live on the same website as the public privacy policy, including configured website origins. */
+export function getPrivacyPolicyUrl(): string {
+  return `${getLegalWebsiteOrigin()}/privacy`;
+}
+
 export function getTermsOfServiceUrl(): string {
-  const url = new URL(getPrivacyPolicyUrl());
-  url.pathname = "/terms";
-  url.search = "";
-  url.hash = "";
-  return url.toString();
+  return `${getLegalWebsiteOrigin()}/terms`;
 }
