@@ -9,6 +9,7 @@ import {
 } from "react";
 import { CustomerAuth } from "@/components/customer-auth";
 import { useSession } from "@/lib/session";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 
 type Props = {
   /** What to render once the user is authenticated. */
@@ -25,7 +26,7 @@ type Props = {
  * loading, render the optional fallback so refreshes do not flash stale UI.
  * While the user is signed out a sign-in modal pops up (re-using the
  * checkout-style amber card). Once they sign in, `CustomerAuth` calls
- * `session.refresh()` internally — that flips `session.authenticated` to true
+ * `session.refresh()` internally â€” that flips `session.authenticated` to true
  * here and the gated `children` mount.
  */
 export function RequireAuthModal({
@@ -53,23 +54,11 @@ export function RequireAuthModal({
 
   const open = session.loaded && !session.authenticated;
 
-  // Lock body scroll while the modal is open. Padding-right preserves layout
-  // when the OS scrollbar disappears.
-  useEffect(() => {
-    if (!open || typeof document === "undefined") return;
-    const { body, documentElement } = document;
-    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
-    const prevOverflow = body.style.overflow;
-    const prevPaddingRight = body.style.paddingRight;
-    body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    return () => {
-      body.style.overflow = prevOverflow;
-      body.style.paddingRight = prevPaddingRight;
-    };
-  }, [open]);
+  useModalDialog({
+    dialogRef: cardRef,
+    active: open,
+    closeOnEscape: false,
+  });
 
   if (!session.loaded) {
     return <>{fallback}</>;
@@ -91,6 +80,7 @@ export function RequireAuthModal({
         <section
           ref={cardRef}
           className="wk-auth-card wk-auth-card--lg"
+          tabIndex={-1}
           onMouseMove={updateRim}
           onMouseEnter={updateRim}
           onMouseLeave={clearRim}

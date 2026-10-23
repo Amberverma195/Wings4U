@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { MdOutlineDelete, MdOutlineEdit } from "react-icons/md";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import {
   DELIVERY_ADDRESSES_UPDATED_EVENT,
   deliveryAddressDedupeKey,
@@ -46,20 +47,21 @@ export function DeliveryAddressPickerPanel({
     }
 
     sync();
-    window.addEventListener(DELIVERY_ADDRESSES_UPDATED_EVENT, sync);
-    return () => window.removeEventListener(DELIVERY_ADDRESSES_UPDATED_EVENT, sync);
+    if (typeof window !== "undefined") {
+      window.addEventListener(DELIVERY_ADDRESSES_UPDATED_EVENT, sync);
+      return () => window.removeEventListener(DELIVERY_ADDRESSES_UPDATED_EVENT, sync);
+    }
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  useModalDialog({
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+    onClose,
+    active: open,
+  });
 
   if (!open) return null;
 
@@ -85,14 +87,17 @@ export function DeliveryAddressPickerPanel({
   return (
     <div className="wk-method-overlay" onMouseDown={onClose} role="presentation">
       <div
+        ref={dialogRef}
         className="wk-method-card wk-address-picker-card"
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="wk-address-picker-title"
+        tabIndex={-1}
       >
         <div className="wk-method-card-inner">
           <button
+            ref={closeButtonRef}
             type="button"
             className="wk-method-close"
             onClick={onClose}

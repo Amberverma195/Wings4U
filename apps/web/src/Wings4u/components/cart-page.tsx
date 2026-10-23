@@ -5,6 +5,7 @@ import { Info } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiJson } from "@/lib/api";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import { getCartItemIssue, issueAffectsLine, type CartItemIssue } from "@/lib/cart-validation";
 import { useCart } from "@/lib/cart";
 import {
@@ -187,6 +188,24 @@ export function CartPage() {
   const closeRewardItemRequiredModal = useCallback(() => {
     setRewardItemRequiredModalOpen(false);
   }, []);
+
+  const couponsDialogRef = useRef<HTMLDivElement>(null);
+  const couponsCloseBtnRef = useRef<HTMLButtonElement>(null);
+
+  useModalDialog({
+    dialogRef: couponsDialogRef,
+    initialFocusRef: couponsCloseBtnRef,
+    onClose: closeCouponsModal,
+    active: couponsModalOpen,
+  });
+
+  const rewardRequiredDialogRef = useRef<HTMLDivElement>(null);
+
+  useModalDialog({
+    dialogRef: rewardRequiredDialogRef,
+    onClose: closeRewardItemRequiredModal,
+    active: rewardItemRequiredModalOpen,
+  });
 
   const refreshActivePromos = useCallback(async (clearFirst = false) => {
     if (clearFirst) setActivePromos([]);
@@ -1118,11 +1137,13 @@ export function CartPage() {
           role="presentation"
         >
           <div
+            ref={couponsDialogRef}
             style={styles.couponsModalCard}
             onMouseDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="coupons-modal-title"
+            tabIndex={-1}
           >
             <header style={styles.couponsModalHeader}>
               <p style={styles.couponsModalEyebrow}>Coupons</p>
@@ -1133,6 +1154,7 @@ export function CartPage() {
                   </h2>
                 </div>
                 <button
+                  ref={couponsCloseBtnRef}
                   type="button"
                   style={styles.couponsModalClose}
                   onClick={closeCouponsModal}
@@ -1318,11 +1340,13 @@ export function CartPage() {
           role="presentation"
         >
           <div
+            ref={rewardRequiredDialogRef}
             style={{ ...styles.couponsModalCard, width: "min(420px, 100%)" }}
             onMouseDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="wings-reward-item-required-title"
+            tabIndex={-1}
           >
             <header style={{ ...styles.couponsModalHeader, marginBottom: 20 }}>
               <p style={styles.couponsModalEyebrow}>Rewards</p>

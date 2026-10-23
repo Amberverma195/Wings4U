@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CustomerAuth } from "@/components/customer-auth";
 import { useDeliveryAddress } from "@/components/delivery-address-provider";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import {
@@ -222,23 +223,11 @@ export function CheckoutClient() {
     el.style.removeProperty("--rim-y");
   }, []);
 
-  /** Lock background page scroll while the sign-in modal is open. Padding-right
-   *  avoids a layout shift when the OS scrollbar disappears. */
-  useEffect(() => {
-    if (!showAuthModal || typeof document === "undefined") return;
-    const { body, documentElement } = document;
-    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
-    const prevOverflow = body.style.overflow;
-    const prevPaddingRight = body.style.paddingRight;
-    body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    return () => {
-      body.style.overflow = prevOverflow;
-      body.style.paddingRight = prevPaddingRight;
-    };
-  }, [showAuthModal]);
+  useModalDialog({
+    dialogRef: checkoutAuthCardRef,
+    onClose: () => setShowAuthModal(false),
+    active: showAuthModal,
+  });
 
   const addressLine1 = address?.line1 ?? "";
   const addressPostal = address?.postalCode ?? "";
@@ -1308,6 +1297,7 @@ export function CheckoutClient() {
           <section
             ref={checkoutAuthCardRef}
             className="wk-auth-card"
+            tabIndex={-1}
             onMouseMove={updateCheckoutAuthCardRim}
             onMouseEnter={updateCheckoutAuthCardRim}
             onMouseLeave={clearCheckoutAuthCardRim}

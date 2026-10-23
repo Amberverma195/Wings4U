@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, apiJson } from "@/lib/api";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import type { ActivePromo } from "@/lib/types";
@@ -235,35 +236,25 @@ export default function ProfilePage() {
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringDash = (stampsProgressPercent / 100) * ringCircumference;
 
-  // Lock body scroll while profile modals are open (same pattern
-  // used by the checkout auth overlay and the order-method modal).
-  useEffect(() => {
-    if ((!stampsModalOpen && !logoutConfirmOpen) || typeof document === "undefined") return;
-    const { body, documentElement } = document;
-    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
-    const prevOverflow = body.style.overflow;
-    const prevPaddingRight = body.style.paddingRight;
-    body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    return () => {
-      body.style.overflow = prevOverflow;
-      body.style.paddingRight = prevPaddingRight;
-    };
-  }, [logoutConfirmOpen, stampsModalOpen]);
+  const stampsDialogRef = useRef<HTMLDivElement>(null);
+  const stampsCloseBtnRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!stampsModalOpen && !logoutConfirmOpen) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setStampsModalOpen(false);
-        setLogoutConfirmOpen(false);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [logoutConfirmOpen, stampsModalOpen]);
+  useModalDialog({
+    dialogRef: stampsDialogRef,
+    initialFocusRef: stampsCloseBtnRef,
+    onClose: () => setStampsModalOpen(false),
+    active: stampsModalOpen,
+  });
+
+  const logoutDialogRef = useRef<HTMLDivElement>(null);
+  const logoutCancelBtnRef = useRef<HTMLButtonElement>(null);
+
+  useModalDialog({
+    dialogRef: logoutDialogRef,
+    initialFocusRef: logoutCancelBtnRef,
+    onClose: () => setLogoutConfirmOpen(false),
+    active: logoutConfirmOpen,
+  });
 
   if (!session.loaded || !session.authenticated || isLoggingOut) {
     return <AccountSkeleton isLoggingOut={isLoggingOut} />;
@@ -599,11 +590,13 @@ export default function ProfilePage() {
           role="presentation"
         >
           <div
+            ref={stampsDialogRef}
             className={styles.stampModalCard}
             onMouseDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="stamps-modal-title"
+            tabIndex={-1}
           >
             <header className={styles.stampModalHeader}>
               <div>
@@ -613,6 +606,7 @@ export default function ProfilePage() {
                 </h2>
               </div>
               <button
+                ref={stampsCloseBtnRef}
                 type="button"
                 className={styles.stampModalClose}
                 onClick={() => setStampsModalOpen(false)}
@@ -750,12 +744,14 @@ export default function ProfilePage() {
           role="presentation"
         >
           <div
+            ref={logoutDialogRef}
             className={styles.logoutModalCard}
             onMouseDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="logout-modal-title"
             aria-describedby="logout-modal-desc"
+            tabIndex={-1}
           >
             <span className={styles.eyebrow}>Account</span>
             <h2 id="logout-modal-title" className={styles.logoutModalTitle}>
@@ -766,6 +762,7 @@ export default function ProfilePage() {
             </p>
             <div className={styles.logoutModalActions}>
               <button
+                ref={logoutCancelBtnRef}
                 type="button"
                 className={styles.logoutCancelBtn}
                 onClick={() => setLogoutConfirmOpen(false)}

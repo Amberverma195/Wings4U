@@ -4,6 +4,7 @@ import {
   forwardRef,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -14,6 +15,7 @@ import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { cents } from "@/lib/format";
 import type { WingFlavour } from "@/lib/types";
 import { useLockBodyScroll } from "@/lib/use-lock-body-scroll";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 
 const HEAT_ORDER = ["PLAIN", "MILD", "MEDIUM", "HOT", "DRY_RUB"] as const;
 
@@ -352,21 +354,23 @@ export function BuilderShell({
   onSubmit,
   children,
 }: BuilderShellProps) {
-  useLockBodyScroll();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  useModalDialog({
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+    onClose,
+  });
 
   return (
-    <div className="item-customization-overlay" onClick={onClose}>
+    <div className="item-customization-overlay" onClick={onClose} role="presentation">
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         className="builder-panel"
         onClick={(event) => event.stopPropagation()}
       >
@@ -376,6 +380,7 @@ export function BuilderShell({
             {description ? <p>{description}</p> : null}
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             className="item-customization-close"
             onClick={onClose}

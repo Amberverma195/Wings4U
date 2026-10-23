@@ -4,6 +4,7 @@ import { PICKUP_ETA_RANGE } from "@/lib/pickup-eta";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { apiJson } from "@/lib/api";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import {
   DELIVERY_ADDRESS_SAVED_EVENT,
   FIXED_DELIVERY_CITY,
@@ -136,6 +137,16 @@ export function OrderMethodModal({
   const [scheduleTimezone, setScheduleTimezone] = useState<string | undefined>(undefined);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useModalDialog({
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+    onClose,
+    active: open,
+  });
+
   const [deliveryUnavailableMessage, setDeliveryUnavailableMessage] = useState<string | null>(null);
   
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -255,16 +266,7 @@ export function OrderMethodModal({
     };
   }, [addressOnly, defaultMethod, open]);
 
-  useEffect(() => {
-    if (!open) return;
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
 
   const totalSteps = addressOnly ? 1 : method === "DELIVERY" ? 3 : 2;
   const currentStepNumber = addressOnly
@@ -444,10 +446,13 @@ export function OrderMethodModal({
   return (
     <div className="wk-method-overlay" onMouseDown={onClose} role="presentation">
       <div
+        ref={dialogRef}
         className="wk-method-card"
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
       >
         <div 
           className="wk-method-card-inner"
@@ -460,6 +465,7 @@ export function OrderMethodModal({
           <div className="wk-auth-card-rim" aria-hidden />
           
           <button
+            ref={closeButtonRef}
             type="button"
             className="wk-method-close"
             onClick={onClose}

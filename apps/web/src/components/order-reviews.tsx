@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderItem } from "@/lib/types";
 
@@ -268,22 +269,15 @@ export function OrderReviews({
     setReviewModalOpen(false);
   }, []);
 
-  useEffect(() => {
-    if (!reviewModalOpen) return;
+  const reviewDialogRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeReviewModal();
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [reviewModalOpen, closeReviewModal]);
+  useModalDialog({
+    dialogRef: reviewDialogRef,
+    initialFocusRef: closeBtnRef,
+    onClose: closeReviewModal,
+    active: reviewModalOpen,
+  });
 
   if (!eligible) return null;
   if (items.length === 0) return null;
@@ -349,21 +343,24 @@ export function OrderReviews({
             role="presentation"
           >
             <div
+              ref={reviewDialogRef}
               className="reorder-modal-card order-review-modal-card"
               onClick={(e) => e.stopPropagation()}
               role="dialog"
               aria-modal="true"
               aria-labelledby="order-review-modal-title"
+              tabIndex={-1}
+            >
+              <h3
+                id="order-review-modal-title"
+                className="reorder-modal-title order-review-modal-title"
               >
-                <h3
-                  id="order-review-modal-title"
-                  className="reorder-modal-title order-review-modal-title"
-                >
-                  Rate your Order
-                </h3>
+                Rate your Order
+              </h3>
               <div className="order-review-modal-list">{reviewList}</div>
               <div className="reorder-modal-actions order-review-modal-actions">
                 <button
+                  ref={closeBtnRef}
                   type="button"
                   className="btn-secondary"
                   onClick={closeReviewModal}

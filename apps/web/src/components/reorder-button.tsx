@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import { useCart } from "@/lib/cart";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type {
@@ -149,21 +150,12 @@ function ReorderConfirmModal({
   onCancel: () => void;
 }) {
   const { items, diff, all_unavailable } = preview;
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [onCancel]);
+  useModalDialog({
+    dialogRef,
+    onClose: onCancel,
+  });
 
   if (typeof document === "undefined") return null;
 
@@ -174,12 +166,14 @@ function ReorderConfirmModal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="reorder-modal-card"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="reorder-modal-title"
         aria-describedby="reorder-modal-description"
+        tabIndex={-1}
       >
         <h3 id="reorder-modal-title" className="reorder-modal-title">
           Review your reorder
