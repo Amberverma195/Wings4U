@@ -2,7 +2,7 @@
 
 October 23, 2026. Companion: [audit and priorities](data-retention-audit.md), [owner-review SELECTs](data-retention-readonly-queries.sql).
 
-**Proposal only.** No database access, dry run, backup/export, cleanup, migration, scheduler or production test was performed. No code/schema/UI/API behavior is changed. The initial audit did not include a commit; documentation finalization authorizes only a local commit of the three data-retention documents, with no push or deployment. The operator must obtain separate explicit owner approval for each environment and operation below; permission to review or commit these documents is not permission to connect.
+**Proposal only.** No database access, dry run, backup/export, cleanup, migration, scheduler or production test was performed. No code/schema/UI/API behavior is changed. The initial audit did not include a commit. The three data-retention documents were subsequently committed as `afb6d7d` and pushed to GitHub `main` with separate explicit owner approval. That publication did not authorize production database operations or cleanup; connected CI/deployment automation may run on push and was not verified here. The operator must obtain separate explicit owner approval for each environment and operation below; permission to review, commit or push these documents is not permission to connect.
 
 ## Proposed rules and scope
 
