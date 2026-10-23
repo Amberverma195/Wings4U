@@ -1,8 +1,23 @@
 # Customer account deletion — implementation and activation review
 
-Status: development only. Production activation is blocked pending the approvals below.
-No database connection, mutation, migration, deployment, or real account deletion is authorized for this work.
+Status (verified 2026-10-23): implemented and enabled by the live production API. Operational approvals and a real production deletion have not been independently verified.
+Review classification: implemented/enabled, with verification evidence gaps. Do not classify the feature as unimplemented, disabled, or awaiting activation based on the historical rollout checklist below. Lack of independently reviewed approval evidence does not establish that approval was never given.
+This documentation review authorizes no database mutation, migration, deployment, environment change, or real account deletion.
 Policy version: `2026-10-20-review-2` (environments acknowledging `review-1` are automatically disabled).
+
+## Verification evidence and limits
+
+On 2026-10-23, a read-only GET to the public [account-deletion configuration endpoint](https://www.wings4ulondon.ca/api/v1/auth/account-deletion/config) returned:
+
+```json
+{"data":{"enabled":true,"policy_version":"2026-10-20-review-2"}}
+```
+
+The JSON above shows the relevant response fields; response metadata is omitted. A second read-only check on 2026-10-23 confirmed the same enabled state and policy version. The current `accountDeletionEnabled()` implementation requires the enable flag, an exact policy-version match, and online payments disabled. The live response confirms the API reports those activation conditions satisfied; environment values were not inspected or changed. These gates are safeguards, not evidence that activation is pending. This is a dated observation, not a guarantee that configuration cannot change.
+
+Targeted mocked tests passed: 103 API tests (`account-deletion.service.spec.ts`, `account-deletion.http.spec.ts`), 16 web tests (`account-deletion.test.cjs`, `account-deletion-session.test.cjs`), and 13 native tests (`account-deletion.test.cjs`, `account-deletion-cleanup.test.cjs`). API tests used the offline unit-test guard and mocked Prisma. Coverage includes verification, authorization, blockers, erasure/minimization, transaction failures and retries, session revocation, and client cleanup.
+
+Source review confirms a website entry at `/account/delete`, links from account/profile, and a native deletion flow. No real customer was deleted, no database-connected deletion test ran, and no migration, deployment, or settings change was performed during verification. The live configuration response and mocked tests do not establish approval of the retention policy, provider/backups procedures, staging load-test results, or Apple/Google acceptance. Those evidence gaps remain listed below.
 
 ## Payment model this policy assumes
 
@@ -99,12 +114,12 @@ Staff workflow for a deleted customer's refund (customer identifies the order by
 4. The approval is audit-logged with amount, method and decision; those fields survive any later minimization.
 
 Wallet balances and unresolved refunds are still protected before deletion: a nonzero wallet, a PENDING/APPROVED refund,
-an unpaid or partially paid order, or a pending payment blocks deletion until staff resolve it.
+an unresolved payment balance on a nonterminal order, or a pending payment blocks deletion until staff resolve it. Terminal orders do not block on an `UNPAID`/`FAILED` summary alone; independent payment, refund and hold checks still apply.
 
-## Planned lifecycle and activation boundaries
+## Implemented lifecycle and activation boundaries
 
 Use the existing password verifier, HTTP auth/role guards, rate limiter, CSRF middleware, cookie clearing, native secure storage and realtime authorization. No account ID is accepted from clients.
-The public deletion page will remain readable when signed out or activation is disabled.
+The public deletion page remains readable when signed out or activation is disabled.
 An authenticated customer re-enters their password, receives a short-lived authorization, then deliberately confirms deletion.
 The final request rechecks everything inside a serializable transaction while locking the User row.
 If obligations exist, return `resolution_required` with specific fixed messages, consume that authorization and keep the account usable so the customer can handle orders/wallet/support. This is **not** an accepted pending deletion or a promise of automatic completion.
@@ -119,7 +134,9 @@ tied up waiting on email. Accepted residual window: deletion requires every orde
 overlap is a final-status email (for example Delivered) whose provider call is already in flight, at most 10 seconds,
 when deletion commits. That sends one email about the customer's own order to the address on that order.
 
-## Release order (required)
+## Historical rollout procedure
+
+The following is the release procedure, not a statement that activation is still pending. The live API already reported enabled on 2026-10-23. Migration execution and historical release approvals were not independently audited in this review; these steps must not be rerun without separate authorization.
 
 This API build reads `users.account_deleted_at` on every authenticated request (Prisma loads all User columns).
 At startup it runs a read-only catalog check and **refuses to start** if migration
@@ -131,17 +148,19 @@ At startup it runs a read-only catalog check and **refuses to start** if migrati
 3. Deploy the API, then the website and mobile app. Deletion stays disabled until step 4.
 4. Activate only after every item below is approved.
 
-## Decisions required before production activation
+## Activation prerequisites — approval evidence not independently verified
+
+Production activation is observed above. This checklist records the approvals and operational evidence that still need to be documented or independently verified; it does not assert that each approval is absent.
 
 - Approve the matrix, including deletion of delivery verification/free-text evidence and minimization of payment and audit JSON; document retention periods, lawful purposes, access controls and eventual purge for pseudonymous financial/audit records.
 - Approve how customers resolve a positive wallet balance before deletion (in-store cash-out or spend), since deletion never forfeits or transfers credit.
 - Approve a staff procedure for recording an `account_deletion_holds` row (code `LEGAL_HOLD`, `REFUND_RECONCILIATION` or `BUSINESS_REVIEW`) when a dispute, legal request or card-terminal chargeback notice exists. No code writes holds today; it is a manual record. Card-terminal chargebacks arrive from the terminal provider, not from the app.
-- Decide policy for orders stuck in `UNPAID`/`FAILED` (for example no-show pickups): today they block deletion indefinitely and the customer cannot resolve them.
+- Confirm the payment-resolution procedure for nonterminal orders. Current code limits the outstanding-payment blocker to nonterminal orders; terminal orders with `UNPAID`/`FAILED` summary balances do not block on that summary alone. Independent pending-payment, refund, wallet and hold checks still apply.
 - Approve reward forfeiture consent and mixed staff-history handling.
 - Inventory email provider data, printer queues, exports, logs and backups; approve erasure/expiry and restoration procedures. Do not invent provider cleanup capabilities.
 - Load-test deletion on a staging copy with a large order history (thousands of orders); the transaction has a 30-second limit.
-- Confirm `ONLINE_PAYMENTS_ENABLED` is unset/false in production. Deletion refuses to enable otherwise.
-- Keep `ACCOUNT_DELETION_ENABLED` absent/false and the policy-version acknowledgment unset until all prerequisites are approved. No environment file will be changed here.
+- Keep the in-store payment assumption under review. The observed enabled response is consistent with online payments being disabled; enabling online payments requires a new deletion-policy review.
+- The original rollout required deletion to stay disabled until prerequisites were approved. The API now reports it enabled; record the activation owner's approval and supporting evidence. This documentation update neither supplies those approvals nor changes any environment setting.
 
 ## Store guidance reviewed
 
