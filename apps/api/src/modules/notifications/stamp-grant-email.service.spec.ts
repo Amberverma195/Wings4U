@@ -1,4 +1,4 @@
-import { StampGrantEmailService, renderStampGrantEmail, stampOrderUrl } from "./stamp-grant-email.service";
+import { StampGrantEmailService, renderStampGrantEmail } from "./stamp-grant-email.service";
 
 const GRANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const emailIdentity = (emailNormalized: string | null = "tina@example.com", isVerified = true) => ({
@@ -37,12 +37,11 @@ describe("Stamp grant transactional email", () => {
   const env = { ...process.env };
   beforeEach(() => {
     process.env.RESEND_API_KEY = "test-key"; process.env.RESEND_FROM = "Wings <hello@example.com>";
-    process.env.PUBLIC_SITE_URL = "https://orders.example.com";
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ id: "email-one" }) })) as any;
   });
   afterEach(() => { global.fetch = originalFetch; process.env = { ...env }; });
 
-  it("uses a verified nonprimary email with a primary phone, escaped name, public ordering URL and grant-specific key", async () => {
+  it("sends strictly informational email with verified nonprimary email, primary phone, escaped name, and grant key", async () => {
     const s = fixture(); const result = await s.service.send(GRANT);
     expect(result.status).toBe("SENT");
     expect(s.prisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "customer", role: "CUSTOMER", isActive: true, archivedAt: null },
@@ -52,13 +51,42 @@ describe("Stamp grant transactional email", () => {
     expect(request.headers["Idempotency-Key"]).toBe(`stamp-grant/${GRANT}`);
     const payload = JSON.parse(request.body);
     expect(payload.to).toEqual(["tina@example.com"]);
-    expect(payload.html).toContain("&lt;Tina &amp; &quot;Brown&quot;&gt;"); expect(payload.html).not.toContain('<Tina & "Brown">');
-    expect(payload.html).toContain('href="https://orders.example.com/menu"');
-    expect(payload.text).toContain("2 bonus stamps"); expect(payload.text).toContain("6 out of 8");
-    expect(payload.text).not.toContain(GRANT); expect(payload.html).not.toContain("customer");
-    expect(s.row.sentAt).toBeInstanceOf(Date); expect(s.row.providerEmailId).toBe("email-one");
-    await s.service.send(GRANT); expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(payload.subject).toBe("Wings4U — Bonus Stamps Added to Your Account");
+
+    // HTML assertions
+    expect(payload.html).toContain("&lt;Tina &amp; &quot;Brown&quot;&gt;");
+    expect(payload.html).not.toContain('<Tina & "Brown">');
+    expect(payload.html).toContain("We&#39;ve added 2 bonus stamps to your Wings4U rewards account.");
+    expect(payload.html).toContain("Your updated stamp balance: 6 / 8");
+    expect(payload.html).toContain("Your rewards account has been updated successfully. No action is required.");
+    expect(payload.html).toContain("1544 Dundas St, London, ON N5W 3C1");
+
+    // Verify ABSENCE of Order Now button, ordering links, or promotional language
+    expect(payload.html).not.toContain("Order Now");
+    expect(payload.html).not.toContain("<a ");
+    expect(payload.html).not.toContain("href=");
+    expect(payload.html).not.toContain("http://");
+    expect(payload.html).not.toContain("https://");
+    expect(payload.html).not.toContain("We can't wait to serve you again");
+
+    // Plain text assertions
+    expect(payload.text).toContain("Hello, <Tina & \"Brown\">!");
+    expect(payload.text).toContain("We've added 2 bonus stamps to your Wings4U rewards account.");
+    expect(payload.text).toContain("Your updated stamp balance: 6 / 8");
+    expect(payload.text).toContain("Your rewards account has been updated successfully. No action is required.");
+    expect(payload.text).toContain("Thank you,\nThe Wings4U Team ❤️\n\nWings 4 U\n1544 Dundas St, London, ON N5W 3C1");
+    expect(payload.text).not.toContain("Order Now");
+    expect(payload.text).not.toContain("http://");
+    expect(payload.text).not.toContain("https://");
+    expect(payload.text).not.toContain(GRANT);
+    expect(payload.html).not.toContain("customer");
+
+    expect(s.row.sentAt).toBeInstanceOf(Date);
+    expect(s.row.providerEmailId).toBe("email-one");
+    await s.service.send(GRANT);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
+
   it.each([null, { displayName: "Tina", identities: [] },
     { displayName: "Tina", identities: [emailIdentity("tina@example.com", false)] },
     { displayName: "Tina", identities: [emailIdentity(null)] },
@@ -68,12 +96,14 @@ describe("Stamp grant transactional email", () => {
     expect((await s.service.send(GRANT)).status).toBe("SKIPPED"); expect(global.fetch).not.toHaveBeenCalled();
     expect(s.row.status).toBe("SKIPPED");
   });
+
   it("uses the current verified email after a contact change before submission", async () => {
     const s = fixture();
     s.customer({ displayName: "Tina", identities: [emailIdentity("current@example.com")] });
     expect((await s.service.send(GRANT)).status).toBe("SENT");
     expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body).to).toEqual(["current@example.com"]);
   });
+
   it("persists provider failures and reuses the same frozen request on retry", async () => {
     const s = fixture();
     (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 503 });
@@ -88,6 +118,7 @@ describe("Stamp grant transactional email", () => {
     expect((global.fetch as jest.Mock).mock.calls[1][1].headers["Idempotency-Key"]).toBe(first.headers["Idempotency-Key"]);
     await s.service.send(GRANT); expect(global.fetch).toHaveBeenCalledTimes(2);
   });
+
   it("a network timeout reports uncertainty and an explicit retry uses the same key", async () => {
     const s = fixture(); (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("timeout"));
     expect(await s.service.send(GRANT)).toEqual(expect.objectContaining({ status: "UNKNOWN", retryable: true }));
@@ -98,41 +129,107 @@ describe("Stamp grant transactional email", () => {
     expect(requests[1].headers["Idempotency-Key"]).toBe(requests[0].headers["Idempotency-Key"]);
     expect(requests[1].body).toBe(requests[0].body);
   });
+
   it("parallel workers use one delivery lease", async () => {
     const s = fixture(); await Promise.all([s.service.send(GRANT), s.service.send(GRANT)]);
     expect(global.fetch).toHaveBeenCalledTimes(1); expect(s.row.status).toBe("SENT");
   });
+
   it("an expired lease can resume the persisted payload after an API crash", async () => {
     const s = fixture(); s.row.leaseUntil = new Date(Date.now() - 1000); s.row.attemptToken = "old-worker";
     expect((await s.service.send(GRANT)).status).toBe("SENT"); expect(global.fetch).toHaveBeenCalledTimes(1);
   });
+
   it("does not send to a formerly verified email after the contact changes", async () => {
     const s = fixture(); (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("timeout"));
     await s.service.send(GRANT);
     s.customer({ displayName: "Tina", identities: [emailIdentity("new@example.com")] });
     expect((await s.service.send(GRANT)).status).toBe("SKIPPED"); expect(global.fetch).toHaveBeenCalledTimes(1);
   });
+
   it("stops uncertain retries before the provider idempotency window expires", async () => {
     const s = fixture(); s.row.firstAttemptAt = new Date(Date.now() - 23 * 3600_000);
     expect(await s.service.send(GRANT)).toEqual(expect.objectContaining({ status: "UNKNOWN", retryable: false }));
     expect(global.fetch).not.toHaveBeenCalled();
   });
-  it.each(["RESEND_API_KEY", "RESEND_FROM", "PUBLIC_SITE_URL"])("missing %s is reported honestly and remains retryable", async key => {
-    const s = fixture(); delete process.env[key]; delete process.env.NEXT_PUBLIC_SITE_URL;
+
+  it.each(["RESEND_API_KEY", "RESEND_FROM"])("missing %s is reported honestly and remains retryable", async key => {
+    const s = fixture(); delete process.env[key];
     expect(await s.service.send(GRANT)).toEqual(expect.objectContaining({ status: "SKIPPED", retryable: true }));
     expect(global.fetch).not.toHaveBeenCalled();
   });
-  it.each(["http://orders.example.com", "https://localhost", "https://127.0.0.1", "https://10.0.0.1", "https://user:pass@example.com", "https://example.com/?redirect=https://evil.com", "https://example.com/path", "https://example.com/#redirect"])("rejects unsafe CTA configuration %s", value => {
-    process.env.PUBLIC_SITE_URL = value; expect(() => stampOrderUrl()).toThrow();
-  });
-  it("uses configured canonical NEXT_PUBLIC_SITE_URL when the API-specific value is absent", () => {
-    delete process.env.PUBLIC_SITE_URL; process.env.NEXT_PUBLIC_SITE_URL = "https://canonical.example.com/";
-    expect(stampOrderUrl()).toBe("https://canonical.example.com/menu");
-  });
-  it("renders singular/plural grants and a reward-ready full card without internal metadata", () => {
-    expect(renderStampGrantEmail("Tina", 1, 7, "https://example.com/menu").text).toContain("1 bonus stamp to");
-    const full = renderStampGrantEmail("", 2, 8, "https://example.com/menu");
-    expect(full.text).toContain("2 bonus stamps"); expect(full.text).toContain("Hello, fellow wing lover! 🍗");
-    expect(full.text).toContain("Your stamp card is full! 🎉"); expect(full.text).toContain("next eligible order");
+
+  describe("renderStampGrantEmail template verification", () => {
+    it("renders singular bonus stamp correctly without reward notification when below threshold", () => {
+      const email = renderStampGrantEmail("Alice", 1, 5);
+      expect(email.subject).toBe("Wings4U — Bonus Stamps Added to Your Account");
+      expect(email.text).toContain("Hello, Alice!");
+      expect(email.text).toContain("We've added 1 bonus stamp to your Wings4U rewards account.");
+      expect(email.text).toContain("Your updated stamp balance: 5 / 8");
+      expect(email.text).toContain("Your rewards account has been updated successfully. No action is required.");
+      expect(email.text).not.toContain("reward threshold");
+      expect(email.text).not.toContain("complimentary");
+      expect(email.html).toContain("Hello, Alice!");
+      expect(email.html).toContain("We&#39;ve added 1 bonus stamp to your Wings4U rewards account.");
+      expect(email.html).toContain("Your updated stamp balance: 5 / 8");
+      expect(email.html).not.toContain("reward threshold");
+    });
+
+    it("renders plural bonus stamps and displays factual reward availability when threshold is reached", () => {
+      const email = renderStampGrantEmail("Bob", 3, 8);
+      expect(email.text).toContain("Hello, Bob!");
+      expect(email.text).toContain("We've added 3 bonus stamps to your Wings4U rewards account.");
+      expect(email.text).toContain("Your updated stamp balance: 8 / 8");
+      expect(email.text).toContain("You have reached the reward threshold of 8 stamps. A complimentary 1 lb wings reward is available in your account.");
+      expect(email.html).toContain("You have reached the reward threshold of 8 stamps. A complimentary 1 lb wings reward is available in your account.");
+    });
+
+    it("handles empty or blank customer name gracefully with Customer fallback", () => {
+      const email = renderStampGrantEmail("   ", 2, 6);
+      expect(email.text).toContain("Hello, Customer!");
+      expect(email.html).toContain("Hello, Customer!");
+    });
+
+    it("safely escapes HTML characters in customer name", () => {
+      const email = renderStampGrantEmail('<script>alert("xss")</script> & O\'Neil', 2, 4);
+      expect(email.html).toContain("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; O&#39;Neil");
+      expect(email.html).not.toContain("<script>");
+      expect(email.text).toContain('<script>alert("xss")</script> & O\'Neil');
+    });
+
+    it("strictly excludes Order Now button, ordering links, and promotional sales wording from both formats", () => {
+      const emailBelow = renderStampGrantEmail("Carol", 2, 4);
+      const emailAbove = renderStampGrantEmail("Carol", 2, 8);
+
+      for (const email of [emailBelow, emailAbove]) {
+        // No Order Now button or links
+        expect(email.html).not.toContain("Order Now");
+        expect(email.text).not.toContain("Order Now");
+        expect(email.html).not.toContain("<a ");
+        expect(email.html).not.toContain("href=");
+        expect(email.html).not.toContain("http://");
+        expect(email.html).not.toContain("https://");
+        expect(email.text).not.toContain("http://");
+        expect(email.text).not.toContain("https://");
+
+        // No promotional wording
+        expect(email.html).not.toContain("We can't wait to serve you again");
+        expect(email.text).not.toContain("We can't wait to serve you again");
+        expect(email.html).not.toContain("unlock");
+        expect(email.text).not.toContain("unlock");
+        expect(email.html).not.toContain("Every stamp brings you closer");
+        expect(email.text).not.toContain("Every stamp brings you closer");
+        expect(email.html).not.toContain("next eligible order");
+        expect(email.text).not.toContain("next eligible order");
+        expect(email.html).not.toContain("fellow wing lover");
+        expect(email.text).not.toContain("fellow wing lover");
+        expect(email.subject).not.toContain("🍗");
+        expect(email.subject).not.toContain("extra for you");
+
+        // Physical address present in both
+        expect(email.html).toContain("1544 Dundas St, London, ON N5W 3C1");
+        expect(email.text).toContain("1544 Dundas St, London, ON N5W 3C1");
+      }
+    });
   });
 });
