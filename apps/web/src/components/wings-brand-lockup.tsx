@@ -20,7 +20,7 @@ type Props = {
 
 export function WingsBrandLockup({
   href = "/",
-  ariaLabel = "Go to home",
+  ariaLabel = "Wings 4 U — Home",
   className,
   style,
   wordmarkClassName,

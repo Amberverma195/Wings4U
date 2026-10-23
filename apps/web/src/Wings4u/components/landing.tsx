@@ -104,7 +104,7 @@ export function Landing({
                   <div className="hero-visual-glow-inner" />
                 </div>
               </div>
-              <div style={styles.wingEmojis}>
+              <div style={styles.wingEmojis} aria-hidden="true">
                 <span style={styles.heroCenterWing}>
                   {"\u{1F357}"}
                 </span>

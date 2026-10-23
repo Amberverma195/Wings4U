@@ -36,7 +36,7 @@ describe('Web Screen-Reader Labels & Selection States (P2)', () => {
     delete global.window;
   });
 
-  test('FlavourPicker has compliant tablist tabs and radiogroup flavour options', async () => {
+  test('FlavourPicker has compliant tablist tabs, tabpanel associations, arrow navigation, and radio options', async () => {
     const flavours = [
       { id: 'f1', name: 'Mild BBQ', heat_level: 'MILD', sort_order: 1 },
       { id: 'f2', name: 'Honey Garlic', heat_level: 'MILD', sort_order: 2 },
@@ -60,21 +60,41 @@ describe('Web Screen-Reader Labels & Selection States (P2)', () => {
     const tabs = tablist.findAllByProps({ role: 'tab' });
     expect(tabs.length).toBe(2); // MILD, HOT
     expect(tabs[0].props['aria-selected']).toBe(true);
+    expect(tabs[0].props.tabIndex).toBe(0);
     expect(tabs[1].props['aria-selected']).toBe(false);
+    expect(tabs[1].props.tabIndex).toBe(-1);
 
+    // Tabpanel relationship
+    const tabpanel = root.findByProps({ role: 'tabpanel' });
+    expect(tabpanel).toBeTruthy();
+    expect(tabpanel.props['aria-labelledby']).toBe(tabs[0].props.id);
+    expect(tabs[0].props['aria-controls']).toBe(tabpanel.props.id);
+
+    // Arrow navigation
+    const preventDefault = jest.fn();
+    await act(async () => {
+      tabs[0].props.onKeyDown({ key: 'ArrowRight', preventDefault });
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    const updatedTabs = tablist.findAllByProps({ role: 'tab' });
+    expect(updatedTabs[1].props['aria-selected']).toBe(true);
+    expect(updatedTabs[1].props.tabIndex).toBe(0);
+    expect(updatedTabs[0].props['aria-selected']).toBe(false);
+
+    const updatedTabpanel = root.findByProps({ role: 'tabpanel' });
+    expect(updatedTabpanel.props['aria-labelledby']).toBe(updatedTabs[1].props.id);
+
+    // Radiogroup options inside tabpanel
     const radiogroup = root.findByProps({ role: 'radiogroup' });
     expect(radiogroup).toBeTruthy();
-    expect(radiogroup.props['aria-label']).toBe('MILD flavours');
 
     const radioButtons = radiogroup.findAllByProps({ role: 'radio' });
-    expect(radioButtons.length).toBe(2);
-    expect(radioButtons[0].props['aria-checked']).toBe(true);
-    expect(radioButtons[0].props['aria-pressed']).toBe(true);
-    expect(radioButtons[1].props['aria-checked']).toBe(false);
-    expect(radioButtons[1].props['aria-pressed']).toBe(false);
+    expect(radioButtons.length).toBe(1); // 1 HOT flavour (f3)
+    expect(radioButtons[0].props['aria-checked']).toBe(false);
+    expect(radioButtons[0].props['aria-pressed']).toBeUndefined();
   });
 
-  test('ExtraFlavourPicker heat tabs and flavour pills have proper roles and selection attributes', async () => {
+  test('ExtraFlavourPicker heat tabs and flavour pills have proper roles, tabpanel, and selection attributes', async () => {
     const flavours = [
       { id: 'e1', name: 'Mild BBQ', heat_level: 'MILD', sort_order: 1 },
       { id: 'e2', name: 'Dry Cajun', heat_level: 'HOT', sort_order: 2 },
@@ -95,6 +115,12 @@ describe('Web Screen-Reader Labels & Selection States (P2)', () => {
     const tabs = tablist.findAllByProps({ role: 'tab' });
     expect(tabs.length).toBeGreaterThan(0);
     expect(tabs[0].props['aria-selected']).toBe(true);
+    expect(tabs[0].props.tabIndex).toBe(0);
+
+    const tabpanel = root.findByProps({ role: 'tabpanel' });
+    expect(tabpanel).toBeTruthy();
+    expect(tabpanel.props['aria-labelledby']).toBe(tabs[0].props.id);
+    expect(tabs[0].props['aria-controls']).toBe(tabpanel.props.id);
 
     const radiogroup = root.findByProps({ role: 'radiogroup' });
     expect(radiogroup).toBeTruthy();
@@ -102,7 +128,7 @@ describe('Web Screen-Reader Labels & Selection States (P2)', () => {
     const radios = radiogroup.findAllByProps({ role: 'radio' });
     expect(radios.length).toBeGreaterThan(0);
     expect(radios[0].props['aria-checked']).toBe(true);
-    expect(radios[0].props['aria-pressed']).toBe(true);
+    expect(radios[0].props['aria-pressed']).toBeUndefined();
   });
 
   test('SaucingMethodPicker uses radiogroup and radio items with aria-checked', async () => {

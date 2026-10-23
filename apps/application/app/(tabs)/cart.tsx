@@ -145,7 +145,7 @@ export default function CartScreen() {
                 return (
                   <View key={item.key} style={styles.cartLine}>
                     <View style={styles.cartLineTop}>
-                      {item.image_url ? <Image source={{ uri: item.image_url }} accessibilityLabel={item.name} style={styles.itemImage} /> : null}
+                      {item.image_url ? <Image source={{ uri: item.image_url }} accessible={false} style={styles.itemImage} /> : null}
                       <View style={styles.cartLineInfo}>
                         <Text style={styles.itemName}>{item.name}</Text>
                         {details.length > 0 ? (

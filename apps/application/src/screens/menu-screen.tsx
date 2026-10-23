@@ -734,6 +734,7 @@ function MenuItemCard({
           style={styles.itemImage}
           contentFit="cover"
           transition={300}
+          accessible={false}
         />
       ) : (
         <View style={styles.itemImagePlaceholder}>

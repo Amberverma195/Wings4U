@@ -2,7 +2,7 @@ let mockExtra;
 const mockPlatform = { OS: 'ios' };
 jest.mock('expo-constants', () => ({ __esModule: true, default: { get expoConfig() { return { extra: mockExtra }; } } }));
 jest.mock('react-native', () => ({ Platform: mockPlatform }));
-const { getApiBase, getRealtimeOrigin } = require('../src/lib/env');
+const { getApiBase, getRealtimeOrigin, getPrivacyPolicyUrl } = require('../src/lib/env');
 const previousDev = global.__DEV__;
 beforeEach(() => { mockExtra = {}; mockPlatform.OS = 'ios'; });
 afterEach(() => { global.__DEV__ = previousDev; });
@@ -59,4 +59,30 @@ test('production environment cannot use the Android emulator override', () => {
   global.__DEV__ = true; mockPlatform.OS = 'android';
   mockExtra = { environment: 'production', apiOrigin: 'https://api.example.com' };
   expect(getApiBase()).toBe('https://api.example.com');
+});
+
+test('getPrivacyPolicyUrl derives the wings4ulondon.ca website domain from the api subdomain', () => {
+  global.__DEV__ = false;
+  mockExtra = { environment: 'production', apiOrigin: 'https://api.wings4ulondon.ca' };
+  const url = getPrivacyPolicyUrl();
+  expect(url).toBe('https://wings4ulondon.ca/privacy');
+  expect(new URL(url).hostname).toBe('wings4ulondon.ca');
+  expect(new URL(url).pathname).toBe('/privacy');
+});
+
+test('getPrivacyPolicyUrl falls back to https://www.wings4ulondon.ca/privacy on lookup failure', () => {
+  global.__DEV__ = false;
+  mockExtra = { environment: 'production' }; // getApiBase throws because apiOrigin is not configured
+  const url = getPrivacyPolicyUrl();
+  expect(url).toBe('https://www.wings4ulondon.ca/privacy');
+  expect(new URL(url).hostname).toBe('www.wings4ulondon.ca');
+  expect(new URL(url).pathname).toBe('/privacy');
+});
+
+test('getPrivacyPolicyUrl derives from explicit websiteUrl or privacyPolicyUrl with wings4ulondon.ca', () => {
+  mockExtra = { websiteUrl: 'https://www.wings4ulondon.ca' };
+  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/privacy');
+
+  mockExtra = { privacyPolicyUrl: 'https://www.wings4ulondon.ca/legal/privacy' };
+  expect(getPrivacyPolicyUrl()).toBe('https://www.wings4ulondon.ca/legal/privacy');
 });

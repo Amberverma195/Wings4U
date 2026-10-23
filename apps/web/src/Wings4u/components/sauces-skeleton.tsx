@@ -15,7 +15,7 @@ export function SaucesSkeleton() {
   return (
     <div className={styles.page} role="status" aria-live="polite" aria-busy="true">
       <nav className={styles.navbar}>
-        <WingsBrandLockup href="/" ariaLabel="Back to home" priority />
+        <WingsBrandLockup href="/" ariaLabel="Wings 4 U — Home" priority />
         <div className={styles.navRight} aria-hidden="true">
           <SkeletonBlock className={styles.navGhost} />
           <SkeletonBlock className={styles.navPrimary} />

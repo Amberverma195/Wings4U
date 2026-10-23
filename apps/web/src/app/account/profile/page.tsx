@@ -414,7 +414,7 @@ export default function ProfilePage() {
                       role="img"
                       aria-label={`${availableStamps} of ${stampsPerReward} stamps collected`}
                     >
-                      <svg viewBox="0 0 120 120">
+                      <svg viewBox="0 0 120 120" aria-hidden="true">
                         <defs>
                           <linearGradient id="profile-ring-gradient-v2" x1="0%" y1="0%" x2="100%" y2="100%">
                             <stop offset="0%" stopColor="#f97316" />

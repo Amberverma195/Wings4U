@@ -640,7 +640,7 @@ function BuilderCategoryImageModal({
                   <div className={styles.builderPicturePreview}>
                     <img
                       src={shownImage}
-                      alt=""
+                      alt={`Category image preview for ${selectedCategory?.name || "category"}`}
                       className={styles.builderPictureImage}
                     />
                   </div>

@@ -3,6 +3,7 @@
 import {
   forwardRef,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -543,41 +544,102 @@ export function FlavourPicker({
     setActiveHeat(selectedHeat);
   }, [selectedHeat]);
 
-  const activeGroup = grouped.find((group) => group.level === activeHeat) ?? grouped[0];
+  const baseId = useId();
+  const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const activeIndex = grouped.findIndex((group) => group.level === activeHeat);
+  const currentActiveIndex = activeIndex >= 0 ? activeIndex : 0;
+  const activeGroup = grouped[currentActiveIndex] ?? grouped[0];
+
+  const handleTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (grouped.length <= 1) return;
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      nextIndex = (index + 1) % grouped.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      nextIndex = (index - 1 + grouped.length) % grouped.length;
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      event.preventDefault();
+      nextIndex = grouped.length - 1;
+    }
+
+    if (nextIndex !== null) {
+      const nextGroup = grouped[nextIndex];
+      if (nextGroup) {
+        setActiveHeat(nextGroup.level);
+        tabsRef.current[nextIndex]?.focus();
+      }
+    }
+  };
+
+  const getTabId = (level: string) =>
+    `flavour-tab-${baseId}-${level.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+  const getPanelId = (level: string) =>
+    `flavour-panel-${baseId}-${level.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
 
   return (
     <div className="builder-flavour-picker">
       <div className="builder-heat-tabs" role="tablist" aria-label="Flavour heat levels">
-        {grouped.map((group) => (
-          <button
-            key={group.level}
-            type="button"
-            role="tab"
-            aria-selected={group.level === activeHeat}
-            className={`builder-heat-tab${group.level === activeHeat ? " builder-heat-tab-active" : ""}`}
-            onClick={() => setActiveHeat(group.level)}
-            disabled={disabled}
-          >
-            {group.level.replace(/_/g, " ")}
-          </button>
-        ))}
+        {grouped.map((group, idx) => {
+          const isSelected = group.level === activeHeat;
+          return (
+            <button
+              key={group.level}
+              ref={(el) => {
+                tabsRef.current[idx] = el;
+              }}
+              id={getTabId(group.level)}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              aria-controls={getPanelId(group.level)}
+              tabIndex={isSelected ? 0 : -1}
+              className={`builder-heat-tab${isSelected ? " builder-heat-tab-active" : ""}`}
+              onClick={() => setActiveHeat(group.level)}
+              onKeyDown={(e) => handleTabKeyDown(e, idx)}
+              disabled={disabled}
+            >
+              {group.level.replace(/_/g, " ")}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="builder-flavour-pills" role="radiogroup" aria-label={`${activeGroup?.level.replace(/_/g, " ")} flavours`}>
-        {activeGroup?.items.map((flavour) => (
-          <button
-            key={flavour.id}
-            type="button"
-            role="radio"
-            aria-checked={flavour.id === selectedFlavourId}
-            aria-pressed={flavour.id === selectedFlavourId}
-            className={`builder-flavour-pill${flavour.id === selectedFlavourId ? " builder-flavour-pill-active" : ""}`}
-            onClick={() => onSelect(flavour)}
-            disabled={disabled}
-          >
-            {flavour.name}
-          </button>
-        ))}
+      <div
+        id={getPanelId(activeGroup?.level ?? "")}
+        role="tabpanel"
+        aria-labelledby={getTabId(activeGroup?.level ?? "")}
+        className="builder-heat-tabpanel"
+        tabIndex={0}
+      >
+        <div
+          className="builder-flavour-pills"
+          role="radiogroup"
+          aria-label={`${activeGroup?.level.replace(/_/g, " ")} flavours`}
+        >
+          {activeGroup?.items.map((flavour) => (
+            <button
+              key={flavour.id}
+              type="button"
+              role="radio"
+              aria-checked={flavour.id === selectedFlavourId}
+              className={`builder-flavour-pill${flavour.id === selectedFlavourId ? " builder-flavour-pill-active" : ""}`}
+              onClick={() => onSelect(flavour)}
+              disabled={disabled}
+            >
+              {flavour.name}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -708,41 +770,98 @@ export function ExtraFlavourPicker({
     setActiveTab(selectedTab);
   }, [selectedTab]);
 
-  const activeGroup = grouped.find((g) => g.label === activeTab) ?? grouped[0];
+  const baseId = useId();
+  const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const activeIndex = grouped.findIndex((g) => g.label === activeTab);
+  const currentActiveIndex = activeIndex >= 0 ? activeIndex : 0;
+  const activeGroup = grouped[currentActiveIndex] ?? grouped[0];
+
+  const handleTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (grouped.length <= 1) return;
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      nextIndex = (index + 1) % grouped.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      nextIndex = (index - 1 + grouped.length) % grouped.length;
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      event.preventDefault();
+      nextIndex = grouped.length - 1;
+    }
+
+    if (nextIndex !== null) {
+      const nextGroup = grouped[nextIndex];
+      if (nextGroup) {
+        setActiveTab(nextGroup.label);
+        tabsRef.current[nextIndex]?.focus();
+      }
+    }
+  };
+
+  const getTabId = (label: string) =>
+    `extra-flavour-tab-${baseId}-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+  const getPanelId = (label: string) =>
+    `extra-flavour-panel-${baseId}-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
 
   return (
     <div className="builder-flavour-picker">
       <div className="builder-heat-tabs" role="tablist" aria-label="Extra flavour groups">
-        {grouped.map((group) => (
-          <button
-            key={group.label}
-            type="button"
-            role="tab"
-            aria-selected={group.label === activeTab}
-            className={`builder-heat-tab${group.label === activeTab ? " builder-heat-tab-active" : ""}`}
-            onClick={() => setActiveTab(group.label)}
-            disabled={disabled}
-          >
-            {group.label}
-          </button>
-        ))}
+        {grouped.map((group, idx) => {
+          const isSelected = group.label === activeTab;
+          return (
+            <button
+              key={group.label}
+              ref={(el) => {
+                tabsRef.current[idx] = el;
+              }}
+              id={getTabId(group.label)}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              aria-controls={getPanelId(group.label)}
+              tabIndex={isSelected ? 0 : -1}
+              className={`builder-heat-tab${isSelected ? " builder-heat-tab-active" : ""}`}
+              onClick={() => setActiveTab(group.label)}
+              onKeyDown={(e) => handleTabKeyDown(e, idx)}
+              disabled={disabled}
+            >
+              {group.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="builder-flavour-pills" role="radiogroup" aria-label={`${activeGroup?.label} flavours`}>
-        {activeGroup?.items.map((flavour) => (
-          <button
-            key={flavour.id}
-            type="button"
-            role="radio"
-            aria-checked={flavour.id === selectedFlavourId}
-            aria-pressed={flavour.id === selectedFlavourId}
-            className={`builder-flavour-pill${flavour.id === selectedFlavourId ? " builder-flavour-pill-active" : ""}`}
-            onClick={() => onSelect(flavour)}
-            disabled={disabled}
-          >
-            {flavour.name}
-          </button>
-        ))}
+      <div
+        id={getPanelId(activeGroup?.label ?? "")}
+        role="tabpanel"
+        aria-labelledby={getTabId(activeGroup?.label ?? "")}
+        className="builder-heat-tabpanel"
+        tabIndex={0}
+      >
+        <div className="builder-flavour-pills" role="radiogroup" aria-label={`${activeGroup?.label} flavours`}>
+          {activeGroup?.items.map((flavour) => (
+            <button
+              key={flavour.id}
+              type="button"
+              role="radio"
+              aria-checked={flavour.id === selectedFlavourId}
+              className={`builder-flavour-pill${flavour.id === selectedFlavourId ? " builder-flavour-pill-active" : ""}`}
+              onClick={() => onSelect(flavour)}
+              disabled={disabled}
+            >
+              {flavour.name}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -127,6 +127,6 @@ export function getPrivacyPolicyUrl(): string {
     }
     return `${apiBase.replace(/\/$/, "")}/privacy`;
   } catch {
-    return "https://wings4u.ca/privacy";
+    return "https://www.wings4ulondon.ca/privacy";
   }
 }

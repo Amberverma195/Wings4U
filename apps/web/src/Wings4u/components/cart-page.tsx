@@ -796,7 +796,8 @@ export function CartPage() {
                     {imageUrl ? (
                       <img
                         src={imageUrl}
-                        alt={item.name}
+                        alt=""
+                        aria-hidden="true"
                         style={styles.cartItemThumbImage}
                       />
                     ) : (

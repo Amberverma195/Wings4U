@@ -534,7 +534,7 @@ export function MenuItemModal({ itemId, categories, onClose, onSaved }: Props) {
                   <div className={styles.menuItemModalImageWrap}>
                     <img
                       src={imagePreview}
-                      alt=""
+                      alt={`Preview for ${name.trim() || "menu item"}`}
                       className={styles.menuItemModalImage}
                     />
                   </div>

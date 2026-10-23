@@ -348,7 +348,7 @@ export function SaucesPage({ flavours }: { flavours: SauceFlavour[] }) {
         <nav id="navbar" className={styles.navbar}>
           <WingsBrandLockup
             href="/"
-            ariaLabel="Back to home"
+            ariaLabel="Wings 4 U — Home"
             priority
             wordmarkImageSrc="/Logo_title.png"
             wordmarkImageHeight={34}
@@ -547,7 +547,7 @@ export function SaucesPage({ flavours }: { flavours: SauceFlavour[] }) {
             <div className={styles.footerBrand}>
               <WingsBrandLockup
                 href="/"
-                ariaLabel="Back to home"
+                ariaLabel="Wings 4 U — Home"
                 className={styles.footerBrandLink}
                 style={{ gap: 8 }}
                 imageSize={42}

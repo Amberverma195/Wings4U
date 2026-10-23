@@ -9,7 +9,7 @@ export function SiteFooter() {
         <div className="footer-brand">
           <WingsBrandLockup
             href="/"
-            ariaLabel="Back to home"
+            ariaLabel="Wings 4 U — Back to home"
             className="footer-brand-link"
             style={{ gap: 8, marginBottom: 8, width: "fit-content" }}
             imageSize={44}
