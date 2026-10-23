@@ -113,8 +113,8 @@ export default function HelpPage() {
                   <div className={styles.contactCardSecondary}>
                     <h4>Store Contact</h4>
                     <p>For immediate order issues, please call the store directly.</p>
-                    <a href="tel:5551234567" style={{ color: '#f97316', textDecoration: 'none', fontWeight: 800 }}>
-                    (555) 123-4567
+                    <a href="tel:+15194880800" style={{ color: '#f97316', textDecoration: 'none', fontWeight: 800 }}>
+                    (519) 488-0800
                   </a>
                   </div>
                 </div>
