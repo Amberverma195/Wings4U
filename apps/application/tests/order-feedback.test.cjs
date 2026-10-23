@@ -276,6 +276,23 @@ test.each(['Close modal', 'hardware-back', 'Cancel'])('help %s dismisses without
   if (close === 'hardware-back') await act(async () => renderer.root.findByType('Modal').props.onRequestClose()); else await tap(close);
   expect(onClose).toHaveBeenCalledTimes(1); expect(apiFetch).not.toHaveBeenCalled();
 });
+test('review privacy notice appears once per new form, persists across star changes, and excludes saved reviews', async () => {
+  const notice = 'Your review may be displayed anonymously on the Wings4U website after approval. Your name, phone number, and email will not be published.';
+  apiFetch.mockResolvedValueOnce(response([review('line-a')]));
+  await mount(OrderReviewModal);
+  expect(texts().filter(value => value === notice)).toHaveLength(1);
+  const noticeText = renderer.root.findAllByType('Text').find(node => node.children.join('') === notice);
+  expect(noticeText.props.accessible).toBe(true);
+  await act(async () => stars()[8].props.onPress());
+  await act(async () => stars()[9].props.onPress());
+  expect(texts().filter(value => value === notice)).toHaveLength(1);
+  expect(apiFetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+  const form = renderer.root.findAllByType('View').find(node => node.children.some(child => child.type === 'TextInput'));
+  const children = form.children;
+  const commentIndex = children.findIndex(child => child.type === 'TextInput');
+  expect(children[commentIndex + 1].findAllByType('Text').some(node => node.children.join('') === notice)).toBe(true);
+});
+
 test('review submits the second line ID and trims optional text; public labels require approval', async () => {
   await mount(OrderReviewModal); await act(async () => { stars()[8].props.onPress(); renderer.root.findAllByType('TextInput')[1].props.onChangeText('  Delicious!  '); });
   apiFetch.mockResolvedValueOnce(response({ ...review('line-b'), rating: 4, review_body: 'Delicious!', is_approved_public: true }));

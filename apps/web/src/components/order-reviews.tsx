@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Info } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useSession, withSilentRefresh } from "@/lib/session";
 import type { OrderItem } from "@/lib/types";
@@ -151,6 +152,10 @@ function ReviewForm({
           fontFamily: "inherit",
         }}
       />
+      <p style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", margin: "0.6rem 0", color: "#666666", fontSize: "0.8125rem", lineHeight: 1.5 }}>
+        <Info size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: "0.1rem" }} />
+        <span>Your review may be displayed anonymously on the Wings4U website after approval. Your name, phone number, and email will not be published.</span>
+      </p>
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
         <button
           type="button"

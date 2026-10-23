@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Star } from 'lucide-react-native';
+import { Info, Star } from 'lucide-react-native';
 import type { OrderDetail } from '../lib/types';
 import { ApiRequestError } from '../lib/api';
 import { confirmedReview, feedbackItemSummary, validReview, type OrderItemReview } from '../lib/order-feedback';
@@ -116,6 +116,12 @@ export function OrderReviewModal({ order, onClose }: { order: OrderDetail; onClo
             <TextInput accessibilityLabel={`Review for ${item.product_name_snapshot}, line ${item.line_no} (optional)`} multiline maxLength={2000}
               placeholder="Tell us about this item (optional)" placeholderTextColor="#777777" style={s.input} editable={!disabled}
               value={draft.body} onChangeText={body => updateDraft(item.id, { body })} />
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <Info size={16} color="#666666" accessible={false} importantForAccessibility="no" style={{ marginTop: 2 }} />
+              <Text accessible style={{ flex: 1, color: '#666666', fontSize: 13, lineHeight: 20 }}>
+                Your review may be displayed anonymously on the Wings4U website after approval. Your name, phone number, and email will not be published.
+              </Text>
+            </View>
             <FeedbackError message={errors[item.id] ?? null} />
             <FeedbackButton label="Submit review" disabled={disabled || !validReview(draft.rating, draft.body)} busy={busy[item.id]} busyLabel="Submitting…"
               onPress={() => void submit(item.id)} />
