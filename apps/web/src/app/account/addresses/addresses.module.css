@@ -486,6 +486,49 @@
 }
 
 /* Responsive adjustments */
+.removeDialog {
+  box-sizing: border-box;
+  max-height: calc(100dvh - 3rem);
+  overflow-y: auto;
+  font-family: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  border: 1px solid #fed7aa;
+}
+
+.removeIcon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
+  background: #fff7ed;
+  color: #c2410c;
+  margin-bottom: 1.5rem;
+}
+
+.removeDialog .modalTitle { margin-top: 0; }
+.removeDialog .modalDesc { line-height: 1.6; margin-bottom: 1.25rem; }
+.removeAddressPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.15rem;
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  border-radius: 16px;
+  margin-bottom: 1.5rem;
+}
+.removeError { color: #b91c1c; font-size: 0.9rem; line-height: 1.5; }
+.removeDialog button { font-family: inherit; text-transform: none; letter-spacing: 0; }
+.removeDialog button:focus-visible { outline: 3px solid #c2410c; outline-offset: 3px; }
+.removeDialog button[aria-disabled="true"] { opacity: 0.6; cursor: wait; }
+@media (max-width: 480px) {
+  .modalContent.removeDialog { padding: 1.5rem; border-radius: 24px; }
+  .removeDialog .modalActions { grid-template-columns: 1fr; gap: 0.75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modalOverlay, .removeDialog { animation: none; }
+}
+
 @media (max-width: 1100px) {
   .pageShell {
     padding-bottom: 3rem;

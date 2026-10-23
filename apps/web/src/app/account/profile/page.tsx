@@ -298,7 +298,7 @@ export default function ProfilePage() {
                     <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
-                  <Link href="/account/cards" className={styles.navLink}>
+                  <Link href="/account/cards" className={styles.navLink} style={{ display: "none" }}>
                     <span>My Cards</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>

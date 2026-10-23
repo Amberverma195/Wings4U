@@ -13,7 +13,8 @@ import {
   type SavedDeliveryAddress
 } from "@/lib/delivery-address";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useModalDialog } from "@/lib/use-modal-dialog";
 import styles from "./addresses.module.css";
 import { RequireAuthModal } from "@/components/require-auth-modal";
 import { OrderMethodModal } from "@/Wings4u/components/order-method-modal";
@@ -50,6 +51,32 @@ function AddressesContent() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [addressToRemove, setAddressToRemove] = useState<SavedDeliveryAddress | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+  const removeDialogRef = useRef<HTMLDivElement>(null);
+  const cancelRemoveRef = useRef<HTMLButtonElement>(null);
+  const removeInFlight = useRef(false);
+  const addAddressRef = useRef<HTMLButtonElement>(null);
+  const focusAfterRemoval = useRef(false);
+  const closeRemoveDialog = () => {
+    if (!removeInFlight.current) {
+      setAddressToRemove(null);
+      setRemoveError("");
+    }
+  };
+  useModalDialog({
+    dialogRef: removeDialogRef,
+    initialFocusRef: cancelRemoveRef,
+    active: addressToRemove !== null,
+    onClose: closeRemoveDialog,
+  });
+  useEffect(() => {
+    if (!addressToRemove && focusAfterRemoval.current) {
+      focusAfterRemoval.current = false;
+      addAddressRef.current?.focus();
+    }
+  }, [addressToRemove]);
 
   const router = useRouter();
 
@@ -93,10 +120,21 @@ function AddressesContent() {
     };
   }, []);
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to remove this address?")) {
-      removeSavedAddressByIdSync(id, session.refresh, session.clear);
+  const handleDelete = async () => {
+    if (!addressToRemove || removeInFlight.current) return;
+    removeInFlight.current = true;
+    setRemoving(true);
+    setRemoveError("");
+    try {
+      await removeSavedAddressByIdSync(addressToRemove.id, session.refresh, session.clear);
       setAddresses(loadSavedAddresses());
+      focusAfterRemoval.current = true;
+      setAddressToRemove(null);
+    } catch (error) {
+      setRemoveError(error instanceof Error ? error.message : "We couldn't remove this address. Please try again.");
+    } finally {
+      removeInFlight.current = false;
+      setRemoving(false);
     }
   };
 
@@ -145,7 +183,7 @@ function AddressesContent() {
                     <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </div>
-                  <Link href="/account/cards" className={styles.navLink}>
+                  <Link href="/account/cards" className={styles.navLink} style={{ display: "none" }}>
                     <span>My Cards</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
@@ -171,6 +209,7 @@ function AddressesContent() {
                   <h2 className={styles.sectionTitle}>Saved Addresses</h2>
                 </div>
                 <button 
+                  ref={addAddressRef}
                   className={styles.addBtn}
                   onClick={() => setShowAddModal(true)}
                 >
@@ -193,7 +232,7 @@ function AddressesContent() {
                       </div>
                       <div className={styles.addressActions}>
                         <button className={styles.actionBtn} onClick={() => handleEdit(addr.id)}>Edit</button>
-                        <button className={`${styles.actionBtn} ${styles.deleteBtn}`} onClick={() => handleDelete(addr.id)}>Remove</button>
+                        <button className={`${styles.actionBtn} ${styles.deleteBtn}`} onClick={() => { setRemoveError(""); setAddressToRemove(addr); }}>Remove</button>
                       </div>
                     </div>
                   ))}
@@ -203,6 +242,39 @@ function AddressesContent() {
           </div>
         </div>
       </main>
+
+      {addressToRemove && (
+        <div className={styles.modalOverlay} onClick={(event) => {
+          if (event.target === event.currentTarget) closeRemoveDialog();
+        }}>
+          <div ref={removeDialogRef} className={`${styles.modalContent} ${styles.removeDialog}`}
+            role="alertdialog" aria-modal="true" aria-labelledby="remove-address-title"
+            aria-describedby="remove-address-description" aria-busy={removing} tabIndex={-1}>
+            <div className={styles.removeIcon} aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+              </svg>
+            </div>
+            <span className={styles.eyebrow}>Your address book</span>
+            <h2 id="remove-address-title" className={styles.modalTitle}>Remove this address?</h2>
+            <p id="remove-address-description" className={styles.modalDesc}>
+              This address will be removed from your saved addresses. You can always add it again later.
+            </p>
+            <div className={styles.removeAddressPreview}>
+              <span className={styles.addressLine1}>{addressToRemove.line1}</span>
+              <span className={styles.addressCity}>{addressToRemove.city}, {addressToRemove.postalCode}</span>
+            </div>
+            {removeError && <p className={styles.removeError} role="alert">{removeError}</p>}
+            <div className={styles.modalActions}>
+              <button ref={cancelRemoveRef} type="button" className={styles.cancelBtn}
+                aria-disabled={removing} onClick={closeRemoveDialog}>Keep address</button>
+              <button type="button" className={styles.submitBtn} disabled={removing} onClick={handleDelete}>
+                {removing ? "Removing…" : "Remove address"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <OrderMethodModal 
         open={showAddModal}

@@ -2691,7 +2691,8 @@ export function WingKingsGlobalStyle() {
       .wk-address-picker-card .wk-method-header {
         text-align: left;
         padding-top: 0;
-        margin-bottom: 8px;
+        padding-right: 42px;
+        margin-bottom: 20px;
       }
 
       .wk-address-picker-list {
@@ -3052,7 +3053,7 @@ export function WingKingsGlobalStyle() {
         opacity: 0.38;
       }
 
-      .wk-method-card-inner > :not(.wk-auth-card-glow):not(.wk-auth-card-rim) {
+      .wk-method-card-inner > :not(.wk-auth-card-glow):not(.wk-auth-card-rim):not(.wk-method-close) {
         position: relative;
         z-index: 2;
       }

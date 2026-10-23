@@ -140,7 +140,7 @@ function CardsContent() {
                     <span>Addresses</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </Link>
-                  <div className={`${styles.navLink} ${styles.navLinkActive}`}>
+                  <div className={`${styles.navLink} ${styles.navLinkActive}`} style={{ display: "none" }}>
                     <span>My Cards</span>
                     <span className={styles.navLinkArrow}>→</span>
                   </div>

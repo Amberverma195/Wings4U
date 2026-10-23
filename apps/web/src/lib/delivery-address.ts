@@ -313,20 +313,13 @@ async function deleteAddressOnServer(
   refresh?: () => Promise<void | boolean>,
   clear?: () => void,
 ): Promise<void> {
-  try {
-    const fetchCall = () =>
-      apiFetch(`/api/v1/customer/addresses/${id}`, { method: "DELETE" });
-
-    const res =
-      refresh && clear
-        ? await withSilentRefresh(fetchCall, refresh, clear)
-        : await fetchCall();
-
-    if (!res.ok) {
-      console.warn(`[Addresses] Delete failed: ${res.status} ${res.statusText}`);
-    }
-  } finally {
-    await syncSavedAddressesFromServer(refresh, clear);
+  const fetchCall = () =>
+    apiFetch(`/api/v1/customer/addresses/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const res = refresh && clear
+    ? await withSilentRefresh(fetchCall, refresh, clear)
+    : await fetchCall();
+  if (!res.ok && res.status !== 404) {
+    throw new Error("We couldn't remove this address. Please try again.");
   }
 }
 
@@ -404,7 +397,7 @@ export function replaceSavedAddressByIdSync(
 ): Promise<void> { return replaceSavedAddressById(id, draft, refresh, clear); }
 
 /** Remove one saved address. If the active checkout draft matched it, switch or clear. */
-export function removeSavedAddressById(id: string): void {
+function removeSavedAddressLocally(id: string): void {
   if (typeof window === "undefined") return;
 
   const list = loadSavedAddresses();
@@ -437,43 +430,28 @@ export function removeSavedAddressById(id: string): void {
   }
 
   saveSavedAddressesList(next);
-  if (isAuthenticatedForAddresses) void deleteAddressOnServer(id);
 }
 
-/** Remove one saved address. (Sync version) */
-export function removeSavedAddressByIdSync(
-  id: string,
-  refresh: () => Promise<void | boolean>,
-  clear: () => void,
-): void {
-  if (typeof window === "undefined") return;
-
-  const list = loadSavedAddresses();
-  const removed = list.find((a) => a.id === id);
-  if (!removed) return;
-  addressWriteVersion += 1;
-
-  const next = list.filter((a) => a.id !== id);
-  const cur = loadDeliveryAddressDraft();
-  const draftMatchedRemoved =
-    cur !== null && deliveryAddressDedupeKey(cur) === deliveryAddressDedupeKey(removed);
-
-  if (draftMatchedRemoved) {
-    if (next.length > 0) {
-      const pick = next[0];
-      saveDeliveryAddressDraft({
-        line1: pick.line1,
-        city: pick.city,
-        postalCode: normalizeDeliveryPostalCode(pick.postalCode),
-      });
-    } else {
-      window.sessionStorage.removeItem(DELIVERY_ADDRESS_STORAGE_KEY);
-      window.dispatchEvent(new Event(DELIVERY_ADDRESS_UPDATED_EVENT));
-    }
+/** Legacy picker entry point. Account management awaits the result below. */
+export function removeSavedAddressById(id: string): void {
+  if (!isAuthenticatedForAddresses) {
+    removeSavedAddressLocally(id);
+    return;
   }
+  void removeSavedAddressByIdSync(id).catch(error => console.error("[Addresses] Delete failed:", error));
+}
 
-  saveSavedAddressesList(next);
-  if (isAuthenticatedForAddresses) void deleteAddressOnServer(id, refresh, clear);
+/** Confirm database deletion before changing the cache or checkout draft. */
+export async function removeSavedAddressByIdSync(
+  id: string,
+  refresh?: () => Promise<void | boolean>,
+  clear?: () => void,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const sessionVersion = addressSessionVersion;
+  if (isAuthenticatedForAddresses) await deleteAddressOnServer(id, refresh, clear);
+  if (sessionVersion !== addressSessionVersion) throw new Error("Your account changed. Please reopen your addresses.");
+  removeSavedAddressLocally(id);
 }
 
 export function saveDeliveryAddressDraft(address: DeliveryAddressDraft): void {

@@ -88,3 +88,44 @@ test('a stale refresh cannot overwrite a newly confirmed saved address',async()=
   complete(response({items:[]}));await stale;
   expect(addresses.loadSavedAddresses()[0].id).toBe('real-database-id');
 });
+
+test('signed-in removal waits for DELETE, clears the matching draft, and stays removed after refresh',async()=>{
+  addresses.setDeliveryAddressAuthState(true,'customer');
+  await addresses.upsertSavedAddressFromDraft(draft);
+  addresses.saveDeliveryAddressDraft(draft);
+  let complete;
+  apiFetch.mockImplementationOnce((path,options)=>{
+    expect(path).toBe('/api/v1/customer/addresses/real-database-id');
+    expect(options.method).toBe('DELETE');
+    return new Promise(resolve=>{complete=()=>{serverRows=[];resolve(response({deleted:true}));};});
+  });
+  const removal=addresses.removeSavedAddressByIdSync('real-database-id');
+  expect(addresses.loadSavedAddresses()).toHaveLength(1);
+  complete(); await removal;
+  expect(addresses.loadSavedAddresses()).toEqual([]);
+  expect(addresses.loadDeliveryAddressDraft()).toBeNull();
+  await addresses.syncSavedAddressesFromServer();
+  expect(addresses.loadSavedAddresses()).toEqual([]);
+});
+
+test.each([500,403])('failed DELETE (%s) preserves the saved address and checkout draft',async(status)=>{
+  addresses.setDeliveryAddressAuthState(true,'customer');
+  await addresses.upsertSavedAddressFromDraft(draft);
+  addresses.saveDeliveryAddressDraft(draft);
+  const before=addresses.loadSavedAddresses();
+  apiFetch.mockResolvedValueOnce(response(null,status));
+  await expect(addresses.removeSavedAddressByIdSync('real-database-id')).rejects.toThrow("couldn't remove");
+  expect(addresses.loadSavedAddresses()).toEqual(before);
+  expect(addresses.loadDeliveryAddressDraft().line1).toBe(draft.line1);
+});
+
+test('failed network deletion can be retried, and a row already deleted on another device is cleared',async()=>{
+  addresses.setDeliveryAddressAuthState(true,'customer');
+  await addresses.upsertSavedAddressFromDraft(draft);
+  apiFetch.mockRejectedValueOnce(new Error('Network unavailable'));
+  await expect(addresses.removeSavedAddressByIdSync('real-database-id')).rejects.toThrow('Network unavailable');
+  expect(addresses.loadSavedAddresses()).toHaveLength(1);
+  apiFetch.mockResolvedValueOnce(response(null,404));
+  await addresses.removeSavedAddressByIdSync('real-database-id');
+  expect(addresses.loadSavedAddresses()).toEqual([]);
+});
