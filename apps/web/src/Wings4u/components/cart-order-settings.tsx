@@ -377,6 +377,8 @@ export function CartOrderSettings({ menu }: Props) {
                 key={option}
                 type="button"
                 className="wk-order-fulfillment-btn"
+                role="tab"
+                aria-selected={draftFulfillmentType === option}
                 data-active={draftFulfillmentType === option ? "true" : "false"}
                 data-disabled={
                   option === "DELIVERY" && deliveryUnavailable ? "true" : "false"

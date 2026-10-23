@@ -417,7 +417,7 @@ function PasswordInput({
         style={s.passwordToggle}
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Hide password" : "Show password"}
-        tabIndex={-1}
+        aria-pressed={visible}
       >
         {visible ? (
           <svg

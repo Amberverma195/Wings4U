@@ -878,6 +878,7 @@ export function CartPage() {
                               }
                               router.push(`/order?fulfillment_type=${cart.fulfillmentType}`);
                             }}
+                            aria-label={`Edit ${item.name}`}
                           >
                             Edit
                           </button>
@@ -887,6 +888,7 @@ export function CartPage() {
                           className="cart-line-btn-remove"
                           style={styles.cartItemBtnRemove}
                           onClick={() => cart.removeItem(item.key)}
+                          aria-label={`Remove ${item.name} from cart`}
                         >
                           Remove
                         </button>
@@ -951,6 +953,8 @@ export function CartPage() {
                         key={String(seg.id)}
                         type="button"
                         className={`cart-tip-seg-btn${active ? " cart-tip-seg-btn--active" : ""}`}
+                        aria-pressed={active}
+                        aria-label={seg.id === "none" ? "No tip" : `Tip ${seg.label}`}
                         onClick={() => setDriverTipPercent(seg.id)}
                       >
                         <span className="cart-tip-seg-btn__label">{seg.label}</span>

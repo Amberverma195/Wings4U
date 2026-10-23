@@ -491,10 +491,13 @@ export function OrderMethodModal({
           </div>
 
           {step === "method" ? (
-            <div className="wk-method-options">
+            <div className="wk-method-options" role="radiogroup" aria-label="Order fulfillment method">
               <button
                 type="button"
                 className="wk-method-option"
+                role="radio"
+                aria-checked={method === "PICKUP"}
+                aria-label={`Pickup, free, ${PICKUP_ETA_RANGE} minutes`}
                 data-selected={method === "PICKUP" ? "true" : "false"}
                 onClick={() => setMethod("PICKUP")}
               >
@@ -519,6 +522,13 @@ export function OrderMethodModal({
               <button
                 type="button"
                 className="wk-method-option"
+                role="radio"
+                aria-checked={method === "DELIVERY"}
+                aria-label={
+                  deliveryUnavailableMessage
+                    ? `Delivery, currently unavailable: ${deliveryUnavailableMessage}`
+                    : "Delivery, starting at $5, approximately 30 minutes"
+                }
                 data-selected={method === "DELIVERY" ? "true" : "false"}
                 data-disabled={deliveryUnavailableMessage ? "true" : "false"}
                 onClick={() => {

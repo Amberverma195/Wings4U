@@ -1055,6 +1055,7 @@ export function MenuPage({
                   className="menu-add-to-cart-btn"
                   style={{ ...styles.addBtn, background: "#27272a", color: "#71717a", borderColor: "transparent" }}
                   disabled
+                  aria-label={`${item.displayName}, currently unavailable`}
                 >
                   UNAVAILABLE
                 </button>
@@ -1084,6 +1085,7 @@ export function MenuPage({
                   className="menu-add-to-cart-btn"
                   style={styles.addBtn}
                   onClick={handleAddClick}
+                  aria-label={`Add ${item.displayName} to cart`}
                 >
                   ADD TO CART
                 </button>
@@ -1260,6 +1262,8 @@ export function MenuPage({
                       key={option}
                       type="button"
                       className="wk-order-fulfillment-btn"
+                      role="tab"
+                      aria-selected={draftFulfillmentType === option}
                       data-active={draftFulfillmentType === option ? "true" : "false"}
                       data-disabled={
                         option === "DELIVERY" && deliveryUnavailable ? "true" : "false"
@@ -1369,6 +1373,7 @@ export function MenuPage({
                     type="button"
                     className="wk-cat-btn"
                     data-active={activeCategoryId === category.id ? "true" : "false"}
+                    aria-pressed={activeCategoryId === category.id}
                     data-cat-id={category.id}
                     onClick={() => scrollToCategory(category.id)}
                   >
