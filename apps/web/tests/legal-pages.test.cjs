@@ -70,6 +70,15 @@ test('deletion information provides a real entry and explains resolution and com
   expect(text).toContain('nonzero wallet'); expect(text).toContain('does not mean deletion completed');
 });
 
+test('reward terms explain completion-based earning without implying verified collection', () => {
+  const text=strip(render(Terms));
+  expect(text).toContain('one stamp per whole qualifying pound');
+  expect(text).toContain('Picked Up or Delivered');
+  expect(text).toContain('including delivery completed without a PIN');
+  expect(text).toContain('not a separate staff record of payment collection');
+  expect(text).not.toContain('Qualifying paid wings portions');
+});
+
 test('footer provides exactly one visible link to each legal document', () => {
   const html=render(SiteFooter);
   expect(html).toContain('aria-label="Legal information"');
