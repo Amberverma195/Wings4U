@@ -85,3 +85,9 @@ test('orders split into active and past using the existing status sets', () => {
   expect(active.map(order => order.status)).toEqual(['PREPARING', 'PLACED']);
   expect(past.map(order => order.status)).toEqual(['DELIVERED', 'CANCELLED']);
 });
+
+
+test.each([8, 9, 15, 16])('deal summaries preserve %i stamps without clamping to the reward cost', balance => {
+  expect(rewardProgress({ available_stamps: balance, stamps_per_reward: 8, max_available_stamps: 16, lifetime_stamps: 30, lifetime_redemptions: 1 }))
+    .toMatchObject({ availableStamps: balance, maxAvailableStamps: 16, stampsPerReward: 8, availableRewards: Math.floor(balance / 8), eligible: true });
+});

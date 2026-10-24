@@ -1,12 +1,14 @@
 import { Transform } from "class-transformer";
-import { IsIn, IsInt, IsString, IsUUID, MaxLength, Min, MinLength, ValidateIf } from "class-validator";
+import { IsIn, IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateIf } from "class-validator";
 import type { AdminStampGrantInput, StampGrantReason } from "./admin-customers.dto";
+import { MAX_AVAILABLE_STAMPS } from "../rewards/rewards.service";
 
 export class AdminStampGrantRequestDto implements AdminStampGrantInput {
   // Prevent implicit conversion from accepting true as 1 or numeric strings.
   @Transform(({ obj }) => typeof obj.stamps === "number" ? obj.stamps : Number.NaN)
   @IsInt()
   @Min(1)
+  @Max(MAX_AVAILABLE_STAMPS)
   stamps!: number;
 
   @IsIn(["WRONG_ORDER", "MISSING_ITEMS", "SERVICE_RECOVERY", "OTHER"])

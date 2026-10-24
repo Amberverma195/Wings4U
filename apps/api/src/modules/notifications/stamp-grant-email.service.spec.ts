@@ -57,7 +57,7 @@ describe("Stamp grant transactional email", () => {
     expect(payload.html).toContain("&lt;Tina &amp; &quot;Brown&quot;&gt;");
     expect(payload.html).not.toContain('<Tina & "Brown">');
     expect(payload.html).toContain("We&#39;ve added 2 bonus stamps to your Wings4U rewards account.");
-    expect(payload.html).toContain("Your updated stamp balance: 6 / 8");
+    expect(payload.html).toContain("Your updated stamp balance: 6 / 16");
     expect(payload.html).toContain("Your rewards account has been updated successfully. No action is required.");
     expect(payload.html).toContain("1544 Dundas St, London, ON N5W 3C1");
 
@@ -72,7 +72,7 @@ describe("Stamp grant transactional email", () => {
     // Plain text assertions
     expect(payload.text).toContain("Hello, <Tina & \"Brown\">!");
     expect(payload.text).toContain("We've added 2 bonus stamps to your Wings4U rewards account.");
-    expect(payload.text).toContain("Your updated stamp balance: 6 / 8");
+    expect(payload.text).toContain("Your updated stamp balance: 6 / 16");
     expect(payload.text).toContain("Your rewards account has been updated successfully. No action is required.");
     expect(payload.text).toContain("Thank you,\nThe Wings4U Team ❤️\n\nWings 4 U\n1544 Dundas St, London, ON N5W 3C1");
     expect(payload.text).not.toContain("Order Now");
@@ -165,13 +165,13 @@ describe("Stamp grant transactional email", () => {
       expect(email.subject).toBe("Wings4U — Bonus Stamps Added to Your Account");
       expect(email.text).toContain("Hello, Alice!");
       expect(email.text).toContain("We've added 1 bonus stamp to your Wings4U rewards account.");
-      expect(email.text).toContain("Your updated stamp balance: 5 / 8");
+      expect(email.text).toContain("Your updated stamp balance: 5 / 16");
       expect(email.text).toContain("Your rewards account has been updated successfully. No action is required.");
       expect(email.text).not.toContain("reward threshold");
       expect(email.text).not.toContain("complimentary");
       expect(email.html).toContain("Hello, Alice!");
       expect(email.html).toContain("We&#39;ve added 1 bonus stamp to your Wings4U rewards account.");
-      expect(email.html).toContain("Your updated stamp balance: 5 / 8");
+      expect(email.html).toContain("Your updated stamp balance: 5 / 16");
       expect(email.html).not.toContain("reward threshold");
     });
 
@@ -179,9 +179,9 @@ describe("Stamp grant transactional email", () => {
       const email = renderStampGrantEmail("Bob", 3, 8);
       expect(email.text).toContain("Hello, Bob!");
       expect(email.text).toContain("We've added 3 bonus stamps to your Wings4U rewards account.");
-      expect(email.text).toContain("Your updated stamp balance: 8 / 8");
-      expect(email.text).toContain("You have reached the reward threshold of 8 stamps. A complimentary 1 lb wings reward is available in your account.");
-      expect(email.html).toContain("You have reached the reward threshold of 8 stamps. A complimentary 1 lb wings reward is available in your account.");
+      expect(email.text).toContain("Your updated stamp balance: 8 / 16");
+      expect(email.text).toContain("You have 1 free pound available. Each reward uses 8 stamps for one individual 1 lb wings item.");
+      expect(email.html).toContain("You have 1 free pound available. Each reward uses 8 stamps for one individual 1 lb wings item.");
     });
 
     it("handles empty or blank customer name gracefully with Customer fallback", () => {
@@ -231,5 +231,20 @@ describe("Stamp grant transactional email", () => {
         expect(email.text).toContain("1544 Dundas St, London, ON N5W 3C1");
       }
     });
+  });
+});
+
+
+describe('saved rewards email wording', () => {
+  it.each([7, 8, 9, 15, 16])('reports %i/16 and counts rewards in both formats', balance => {
+    const email = renderStampGrantEmail('Customer', 1, balance);
+    for (const body of [email.text, email.html]) {
+      expect(body).toContain(balance + ' / 16');
+      if (balance >= 8) {
+        expect(body).toContain(balance === 16 ? '2 free pounds available' : '1 free pound available');
+        expect(body).toContain('Each reward uses 8 stamps');
+        expect(body).toContain('One reward per order.');
+      } else expect(body).not.toContain('free pound');
+    }
   });
 });

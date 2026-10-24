@@ -9,6 +9,7 @@ import { useModalDialog } from "@/lib/use-modal-dialog";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import type { ActivePromo } from "@/lib/types";
+import type { WingsRewardsSummary } from "@wings4u/contracts";
 import { AccountSkeleton } from "@/components/account-skeleton";
 import { AccountSurfaceLinks } from "../account-surface-links";
 import { AccountDeletionButton } from "../account-deletion-button";
@@ -36,16 +37,6 @@ type WalletLedgerEntry = {
 type WalletLedgerResponse = {
   entries: WalletLedgerEntry[];
   next_cursor: string | null;
-};
-
-/** Wings-rewards stamp card summary (`GET /rewards/me`). */
-type WingsRewardsSummary = {
-  customer_user_id: string;
-  available_stamps: number;
-  lifetime_stamps: number;
-  lifetime_redemptions: number;
-  stamps_per_reward: number;
-  updated_at: string;
 };
 
 /** A single stamp earn/redeem event (`GET /rewards/me/ledger`). */
@@ -201,21 +192,18 @@ export default function ProfilePage() {
     };
   }, [session.loaded, session.authenticated]);
 
-  // Wings-rewards progress: stamps earned toward the next free-wings unlock.
-  // `stamps_per_reward` comes from the API (currently 8) so we don't duplicate
-  // the constant on the client.
+  // Capacity drives the card/ring; the reward threshold drives redemption.
   const stampsPerReward = wingsRewards?.stamps_per_reward ?? 8;
-  const availableStamps = Math.min(
-    wingsRewards?.available_stamps ?? 0,
-    stampsPerReward,
-  );
+  const maxAvailableStamps = wingsRewards?.max_available_stamps ?? 16;
+  const availableStamps = wingsRewards?.available_stamps ?? 0;
+  const availableRewards = Math.floor(availableStamps / stampsPerReward);
   const lifetimeStamps = wingsRewards?.lifetime_stamps ?? 0;
   const lifetimeRedemptions = wingsRewards?.lifetime_redemptions ?? 0;
   const stampsProgressPercent = Math.min(
     100,
-    (availableStamps / stampsPerReward) * 100,
+    (availableStamps / maxAvailableStamps) * 100,
   );
-  const stampsToNextReward = Math.max(0, stampsPerReward - availableStamps);
+  const stampsToNextReward = availableStamps >= maxAvailableStamps ? 0 : stampsPerReward - (availableStamps % stampsPerReward);
   const rewardReady = availableStamps >= stampsPerReward;
 
   const handleLogout = useCallback(async () => {
@@ -384,8 +372,8 @@ export default function ProfilePage() {
                 <p className={styles.sectionDesc}>
                   {hubTab === "rewards"
                     ? (rewardReady
-                        ? "You've collected all 8 stamps. Redeem at checkout for 1lb of wings, on us."
-                        : `Earn 1 stamp for every pound of wings you order. Collect ${stampsPerReward} stamps to unlock 1lb of wings free.`)
+                        ? "Add a qualifying individual 1 lb wings item and apply the wings reward at checkout. Each reward uses 8 stamps. One reward per order."
+                        : `Earn 1 stamp per whole eligible paid pound on completed orders. Every ${stampsPerReward} stamps unlocks 1 lb of wings free. Save up to ${maxAvailableStamps} stamps.`)
                     : "Active promotions and special offers currently available for your account."
                   }
                 </p>
@@ -393,12 +381,16 @@ export default function ProfilePage() {
 
               {hubTab === "rewards" ? (
                 <>
+                  {rewardReady && <div className={styles.rewardNotice} role="status">
+                    <strong>{availableRewards} free {availableRewards === 1 ? "pound" : "pounds"} available</strong>
+                    <span>Ready to redeem at checkout.</span>
+                  </div>}
                   <div className={styles.rewardsGrid}>
                     <div className={styles.pointsCard}>
                       <span className={styles.pointsNum}>
                         {availableStamps}
                         <span className={styles.stampsDenominator}>
-                          /{stampsPerReward}
+                          /{maxAvailableStamps}
                         </span>
                       </span>
                       <span className={styles.pointsLabel}>Stamps collected</span>
@@ -412,7 +404,7 @@ export default function ProfilePage() {
                     <div
                       className={styles.progressRing}
                       role="img"
-                      aria-label={`${availableStamps} of ${stampsPerReward} stamps collected`}
+                      aria-label={`${availableStamps} of ${maxAvailableStamps} stamps collected; rewards at ${stampsPerReward} and ${maxAvailableStamps} stamps`}
                     >
                       <svg viewBox="0 0 120 120" aria-hidden="true">
                         <defs>
@@ -435,7 +427,7 @@ export default function ProfilePage() {
                           {rewardReady ? "🎁" : "🍗"}
                         </strong>
                         <span>
-                          {availableStamps}/{stampsPerReward}
+                          {availableStamps}/{maxAvailableStamps}
                         </span>
                       </div>
                     </div>
@@ -447,7 +439,7 @@ export default function ProfilePage() {
                       >
                         {formatPoints(lifetimeRedemptions)}
                       </span>
-                      <span className={styles.pointsLabel}>Free pounds unlocked</span>
+                      <span className={styles.pointsLabel}>Free pounds redeemed</span>
                       <span className={styles.pointsCredit}>
                         {lifetimeStamps} stamps earned all-time
                       </span>
@@ -455,20 +447,21 @@ export default function ProfilePage() {
                   </div>
 
                   <div className={styles.stampRow} aria-hidden>
-                    {Array.from({ length: stampsPerReward }).map((_, idx) => {
+                    {Array.from({ length: maxAvailableStamps }).map((_, idx) => {
                       const filled = idx < availableStamps;
                       return (
                         <div
                           key={idx}
                           className={`${styles.stampSlot} ${
                             filled ? styles.stampSlotFilled : ""
-                          }`}
+                          } ${(idx + 1) % stampsPerReward === 0 ? styles.stampSlotMilestone : ""}`}
                         >
                           {filled ? "🍗" : idx + 1}
                         </div>
                       );
                     })}
                   </div>
+                  <p className={styles.milestoneLegend}>8 stamps: 1 free pound · 16 stamps: 2 free pounds. One reward per order.</p>
 
                   <button 
                     type="button"
@@ -619,7 +612,7 @@ export default function ProfilePage() {
             <div className={styles.stampModalSummary}>
               <div className={styles.stampModalStat}>
                 <span className={styles.stampModalStatValue}>
-                  {availableStamps}/{stampsPerReward}
+                  {availableStamps}/{maxAvailableStamps}
                 </span>
                 <span className={styles.stampModalStatLabel}>
                   Stamps collected
@@ -644,14 +637,14 @@ export default function ProfilePage() {
             </div>
 
             <div className={styles.stampRow} aria-hidden>
-              {Array.from({ length: stampsPerReward }).map((_, idx) => {
+              {Array.from({ length: maxAvailableStamps }).map((_, idx) => {
                 const filled = idx < availableStamps;
                 return (
                   <div
                     key={idx}
                     className={`${styles.stampSlot} ${
                       filled ? styles.stampSlotFilled : ""
-                    }`}
+                    } ${(idx + 1) % stampsPerReward === 0 ? styles.stampSlotMilestone : ""}`}
                   >
                     {filled ? "🍗" : idx + 1}
                   </div>

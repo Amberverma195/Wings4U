@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException, U
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 import { AdminAuditService } from "../admin-audit/admin-audit.service";
-import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
+import { MAX_AVAILABLE_STAMPS } from "../rewards/rewards.service";
 import { StampGrantEmailService } from "../notifications/stamp-grant-email.service";
 import { AdminCustomersService } from "./admin-customers.service";
 import type { AdminStampGrantInput, AdminStampGrantResult, StampGrantReason } from "./admin-customers.dto";
@@ -25,7 +25,7 @@ export class AdminStampGrantsService {
   async grant(customerId: string, locationId: string, actor: Actor, input: AdminStampGrantInput): Promise<AdminStampGrantResult> {
     this.authorize(actor, locationId);
     const note = input.note?.trim() || null;
-    if (!Number.isSafeInteger(input.stamps) || input.stamps <= 0 || input.stamps > STAMPS_PER_REWARD ||
+    if (!Number.isSafeInteger(input.stamps) || input.stamps <= 0 || input.stamps > MAX_AVAILABLE_STAMPS ||
       !Object.hasOwn(reasons, input.reason) || (input.reason === "OTHER" && !note) || (note?.length ?? 0) > 1000) {
       throw new UnprocessableEntityException("Enter a positive whole stamp count within the card limit, a valid reason, and an explanation for Other.");
     }
@@ -55,12 +55,12 @@ export class AdminStampGrantsService {
         const afterLock = await replay(tx);
         if (afterLock) return { entry: afterLock, replayed: true };
         const changed = await tx.customerWingsRewards.updateMany({
-          where: { customerUserId: customerId, availableStamps: { lte: STAMPS_PER_REWARD - input.stamps } },
+          where: { customerUserId: customerId, availableStamps: { lte: MAX_AVAILABLE_STAMPS - input.stamps } },
           data: { availableStamps: { increment: input.stamps }, lifetimeStamps: { increment: input.stamps } },
         });
         const summary = await tx.customerWingsRewards.findUniqueOrThrow({ where: { customerUserId: customerId } });
         if (!changed.count) throw new ConflictException({ code: "STAMP_CAP_CHANGED",
-          message: `Stamp balance is now ${summary.availableStamps}/${STAMPS_PER_REWARD}. You can add at most ${Math.max(0, STAMPS_PER_REWARD - summary.availableStamps)} stamps. Refresh the rewards and try again.` });
+          message: `Stamp balance is now ${summary.availableStamps}/${MAX_AVAILABLE_STAMPS}. You can add at most ${Math.max(0, MAX_AVAILABLE_STAMPS - summary.availableStamps)} stamps. Refresh the rewards and try again.` });
         const entry = await tx.customerWingsStampLedger.create({ data: {
           id: input.request_id, customerUserId: customerId, orderId: null, entryType: "ADMIN_GRANTED",
           deltaStamps: input.stamps, balanceAfterStamps: summary.availableStamps, poundsAwarded: null,

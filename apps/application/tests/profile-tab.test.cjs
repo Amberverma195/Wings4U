@@ -306,3 +306,28 @@ test('an unsent support request survives refresh and remains visible while submi
   expect(renderer.root.findByProps({ placeholder: 'What happened?' }).props.value).toBe('Detailed customer draft');
   await act(async () => { finish(); await sending; });
 });
+
+
+test.each([0, 7, 8, 9, 15, 16])('mobile balance %i uses capacity for the card and eight for reward readiness', async balance => {
+  mockAccount.data.wingsRewards = { available_stamps: balance, stamps_per_reward: 8, max_available_stamps: 16, lifetime_stamps: 32, lifetime_redemptions: 2 };
+  await rerender();
+  const grid = renderer.root.findAllByType('View').find(node => node.props.accessibilityLabel === balance + ' of 16 stamps collected; rewards at 8 and 16 stamps');
+  expect(grid).toBeDefined();
+  const rows = grid.findAllByType('View').filter(node => node.props.style?.flexDirection === 'row');
+  expect(rows).toHaveLength(2);
+  const slots = rows.flatMap(row => row.children);
+  expect(slots).toHaveLength(16);
+  expect(slots.filter(slot => slot.props.style[1])).toHaveLength(balance);
+  expect(slots.filter(slot => slot.props.style[2]).map(slot => slots.indexOf(slot) + 1)).toEqual([8, 16]);
+  const ring = renderer.root.findAllByType('View').find(node => node.props.accessibilityRole === 'image' && node.props.accessibilityLabel === balance + ' of 16 stamps collected');
+  expect(ring).toBeDefined();
+  const circles = ring.findAllByType('Circle');
+  if (balance > 0) { const dash = circles[1].props.strokeDasharray.split(' ').map(Number); expect(dash[0] / dash[1]).toBeCloseTo(balance / 16); }
+  const content = strings().join(' ');
+  if (balance >= 8) {
+    expect(content).toContain(balance === 16 ? '2 free pounds available' : '1 free pound available');
+    expect(content).toContain('Ready to redeem at checkout.');
+    expect(content).toContain('Add a qualifying individual 1 lb wings item and apply the wings reward at checkout.');
+    expect(content).toContain('One reward per order.');
+  } else expect(content).not.toContain('pound available');
+});

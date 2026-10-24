@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import type { Prisma } from "@prisma/client";
 import type { AdminCustomerDetail, AdminCustomerOrdersPage, AdminCustomerStampsPage } from "./admin-customers.dto";
 import { PrismaService } from "../../database/prisma.service";
-import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
+import { MAX_AVAILABLE_STAMPS, STAMPS_PER_REWARD } from "../rewards/rewards.service";
 import { primaryContacts, primaryIdentityOrder } from "../../common/utils/primary-identity";
 
 /** Customer accounts are global; this guard never substitutes snapshot names for account ownership. */
@@ -92,6 +92,7 @@ export class AdminCustomersService {
     return {
       summary: { available_stamps: available, lifetime_stamps: summary?.lifetimeStamps ?? 0,
         lifetime_redemptions: summary?.lifetimeRedemptions ?? 0, stamps_per_reward: STAMPS_PER_REWARD,
+        max_available_stamps: MAX_AVAILABLE_STAMPS,
         reward_available: available >= STAMPS_PER_REWARD },
       entries: page.map(entry => {
         const accessible = entry.order?.locationId === locationId && entry.order.customerUserId === customerId;

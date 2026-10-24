@@ -96,8 +96,22 @@ describe("Read-only Admin customer data", () => {
   });
   it("returns zero rewards without upserting or writing a ledger entry", async () => {
     const result = await service.getStamps(CUSTOMER, LOCATION);
-    expect(result.summary).toEqual({ available_stamps: 0, lifetime_stamps: 0, lifetime_redemptions: 0, stamps_per_reward: 8, reward_available: false });
+    expect(result.summary).toEqual({ available_stamps: 0, lifetime_stamps: 0, lifetime_redemptions: 0, stamps_per_reward: 8, max_available_stamps: 16, reward_available: false });
     expect(result.entries).toEqual([]);
+    expect(prisma.customerWingsRewards.upsert).not.toHaveBeenCalled();
+    expect(prisma.customerWingsStampLedger.create).not.toHaveBeenCalled();
+  });
+  it.each([7, 8, 9, 15, 16])("reports distinct capacity and cost at %i without rewriting balances or history", async balance => {
+    const summary = { customerUserId: CUSTOMER, availableStamps: balance, lifetimeStamps: 41, lifetimeRedemptions: 3, updatedAt: DATE };
+    prisma.customerWingsRewards.findUnique.mockResolvedValue(summary);
+    expect((await service.getStamps(CUSTOMER, LOCATION)).summary).toMatchObject({
+      available_stamps: balance, stamps_per_reward: 8, max_available_stamps: 16, reward_available: balance >= 8,
+    });
+    const rewards = new RewardsController({ getSummary: async () => summary } as any);
+    expect(await rewards.getMySummary({ userId: CUSTOMER } as any)).toMatchObject({
+      available_stamps: balance, stamps_per_reward: 8, max_available_stamps: 16, reward_available: balance >= 8,
+      lifetime_stamps: 41, lifetime_redemptions: 3,
+    });
     expect(prisma.customerWingsRewards.upsert).not.toHaveBeenCalled();
     expect(prisma.customerWingsStampLedger.create).not.toHaveBeenCalled();
   });

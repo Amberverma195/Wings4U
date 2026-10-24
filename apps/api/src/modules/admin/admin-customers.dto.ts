@@ -39,6 +39,7 @@ export interface AdminCustomerStampSummary {
   lifetime_stamps: number;
   lifetime_redemptions: number;
   stamps_per_reward: number;
+  max_available_stamps: number;
   reward_available: boolean;
 }
 export interface AdminCustomerStampEntry {

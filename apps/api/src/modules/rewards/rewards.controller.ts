@@ -2,7 +2,7 @@ import { Controller, Get, Query } from "@nestjs/common";
 import type { Request } from "express";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
-import { RewardsService, STAMPS_PER_REWARD } from "./rewards.service";
+import { MAX_AVAILABLE_STAMPS, RewardsService, STAMPS_PER_REWARD } from "./rewards.service";
 
 @Controller("rewards")
 export class RewardsController {
@@ -19,6 +19,8 @@ export class RewardsController {
       lifetime_stamps: summary.lifetimeStamps,
       lifetime_redemptions: summary.lifetimeRedemptions,
       stamps_per_reward: STAMPS_PER_REWARD,
+      max_available_stamps: MAX_AVAILABLE_STAMPS,
+      reward_available: summary.availableStamps >= STAMPS_PER_REWARD,
       updated_at: summary.updatedAt,
     };
   }

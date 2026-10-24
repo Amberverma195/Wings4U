@@ -37,7 +37,7 @@ import {
   throwScheduleViolations,
   type ValidationMenuItem,
 } from "../shared/order-validation";
-import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
+import { MAX_AVAILABLE_STAMPS, STAMPS_PER_REWARD } from "../rewards/rewards.service";
 
 type RemovableIngredientRow = {
   id: string;
@@ -281,6 +281,8 @@ export class PosService {
       lifetime_stamps: summary.lifetimeStamps,
       lifetime_redemptions: summary.lifetimeRedemptions,
       stamps_per_reward: STAMPS_PER_REWARD,
+      max_available_stamps: MAX_AVAILABLE_STAMPS,
+      reward_available: summary.availableStamps >= STAMPS_PER_REWARD,
       updated_at: summary.updatedAt,
     };
   }
@@ -1294,8 +1296,8 @@ export class PosService {
   }
 
   async issueRewardsStampsByPhone(params: IssueRewardsStampsParams) {
-    if (!Number.isInteger(params.stamps) || params.stamps <= 0) {
-      throw new BadRequestException("Stamp amount must be a positive number");
+    if (!Number.isSafeInteger(params.stamps) || params.stamps <= 0 || params.stamps > MAX_AVAILABLE_STAMPS) {
+      throw new BadRequestException(`Stamp amount must be a whole number from 1 to ${MAX_AVAILABLE_STAMPS}`);
     }
 
     const identity = await this.findCustomerIdentityByPhone(params.phone);
@@ -1306,14 +1308,14 @@ export class PosService {
     const result = await this.prisma.$transaction(async (tx) => {
       const summary = await tx.customerWingsRewards.upsert({
         where: { customerUserId: identity.user.id },
-        update: {},
+        update: { availableStamps: { increment: 0 } },
         create: { customerUserId: identity.user.id },
       });
 
-      const room = STAMPS_PER_REWARD - summary.availableStamps;
+      const room = MAX_AVAILABLE_STAMPS - summary.availableStamps;
       if (room <= 0) {
         throw new BadRequestException(
-          "Customer already has enough stamps for a reward",
+          `Customer stamp balance is full (${MAX_AVAILABLE_STAMPS}/${MAX_AVAILABLE_STAMPS}). Redeem a reward before issuing more stamps.`,
         );
       }
       if (params.stamps > room) {

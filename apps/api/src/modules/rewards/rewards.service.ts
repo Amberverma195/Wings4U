@@ -6,6 +6,9 @@ import { getWingSkuPortion } from "../shared/wing-sku";
 /** Stamps required to unlock one "1lb of wings free" reward. */
 export const STAMPS_PER_REWARD = 8;
 
+/** Maximum saved balance: two rewards, each still costing 8 stamps. */
+export const MAX_AVAILABLE_STAMPS = 16;
+
 /** Ledger entry types persisted to `customer_wings_stamp_ledger.entry_type`. */
 const LEDGER_ENTRY = {
   EARNED: "EARNED",
@@ -215,6 +218,14 @@ export class RewardsService {
     userId: string,
     orderId: string,
   ): Promise<void> {
+    // All balance writers take the same row lock before checking idempotency.
+    // A concurrent replay must see the ledger event committed by the first call.
+    await tx.customerWingsRewards.upsert({
+      where: { customerUserId: userId },
+      update: { availableStamps: { increment: 0 } },
+      create: { customerUserId: userId },
+    });
+
     const existingRedemption = await tx.customerWingsStampLedger.findFirst({
       where: {
         orderId,
@@ -223,12 +234,6 @@ export class RewardsService {
       select: { id: true },
     });
     if (existingRedemption) return;
-
-    await tx.customerWingsRewards.upsert({
-      where: { customerUserId: userId },
-      update: {},
-      create: { customerUserId: userId },
-    });
 
     // Conditional decrement keeps the balance from ever going negative when
     // two checkout attempts race the same 8-stamp card.
@@ -275,9 +280,9 @@ export class RewardsService {
    *   - 1 stamp per whole eligible pound, aggregated before flooring, using
    *     official SKU equivalents for regular Wings, Combos and Party Specials.
    *     Lunch and other unspecified products do not earn stamps.
-   *   - `availableStamps` is capped at `STAMPS_PER_REWARD` (8). Extra paid
+   *   - `availableStamps` is capped at `MAX_AVAILABLE_STAMPS` (16). Extra paid
    *     pounds are recorded in the ledger reason text, but the redeemable
-   *     balance itself does not stockpile past one reward.
+   *     balance itself does not stockpile past two rewards.
    *   - Idempotent: skipped if a ledger row of type EARNED already exists
    *     for `orderId`. The DB also backs this with a unique
    *     `(order_id, entry_type)` constraint so a replay cannot double-credit.
@@ -355,9 +360,8 @@ export class RewardsService {
     const stampsEarned = Math.floor(payablePounds);
     if (stampsEarned <= 0) return;
 
-    // Cap the available balance at eight. Lifetime stamps still record all
+    // Cap the available balance at sixteen. Lifetime stamps still record all
     // calculated whole paid pounds; capped available credit is not rolled over.
-    const MAX_BALANCE = STAMPS_PER_REWARD;
 
     const summary = await tx.customerWingsRewards.upsert({
       where: { customerUserId },
@@ -367,7 +371,14 @@ export class RewardsService {
       create: { customerUserId },
     });
 
-    const room = Math.max(0, MAX_BALANCE - summary.availableStamps);
+    // A concurrent completion may have committed while we waited for the lock.
+    const afterLock = await tx.customerWingsStampLedger.findFirst({
+      where: { orderId: order.id, entryType: LEDGER_ENTRY.EARNED },
+      select: { id: true },
+    });
+    if (afterLock) return;
+
+    const room = Math.max(0, MAX_AVAILABLE_STAMPS - summary.availableStamps);
     const stampsToCredit = Math.min(stampsEarned, room);
 
     const updated = await tx.customerWingsRewards.update({

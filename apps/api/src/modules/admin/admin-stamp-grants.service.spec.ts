@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { AdminStampGrantsService } from "./admin-stamp-grants.service";
 import { AdminAuditService } from "../admin-audit/admin-audit.service";
 import { RewardsService } from "../rewards/rewards.service";
+import { PosService } from "../pos/pos.service";
 import type { AdminStampGrantInput } from "./admin-customers.dto";
 
 const CUSTOMER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -31,7 +32,7 @@ function setup(balance = 0) {
     };
     const tx: any = {
       user: { findFirst: jest.fn(async () => activeCustomer ? { id: CUSTOMER } : null) },
-      order: { findUnique: async () => ({ id: "completed-order", status: 'PICKED_UP', customerUserId: CUSTOMER, orderItems: [
+      order: { findUnique: async ({ where }: any) => ({ id: where.id, status: 'PICKED_UP', customerUserId: CUSTOMER, orderItems: [
         { quantity: 1, builderType: "WINGS", builderPayloadJson: { weight_lb: 2 }, menuItem: { slug: "wings-2lb" } },
       ] }) },
       customerWingsRewards: {
@@ -59,7 +60,10 @@ function setup(balance = 0) {
         findFirst: jest.fn(async ({ where }: any) => state.entries.find((row: any) => Object.entries(where).every(([key, value]) => row[key] === value)) ?? null),
         create: jest.fn(async ({ data }: any) => {
           if (fail === "ledger") throw new Error("Ledger unavailable");
-          if (state.entries.some((row: any) => row.id === data.id)) throw new Prisma.PrismaClientKnownRequestError("Duplicate", { code: "P2002", clientVersion: "7" });
+          if (state.entries.some((row: any) => (data.id && row.id === data.id) ||
+            (data.orderId && row.orderId === data.orderId && row.entryType === data.entryType))) {
+            throw new Prisma.PrismaClientKnownRequestError("Duplicate", { code: "P2002", clientVersion: "7" });
+          }
           const entry = { ...data, id: data.id ?? `order-entry-${state.entries.length}`, createdAt: new Date() };
           state.entries.push(entry); return entry;
         }),
@@ -85,17 +89,17 @@ function setup(balance = 0) {
   }) };
   const customers = { getStamps: jest.fn(async () => ({ summary: {
     available_stamps: state.summary.availableStamps, lifetime_stamps: state.summary.lifetimeStamps,
-    lifetime_redemptions: state.summary.lifetimeRedemptions, stamps_per_reward: 8, reward_available: state.summary.availableStamps >= 8,
+    lifetime_redemptions: state.summary.lifetimeRedemptions, stamps_per_reward: 8, max_available_stamps: 16, reward_available: state.summary.availableStamps >= 8,
   } })) };
   const service = new AdminStampGrantsService(prisma, new AdminAuditService(prisma), emails as any, customers as any);
   return { service, prisma, emails, txs, state: () => state, fail: (value: string) => { fail = value; }, disableCustomer: () => { activeCustomer = false; } };
 }
 
 describe("Admin manual stamp grants", () => {
-  it.each([[0, 2], [6, 8]])("credits %i + 2 atomically to %i", async (before, after) => {
+  it.each([[0, 2], [6, 8], [8, 10], [14, 16]])("credits %i + 2 atomically to %i", async (before, after) => {
     const s = setup(before);
     const result = await s.service.grant(CUSTOMER, "location", actor, input());
-    expect(result.summary).toEqual({ available_stamps: after, lifetime_stamps: 14, lifetime_redemptions: 3, stamps_per_reward: 8, reward_available: after === 8 });
+    expect(result.summary).toEqual({ available_stamps: after, lifetime_stamps: 14, lifetime_redemptions: 3, stamps_per_reward: 8, max_available_stamps: 16, reward_available: after >= 8 });
     expect(s.state().entries).toEqual([expect.objectContaining({ id: REQUEST, entryType: "ADMIN_GRANTED", deltaStamps: 2,
       balanceAfterStamps: after, orderId: null, poundsAwarded: null, reasonText: "Gifted by Wings 4 U — courtesy stamps added." })]);
     expect(s.state().audits).toEqual([expect.objectContaining({ actorUserId: actor.userId, actorRoleSnapshot: "ADMIN", locationId: "location",
@@ -104,15 +108,15 @@ describe("Admin manual stamp grants", () => {
         new_balance: after, reason: "SERVICE_RECOVERY", note: "Wrong item", timestamp: expect.any(String),
       }) })]);
     expect(s.state().emails).toEqual([{ grantId: REQUEST }]);
-    expect(s.txs[0].customerWingsRewards.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { customerUserId: CUSTOMER, availableStamps: { lte: 6 } } }));
+    expect(s.txs[0].customerWingsRewards.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { customerUserId: CUSTOMER, availableStamps: { lte: 14 } } }));
     expect(s.emails.send).toHaveBeenCalledTimes(1);
   });
-  it.each([[6, 5], [8, 1]])("rejects %i + %i with no writes or email", async (balance, stamps) => {
+  it.each([[14, 5], [16, 1]])("rejects %i + %i with no writes or email", async (balance, stamps) => {
     const s = setup(balance); const before = structuredClone(s.state());
     await expect(s.service.grant(CUSTOMER, "location", actor, input(stamps))).rejects.toThrow(/at most/);
     expect(s.state()).toEqual(before); expect(s.emails.send).not.toHaveBeenCalled();
   });
-  it.each([0, -1, 1.5, NaN, undefined, 9])("rejects invalid count %s", async stamps => {
+  it.each([0, -1, 1.5, NaN, undefined, 17])("rejects invalid count %s", async stamps => {
     const s = setup();
     await expect(s.service.grant(CUSTOMER, "location", actor, { ...input(), stamps: stamps as number })).rejects.toThrow();
     expect(s.state().entries).toHaveLength(0);
@@ -133,12 +137,12 @@ describe("Admin manual stamp grants", () => {
     const s = setup(); await expect(s.service.grant(CUSTOMER, "location", { ...actor, role }, input())).rejects.toThrow();
   });
   it.each(["ledger", "audit", "email"])("rolls back the entire grant on %s insert failure", async failure => {
-    const s = setup(6); s.fail(failure); const before = structuredClone(s.state());
+    const s = setup(14); s.fail(failure); const before = structuredClone(s.state());
     await expect(s.service.grant(CUSTOMER, "location", actor, input())).rejects.toThrow();
     expect(s.state()).toEqual(before); expect(s.emails.send).not.toHaveBeenCalled();
   });
   it("two admins serialize on the reward row; only one can fill the remaining capacity", async () => {
-    const s = setup(6);
+    const s = setup(14);
     // Email processing is separately tested; another transaction may still be active for this fixture.
     s.emails.send.mockImplementation(async () => ({ status: "SENT", message: "Accepted", retryable: false }));
     const outcomes = await Promise.allSettled([
@@ -146,16 +150,16 @@ describe("Admin manual stamp grants", () => {
       s.service.grant(CUSTOMER, "location", { ...actor, userId: "admin-two" }, input(2, SECOND)),
     ]);
     expect(outcomes.map(row => row.status).sort()).toEqual(["fulfilled", "rejected"]);
-    expect(s.state().summary.availableStamps).toBe(8);
+    expect(s.state().summary.availableStamps).toBe(16);
     expect(s.state().entries).toHaveLength(1); expect(s.state().audits).toHaveLength(1);
   });
   it("parallel identical retries and subsequent retries never duplicate stamps, ledger or audit", async () => {
-    const s = setup(6);
+    const s = setup(14);
     s.emails.send.mockImplementation(async () => ({ status: "SENT", message: "Accepted", retryable: false }));
     const results = await Promise.all([s.service.grant(CUSTOMER, "location", actor, input()), s.service.grant(CUSTOMER, "location", actor, input())]);
     expect(results.map(row => row.replayed).sort()).toEqual([false, true]);
     expect((await s.service.grant(CUSTOMER, "location", actor, input())).replayed).toBe(true);
-    expect(s.state().summary).toEqual({ availableStamps: 8, lifetimeStamps: 14, lifetimeRedemptions: 3 });
+    expect(s.state().summary).toEqual({ availableStamps: 16, lifetimeStamps: 14, lifetimeRedemptions: 3 });
     expect(s.state().entries).toHaveLength(1); expect(s.state().audits).toHaveLength(1); expect(s.state().emails).toHaveLength(1);
   });
   it.each(["customer", "amount", "reason", "note", "actor", "location"])("rejects conflicting UUID reuse: %s", async field => {
@@ -165,12 +169,12 @@ describe("Admin manual stamp grants", () => {
       field === "actor" ? { ...actor, userId: "other" } : actor, change)).rejects.toThrow(/already used/);
     expect(s.state().entries).toHaveLength(1);
   });
-  it("grant racing completed-order accrual never exceeds eight, with existing lifetime semantics", async () => {
-    const s = setup(6); const rewards = new RewardsService(s.prisma);
+  it("grant racing completed-order accrual never exceeds sixteen, with existing lifetime semantics", async () => {
+    const s = setup(14); const rewards = new RewardsService(s.prisma);
     s.emails.send.mockImplementation(async () => ({ status: "SENT", message: "Accepted", retryable: false }));
     await Promise.allSettled([s.service.grant(CUSTOMER, "location", actor, input()),
       s.prisma.$transaction((tx: any) => rewards.accrueForOrderInTransaction(tx, "completed-order"))]);
-    expect(s.state().summary.availableStamps).toBe(8);
+    expect(s.state().summary.availableStamps).toBe(16);
     const earned = s.state().entries.find((entry: any) => entry.entryType === "EARNED");
     expect(earned).toBeDefined(); expect(s.state().summary.lifetimeStamps).toBe(12 + 2 + (earned.deltaStamps === 0 ? 2 : 0));
     for (const tx of s.txs) expect(tx.customerWingsRewards.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { availableStamps: { increment: 0 } } }));
@@ -191,5 +195,95 @@ describe("Admin manual stamp grants", () => {
     const before = structuredClone(s.state());
     await s.service.retryEmail(CUSTOMER, REQUEST, "location", actor); expect(s.state()).toEqual(before);
     await expect(s.service.retryEmail(CUSTOMER, REQUEST, "wrong-location", actor)).rejects.toThrow(/not found/);
+  });
+});
+
+
+describe('Loyalty capacity transaction contracts (in-memory row locks)', () => {
+  it.each([[8, 0], [16, 8]])('redeems exactly eight from %i to %i and preserves lifetime stamps', async (balance, expected) => {
+    const s = setup(balance); const rewards = new RewardsService(s.prisma);
+    await s.prisma.$transaction((tx: any) => rewards.redeemForOrderInTransaction(tx, CUSTOMER, 'redeem'));
+    expect(s.state().summary).toEqual({ availableStamps: expected, lifetimeStamps: 12, lifetimeRedemptions: 4 });
+    expect(s.state().entries).toEqual([expect.objectContaining({ orderId: 'redeem', deltaStamps: -8, balanceAfterStamps: expected })]);
+    const eligibility = new RewardsService({ customerWingsRewards: { upsert: async () => s.state().summary } } as any);
+    expect((await eligibility.computeEligibility(CUSTOMER, [{ quantity: 2, menuItemSlug: 'wings-1lb', basePriceCents: 1299,
+      unitPriceCents: 1699, lineTotalCents: 3398, builderPayload: { builder_type: 'WINGS', weight_lb: 1 } }])).eligible).toBe(expected >= 8);
+    await s.prisma.$transaction((tx: any) => rewards.redeemForOrderInTransaction(tx, CUSTOMER, 'redeem'));
+    expect(s.state().entries).toHaveLength(1);
+  });
+  it('does not consume any stamps below eight', async () => {
+    const s = setup(7); const before = structuredClone(s.state()); const rewards = new RewardsService(s.prisma);
+    await expect(s.prisma.$transaction((tx: any) => rewards.redeemForOrderInTransaction(tx, CUSTOMER, 'redeem'))).rejects.toThrow(/Not enough/);
+    expect(s.state()).toEqual(before);
+  });
+  it('parallel redemptions of the same order consume only one reward from a full balance', async () => {
+    const s = setup(16); const rewards = new RewardsService(s.prisma);
+    await Promise.all([1, 2].map(() => s.prisma.$transaction((tx: any) => rewards.redeemForOrderInTransaction(tx, CUSTOMER, 'same-order'))));
+    expect(s.state().summary).toEqual({ availableStamps: 8, lifetimeStamps: 12, lifetimeRedemptions: 4 });
+    expect(s.state().entries).toHaveLength(1);
+  });
+  it.each([[8, 1], [16, 2]])('parallel distinct orders at %i can consume only %i saved rewards', async (balance, count) => {
+    const s = setup(balance); const rewards = new RewardsService(s.prisma);
+    const outcomes = await Promise.allSettled(['a', 'b', 'c'].map(id => s.prisma.$transaction((tx: any) => rewards.redeemForOrderInTransaction(tx, CUSTOMER, id))));
+    expect(outcomes.filter(row => row.status === 'fulfilled')).toHaveLength(count);
+    expect(s.state().summary).toEqual({ availableStamps: 0, lifetimeStamps: 12, lifetimeRedemptions: 3 + count });
+    expect(s.state().entries).toHaveLength(count);
+  });
+  it('parallel completion retries credit lifetime totals and ledger only once', async () => {
+    const s = setup(8); const rewards = new RewardsService(s.prisma);
+    await Promise.all([1, 2].map(() => s.prisma.$transaction((tx: any) => rewards.accrueForOrderInTransaction(tx, 'same-order'))));
+    expect(s.state().summary).toEqual({ availableStamps: 10, lifetimeStamps: 14, lifetimeRedemptions: 3 });
+    expect(s.state().entries).toHaveLength(1);
+  });
+  it('distinct completions serialize at capacity and record all paid pounds in lifetime totals', async () => {
+    const s = setup(15); const rewards = new RewardsService(s.prisma);
+    await Promise.all(['a', 'b'].map(id => s.prisma.$transaction((tx: any) => rewards.accrueForOrderInTransaction(tx, id))));
+    expect(s.state().summary).toEqual({ availableStamps: 16, lifetimeStamps: 16, lifetimeRedemptions: 3 });
+    expect(s.state().entries.map((e: any) => [e.deltaStamps, e.balanceAfterStamps, e.poundsAwarded])).toEqual([[1, 16, 2], [0, 16, 2]]);
+  });
+  it('grant, accrual and redemption share the lock and preserve an exact ledger chain', async () => {
+    const s = setup(16); const rewards = new RewardsService(s.prisma);
+    s.emails.send.mockImplementation(async () => ({ status: 'SENT', message: 'Accepted', retryable: false }));
+    const outcomes = await Promise.allSettled([
+      s.prisma.$transaction((tx: any) => rewards.redeemForOrderInTransaction(tx, CUSTOMER, 'redeem')),
+      s.service.grant(CUSTOMER, 'location', actor, input()),
+      s.prisma.$transaction((tx: any) => rewards.accrueForOrderInTransaction(tx, 'earn')),
+    ]);
+    expect(outcomes.every(row => row.status === 'fulfilled')).toBe(true);
+    let running = 16;
+    for (const row of s.state().entries) { running += row.deltaStamps; expect(row.balanceAfterStamps).toBe(running); expect(running).toBeLessThanOrEqual(16); }
+    expect(s.state().summary).toEqual({ availableStamps: 12, lifetimeStamps: 16, lifetimeRedemptions: 4 });
+  });
+  it('accepts a sixteen-stamp grant and returns separate cost and capacity fields', async () => {
+    const s = setup(); const result = await s.service.grant(CUSTOMER, 'location', actor, input(16));
+    expect(result.summary).toMatchObject({ available_stamps: 16, stamps_per_reward: 8, max_available_stamps: 16, reward_available: true });
+    expect(s.state().summary.lifetimeStamps).toBe(28);
+  });
+});
+
+
+describe('POS manual grant capacity', () => {
+  const posFixture = (balance: number) => {
+    const s = setup(balance); const pos = new PosService(s.prisma, {} as never);
+    jest.spyOn(pos as any, 'findCustomerIdentityByPhone').mockResolvedValue({ phoneE164: '+15195550123', user: { id: CUSTOMER, displayName: 'Customer' } });
+    return { ...s, pos };
+  };
+  it.each([[8, 8], [15, 1], [0, 16]])('allows %i plus %i stamps within capacity', async (balance, stamps) => {
+    const s = posFixture(balance);
+    expect((await s.pos.issueRewardsStampsByPhone({ phone: '5195550123', stamps })).rewards).toMatchObject({ available_stamps: 16, stamps_per_reward: 8, max_available_stamps: 16, reward_available: true });
+    expect(s.state().entries[0]).toMatchObject({ deltaStamps: stamps, balanceAfterStamps: 16 });
+  });
+  it.each([[16, 1], [15, 2], [0, 17]])('rejects overflow at %i plus %i', async (balance, stamps) => {
+    const s = posFixture(balance); const before = structuredClone(s.state());
+    await expect(s.pos.issueRewardsStampsByPhone({ phone: '5195550123', stamps })).rejects.toThrow();
+    expect(s.state()).toEqual(before);
+  });
+  it('concurrent POS issues share the balance lock with automatic accrual', async () => {
+    const s = posFixture(14); const rewards = new RewardsService(s.prisma);
+    await Promise.allSettled([s.pos.issueRewardsStampsByPhone({ phone: '5195550123', stamps: 2 }),
+      s.prisma.$transaction((tx: any) => rewards.accrueForOrderInTransaction(tx, 'completed-order'))]);
+    expect(s.state().summary.availableStamps).toBe(16);
+    expect(s.state().entries.reduce((sum: number, e: any) => sum + e.deltaStamps, 0)).toBe(2);
+    expect(s.txs.every(tx => tx.customerWingsRewards.upsert.mock.calls[0][0].update.availableStamps.increment === 0)).toBe(true);
   });
 });

@@ -90,6 +90,7 @@ type PosRewardsSummary = {
   lifetime_stamps: number;
   lifetime_redemptions: number;
   stamps_per_reward: number;
+  max_available_stamps: number;
   updated_at: string;
 };
 
@@ -2537,7 +2538,7 @@ function IssueStampsModal({ onClose }: { onClose: () => void }) {
   const customer = result?.found ? result.customer : null;
   const rewards = result?.found ? result.rewards : null;
   const room = rewards
-    ? Math.max(0, rewards.stamps_per_reward - rewards.available_stamps)
+    ? Math.max(0, rewards.max_available_stamps - rewards.available_stamps)
     : 0;
 
   const updatePhone = (value: string) => {
@@ -2629,7 +2630,7 @@ function IssueStampsModal({ onClose }: { onClose: () => void }) {
       setStampCount("1");
       setReason("");
       setSuccess(
-        `Issued ${data.issued_stamps} stamp${data.issued_stamps === 1 ? "" : "s"}. New total ${data.rewards?.available_stamps ?? 0}/${data.rewards?.stamps_per_reward ?? 8}.`,
+        `Issued ${data.issued_stamps} stamp${data.issued_stamps === 1 ? "" : "s"}. New total ${data.rewards?.available_stamps ?? 0}/${data.rewards?.max_available_stamps ?? 16}.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not issue stamps");
@@ -2717,7 +2718,7 @@ function IssueStampsModal({ onClose }: { onClose: () => void }) {
                     Available
                   </span>
                   <strong style={{ display: "block", fontSize: "1.35rem" }}>
-                    {rewards.available_stamps}/{rewards.stamps_per_reward}
+                    {rewards.available_stamps}/{rewards.max_available_stamps}
                   </strong>
                 </div>
                 <div>
@@ -2754,7 +2755,7 @@ function IssueStampsModal({ onClose }: { onClose: () => void }) {
               </label>
               {room <= 0 ? (
                 <div style={{ color: "var(--pos-accent)", fontWeight: 800 }}>
-                  Reward is ready. Redeem before issuing more stamps.
+                  Stamp balance is full. Redeem one reward before issuing more stamps.
                 </div>
               ) : null}
               <button

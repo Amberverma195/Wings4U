@@ -908,19 +908,17 @@
   margin-left: 0.2rem;
 }
 
-/* 8-slot stamp row underneath the ring. Each filled slot shows a wing
-   emoji, empty slots show their position so the customer always knows
-   "5 of 8". The row wraps on narrow widths. */
+/* Sixteen slots in two reward rows; milestone borders remain visible when filled. */
 .stampRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 44px));
+  gap: clamp(0.2rem, 1vw, 0.5rem);
   justify-content: center;
   margin-top: 1.25rem;
 }
 
 .stampSlot {
-  width: 44px;
+  width: 100%;
   height: 44px;
   border-radius: 12px;
   background: #f3f4f6;
@@ -932,6 +930,33 @@
   color: #9ca3af;
   font-size: 1rem;
   transition: background 150ms ease, transform 150ms ease;
+}
+
+.stampSlot.stampSlotMilestone {
+  border: 3px solid #9a3412;
+  box-shadow: 0 0 0 2px #ffedd5;
+}
+
+.milestoneLegend {
+  color: #78350f;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.rewardNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 2px solid #9a3412;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.rewardNotice strong {
+  font-size: 1.25rem;
 }
 
 .stampSlotFilled {
@@ -1518,7 +1543,6 @@
     grid-template-columns: 1fr;
   }
   .stampSlot {
-    width: 36px;
     height: 36px;
   }
 }

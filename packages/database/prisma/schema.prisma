@@ -1179,14 +1179,15 @@ model CustomerCreditLedger {
 /// Customers earn ONE stamp per whole pound of wings on every order
 /// that completes successfully (`status` -> `DELIVERED` or `PICKED_UP`).
 /// Every 8 stamps can be redeemed for "1lb of wings free" at checkout.
-/// `availableStamps` is capped at 8 by application logic so stampings
-/// beyond a full redemption target are ignored until the user redeems.
+/// `availableStamps` is capped at 16 by application logic (two 8-stamp rewards).
+/// Previously skipped stamps are never reconstructed; the ledger stays immutable.
 model CustomerWingsRewards {
   customerUserId   String   @id @map("customer_user_id") @db.Uuid
-  /// Current redeemable stamp balance. Capped at 8 — extra pounds don't
-  /// accrue until the user redeems the free-wings reward.
+  /// Current redeemable stamp balance. Capped at 16; excess eligible pounds
+  /// count toward lifetime stamps but are not banked or rolled over.
   availableStamps  Int      @default(0) @map("available_stamps")
-  /// Monotonic lifetime count of stamps ever awarded. Never decreases
+  /// Monotonic lifetime count of eligible whole paid pounds plus grants,
+  /// including paid pounds skipped at the balance cap. Never decreases
   /// on redemption — used only for UI ("X stamps earned to date").
   lifetimeStamps   Int      @default(0) @map("lifetime_stamps")
   /// Monotonic lifetime count of free-wings rewards redeemed. Used
@@ -1208,8 +1209,8 @@ model CustomerWingsStampLedger {
   orderId            String?  @map("order_id") @db.Uuid
   /// `EARNED`, `REDEEMED`, or `ADMIN_GRANTED` (goodwill stamps, no order).
   entryType          String   @map("entry_type")
-  /// Signed stamp change — +1..+8 for earn (floored pounds of wings on
-  /// the awarding order) or -8 for a single redemption.
+  /// Signed stamp change — 0..+16 for capped earning or +1..+16 for grants,
+  /// or exactly -8 for a single redemption. Historical entries stay unchanged.
   deltaStamps        Int      @map("delta_stamps")
   /// Available-stamp balance after applying `deltaStamps`. Useful for
   /// quickly rendering timelines without a running sum.

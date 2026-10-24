@@ -20,8 +20,8 @@ function savePending(id: string, value: PendingGrant | null) {
   catch { /* The mounted form still retains its key when browser storage is unavailable. */ }
 }
 
-export function AdminStampGrantDialog({ open, customerId, name, balance, threshold, onClose, onSuccess, onRefresh }: {
-  open: boolean; customerId: string; name: string; balance: number; threshold: number;
+export function AdminStampGrantDialog({ open, customerId, name, balance, maxAvailableStamps, onClose, onSuccess, onRefresh }: {
+  open: boolean; customerId: string; name: string; balance: number; maxAvailableStamps: number;
   onClose: () => void; onSuccess: (grant: AdminStampGrantResult) => void; onRefresh: () => Promise<void>;
 }) {
   const session = useSession();
@@ -41,7 +41,7 @@ export function AdminStampGrantDialog({ open, customerId, name, balance, thresho
   const initialFocus = useRef<HTMLInputElement | HTMLButtonElement | null>(null);
   const close = () => { if (!inFlight.current) onClose(); };
   useAdminDialog({ dialogRef, initialFocusRef: initialFocus, onClose: close, active: open });
-  const capacity = Math.max(0, threshold - balance);
+  const capacity = Math.max(0, maxAvailableStamps - balance);
   const valid = /^\d+$/.test(amount) && Number.isSafeInteger(Number(amount)) && Number(amount) > 0 &&
     Number(amount) <= capacity && !!reason && (reason !== "OTHER" || !!note.trim());
   const submit = async () => {
@@ -81,7 +81,7 @@ export function AdminStampGrantDialog({ open, customerId, name, balance, thresho
       className="admin-customer-modal admin-stamp-grant-modal" onMouseDown={event => event.stopPropagation()}>
       <header className="admin-customer-header"><div><p className="admin-customer-eyebrow">Wings Rewards</p>
         <h2 id="admin-stamp-grant-title">Give Stamps</h2><p>{name}</p>
-        <p>Current balance: <strong>{balance}/{threshold}</strong> · Remaining capacity: <strong>{capacity}</strong></p>
+        <p>Current balance: <strong>{balance}/{maxAvailableStamps}</strong> · Remaining capacity: <strong>{capacity}</strong></p>
       </div></header>
       <form className="admin-customer-body admin-stamp-grant-form" onSubmit={event => { event.preventDefault(); void submit(); }}>
         <label htmlFor="admin-stamp-count">How many stamps?</label>

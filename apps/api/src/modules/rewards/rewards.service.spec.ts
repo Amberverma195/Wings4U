@@ -97,14 +97,19 @@ describe('official earning portions and completion ledger', () => {
     return { tx, entries, summary, run: () => new RewardsService({} as never).accrueForOrderInTransaction(tx as never, 'order') };
   }
   it.each([
+    { lines: [line('wings-1lb')], balance: 7, earned: 1, credited: 1 },
+    { lines: [line('wings-1lb')], balance: 8, earned: 1, credited: 1 },
+    { lines: [line('wings-1lb')], balance: 15, earned: 1, credited: 1 },
+    { lines: [line('wings-5lb')], balance: 15, earned: 5, credited: 1 },
+    { lines: [line('wings-1lb')], balance: 16, earned: 1, credited: 0 },
     { lines: [line('party-75-wings')], balance: 0, earned: 8, credited: 8 },
-    { lines: [line('party-100-wings')], balance: 0, earned: 11, credited: 8 },
-    { lines: [line('party-75-wings', 2)], balance: 0, earned: 16, credited: 8 },
-    { lines: [line('party-100-wings', 2)], balance: 0, earned: 22, credited: 8 },
-    { lines: [line('party-75-wings'), line('party-100-wings')], balance: 0, earned: 19, credited: 8 },
-    { lines: [line('wings-1.5lb'), line('party-75-wings')], balance: 0, earned: 9, credited: 8 },
-    { lines: [line('party-100-wings')], balance: 7, earned: 11, credited: 1 },
-    { lines: [line('party-75-wings', 2)], balance: 8, earned: 16, credited: 0 },
+    { lines: [line('party-100-wings')], balance: 0, earned: 11, credited: 11 },
+    { lines: [line('party-75-wings', 2)], balance: 0, earned: 16, credited: 16 },
+    { lines: [line('party-100-wings', 2)], balance: 0, earned: 22, credited: 16 },
+    { lines: [line('party-75-wings'), line('party-100-wings')], balance: 0, earned: 19, credited: 16 },
+    { lines: [line('wings-1.5lb'), line('party-75-wings')], balance: 0, earned: 9, credited: 9 },
+    { lines: [line('party-100-wings')], balance: 7, earned: 11, credited: 9 },
+    { lines: [line('party-75-wings', 2)], balance: 8, earned: 16, credited: 8 },
     { lines: [line('wings-1.5lb'), line('wings-2.5lb')], balance: 0, earned: 4, credited: 4 },
     { lines: [line('wings-1.5lb', 3)], balance: 0, earned: 4, credited: 4 },
   ])('preserves cap and lifetime accounting: $earned calculated / $credited credited at balance $balance', async ({ lines, balance, earned, credited }) => {
@@ -117,14 +122,24 @@ describe('official earning portions and completion ledger', () => {
   });
   it('excludes the redeemed free pound while retaining Party Special earning', async () => {
     const f = fixture([line('party-100-wings'), line('wings-1lb')], 0, true, 'DELIVERED'); await f.run();
-    expect(f.summary).toMatchObject({ availableStamps: 8, lifetimeStamps: 31 });
-    expect(f.entries[1]).toMatchObject({ poundsAwarded: 11, deltaStamps: 8 });
+    expect(f.summary).toMatchObject({ availableStamps: 11, lifetimeStamps: 31 });
+    expect(f.entries[1]).toMatchObject({ poundsAwarded: 11, deltaStamps: 11 });
     const freeOnly = fixture([line('wings-1lb')], 0, true); await freeOnly.run(); expect(freeOnly.entries).toHaveLength(1);
+  });
+  it('does not reconstruct skipped stamps from an order already processed at the old cap', async () => {
+    const f = fixture([line('party-100-wings')], 8);
+    f.entries.push({ id: 'historical', entryType: 'EARNED', deltaStamps: 0, balanceAfterStamps: 8,
+      reasonText: 'Earned 11 stamps (0 credited, 11 skipped — balance cap)' });
+    const history = structuredClone(f.entries);
+    await f.run();
+    expect(f.summary).toEqual({ availableStamps: 8, lifetimeStamps: 20, lifetimeRedemptions: 2 });
+    expect(f.entries).toEqual(history);
+    expect(f.tx.customerWingsRewards.update).not.toHaveBeenCalled();
   });
   it.each(['PICKED_UP', 'DELIVERED', 'NO_PIN_DELIVERY'])('preserves earning on the existing qualifying completion (%s)', async status => {
     const f = fixture([line('party-100-wings')], 0, false, status); await f.run();
-    expect(f.summary).toMatchObject({ availableStamps: 8, lifetimeStamps: 31 });
-    expect(f.entries[0]).toMatchObject({ entryType: 'EARNED', deltaStamps: 8, poundsAwarded: 11 });
+    expect(f.summary).toMatchObject({ availableStamps: 11, lifetimeStamps: 31 });
+    expect(f.entries[0]).toMatchObject({ entryType: 'EARNED', deltaStamps: 11, poundsAwarded: 11 });
   });
   it.each(['PICKED_UP', 'DELIVERED', 'NO_PIN_DELIVERY'].flatMap(status => [
     { status, lines: [line('lunch-5-wings', 1)], earned: 0 },
@@ -134,7 +149,7 @@ describe('official earning portions and completion ledger', () => {
     { status, lines: [line('lunch-5-wings'), line('party-100-wings')], earned: 11 },
   ]))('confirmed lunch exclusion on $status yields $earned stamps', async ({ status, lines, earned }) => {
     const f = fixture(lines, 0, false, status); await f.run(); await f.run();
-    expect(f.summary).toMatchObject({ availableStamps: Math.min(8, earned), lifetimeStamps: 20 + earned });
+    expect(f.summary).toMatchObject({ availableStamps: Math.min(16, earned), lifetimeStamps: 20 + earned });
     expect(f.tx.customerWingsStampLedger.create).toHaveBeenCalledTimes(earned > 0 ? 1 : 0);
   });
   it.each(['PLACED', 'PREPARING', 'CANCELLED'])('does not award before a qualifying completion (%s)', async status => {

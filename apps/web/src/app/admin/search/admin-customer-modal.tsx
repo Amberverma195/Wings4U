@@ -35,12 +35,12 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
   const customer = profile.data;
   const name = customer?.display_name?.trim() || [customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || "Customer profile";
   const summary = stamps.data?.summary;
-  const fullCard = !!summary && summary.available_stamps >= summary.stamps_per_reward;
+  const fullCard = !!summary && summary.available_stamps >= summary.max_available_stamps;
   const grantDisabled = stamps.loading || !summary || fullCard || orderLoading;
 
   return <>
     <AdminStampGrantDialog open={grantOpen && !suspended} customerId={customerId} name={name}
-      balance={summary?.available_stamps ?? 0} threshold={summary?.stamps_per_reward ?? 0}
+      balance={summary?.available_stamps ?? 0} maxAvailableStamps={summary?.max_available_stamps ?? 0}
       onClose={() => setGrantOpen(false)} onRefresh={refreshStamps}
       onSuccess={grant => { setGrantResult(grant); applyGrant(grant); setGrantOpen(false); }} />
     {!suspended && !grantOpen && <div role="presentation" onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000,
@@ -111,15 +111,15 @@ export function AdminCustomerModal({ customerId, onClose, onOpenOrder, suspended
             {stamps.loading && !stamps.data && <p role="status">Loading Wings rewards...</p>}
             <ResourceError error={stamps.error} retry={stamps.retry} />
             {stamps.data && <>
-              <p className="admin-customer-stamp-balance"><strong>{stamps.data.summary.available_stamps} / {stamps.data.summary.stamps_per_reward}</strong> available stamps</p>
-              <progress aria-label="Wings stamp progress" value={Math.min(stamps.data.summary.available_stamps, stamps.data.summary.stamps_per_reward)}
-                max={stamps.data.summary.stamps_per_reward} />
+              <p className="admin-customer-stamp-balance"><strong>{stamps.data.summary.available_stamps} / {stamps.data.summary.max_available_stamps}</strong> available stamps</p>
+              <progress aria-label="Wings stamp progress" value={Math.min(stamps.data.summary.available_stamps, stamps.data.summary.max_available_stamps)}
+                max={stamps.data.summary.max_available_stamps} />
               <div className="admin-customer-stats">
                 <p>Lifetime stamps earned: <strong>{stamps.data.summary.lifetime_stamps}</strong></p>
                 <p>Lifetime rewards redeemed: <strong>{stamps.data.summary.lifetime_redemptions}</strong></p>
               </div>
               <p className={`admin-customer-reward ${stamps.data.summary.reward_available ? "admin-customer-reward--available" : ""}`}>
-                {stamps.data.summary.reward_available ? "Free 1lb Wings reward available." : "Free 1lb Wings reward not yet available."}</p>
+                {stamps.data.summary.reward_available ? `Free 1lb Wings reward available. ${Math.floor(stamps.data.summary.available_stamps / stamps.data.summary.stamps_per_reward)} free ${stamps.data.summary.available_stamps >= stamps.data.summary.stamps_per_reward * 2 ? "pounds" : "pound"} available.` : "Free 1lb Wings reward not yet available."}</p>
               <h3><button type="button" className="admin-customer-disclosure" aria-expanded={stampsExpanded} aria-controls="admin-customer-stamps"
                 onClick={() => setStampsExpanded(expanded => !expanded)}>Stamp History <span aria-hidden="true">{stampsExpanded ? "−" : "+"}</span></button></h3>
               <div id="admin-customer-stamps" hidden={!stampsExpanded}>

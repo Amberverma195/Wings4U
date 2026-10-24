@@ -28,7 +28,7 @@ import { LocationScopeGuard } from "../../common/guards/location-scope.guard";
 import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { PosStationGuard } from "../../common/guards/pos-station.guard";
 import { Public } from "../../common/decorators/roles.decorator";
-import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
+import { MAX_AVAILABLE_STAMPS } from "../rewards/rewards.service";
 import { PosService } from "./pos.service";
 
 class PosModifierSelectionDto {
@@ -165,7 +165,7 @@ class PosRewardsLookupDto {
 class PosRewardsIssueDto extends PosRewardsLookupDto {
   @IsInt()
   @Min(1)
-  @Max(STAMPS_PER_REWARD)
+  @Max(MAX_AVAILABLE_STAMPS)
   stamps!: number;
 
   @IsOptional()

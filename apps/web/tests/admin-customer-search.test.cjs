@@ -39,7 +39,7 @@ const stamp = (redeemed = false) => ({ id: redeemed ? 'stamp-two' : 'stamp-one',
   delta_stamps: redeemed ? -8 : 2, balance_after_stamps: redeemed ? 0 : 5, pounds_awarded: redeemed ? null : 2,
   reason_text: redeemed ? 'Redeemed 1lb of wings free' : 'Earned 2 stamps', created_at: DATE,
   order_id: redeemed ? OTHER_ORDER : ORDER, order_number: redeemed ? '1043' : '1042', order_accessible: true });
-const summary = { available_stamps: 5, lifetime_stamps: 21, lifetime_redemptions: 2, stamps_per_reward: 8, reward_available: false };
+const summary = { available_stamps: 5, lifetime_stamps: 21, lifetime_redemptions: 2, stamps_per_reward: 8, max_available_stamps: 16, reward_available: false };
 const search = { query: 'Brown', orders: [], tickets: [], customers: [
   { id: CUSTOMER, display_name: 'Brown' }, { id: OTHER_CUSTOMER, display_name: 'Smith' },
 ] };
@@ -82,7 +82,7 @@ test('customer buttons open contact/address/reward details on the search page an
   expect(dialogs()).toHaveLength(1);
   for (const value of ['Brown','+15195551234','brown@example.com','Home','(Default)','123 Main St','Work','N6A 2A2','Wings Rewards']) expect(text()).toContain(value);
   expect(customerDialog().findAllByType('address')[0].children[0].children).toContain('Home');
-  expect(renderer.root.findByType('progress').props).toEqual(expect.objectContaining({ max: 8, value: 5 }));
+  expect(renderer.root.findByType('progress').props).toEqual(expect.objectContaining({ max: 16, value: 5 }));
   const paragraphs = customerDialog().findAllByType('p').map(textOf);
   expect(paragraphs).toContain('Total orders: 42 (this restaurant)');
   const accountInfo = customerDialog().findAllByProps({ className: 'admin-customer-account-info' });
@@ -178,9 +178,9 @@ test('earn/redemption timestamps and signed deltas remain exact even with zero a
 
 test('uses the backend reward threshold and never calls customer-only rewards endpoints', async () => {
   apiFetch.mockImplementation(path => path.startsWith(`${base(CUSTOMER)}/stamps?`)
-    ? Promise.resolve(response({ summary: { ...summary, available_stamps: 10, stamps_per_reward: 10, reward_available: true }, entries: [], next_cursor: null })) : defaultFetch(path));
+    ? Promise.resolve(response({ summary: { ...summary, available_stamps: 16, reward_available: true }, entries: [], next_cursor: null })) : defaultFetch(path));
   await mount(); await openCustomer();
-  expect(renderer.root.findByType('progress').props.max).toBe(10);
+  expect(renderer.root.findByType('progress').props.max).toBe(16);
   expect(text()).toContain('Free 1lb Wings reward available.');
   expect(apiFetch.mock.calls.some(([path]) => path.startsWith('/api/v1/rewards/me'))).toBe(false);
   expect(apiFetch.mock.calls.filter(([path]) => path.startsWith(base(CUSTOMER))).every(([, options]) => options.locationId === 'restaurant-location')).toBe(true);
@@ -271,14 +271,14 @@ test('grant cancellation returns to expanded history without requesting a mutati
   expect(text()).toContain('REDEEMED'); expect(searchCalls()).toHaveLength(1);
 });
 
-test.each(['', '0', '-1', '1.5', 'NaN', '4'])('invalid grant amount %s disables submission', async amount => {
+test.each(['', '0', '-1', '1.5', 'NaN', '12'])('invalid grant amount %s disables submission', async amount => {
   await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(amount);
   expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
   await submitGrant(); expect(grantCalls()).toHaveLength(0);
 });
 
 test('grant validation requires a reason and an explanation for Other, using the backend capacity', async () => {
-  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 6 }, entries: [], next_cursor: null })) : defaultFetch(path));
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 14 }, entries: [], next_cursor: null })) : defaultFetch(path));
   await mount(); await openCustomer(); await tap('Give Stamps');
   expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(2);
   await fillGrant('2', ''); expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);
@@ -292,7 +292,7 @@ test('Give Stamps is disabled for a full card and unavailable stamp data', async
   apiFetch.mockImplementation(path => path.includes('/stamps?') ? new Promise(done => { resolve = done; }) : defaultFetch(path));
   await mount(); await openCustomer();
   expect(button('Give Stamps').props.disabled).toBe(true);
-  await act(async () => resolve(response({ summary: { ...summary, available_stamps: 8 }, entries: [], next_cursor: null })));
+  await act(async () => resolve(response({ summary: { ...summary, available_stamps: 16 }, entries: [], next_cursor: null })));
   expect(button('Give Stamps').props.disabled).toBe(true);
   expect(button('Give Stamps').parent.props.title).toContain('redeem');
 });
@@ -385,19 +385,19 @@ test('an unresolved grant survives closing the customer profile and reuses its U
   } finally { global.sessionStorage = originalStorage; }
 });
 
-test('the grant form derives its maximum from the returned threshold instead of a frontend constant', async () => {
-  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 8, stamps_per_reward: 10 }, entries: [], next_cursor: null })) : defaultFetch(path));
+test('the grant form derives its maximum from the returned capacity independently of the reward threshold', async () => {
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 8, max_available_stamps: 20 }, entries: [], next_cursor: null })) : defaultFetch(path));
   await mount(); await openCustomer(); expect(button('Give Stamps').props.disabled).toBe(false);
-  await tap('Give Stamps'); expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(2);
+  await tap('Give Stamps'); expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(12);
 });
 
 test('changed server balance is shown without optimistic credit and can be refreshed', async () => {
   apiFetch.mockImplementation(path => path.endsWith('/stamps/grant') ? Promise.resolve({ ok: false, status: 409, json: async () => ({ errors: [
-    { code: 'STAMP_CAP_CHANGED', message: 'Stamp balance is now 7/8. You can add at most 1 stamps. Refresh the rewards and try again.' },
+    { code: 'STAMP_CAP_CHANGED', message: 'Stamp balance is now 15/16. You can add at most 1 stamps. Refresh the rewards and try again.' },
   ] }) }) : defaultFetch(path));
   await mount(); await openCustomer(); await tap('Give Stamps'); await fillGrant(); await submitGrant();
   expect(text()).toContain('at most 1 stamps'); expect(grantDialog()).toBeDefined();
-  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 7 }, entries: [stamp()], next_cursor: null })) : defaultFetch(path));
+  apiFetch.mockImplementation(path => path.includes('/stamps?') ? Promise.resolve(response({ summary: { ...summary, available_stamps: 15 }, entries: [stamp()], next_cursor: null })) : defaultFetch(path));
   await tap('Refresh rewards');
   expect(grantDialog().findByProps({ id: 'admin-stamp-count' }).props.max).toBe(1);
   expect(button('Give Stamps', grantDialog()).props.disabled).toBe(true);

@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
-import { STAMPS_PER_REWARD } from "../rewards/rewards.service";
+import { MAX_AVAILABLE_STAMPS, STAMPS_PER_REWARD } from "../rewards/rewards.service";
 import type { StampGrantEmailResult } from "../admin/admin-customers.dto";
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({
@@ -19,10 +19,11 @@ export function renderStampGrantEmail(
   const greeting = `Hello, ${customerName}!`;
   const stampWord = stamps === 1 ? "stamp" : "stamps";
   const award = `We've added ${stamps} bonus ${stampWord} to your Wings4U rewards account.`;
-  const progress = `Your updated stamp balance: ${balance} / ${STAMPS_PER_REWARD}`;
+  const progress = `Your updated stamp balance: ${balance} / ${MAX_AVAILABLE_STAMPS}`;
   const status = "Your rewards account has been updated successfully. No action is required.";
-  const reward = balance >= STAMPS_PER_REWARD
-    ? `You have reached the reward threshold of ${STAMPS_PER_REWARD} stamps. A complimentary 1 lb wings reward is available in your account.`
+  const availableRewards = Math.floor(balance / STAMPS_PER_REWARD);
+  const reward = availableRewards > 0
+    ? `You have ${availableRewards} free ${availableRewards === 1 ? "pound" : "pounds"} available. Each reward uses ${STAMPS_PER_REWARD} stamps for one individual 1 lb wings item. To redeem, add a qualifying individual 1 lb wings item and apply the wings reward at checkout. One reward per order.`
     : null;
 
   const textSections = [

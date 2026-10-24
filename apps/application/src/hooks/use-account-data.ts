@@ -1,5 +1,7 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ApiEnvelope } from "@wings4u/contracts";
+import type { WingsRewardsSummary } from "@wings4u/contracts";
+export type { WingsRewardsSummary } from "@wings4u/contracts";
 import { apiFetch, getApiErrorMessage } from "../lib/api";
 import { DEFAULT_LOCATION_ID } from "../lib/env";
 import type { ActivePromo, OrderSummary, SupportTicketType } from "../lib/types";
@@ -22,15 +24,6 @@ export type WalletLedgerEntry = {
   order_id?: string | null;
   refund_request_id?: string | null;
   created_at: string;
-};
-
-export type WingsRewardsSummary = {
-  customer_user_id: string;
-  available_stamps: number;
-  lifetime_stamps: number;
-  lifetime_redemptions: number;
-  stamps_per_reward: number;
-  updated_at: string;
 };
 
 export type WingsStampEntry = {

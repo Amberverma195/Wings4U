@@ -4,6 +4,9 @@ jest.mock('../../database/order-number', () => ({ allocateNextOrderNumber: jest.
 import { CartService } from '../cart/cart.service';
 import { CheckoutService } from '../checkout/checkout.service';
 import { PosService } from '../pos/pos.service';
+import { RewardsService } from '../rewards/rewards.service';
+import { CheckoutController } from '../checkout/checkout.controller';
+import { ValidationPipe } from '@nestjs/common';
 
 describe('quote / checkout / POS ordering integrity parity', () => {
   const stop = new Error('STOP_BEFORE_PERSISTENCE');
@@ -56,7 +59,7 @@ describe('quote / checkout / POS ordering integrity parity', () => {
           ? checkout.placeOrder({ userId: 'customer', locationId: 'local', fulfillmentType: 'PICKUP', idempotencyKey: 'fixture', items: lines })
           : pos.createPosOrder({ locationId: 'local', fulfillmentType: 'PICKUP', orderSource: 'POS', paymentMethod: 'CASH', items: lines } as never);
     };
-    return { db, child, item, payload, run, selectionIds, request, pos };
+    return { db, child, item, payload, run, selectionIds, request, pos, cart, checkout, rewards };
   }
   // Recorded recipe relationships only, never the unavailable options from the audit.
   const mappedMenu = require('../../../../../packages/customization/test/mapped-menu-fixtures.json');
@@ -442,5 +445,53 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       await expect(run(path)).rejects.toBe(stop);
       expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2998 }) }));
     }
+  });
+
+  function loyaltyFixture(balance: number, slug = 'wings-1lb') {
+    const f = wingFixture();
+    f.item.slug = slug; f.payload.weight_lb = slug === 'wings-1lb' ? 1 : 1.5;
+    const summary = { availableStamps: balance };
+    Object.assign(f.db, { customerWingsRewards: { findUnique: jest.fn(async () => summary), upsert: jest.fn(async () => summary) } });
+    const rewards = new RewardsService(f.db as never);
+    f.rewards.computeEligibility.mockImplementation((...args: any[]) => (rewards.computeEligibility as any)(...args));
+    const line = (quantity: number) => ({ menuItemId: f.item.id, quantity, builderPayload: f.payload,
+      modifierSelections: f.selectionIds.map(id => ({ modifierOptionId: id })) });
+    const checkout = (quantity: number, promoCode?: string) => f.checkout.placeOrder({ userId: 'customer', locationId: 'local', fulfillmentType: 'PICKUP',
+      idempotencyKey: 'loyalty', items: [line(quantity)], applyWingsReward: true, promoCode });
+    const quote = (quantity: number) => f.cart.computeQuote('local', 'PICKUP', [{ menu_item_id: f.item.id, quantity,
+      builder_payload: f.payload, modifier_selections: f.selectionIds.map(id => ({ modifier_option_id: id })) }], undefined, 0, 0, undefined, 'customer', true);
+    return { ...f, checkout, quote };
+  }
+  it.each([8, 16].flatMap(balance => [1, 2, 5].map(quantity => ({ balance, quantity }))))('loyalty checkout discounts one base pound at $balance stamps, quantity $quantity', async ({ balance, quantity }) => {
+    const f = loyaltyFixture(balance);
+    const quote = await f.quote(quantity);
+    expect(quote).toMatchObject({ item_subtotal_cents: 1350 * quantity, item_discount_total_cents: 1000,
+      wings_reward: { available_stamps: balance, pounds_in_cart: quantity, applied: true, discount_cents: 1000 } });
+    await expect(f.checkout(quantity)).rejects.toBe(stop);
+    expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      itemSubtotalCents: quote.item_subtotal_cents, itemDiscountTotalCents: 1000, finalPayableCents: quote.final_payable_cents,
+    }) }));
+  });
+  it('checkout still rejects redemption below eight and a larger nonindividual item', async () => {
+    for (const f of [loyaltyFixture(7), loyaltyFixture(16, 'wings-1.5lb')]) {
+      await expect(f.checkout(1)).rejects.toMatchObject({ response: expect.objectContaining({ field: 'apply_wings_reward' }) });
+      expect(f.db.order.create).not.toHaveBeenCalled();
+    }
+  });
+  it('checkout still rejects stacking a coupon with a wings reward at sixteen', async () => {
+    const f = loyaltyFixture(16);
+    await expect(f.checkout(1, 'OTHER')).rejects.toThrow('Only one deal');
+    expect(f.db.order.create).not.toHaveBeenCalled();
+  });
+  it.each([0, -1])('checkout rejects nonpositive quantity %s before a reward can be applied', async quantity => {
+    const f = loyaltyFixture(16); await expect(f.checkout(quantity)).rejects.toThrow();
+    expect(f.db.order.create).not.toHaveBeenCalled();
+  });
+  it.each([0, -1, 1.5])('checkout HTTP validation rejects quantity %s with a wings reward', async quantity => {
+    const metatype = Reflect.getMetadata('design:paramtypes', CheckoutController.prototype, 'checkout')[0];
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidUnknownValues: true,
+      transformOptions: { enableImplicitConversion: true }, errorHttpStatusCode: 422 });
+    await expect(pipe.transform({ location_id: 'local', fulfillment_type: 'PICKUP', apply_wings_reward: true,
+      items: [{ menu_item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', quantity }] }, { type: 'body', metatype })).rejects.toMatchObject({ status: 422 });
   });
 });

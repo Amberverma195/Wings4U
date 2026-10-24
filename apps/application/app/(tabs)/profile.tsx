@@ -225,8 +225,9 @@ function ProfileScreen() {
   );
   const visibleOrders = orderFilter === 'active' ? activeOrders : pastOrders;
   const stampsPerReward = account.data.wingsRewards?.stamps_per_reward ?? 8;
-  const availableStamps = Math.min(account.data.wingsRewards?.available_stamps ?? 0, stampsPerReward);
-  const stampsToNext = Math.max(0, stampsPerReward - availableStamps);
+  const maxAvailableStamps = account.data.wingsRewards?.max_available_stamps ?? 16;
+  const availableStamps = account.data.wingsRewards?.available_stamps ?? 0;
+  const stampsToNext = availableStamps >= maxAvailableStamps ? 0 : stampsPerReward - (availableStamps % stampsPerReward);
   const rewardReady = availableStamps >= stampsPerReward;
   const lifetimeStamps = account.data.wingsRewards?.lifetime_stamps ?? 0;
   const lifetimeRedemptions = account.data.wingsRewards?.lifetime_redemptions ?? 0;
@@ -454,6 +455,7 @@ function ProfileScreen() {
             <OverviewTab
               availableStamps={availableStamps}
               stampsPerReward={stampsPerReward}
+              maxAvailableStamps={maxAvailableStamps}
               stampsToNext={stampsToNext}
               rewardReady={rewardReady}
               lifetimeStamps={lifetimeStamps}
@@ -567,6 +569,7 @@ function ProfileScreen() {
 function OverviewTab({
   availableStamps,
   stampsPerReward,
+  maxAvailableStamps,
   stampsToNext,
   rewardReady,
   lifetimeStamps,
@@ -578,6 +581,7 @@ function OverviewTab({
 }: {
   availableStamps: number;
   stampsPerReward: number;
+  maxAvailableStamps: number;
   stampsToNext: number;
   rewardReady: boolean;
   lifetimeStamps: number;
@@ -592,6 +596,7 @@ function OverviewTab({
       <RewardsHub
         availableStamps={availableStamps}
         stampsPerReward={stampsPerReward}
+        maxAvailableStamps={maxAvailableStamps}
         stampsToNext={stampsToNext}
         rewardReady={rewardReady}
         lifetimeStamps={lifetimeStamps}
@@ -614,6 +619,7 @@ function OverviewTab({
 function RewardsHub({
   availableStamps,
   stampsPerReward,
+  maxAvailableStamps,
   stampsToNext,
   rewardReady,
   lifetimeStamps,
@@ -623,6 +629,7 @@ function RewardsHub({
 }: {
   availableStamps: number;
   stampsPerReward: number;
+  maxAvailableStamps: number;
   stampsToNext: number;
   rewardReady: boolean;
   lifetimeStamps: number;
@@ -666,46 +673,42 @@ function RewardsHub({
       <Text style={styles.hubDesc}>
         {hubTab === 'rewards'
           ? (rewardReady
-            ? "You've collected all 8 stamps. Redeem at checkout for 1lb of wings, on us."
-            : `Earn 1 stamp for every pound of wings you order. Collect ${stampsPerReward} stamps to unlock 1lb of wings free.`)
+            ? `Add a qualifying individual 1 lb wings item and apply the wings reward at checkout. Each reward uses ${stampsPerReward} stamps. One reward per order.`
+            : `Earn 1 stamp per whole eligible paid pound on completed orders. Every ${stampsPerReward} stamps unlocks 1 lb of wings free. Save up to ${maxAvailableStamps} stamps.`)
           : 'Active promotions and special offers currently available for your account.'}
       </Text>
 
       {hubTab === 'rewards' ? (
         <>
+          {rewardReady && <View style={styles.rewardNotice} accessibilityLiveRegion="polite">
+            <Text style={styles.rewardNoticeTitle} accessibilityRole="header">
+              {Math.floor(availableStamps / stampsPerReward)} free {Math.floor(availableStamps / stampsPerReward) === 1 ? 'pound' : 'pounds'} available
+            </Text>
+            <Text style={styles.rewardNoticeText}>Ready to redeem at checkout.</Text>
+          </View>}
           <View style={styles.rewardsPanel}>
             <View style={styles.pointsCol}>
               <Text style={styles.pointsNum}>
                 {availableStamps}
-                <Text style={styles.pointsDenom}>/{stampsPerReward}</Text>
+                <Text style={styles.pointsDenom}>/{maxAvailableStamps}</Text>
               </Text>
               <Text style={styles.pointsLabel}>Stamps collected</Text>
               <Text style={styles.pointsCredit}>
                 {rewardReady ? 'Ready to redeem' : `${stampsToNext} more to go`}
               </Text>
             </View>
-            <StampRing available={availableStamps} total={stampsPerReward} ready={rewardReady} />
+            <StampRing available={availableStamps} total={maxAvailableStamps} ready={rewardReady} />
             <View style={styles.pointsCol}>
               <Text style={styles.pointsNumMuted}>{lifetimeRedemptions}</Text>
-              <Text style={styles.pointsLabel}>Free pounds unlocked</Text>
+              <Text style={styles.pointsLabel}>Free pounds redeemed</Text>
               <Text style={styles.pointsCredit}>
                 {lifetimeStamps} stamps earned all-time
               </Text>
             </View>
           </View>
 
-          <View style={styles.stampRow}>
-            {Array.from({ length: stampsPerReward }).map((_, index) => {
-              const filled = index < availableStamps;
-              return (
-                <View key={index} style={[styles.stampSlot, filled && styles.stampSlotFilled]}>
-                  <Text style={[styles.stampSlotText, filled && styles.stampSlotTextFilled]}>
-                    {filled ? '🍗' : index + 1}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          <StampSlots available={availableStamps} capacity={maxAvailableStamps} threshold={stampsPerReward} />
+          <Text style={styles.milestoneLegend}>8 stamps: 1 free pound · 16 stamps: 2 free pounds. One reward per order.</Text>
 
           <TouchableOpacity style={styles.historyLink} onPress={() => setHistoryOpen(true)}>
             <Text style={styles.historyLinkText}>View history  →</Text>
@@ -764,12 +767,29 @@ function RewardsHub({
         onClose={() => setHistoryOpen(false)}
         availableStamps={availableStamps}
         stampsPerReward={stampsPerReward}
+        maxAvailableStamps={maxAvailableStamps}
         lifetimeStamps={lifetimeStamps}
         lifetimeRedemptions={lifetimeRedemptions}
         ledger={ledger}
       />
     </View>
   );
+}
+
+function StampSlots({ available, capacity, threshold }: { available: number; capacity: number; threshold: number }) {
+  return <View accessible accessibilityRole="image" accessibilityLabel={`${available} of ${capacity} stamps collected; rewards at ${threshold} and ${capacity} stamps`}>
+    {Array.from({ length: Math.ceil(capacity / threshold) }, (_, row) => (
+      <View key={row} style={styles.stampRow}>
+        {Array.from({ length: Math.min(threshold, capacity - row * threshold) }, (_, column) => {
+          const stamp = row * threshold + column + 1;
+          const filled = stamp <= available;
+          return <View key={stamp} style={[styles.stampSlot, filled && styles.stampSlotFilled, stamp % threshold === 0 && styles.stampSlotMilestone]}>
+            <Text style={[styles.stampSlotText, filled && styles.stampSlotTextFilled]}>{filled ? '🍗' : stamp}</Text>
+          </View>;
+        })}
+      </View>
+    ))}
+  </View>;
 }
 
 function StampRing({ available, total, ready }: { available: number; total: number; ready: boolean }) {
@@ -782,7 +802,7 @@ function StampRing({ available, total, ready }: { available: number; total: numb
   const center = size / 2;
 
   return (
-    <View style={styles.ringWrap}>
+    <View style={styles.ringWrap} accessible accessibilityRole="image" accessibilityLabel={`${available} of ${total} stamps collected`}>
       <Svg width={size} height={size} style={styles.ringSvg}>
         <Defs>
           <LinearGradient id="stampRing" x1="0" y1="0" x2="1" y2="1">
@@ -825,6 +845,7 @@ function StampHistoryModal({
   onClose,
   availableStamps,
   stampsPerReward,
+  maxAvailableStamps,
   lifetimeStamps,
   lifetimeRedemptions,
   ledger,
@@ -833,6 +854,7 @@ function StampHistoryModal({
   onClose: () => void;
   availableStamps: number;
   stampsPerReward: number;
+  maxAvailableStamps: number;
   lifetimeStamps: number;
   lifetimeRedemptions: number;
   ledger: WingsStampEntry[];
@@ -855,7 +877,7 @@ function StampHistoryModal({
           <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.modalStats}>
               <View style={styles.modalStat}>
-                <Text style={styles.modalStatValue}>{availableStamps}/{stampsPerReward}</Text>
+                <Text style={styles.modalStatValue}>{availableStamps}/{maxAvailableStamps}</Text>
                 <Text style={styles.modalStatLabel}>Stamps collected</Text>
               </View>
               <View style={styles.modalStat}>
@@ -868,18 +890,7 @@ function StampHistoryModal({
               </View>
             </View>
 
-            <View style={styles.stampRow}>
-              {Array.from({ length: stampsPerReward }).map((_, index) => {
-                const filled = index < availableStamps;
-                return (
-                  <View key={index} style={[styles.stampSlot, filled && styles.stampSlotFilled]}>
-                    <Text style={[styles.stampSlotText, filled && styles.stampSlotTextFilled]}>
-                      {filled ? '🍗' : index + 1}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
+            <StampSlots available={availableStamps} capacity={maxAvailableStamps} threshold={stampsPerReward} />
 
             <Text style={styles.historyTitle}>Stamp history</Text>
             {ledger.length === 0 ? (
@@ -1834,6 +1845,28 @@ const styles = StyleSheet.create({
     borderStyle: 'solid',
     borderColor: '#F2A39B',
   },
+  stampSlotMilestone: {
+    borderWidth: 3,
+    borderStyle: 'solid',
+    borderColor: '#9A3412',
+  },
+  milestoneLegend: {
+    color: '#78350F',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  rewardNotice: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 2,
+    borderColor: '#9A3412',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 14,
+  },
+  rewardNoticeTitle: { color: '#7C2D12', fontSize: 19, fontWeight: '800' },
+  rewardNoticeText: { color: '#7C2D12', fontSize: 13, marginTop: 4 },
   stampSlotText: {
     color: '#A18F85',
     fontSize: 13,

@@ -42,7 +42,7 @@ describe("Admin stamp grant endpoint authorization and validation", () => {
     await post().send({ ...input, admin_user_id: "attacker", available_stamps: 0, lifetime_stamps: 1000 }).expect(201);
     expect(service.grant).toHaveBeenCalledWith(CUSTOMER, LOCATION, expect.objectContaining({ userId: "authenticated-admin", role: "ADMIN" }), input);
   });
-  it.each([0, -1, 1.5, null, "2", true, "NaN"])("rejects invalid stamp count %s before mutation", async stamps => {
+  it.each([0, -1, 1.5, 17, null, "2", true, "NaN"])("rejects invalid stamp count %s before mutation", async stamps => {
     await post().send({ ...input, stamps }).expect(422); expect(service.grant).not.toHaveBeenCalled();
   });
   it.each([{ reason: undefined }, { reason: "INVALID" }, { stamps: undefined }, { request_id: "bad" },
@@ -52,6 +52,10 @@ describe("Admin stamp grant endpoint authorization and validation", () => {
   it("accepts a trimmed Other explanation", async () => {
     await post().send({ ...input, reason: "OTHER", note: "  Missing sauce  " }).expect(201);
     expect(service.grant).toHaveBeenCalledWith(CUSTOMER, LOCATION, expect.anything(), { ...input, reason: "OTHER", note: "Missing sauce" });
+  });
+  it.each([8, 9, 16])("accepts a count of %i within capacity before service balance validation", async stamps => {
+    await post().send({ ...input, stamps }).expect(201);
+    expect(service.grant).toHaveBeenCalledWith(CUSTOMER, LOCATION, expect.anything(), { ...input, stamps });
   });
   it("requires location and valid customer/grant UUIDs", async () => {
     await request(app.getHttpServer()).post(`${path}/grant`).auth("admin", { type: "bearer" }).send(input).expect(422);

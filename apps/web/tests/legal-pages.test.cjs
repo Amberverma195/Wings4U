@@ -76,6 +76,9 @@ test('reward terms explain completion-based earning without implying verified co
   expect(text).toContain('Picked Up or Delivered');
   expect(text).toContain('including delivery completed without a PIN');
   expect(text).toContain('not a separate staff record of payment collection');
+  expect(text).toContain('capped at 16, saving up to two rewards');
+  expect(text).toContain('one reward per order');
+  expect(text).toContain('Stamps previously skipped at the old cap are not restored');
   expect(text).not.toContain('Qualifying paid wings portions');
 });
 

@@ -24,6 +24,8 @@ export function sectionContentState(error: string | null | undefined, count: num
 
 export type RewardProgress = {
   stampsPerReward: number;
+  maxAvailableStamps: number;
+  availableRewards: number;
   availableStamps: number;
   stampsToNext: number;
   eligible: boolean;
@@ -41,14 +43,18 @@ export function rewardProgress(summary: {
   lifetime_stamps: number;
   lifetime_redemptions: number;
   stamps_per_reward: number;
+  max_available_stamps: number;
 } | null): RewardProgress | null {
   if (!summary || summary.stamps_per_reward <= 0) return null;
   const stampsPerReward = summary.stamps_per_reward;
-  const availableStamps = Math.min(Math.max(0, summary.available_stamps), stampsPerReward);
+  const availableStamps = Math.max(0, summary.available_stamps);
+  const maxAvailableStamps = summary.max_available_stamps ?? 16;
   return {
     stampsPerReward,
+    maxAvailableStamps,
+    availableRewards: Math.floor(availableStamps / stampsPerReward),
     availableStamps,
-    stampsToNext: Math.max(0, stampsPerReward - availableStamps),
+    stampsToNext: availableStamps >= maxAvailableStamps ? 0 : stampsPerReward - (availableStamps % stampsPerReward),
     eligible: availableStamps >= stampsPerReward,
     lifetimeStamps: summary.lifetime_stamps,
     lifetimeRedemptions: summary.lifetime_redemptions,
