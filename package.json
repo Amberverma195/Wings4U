@@ -15,6 +15,7 @@
     "build:api": "npm run build --workspace @wings4u/api",
     "build:pricing": "npm run build --workspace @wings4u/pricing",
     "build:contracts": "npm run build --workspace @wings4u/contracts",
+    "build:packages": "npm run build:contracts && npm run build:pricing && npm run build:customization",
     "build:database": "npm run build --workspace @wings4u/database",
     "db:pull": "npm run prisma:pull --workspace @wings4u/database",
     "db:validate": "npm run prisma:validate --workspace @wings4u/database",

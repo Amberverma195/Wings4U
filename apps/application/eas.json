@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "MOBILE_APP_ENV": "production",
+        "EXPO_PUBLIC_API_ORIGIN": "https://api.wings4ulondon.ca"
+      }
+    },
+    "production": {
+      "env": {
+        "MOBILE_APP_ENV": "production",
+        "EXPO_PUBLIC_API_ORIGIN": "https://api.wings4ulondon.ca"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

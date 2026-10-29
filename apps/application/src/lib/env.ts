@@ -18,6 +18,8 @@ const { validateApiOrigin, isLocalDevelopmentOrigin, realtimeTargetsApi } = requ
   realtimeTargetsApi: (apiOrigin: string, realtimeOrigin: string, aliasOf: unknown, production: boolean) => boolean;
 };
 
+const isDev = typeof __DEV__ !== "undefined" ? Boolean(__DEV__) : process.env.NODE_ENV !== "production";
+
 /** Fallback dev host: Android emulator -> 10.0.2.2, iOS sim -> 127.0.0.1 */
 const DEV_HOST = Platform.OS === "android" ? "10.0.2.2" : "127.0.0.1";
 const DEV_API_PORT = "3001";
@@ -33,7 +35,7 @@ const DEV_API_PORT = "3001";
  */
 export function getApiBase(): string {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
-  const production = !__DEV__ || extra?.environment === 'production';
+  const production = !isDev || extra?.environment === 'production';
   const configured = typeof extra?.apiOrigin === "string" ? extra.apiOrigin.trim() : "";
   if (production) {
     if (!configured) throw new Error('Production mobile API origin is not configured.');
@@ -42,7 +44,7 @@ export function getApiBase(): string {
   if (configured && (extra?.apiOriginExplicit === true || !isLocalDevelopmentOrigin(configured))) {
     return validateApiOrigin(configured, false);
   }
-  if (__DEV__ && Platform.OS === "android" && !isDevice) {
+  if (isDev && Platform.OS === "android" && !isDevice) {
     return `http://10.0.2.2:${DEV_API_PORT}`;
   }
   if (configured) {
@@ -66,7 +68,7 @@ export function getRealtimeOrigin(): string {
     | undefined;
   const realtime = extra?.realtimeOrigin;
   if (typeof realtime === "string" && realtime.trim()) {
-    const production = !__DEV__ || extra?.environment === 'production';
+    const production = !isDev || extra?.environment === 'production';
     const origin = validateApiOrigin(realtime.trim(), production);
     // Re-check app.config.js against the REST origin actually in use, which
     // can differ from the build-time value on the Android emulator.
@@ -109,7 +111,7 @@ function getLegalWebsiteOrigin(): string {
   };
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
   // Canonical fallback also protects installed builds whose extras predate websiteUrl.
-  return validateWebsiteOrigin(extra?.websiteUrl ?? PUBLIC_WEBSITE_ORIGIN, !__DEV__ || extra?.environment === 'production');
+  return validateWebsiteOrigin(extra?.websiteUrl ?? PUBLIC_WEBSITE_ORIGIN, !isDev || extra?.environment === 'production');
 }
 
 export function getPrivacyPolicyUrl(): string {

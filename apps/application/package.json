@@ -8,6 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest --runInBand",
+    "postinstall": "cd ../.. && npm run build:packages",
     "prestart": "npm run build --workspace @wings4u/customization",
     "pretest": "npm run build --workspace @wings4u/customization",
     "preandroid": "npm run build --workspace @wings4u/customization",

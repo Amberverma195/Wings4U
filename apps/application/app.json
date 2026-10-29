@@ -35,7 +35,11 @@
     "extra": {
       "websiteUrl": "https://www.wings4ulondon.ca",
       "defaultLocationId": "a68bcda6-3295-42d8-9e53-c2c49dcfc765",
-      "developmentApiOrigin": "http://10.0.0.192:3001"
-    }
+      "developmentApiOrigin": "http://10.0.0.192:3001",
+      "eas": {
+        "projectId": "cb9ea09e-f905-47b2-a8d0-47b9efc850e7"
+      }
+    },
+    "owner": "amber53"
   }
 }
