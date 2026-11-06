@@ -36,7 +36,9 @@ import type {
 } from '../lib/types';
 import {
   BONELESS_WINGS_UPCHARGE_CENTS,
+  calculateBonelessSurchargeCents,
   WING_PREPARATION_OPTIONS,
+  getWingPreparationOptions,
   areAllSelectedFlavoursPlain,
   countEffectiveSaucedFlavours,
   defaultSaucingMethodForCount,
@@ -404,10 +406,25 @@ export function ComboBuilderMobile({
     return delta;
   }, [drinkGroups, drinkSelections, sideGroups, sideSelections]);
 
+  const bonelessSurchargeCents =
+    wingType === 'BONELESS'
+      ? calculateBonelessSurchargeCents(
+          selectedOption?.weight_lb ?? 1,
+          selectedOption?.slug ?? item.slug,
+        )
+      : 0;
+
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
-    (wingType === 'BONELESS' ? BONELESS_WINGS_UPCHARGE_CENTS : 0) +
+    bonelessSurchargeCents +
     modifierSelectionsTotalCents;
+
+  const preparationOptions = useMemo(() => {
+    return getWingPreparationOptions(
+      selectedOption?.weight_lb ?? 1,
+      selectedOption?.slug ?? item.slug,
+    );
+  }, [selectedOption, item.slug]);
 
   const showsSaucingStep = requiredFlavourCount >= 1 && !allMainFlavoursPlain;
 
@@ -726,14 +743,14 @@ export function ComboBuilderMobile({
         }
       >
         <OptionPills
-          options={WING_PREPARATION_OPTIONS.map((opt) => ({
+          options={preparationOptions.map((opt) => ({
             value: opt.id,
             label: opt.label,
             priceNote: opt.priceNote,
           }))}
           value={selectedWingPreparationId(wingType, preparation)}
           onChange={(optId) => {
-            const found = WING_PREPARATION_OPTIONS.find((o) => o.id === optId);
+            const found = preparationOptions.find((o) => o.id === optId);
             if (found) {
               setWingType(found.wingType);
               setPreparation(found.preparation);

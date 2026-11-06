@@ -301,7 +301,7 @@ export class CartService {
           wingFlavourMap,
         });
 
-        let modifierTotalCents = getBuilderPriceDelta(cartItem.builder_payload, optionMap);
+        let modifierTotalCents = getBuilderPriceDelta(cartItem.builder_payload, optionMap, menuItem);
         const saladModifierOptionIds = new Set(
           saladCustomization?.modifierOptionIds ?? [],
         );

@@ -1,5 +1,6 @@
 import { SIDE_POP_BUNDLE_PRICE_CENTS } from "@wings4u/customization";
 import { UnprocessableEntityException } from "@nestjs/common";
+import { getWingSkuWeightLb } from "./wing-sku";
 
 /**
  * Shared pricing computation and menu-validation helpers.
@@ -173,9 +174,33 @@ export function getLunchAddonOptionIds(
   return ids;
 }
 
+export function isRegularWingOrCombo(slug?: string | null): boolean {
+  if (!slug) return false;
+  return /^(wings|combo)-(?:\d+(?:\.\d+)?)lb$/.test(slug);
+}
+
+export const SPECIAL_PRODUCT_BONELESS_SURCHARGE_CENTS: Record<string, number> = {
+  "lunch-5-wings": 150,
+  "party-75-wings": 1200,
+  "party-100-wings": 1650,
+  "wings-4u-special": 300,
+};
+
+export function getSpecialProductBonelessSurchargeCents(slug?: string | null): number | null {
+  if (!slug) return null;
+  return SPECIAL_PRODUCT_BONELESS_SURCHARGE_CENTS[slug] ?? null;
+}
+
+export function calculateBonelessSurchargeCents(weightLb: number, slug?: string | null): number {
+  const special = getSpecialProductBonelessSurchargeCents(slug);
+  if (special != null) return special;
+  return Math.round(BONELESS_WINGS_UPCHARGE_CENTS * weightLb);
+}
+
 export function getBuilderPriceDelta(
   builderPayload?: Record<string, unknown>,
   optionMap?: Map<string, { priceDeltaCents: number; isActive?: boolean }>,
+  menuItem?: { slug?: string | null; name?: string } | null,
 ): number {
   if (!builderPayload) return 0;
   if (builderPayload.builder_type === "LUNCH_SPECIAL") {
@@ -201,10 +226,38 @@ export function getBuilderPriceDelta(
     builderPayload.builder_type === "WINGS" ||
     builderPayload.builder_type === "WING_COMBO"
   ) {
-    return (
-      extraFlavourCents +
-      (builderPayload.wing_type === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0)
-    );
+    if (builderPayload.wing_type !== "BONELESS") {
+      return extraFlavourCents;
+    }
+    // If menuItem is supplied, resolve weight authoritatively from trusted SKU/menu data
+    if (menuItem) {
+      const special = getSpecialProductBonelessSurchargeCents(menuItem.slug);
+      if (special != null) {
+        return extraFlavourCents + special;
+      }
+      if (isRegularWingOrCombo(menuItem.slug)) {
+        const trustedWeight = getWingSkuWeightLb(menuItem);
+        const weight =
+          typeof trustedWeight === "number" && Number.isFinite(trustedWeight) && trustedWeight > 0
+            ? trustedWeight
+            : 1;
+        return extraFlavourCents + calculateBonelessSurchargeCents(weight);
+      }
+      return extraFlavourCents + BONELESS_WINGS_UPCHARGE_CENTS;
+    }
+    // Fallback when menuItem is omitted (e.g. pure payload helper calls)
+    const payloadSlug = (builderPayload.menu_item_slug as string | undefined) ?? null;
+    const special = getSpecialProductBonelessSurchargeCents(payloadSlug);
+    if (special != null) {
+      return extraFlavourCents + special;
+    }
+    const weight =
+      typeof builderPayload.weight_lb === "number" &&
+      Number.isFinite(builderPayload.weight_lb) &&
+      builderPayload.weight_lb > 0
+        ? builderPayload.weight_lb
+        : 1;
+    return extraFlavourCents + calculateBonelessSurchargeCents(weight);
   }
   return extraFlavourCents;
 }

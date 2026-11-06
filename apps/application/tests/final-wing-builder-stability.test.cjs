@@ -370,6 +370,30 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
         wing_type: 'BONELESS',
       })).toBe(150);
 
+      // Weight-based boneless upcharge (150 cents * weight_lb)
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 1.5 })).toBe(225);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 2 })).toBe(300);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 3 })).toBe(450);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 5 })).toBe(750);
+      expect(getBuilderPriceDelta({ builder_type: 'WING_COMBO', wing_type: 'BONELESS', weight_lb: 2 })).toBe(300);
+      expect(getBuilderPriceDelta({
+        builder_type: 'WING_COMBO',
+        wing_type: 'BONELESS',
+        weight_lb: 1.5,
+        extra_flavour: { wing_flavour_id: 'f-bbq', flavour_name: 'BBQ' },
+      })).toBe(325); // 225 + 100
+
+      // Special products exact approved boneless surcharges
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 8 }, 'party-75-wings')).toBe(1200);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 11 }, 'party-100-wings')).toBe(1650);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 0.33 }, 'lunch-5-wings')).toBe(150);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', weight_lb: 2 }, 'wings-4u-special')).toBe(300);
+      // Bone-in alternatives have 0 surcharge
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONE_IN', weight_lb: 8 }, 'party-75-wings')).toBe(0);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONE_IN', weight_lb: 11 }, 'party-100-wings')).toBe(0);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONE_IN', weight_lb: 0.33 }, 'lunch-5-wings')).toBe(0);
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONE_IN', weight_lb: 2 }, 'wings-4u-special')).toBe(0);
+
       // Lunch special child add-ons
       expect(getBuilderPriceDelta({
         builder_type: 'LUNCH_SPECIAL',

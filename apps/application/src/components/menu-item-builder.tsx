@@ -8,7 +8,10 @@ import {
 import { MobileBuilderShell, StepCard, NotesInput, P } from './mobile-builder-shell';
 import { customizationCatalog, customerCustomizationInstructions, inspectCustomizationDraft, defaultSelections, validateSelections, modifierTotal as customizationTotal, maximumSelections, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_BUNDLE_PRICE_CENTS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from '@wings4u/customization';
 import { useCart } from "../context/cart";
-import { BONELESS_WINGS_UPCHARGE_CENTS } from "../lib/wing-builder-logic";
+import {
+  BONELESS_WINGS_UPCHARGE_CENTS,
+  calculateBonelessSurchargeCents,
+} from "../lib/wing-builder-logic";
 import type {
   BuilderMenuOption,
   CartBuilderPayload,
@@ -357,13 +360,17 @@ export function MenuItemBuilder({ item, visible, categories, onClose, editItem: 
   const selectedWingOption = wingTypeGroup
     ? optionById(wingTypeGroup, selections[wingTypeGroup.id]?.[0])
     : null;
+  const wingWeightLb = selectedVariant?.weight_lb ?? parseWeightFromName(buildable.name);
+  const wingSlug = selectedVariant?.slug ?? buildable.slug;
+  const bonelessSurchargeCents =
+    wingBuilder && resolveWingType(selectedWingOption) === "BONELESS"
+      ? calculateBonelessSurchargeCents(wingWeightLb, wingSlug)
+      : 0;
   const unitTotal =
     buildable.base_price_cents +
     customizationTotal(groups, selections) +
     (bundleEligible && bundleEnabled ? SIDE_POP_BUNDLE_PRICE_CENTS : 0) +
-    (wingBuilder && resolveWingType(selectedWingOption) === "BONELESS"
-      ? BONELESS_WINGS_UPCHARGE_CENTS
-      : 0) +
+    bonelessSurchargeCents +
     (lunchBuilder && selectedChild
       ? customizationTotal(childAddonGroups, childSelections)
       : 0);

@@ -618,7 +618,7 @@ export class PosService {
             });
           }
 
-          let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload, optionMap);
+          let modifierTotalCents = getBuilderPriceDelta(cartItem.builderPayload, optionMap, menuItem ? menuItemRowToValidationPayload(menuItem) : null);
           const modifiers: (typeof lineItems)[number]["modifiers"] = [];
           const saladModifierOptionIds = new Set(
             saladCustomization?.modifierOptionIds ?? [],

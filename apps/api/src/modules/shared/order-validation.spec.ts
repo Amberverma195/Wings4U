@@ -343,6 +343,137 @@ describe("Order Validation & Pricing Security Hardening", () => {
       ).toBe(BONELESS_WINGS_UPCHARGE_CENTS + EXTRA_FLAVOUR_PRICE_CENTS);
     });
 
+    it("calculates weight-based boneless surcharge across weights and combos", () => {
+      // Direct payload weights without menuItem fallback: 150 cents * weight
+      expect(
+        getBuilderPriceDelta({ builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 1 }),
+      ).toBe(150);
+      expect(
+        getBuilderPriceDelta({ builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 1.5 }),
+      ).toBe(225);
+      expect(
+        getBuilderPriceDelta({ builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 2 }),
+      ).toBe(300);
+      expect(
+        getBuilderPriceDelta({ builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 3 }),
+      ).toBe(450);
+      expect(
+        getBuilderPriceDelta({ builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 5 }),
+      ).toBe(750);
+      expect(
+        getBuilderPriceDelta({ builder_type: "WING_COMBO", wing_type: "BONELESS", weight_lb: 2 }),
+      ).toBe(300);
+      expect(
+        getBuilderPriceDelta({
+          builder_type: "WING_COMBO",
+          wing_type: "BONELESS",
+          weight_lb: 1.5,
+          extra_flavour: { wing_flavour_id: "sauce-1" },
+        }),
+      ).toBe(325); // 225 boneless + 100 extra flavour
+    });
+
+    it("authoritatively resolves weight from trusted menuItem and ignores client manipulation", () => {
+      const menuItem2lb = { slug: "wings-2lb", name: "2 Pound Wings" };
+      // Attacker sends weight_lb: 0 or weight_lb: 0.1 to underpay
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 0 },
+          undefined,
+          menuItem2lb,
+        ),
+      ).toBe(300);
+
+      // Attacker sends weight_lb: 1 on a 5lb order
+      const menuItem5lb = { slug: "wings-5lb", name: "5 Pound Wings" };
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 1 },
+          undefined,
+          menuItem5lb,
+        ),
+      ).toBe(750);
+
+      // Combo resolution from trusted SKU
+      const combo15lb = { slug: "combo-1.5lb", name: "1.5 lb Combo" };
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WING_COMBO", wing_type: "BONELESS", weight_lb: 99 },
+          undefined,
+          combo15lb,
+        ),
+      ).toBe(225);
+
+      // Bone-in wings have 0 surcharge regardless of weight or manipulation
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONE_IN", weight_lb: 5 },
+          undefined,
+          menuItem5lb,
+        ),
+      ).toBe(0);
+
+      // Special products apply exact approved boneless surcharges
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONELESS" },
+          undefined,
+          { slug: "lunch-5-wings", name: "Lunch 5 Wings" },
+        ),
+      ).toBe(150);
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 0 },
+          undefined,
+          { slug: "party-75-wings", name: "Party 75 Wings" },
+        ),
+      ).toBe(1200); // 1200 cents ($12.00) overrides manipulated weight_lb: 0
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONELESS", weight_lb: 99 },
+          undefined,
+          { slug: "party-100-wings", name: "Party 100 Wings" },
+        ),
+      ).toBe(1650); // 1650 cents ($16.50) overrides manipulated weight_lb: 99
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONELESS" },
+          undefined,
+          { slug: "wings-4u-special", name: "Wings 4U Special" },
+        ),
+      ).toBe(300); // 300 cents ($3.00)
+
+      // Special products bone-in alternatives have 0 surcharge
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONE_IN" },
+          undefined,
+          { slug: "party-75-wings", name: "Party 75 Wings" },
+        ),
+      ).toBe(0);
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONE_IN" },
+          undefined,
+          { slug: "party-100-wings", name: "Party 100 Wings" },
+        ),
+      ).toBe(0);
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONE_IN" },
+          undefined,
+          { slug: "lunch-5-wings", name: "Lunch 5 Wings" },
+        ),
+      ).toBe(0);
+      expect(
+        getBuilderPriceDelta(
+          { builder_type: "WINGS", wing_type: "BONE_IN" },
+          undefined,
+          { slug: "wings-4u-special", name: "Wings 4U Special" },
+        ),
+      ).toBe(0);
+    });
+
     it("enforces authoritative SIDE_POP_BUNDLE_PRICE_CENTS ignoring client price manipulation", () => {
       // Attacker attempts negative price manipulation
       expect(

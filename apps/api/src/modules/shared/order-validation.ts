@@ -442,6 +442,6 @@ export function assertBuilderPayloadValid(params: {
       });
     }
     getLunchAddonOptionIds(builderPayload);
-    getBuilderPriceDelta(builderPayload, optionMap);
+    getBuilderPriceDelta(builderPayload, optionMap, menuItem);
   }
 }

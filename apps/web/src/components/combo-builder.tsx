@@ -3,7 +3,10 @@ import { savedSelectionReview } from "@/lib/cart-validation";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
-import { BONELESS_WINGS_UPCHARGE_CENTS } from "@/lib/cart-item-utils";
+import {
+  BONELESS_WINGS_UPCHARGE_CENTS,
+  calculateBonelessSurchargeCents,
+} from "@/lib/cart-item-utils";
 import type {
   BuilderMenuOption,
   CartItem,
@@ -296,10 +299,31 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
   }, [drinkGroups.length]);
 
   const resolvedPreparation = preparation;
+  const bonelessSurchargeCents =
+    wingType === "BONELESS"
+      ? calculateBonelessSurchargeCents(
+          selectedOption?.weight_lb ?? 1,
+          selectedOption?.slug ?? item.slug,
+        )
+      : 0;
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
-    (wingType === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0);
+    bonelessSurchargeCents;
   const showsSaucingStep = requiredFlavourCount >= 1 && !allMainFlavoursPlain;
+
+  const preparationOptions = useMemo(() => {
+    const surcharge = calculateBonelessSurchargeCents(
+      selectedOption?.weight_lb ?? 1,
+      selectedOption?.slug ?? item.slug,
+    );
+    return WING_PREPARATION_OPTIONS.map((opt) => ({
+      ...opt,
+      priceNote:
+        opt.id === "BREADED_BONELESS"
+          ? `+$${(surcharge / 100).toFixed(2)}`
+          : opt.priceNote,
+    }));
+  }, [selectedOption, item.slug]);
 
   const steps = useMemo(() => {
     const completion = [
@@ -625,7 +649,7 @@ export function ComboBuilder({ item, onClose, editingLine }: Props) {
             ref={(node) => setStepRef("preparation", node)}
           >
             <div className="builder-option-pills">
-              {WING_PREPARATION_OPTIONS.map((option) => (
+              {preparationOptions.map((option) => (
                 <button
                   key={option.id}
                   type="button"

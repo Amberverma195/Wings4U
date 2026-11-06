@@ -1,6 +1,6 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 
-type WingSku = { name: string; slug?: string | null };
+export type WingSku = { name?: string; slug?: string | null };
 
 // Owner-confirmed portions. SKU lookup does not create or enable catalogue items.
 export const REGULAR_WING_PORTIONS = [
@@ -25,7 +25,14 @@ export function getWingSkuPortion(slug?: string | null): { weightLb: number; pie
 }
 
 export function getWingSkuWeightLb(item: WingSku): number | null {
-  return getWingSkuPortion(item.slug)?.weightLb ?? null;
+  const portion = getWingSkuPortion(item.slug);
+  if (portion?.weightLb != null) return portion.weightLb;
+  const match = item.slug?.match(/^(?:wings|combo)-(\d+(?:\.\d+)?)lb$/);
+  if (match) {
+    const val = parseFloat(match[1]);
+    if (Number.isFinite(val) && val > 0) return val;
+  }
+  return null;
 }
 
 export function requireWingSkuWeightLb(item: WingSku | undefined): number {

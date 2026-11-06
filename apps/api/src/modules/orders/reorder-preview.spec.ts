@@ -69,6 +69,41 @@ describe('read-only reorder using authoritative Cart Quote validation', () => {
     expect(JSON.stringify(f.order)).toBe(snapshot);
     expect(f.db.order.create).not.toHaveBeenCalled();
   });
+  it('discloses weight-based boneless surcharge on reorder for 2lb wings', async () => {
+    const f = fixture(); f.wing('wings-2lb', 2);
+    f.current.modifierGroups[0].modifierGroup.options[0].name = 'Boneless';
+    f.source.modifiers[0].modifierNameSnapshot = 'Boneless';
+    f.source.builderPayloadJson.wing_type = 'BONELESS';
+    f.source.unitPriceCents = 1600; // Historical flat $1 upgrade on $15 base
+    Object.assign(f.order, { itemSubtotalCents: 3200, taxCents: 416, finalPayableCents: 3616 });
+    const snapshot = JSON.stringify(f.order);
+    const result = await f.run();
+    // 2 lb boneless = 300 cents surcharge -> 1500 base + 300 = 1800 cents
+    expect(result).toMatchObject({
+      items: [{ quantity: 2, base_price_cents: 1500 }],
+      diff: { price_changes: [{ old_cents: 1600, new_cents: 1800 }] },
+    });
+    expect(JSON.stringify(f.order)).toBe(snapshot);
+    expect(f.db.order.create).not.toHaveBeenCalled();
+  });
+  it('discloses special-product boneless surcharge on reorder for party-75-wings', async () => {
+    const f = fixture(); f.wing('party-75-wings', 8, false, 5);
+    f.current.basePriceCents = 8999;
+    f.current.modifierGroups[0].modifierGroup.options[0].name = 'Boneless';
+    f.source.modifiers[0].modifierNameSnapshot = 'Boneless';
+    f.source.builderPayloadJson.wing_type = 'BONELESS';
+    f.source.unitPriceCents = 9099; // Historical flat $1 upgrade on $89.99 base
+    Object.assign(f.order, { itemSubtotalCents: 18198, taxCents: 2366, finalPayableCents: 20564 });
+    const snapshot = JSON.stringify(f.order);
+    const result = await f.run();
+    // party-75-wings boneless = 1200 cents surcharge -> 8999 base + 1200 = 10199 cents
+    expect(result).toMatchObject({
+      items: [{ quantity: 2, base_price_cents: 8999 }],
+      diff: { price_changes: [{ old_cents: 9099, new_cents: 10199 }] },
+    });
+    expect(JSON.stringify(f.order)).toBe(snapshot);
+    expect(f.db.order.create).not.toHaveBeenCalled();
+  });
   it('preserves the web contract and server prices without writing an order', async () => {
     const f = fixture(); const result = await f.run();
     expect(result).toMatchObject({ order_id: 'past', location_id: 'store', fulfillment_type_hint: 'PICKUP', all_unavailable: false,

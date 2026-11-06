@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
 import {
   BONELESS_WINGS_UPCHARGE_CENTS,
+  calculateBonelessSurchargeCents,
   EXTRA_FLAVOUR_PRICE_CENTS,
 } from "@/lib/cart-item-utils";
 import { menuCardDescriptionForItem } from "@/lib/menu-item-description";
@@ -665,12 +666,34 @@ export function WingsBuilder({
     return total;
   }, [extraGroups, extraGroupSelections]);
   const saladAddonsTotalDelta = modifierTotal(saladAddonGroups, saladModifierSelections);
+  const bonelessSurchargeCents =
+    wingType === "BONELESS"
+      ? calculateBonelessSurchargeCents(
+          selectedOption?.weight_lb ?? 1,
+          selectedOption?.slug ?? item.slug,
+        )
+      : 0;
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
     (extraFlavourEnabled ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
-    (wingType === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0) +
-    extraGroupsTotalDelta + saladAddonsTotalDelta;
+    bonelessSurchargeCents +
+    extraGroupsTotalDelta +
+    saladAddonsTotalDelta;
   const showsSaucingStep = requiredFlavourCount >= 1 && !allMainFlavoursPlain;
+
+  const preparationOptions = useMemo(() => {
+    const surcharge = calculateBonelessSurchargeCents(
+      selectedOption?.weight_lb ?? 1,
+      selectedOption?.slug ?? item.slug,
+    );
+    return WING_PREPARATION_OPTIONS.map((opt) => ({
+      ...opt,
+      priceNote:
+        opt.id === "BREADED_BONELESS"
+          ? `+$${(surcharge / 100).toFixed(2)}`
+          : opt.priceNote,
+    }));
+  }, [selectedOption, item.slug]);
 
   const isExtraGroupComplete = useCallback(
     (group: ModifierGroup) => {
@@ -1194,7 +1217,7 @@ export function WingsBuilder({
             ref={(node) => setStepRef("preparation", node)}
           >
             <div className="builder-option-pills">
-              {WING_PREPARATION_OPTIONS.map((option) => (
+              {preparationOptions.map((option) => (
                 <button
                   key={option.id}
                   type="button"

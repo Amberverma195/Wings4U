@@ -46,8 +46,10 @@ import type {
 } from '../lib/types';
 import {
   BONELESS_WINGS_UPCHARGE_CENTS,
+  calculateBonelessSurchargeCents,
   EXTRA_FLAVOUR_PRICE_CENTS,
   WING_PREPARATION_OPTIONS,
+  getWingPreparationOptions,
   areAllSelectedFlavoursPlain,
   countEffectiveSaucedFlavours,
   defaultSaucingMethodForCount,
@@ -621,12 +623,27 @@ export function WingsBuilderMobile({
 
   const saladAddonsTotalDelta = modifierTotal(saladAddonGroups, saladModifierSelections);
 
+  const bonelessSurchargeCents =
+    wingType === 'BONELESS'
+      ? calculateBonelessSurchargeCents(
+          selectedOption?.weight_lb ?? 1,
+          selectedOption?.slug ?? item.slug,
+        )
+      : 0;
+
   const liveUnitPrice =
     (selectedOption?.base_price_cents ?? 0) +
     (extraFlavourEnabled ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
-    (wingType === 'BONELESS' ? BONELESS_WINGS_UPCHARGE_CENTS : 0) +
+    bonelessSurchargeCents +
     extraGroupsTotalDelta +
     saladAddonsTotalDelta;
+
+  const preparationOptions = useMemo(() => {
+    return getWingPreparationOptions(
+      selectedOption?.weight_lb ?? 1,
+      selectedOption?.slug ?? item.slug,
+    );
+  }, [selectedOption, item.slug]);
 
   const availability = useMemo(
     () => isItemAvailableForOrder(item, fulfillmentType),
@@ -1037,13 +1054,13 @@ export function WingsBuilderMobile({
         inlineError={submitAttempted && validationError === 'preparation' ? BUILDER_VALIDATION_MESSAGE : null}
       >
         <OptionPills
-          options={WING_PREPARATION_OPTIONS.map((o) => ({
+          options={preparationOptions.map((o) => ({
             value: o.id,
             label: o.priceNote ? `${o.label} (${o.priceNote})` : o.label,
           }))}
           value={selectedWingPreparationId(wingType, preparation)}
           onChange={(id) => {
-            const opt = WING_PREPARATION_OPTIONS.find((o) => o.id === id);
+            const opt = preparationOptions.find((o) => o.id === id);
             if (opt) {
               setWingType(opt.wingType);
               setPreparation(opt.preparation);

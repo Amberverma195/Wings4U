@@ -192,7 +192,18 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       if (!extra) delete f.payload.extra_flavour;
       Object.assign(f.payload, { unit_price_cents: 1, price_delta_cents: -999 });
       // Catalogue base + $1.50 dip; combo has a $2 side. Boneless modifier itself is free.
-      const unit = price + 150 + (combo ? 200 : 0) + (boneless ? 150 : 0) + (extra ? 100 : 0);
+      const bonelessCents = boneless
+        ? (slug === 'lunch-5-wings'
+            ? 150
+            : slug === 'party-75-wings'
+            ? 1200
+            : slug === 'party-100-wings'
+            ? 1650
+            : slug === 'wings-4u-special'
+            ? 300
+            : Math.round(150 * weight))
+        : 0;
+      const unit = price + 150 + (combo ? 200 : 0) + bonelessCents + (extra ? 100 : 0);
       const subtotal = unit * 2, tax = Math.round(subtotal * 0.13);
       if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: subtotal, lineDetails: [{ unit_price_cents: unit, line_total_cents: subtotal }] });
       else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: subtotal, tax_cents: tax, final_payable_cents: subtotal + tax });
@@ -278,11 +289,11 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: expect.any(String) }) });
       expect(f.db.order.create).not.toHaveBeenCalled(); return;
     }
-    if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: 2900 });
-    else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2900 });
+    if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: 3200 });
+    else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 3200 });
     else {
       await expect(f.run(path)).rejects.toBe(stop);
-      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2900 }) }));
+      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 3200 }) }));
     }
   });
   it.each(['quote', 'checkout', 'pos'].flatMap(path => [true, false].flatMap(isAvailable =>
@@ -312,10 +323,10 @@ describe('quote / checkout / POS ordering integrity parity', () => {
   });
   it.each(['quote', 'checkout', 'pos'])('%s accepts a valid fractional SKU with paid modifiers and extra flavour', async path => {
     const { run, db } = wingFixture();
-    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 2800, lines: [{ unit_price_cents: 1400 }] });
+    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 2950, lines: [{ unit_price_cents: 1475 }] });
     else {
       await expect(run(path)).rejects.toBe(stop);
-      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2800 }) }));
+      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2950 }) }));
     }
   });
   it.each([
@@ -376,10 +387,10 @@ describe('quote / checkout / POS ordering integrity parity', () => {
   });
   it.each(['quote', 'checkout', 'pos'])('%s accepts a valid combo with exact side/drink charges', async path => {
     const { run, db } = wingFixture(true);
-    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 3200 });
+    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 3350 });
     else {
       await expect(run(path)).rejects.toBe(stop);
-      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 3200 }) }));
+      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 3350 }) }));
     }
   });
   it.each(['quote', 'checkout', 'pos'])('%s rejects a tampered SKU weight before persistence', async path => {

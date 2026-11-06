@@ -30,6 +30,32 @@ export const BONELESS_WINGS_UPCHARGE_CENTS = 150;
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
 export const SIDE_POP_BUNDLE_PRICE_CENTS = 499;
 
+export function isRegularWingOrCombo(slug?: string | null): boolean {
+  if (!slug) return false;
+  return /^(wings|combo)-(?:\d+(?:\.\d+)?)lb$/.test(slug);
+}
+
+export const SPECIAL_PRODUCT_BONELESS_SURCHARGE_CENTS: Record<string, number> = {
+  "lunch-5-wings": 150,
+  "party-75-wings": 1200,
+  "party-100-wings": 1650,
+  "wings-4u-special": 300,
+};
+
+export function calculateBonelessSurchargeCents(
+  weightLb?: number,
+  slug?: string | null,
+): number {
+  if (slug && SPECIAL_PRODUCT_BONELESS_SURCHARGE_CENTS[slug] !== undefined) {
+    return SPECIAL_PRODUCT_BONELESS_SURCHARGE_CENTS[slug];
+  }
+  const weight =
+    typeof weightLb === "number" && Number.isFinite(weightLb) && weightLb > 0
+      ? weightLb
+      : 1;
+  return Math.round(BONELESS_WINGS_UPCHARGE_CENTS * weight);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Heat level ordering                                                */
 /* ------------------------------------------------------------------ */
@@ -56,27 +82,35 @@ export type WingPreparationOption = {
   priceNote?: string;
 };
 
-export const WING_PREPARATION_OPTIONS: WingPreparationOption[] = [
-  {
-    id: "BREADED_BONE_IN",
-    label: "Breaded - Bone-In",
-    wingType: "BONE_IN",
-    preparation: "BREADED",
-  },
-  {
-    id: "NON_BREADED_BONE_IN",
-    label: "Non-Breaded Bone-In",
-    wingType: "BONE_IN",
-    preparation: "NON_BREADED",
-  },
-  {
-    id: "BREADED_BONELESS",
-    label: "Breaded-Boneless",
-    wingType: "BONELESS",
-    preparation: "BREADED",
-    priceNote: `+$${(BONELESS_WINGS_UPCHARGE_CENTS / 100).toFixed(2)}`,
-  },
-];
+export function getWingPreparationOptions(
+  weightLb?: number,
+  slug?: string | null,
+): WingPreparationOption[] {
+  const surcharge = calculateBonelessSurchargeCents(weightLb, slug);
+  return [
+    {
+      id: "BREADED_BONE_IN",
+      label: "Breaded - Bone-In",
+      wingType: "BONE_IN",
+      preparation: "BREADED",
+    },
+    {
+      id: "NON_BREADED_BONE_IN",
+      label: "Non-Breaded Bone-In",
+      wingType: "BONE_IN",
+      preparation: "NON_BREADED",
+    },
+    {
+      id: "BREADED_BONELESS",
+      label: "Breaded-Boneless",
+      wingType: "BONELESS",
+      preparation: "BREADED",
+      priceNote: `+$${(surcharge / 100).toFixed(2)}`,
+    },
+  ];
+}
+
+export const WING_PREPARATION_OPTIONS: WingPreparationOption[] = getWingPreparationOptions(1);
 
 export function normalizeInitialPreparation(
   wingType: WingType,
@@ -387,7 +421,10 @@ export function isComboBuilderItem(item: MenuItem): boolean {
   return item.builder_type === "WING_COMBO";
 }
 
-export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
+export function getBuilderPriceDelta(
+  payload?: CartBuilderPayload,
+  menuItemSlug?: string | null,
+): number {
   if (!payload) return 0;
   if (payload.builder_type === "LUNCH_SPECIAL") {
     const addons = (payload as LunchSpecialPayload).child_addons;
@@ -399,10 +436,16 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
     return bundle ? SIDE_POP_BUNDLE_PRICE_CENTS : 0;
   }
   if (payload.builder_type === "WINGS" || payload.builder_type === "WING_COMBO") {
-    return (
-      (payload.extra_flavour ? EXTRA_FLAVOUR_PRICE_CENTS : 0) +
-      (payload.wing_type === "BONELESS" ? BONELESS_WINGS_UPCHARGE_CENTS : 0)
-    );
+    const extraFlavourCents = (payload as { extra_flavour?: unknown }).extra_flavour
+      ? EXTRA_FLAVOUR_PRICE_CENTS
+      : 0;
+    const effectiveSlug =
+      menuItemSlug ?? (payload as { menu_item_slug?: string }).menu_item_slug ?? null;
+    const bonelessCents =
+      payload.wing_type === "BONELESS"
+        ? calculateBonelessSurchargeCents(payload.weight_lb, effectiveSlug)
+        : 0;
+    return extraFlavourCents + bonelessCents;
   }
   return (payload as { extra_flavour?: unknown }).extra_flavour
     ? EXTRA_FLAVOUR_PRICE_CENTS
@@ -414,13 +457,15 @@ export function getBuilderPriceDelta(payload?: CartBuilderPayload): number {
  * (boneless wing upcharge, extra flavour upcharge, lunch special add-ons, item customization bundles).
  */
 export function getCartItemUnitPrice(
-  item: Pick<CartItem, "base_price_cents" | "modifier_selections" | "builder_payload">,
+  item: Pick<CartItem, "base_price_cents" | "modifier_selections" | "builder_payload"> & {
+    menu_item_slug?: string | null;
+  },
 ): number {
   const modifiers = item.modifier_selections.reduce(
     (sum, selection) => sum + selection.price_delta_cents,
     0,
   );
-  return item.base_price_cents + modifiers + getBuilderPriceDelta(item.builder_payload);
+  return item.base_price_cents + modifiers + getBuilderPriceDelta(item.builder_payload, item.menu_item_slug);
 }
 
 /**
