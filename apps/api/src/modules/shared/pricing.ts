@@ -58,7 +58,7 @@ export type SaladCustomizationInput = {
 // ────────────────────────  Constants  ────────────────────────
 
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
-export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
+export const BONELESS_WINGS_UPCHARGE_CENTS = 150;
 export { SIDE_POP_BUNDLE_PRICE_CENTS, SIDE_POP_BUNDLE_SLUGS } from "@wings4u/customization";
 export const LUNCH_WINDOW_LABEL = "11 AM - 3 PM";
 export const LUNCH_SPECIAL_SCHEDULE_CONFLICT_CODE = "LUNCH_SPECIAL_SCHEDULE_CONFLICT";

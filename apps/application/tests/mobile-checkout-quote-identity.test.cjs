@@ -214,9 +214,9 @@ test.each(['PICKUP', 'DELIVERY'])('entering %s checkout keeps items visible and 
 
 test.each([
   ['modifiers', { modifier_selections: [{ option_name: 'Cheese', price_delta_cents: 150 }] }, '$23.00'],
-  ['wings', { builder_payload: { builder_type: 'WINGS', wing_type: 'BONELESS', extra_flavour: { flavour_name: 'Hot' } } }, '$24.00'],
+  ['wings', { builder_payload: { builder_type: 'WINGS', wing_type: 'BONELESS', extra_flavour: { flavour_name: 'Hot' } } }, '$25.00'],
   ['wing combo', { modifier_selections: [{ option_name: 'Poutine', price_delta_cents: 200 }, { option_name: 'Cola', price_delta_cents: 100 }],
-    builder_payload: { builder_type: 'WING_COMBO', wing_type: 'BONELESS', extra_flavour: { flavour_name: 'Hot' } } }, '$30.00'],
+    builder_payload: { builder_type: 'WING_COMBO', wing_type: 'BONELESS', extra_flavour: { flavour_name: 'Hot' } } }, '$31.00'],
   ['lunch special', { removed_ingredients: [{ name: 'Onion' }], builder_payload: { builder_type: 'LUNCH_SPECIAL', child_name: 'Wrap', child_addons: [{ name: 'Cheese', price_delta_cents: 150 }] } }, '$23.00'],
   ['side and pop', { builder_payload: { builder_type: 'ITEM_CUSTOMIZATION', side_pop_bundle: { price_cents: 499, side_label: 'Fries', pop_label: 'Cola' } } }, '$29.98'],
 ])('initial %s prices match the Cart helper before checkout quoting', async (_kind, changes, expected) => {

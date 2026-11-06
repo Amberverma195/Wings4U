@@ -55,6 +55,20 @@ function fixture() {
 describe('read-only reorder using authoritative Cart Quote validation', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-10-19T16:00:00Z')); });
   afterEach(() => jest.useRealTimers());
+  it('discloses the boneless increase on reorder without changing historical prices', async () => {
+    const f = fixture(); f.wing('wings-1lb', 1);
+    f.current.modifierGroups[0].modifierGroup.options[0].name = 'Boneless';
+    f.source.modifiers[0].modifierNameSnapshot = 'Boneless';
+    f.source.builderPayloadJson.wing_type = 'BONELESS';
+    f.source.unitPriceCents = 1600; // $15 base + historical $1 upgrade
+    Object.assign(f.order, { itemSubtotalCents: 3200, taxCents: 416, finalPayableCents: 3616 });
+    const snapshot = JSON.stringify(f.order);
+    const result = await f.run();
+    expect(result).toMatchObject({ items: [{ quantity: 2, base_price_cents: 1500 }],
+      diff: { price_changes: [{ old_cents: 1600, new_cents: 1650 }] } });
+    expect(JSON.stringify(f.order)).toBe(snapshot);
+    expect(f.db.order.create).not.toHaveBeenCalled();
+  });
   it('preserves the web contract and server prices without writing an order', async () => {
     const f = fixture(); const result = await f.run();
     expect(result).toMatchObject({ order_id: 'past', location_id: 'store', fulfillment_type_hint: 'PICKUP', all_unavailable: false,

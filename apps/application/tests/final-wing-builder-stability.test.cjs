@@ -85,7 +85,7 @@ const group = (id, name, options, extra = {}) => ({
 const wingTypeGroup = group('type', 'Wing type', [
   option('bone-breaded', 'Breaded Bone-in'),
   option('bone-non-breaded', 'Non-Breaded Bone-in'),
-  option('boneless', 'Breaded-Boneless', { price_delta_cents: 100 }),
+  option('boneless', 'Breaded-Boneless', { price_delta_cents: 0 }),
 ]);
 
 const flavourGroup = group('flavour', 'Flavour', [
@@ -277,17 +277,17 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
         },
       ];
 
-      // Unit price: 1399 + 150 + 100 (boneless) + 100 (extra flavour) = 1749 cents
+      // Unit price: 1399 + 150 + 150 (boneless) + 100 (extra flavour) = 1799 cents
       const unitPrice = getCartItemUnitPrice(items[0]);
-      expect(unitPrice).toBe(1749);
+      expect(unitPrice).toBe(1799);
 
-      // Line subtotal: 1749 * 2 = 3498 cents
+      // Line subtotal: 1799 * 2 = 3598 cents
       const lineSubtotal = getCartItemSubtotal(items[0]);
-      expect(lineSubtotal).toBe(3498);
+      expect(lineSubtotal).toBe(3598);
 
-      // Cart subtotal: 3498 cents
+      // Cart subtotal: 3598 cents
       const cartSubtotal = calculateCartSubtotal(items);
-      expect(cartSubtotal).toBe(3498);
+      expect(cartSubtotal).toBe(3598);
 
       // Validate checkout preparation receives the exact same subtotal
       mockApiJsonImpl = async (url) => {
@@ -309,7 +309,7 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
           return { data: { delivery_quote_token: 'tok-123', expires_at: new Date(Date.now() + 600000).toISOString() } };
         }
         if (url === '/api/v1/cart/quote') {
-          return { data: { item_subtotal_cents: 3498, final_payable_cents: 3498, lines: [{ menu_item_id: 'wings-1lb', quantity: 2 }] } };
+          return { data: { item_subtotal_cents: 3598, final_payable_cents: 3598, lines: [{ menu_item_id: 'wings-1lb', quantity: 2 }] } };
         }
         return { data: {} };
       };
@@ -332,8 +332,8 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
       expect(quoteCall).toBeDefined();
       const quoteBody = JSON.parse(quoteCall[1].body);
 
-      // Driver tip on 3498 cents @ 15% = Math.round(3498 * 0.15) = Math.round(524.7) = 525 cents
-      expect(quoteBody.driver_tip_cents).toBe(525);
+      // Driver tip on 3598 cents @ 15% = Math.round(3598 * 0.15) = Math.round(539.7) = 540 cents
+      expect(quoteBody.driver_tip_cents).toBe(540);
     });
   });
 
@@ -347,8 +347,8 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
       // Standard bone-in wings without extra flavour
       expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONE_IN' })).toBe(0);
 
-      // Boneless wings (+$1.00)
-      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS' })).toBe(100);
+      // Boneless wings (+$1.50)
+      expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS' })).toBe(150);
 
       // Extra flavour on bone-in (+$1.00)
       expect(getBuilderPriceDelta({
@@ -357,18 +357,18 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
         extra_flavour: { wing_flavour_id: 'f-bbq', flavour_name: 'BBQ' },
       })).toBe(100);
 
-      // Boneless + extra flavour (+$2.00)
+      // Boneless + extra flavour (+$2.50)
       expect(getBuilderPriceDelta({
         builder_type: 'WINGS',
         wing_type: 'BONELESS',
         extra_flavour: { wing_flavour_id: 'f-bbq', flavour_name: 'BBQ' },
-      })).toBe(200);
+      })).toBe(250);
 
-      // Combo with boneless (+$1.00)
+      // Combo with boneless (+$1.50)
       expect(getBuilderPriceDelta({
         builder_type: 'WING_COMBO',
         wing_type: 'BONELESS',
-      })).toBe(100);
+      })).toBe(150);
 
       // Lunch special child add-ons
       expect(getBuilderPriceDelta({
@@ -452,21 +452,21 @@ describe('Final Wing Builder Stability & Checkout Parity Regression Suite', () =
         modifier_selections: [],
         builder_payload: {
           builder_type: 'WINGS',
-          wing_type: 'BONELESS', // +100
+          wing_type: 'BONELESS', // +150
         },
       };
 
-      const unitPrice = getCartItemUnitPrice(item); // 1399 + 100 = 1499
-      expect(unitPrice).toBe(1499);
+      const unitPrice = getCartItemUnitPrice(item); // 1399 + 150 = 1549
+      expect(unitPrice).toBe(1549);
 
-      const lineSubtotal = getCartItemSubtotal(item); // 1499 * 3 = 4497
-      expect(lineSubtotal).toBe(4497);
+      const lineSubtotal = getCartItemSubtotal(item); // 1549 * 3 = 4647
+      expect(lineSubtotal).toBe(4647);
 
       const subtotal = calculateCartSubtotal([item]);
-      expect(subtotal).toBe(4497);
+      expect(subtotal).toBe(4647);
 
-      // Tip on 4497 @ 15% = Math.round(674.55) = 675
-      expect(calculateDeliveryTipCents(subtotal, 15, 'DELIVERY')).toBe(675);
+      // Tip on 4647 @ 15% = Math.round(697.05) = 697
+      expect(calculateDeliveryTipCents(subtotal, 15, 'DELIVERY')).toBe(697);
     });
   });
 

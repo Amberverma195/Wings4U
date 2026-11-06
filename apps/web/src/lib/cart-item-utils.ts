@@ -42,7 +42,7 @@ export function sidePopComboDisplayLines(bundle: {
 }
 
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
-export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
+export const BONELESS_WINGS_UPCHARGE_CENTS = 150;
 
 export function getRemovedIngredientsFromBuilderPayload(
   payload?: CartBuilderPayload,

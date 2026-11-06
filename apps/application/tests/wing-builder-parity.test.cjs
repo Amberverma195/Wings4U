@@ -6,7 +6,7 @@
  *  2. Wing combo pricing including paid side and drink modifier deltas.
  *  3. Switching combo sizes with slot recalculation.
  *  4. Clearing invalid/stale modifier selections on combo size switch.
- *  5. Wing preparation and boneless upcharge pricing (+$1.00).
+ *  5. Wing preparation and boneless upcharge pricing (+$1.50).
  *  6. Flavour grouping by heat tabs.
  *  7. Saucing method eligibility rules.
  *  8. Plain flavours skipping saucing method.
@@ -508,7 +508,7 @@ describe('Critical Wing Builder Bug Fixes and Parity', () => {
   // -------------------------------------------------------------------------
   // 5. Wing preparation and boneless upcharge pricing
   // -------------------------------------------------------------------------
-  test('5. Breaded boneless applies +$1.00 upcharge in live price and cart line', async () => {
+  test('5. Breaded boneless applies +$1.50 upcharge in live price and cart line', async () => {
     const item = makeWingsItem({
       weight_options: [
         {
@@ -539,7 +539,7 @@ describe('Critical Wing Builder Bug Fixes and Parity', () => {
     await act(async () => buttonContainingText('Honey Garlic').props.onPress());
     await act(async () => buttonContainingText('Breaded-Boneless').props.onPress());
 
-    expect(texts(submitButton())).toContain('$15.99');
+    expect(texts(submitButton())).toContain('$16.49');
     await act(async () => submitButton().props.onPress());
 
     expect(mockCart.addItem).toHaveBeenCalledWith(
@@ -908,7 +908,7 @@ describe('Critical Wing Builder Bug Fixes and Parity', () => {
   test('17. getBuilderPriceDelta correctly evaluates boneless and extra flavour upcharges', () => {
     expect(getBuilderPriceDelta(undefined)).toBe(0);
     expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONE_IN', preparation: 'BREADED' })).toBe(0);
-    expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', preparation: 'BREADED' })).toBe(100);
+    expect(getBuilderPriceDelta({ builder_type: 'WINGS', wing_type: 'BONELESS', preparation: 'BREADED' })).toBe(150);
     expect(
       getBuilderPriceDelta({
         builder_type: 'WING_COMBO',
@@ -916,6 +916,6 @@ describe('Critical Wing Builder Bug Fixes and Parity', () => {
         preparation: 'BREADED',
         extra_flavour: { wing_flavour_id: 'f-bbq', flavour_name: 'BBQ', placement: 'ON_WINGS' },
       }),
-    ).toBe(200);
+    ).toBe(250);
   });
 });

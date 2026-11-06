@@ -35,6 +35,19 @@ const mount = async (item, editItem = null, categories = []) => act(async () => 
 beforeEach(() => jest.clearAllMocks());
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 
+test('generic wing builder uses the shared $1.50 boneless surcharge', async () => {
+  const item = { ...wings, weight_options: [{ ...variants[0], modifier_groups: [
+    group('type', 'Wing type', [option('boneless', 'Boneless', { is_default: true })]), flavour,
+  ] }] };
+  await mount(item);
+  expect(texts(submit())).toContain('$15.49');
+  await act(async () => submit().props.onPress());
+  expect(mockCart.addItem).toHaveBeenCalledWith(expect.objectContaining({
+    base_price_cents: 1399, builder_payload: expect.objectContaining({ wing_type: 'BONELESS' }),
+    modifier_selections: expect.arrayContaining([expect.objectContaining({ modifier_option_id: 'boneless', price_delta_cents: 0 })]),
+  }));
+});
+
 const mappedMenu = require('../../../packages/customization/test/mapped-menu-fixtures.json');
 test.each(mappedMenu.map(item => [item.slug, item]))('mobile retains recorded mappings and prices for %s', async (_slug, item) => {
   await mount({ ...base, ...item });

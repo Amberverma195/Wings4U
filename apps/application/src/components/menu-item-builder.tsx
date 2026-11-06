@@ -8,6 +8,7 @@ import {
 import { MobileBuilderShell, StepCard, NotesInput, P } from './mobile-builder-shell';
 import { customizationCatalog, customerCustomizationInstructions, inspectCustomizationDraft, defaultSelections, validateSelections, modifierTotal as customizationTotal, maximumSelections, SIDE_POP_BUNDLE_SLUGS, SIDE_POP_BUNDLE_PRICE_CENTS, SIDE_POP_SIDES, SIDE_POP_DRINKS } from '@wings4u/customization';
 import { useCart } from "../context/cart";
+import { BONELESS_WINGS_UPCHARGE_CENTS } from "../lib/wing-builder-logic";
 import type {
   BuilderMenuOption,
   CartBuilderPayload,
@@ -45,8 +46,6 @@ type Props = {
   onClose: () => void;
   editItem?: CartItem | null;
 };
-
-const BONELESS_WINGS_UPCHARGE_CENTS = 100;
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;

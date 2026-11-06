@@ -66,7 +66,7 @@ const group = (id, name, options, extra = {}) => ({
 const wingTypeGroup = group('type', 'Wing type', [
   option('bone-breaded', 'Breaded Bone-in'),
   option('bone-non-breaded', 'Non-Breaded Bone-in'),
-  option('boneless', 'Breaded-Boneless', { price_delta_cents: 100 }),
+  option('boneless', 'Breaded-Boneless', { price_delta_cents: 0 }),
 ]);
 const flavourGroup = group('flavour', 'Flavour', [
   option('f-plain', 'Plain', { linked_flavour_id: 'f-plain' }),
@@ -277,7 +277,7 @@ describe('WingsBuilderMobile', () => {
     const size1lb = buttonByText('1 lb / 1 flavour');
     if (size1lb) await act(async () => size1lb.props.onPress());
 
-    // Pick Breaded-Boneless (+$1.00)
+    // Pick Breaded-Boneless (+$1.50)
     const bonelessBtn = renderer.root.findAllByType('TouchableOpacity').find((node) =>
       texts(node).includes('Breaded-Boneless'),
     );
@@ -289,6 +289,7 @@ describe('WingsBuilderMobile', () => {
     await act(async () => honeyBtn.props.onPress());
 
     const submit = submitButton();
+    expect(texts(submit)).toContain('$15.49');
     await act(async () => submit.props.onPress());
 
     expect(mockCart.addItem).toHaveBeenCalledWith(

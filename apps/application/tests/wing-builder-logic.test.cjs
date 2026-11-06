@@ -46,7 +46,7 @@ describe('wing-builder-logic pure unit tests', () => {
   ]);
 
   test('constants have expected values', () => {
-    expect(BONELESS_WINGS_UPCHARGE_CENTS).toBe(100);
+    expect(BONELESS_WINGS_UPCHARGE_CENTS).toBe(150);
     expect(EXTRA_FLAVOUR_PRICE_CENTS).toBe(100);
     expect(HEAT_ORDER).toEqual(['PLAIN', 'MILD', 'MEDIUM', 'HOT', 'DRY_RUB']);
   });

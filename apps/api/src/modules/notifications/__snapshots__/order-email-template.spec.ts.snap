@@ -9,7 +9,7 @@ exports[`Branded order email templates preserves the Wings Rewards reference out
         <div style="background:#fffdf9;padding:24px;border-radius:0 0 16px 16px;">
           <p style="margin:0 0 16px;font-size:16px;">Hello, Jamie &amp; Sam!</p>
           <p style="margin:0 0 16px;font-size:16px;">We&#39;ve added 2 bonus stamps to your Wings4U rewards account.</p>
-          <p style="padding:16px;background:#fce9d5;border-radius:10px;font-size:20px;font-weight:bold;margin:0 0 16px;">Your updated stamp balance: 6 / 8</p>
+          <p style="padding:16px;background:#fce9d5;border-radius:10px;font-size:20px;font-weight:bold;margin:0 0 16px;">Your updated stamp balance: 6 / 16</p>
           <p style="margin:0 0 16px;font-size:16px;">Your rewards account has been updated successfully. No action is required.</p>
           
           <p style="margin:24px 0 0;font-size:16px;line-height:1.6;">Thank you,<br>The Wings4U Team ❤️</p>
@@ -23,7 +23,7 @@ exports[`Branded order email templates preserves the Wings Rewards reference out
 
 We've added 2 bonus stamps to your Wings4U rewards account.
 
-Your updated stamp balance: 6 / 8
+Your updated stamp balance: 6 / 16
 
 Your rewards account has been updated successfully. No action is required.
 

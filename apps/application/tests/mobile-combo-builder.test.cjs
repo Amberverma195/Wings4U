@@ -66,7 +66,7 @@ const group = (id, name, context_key, options, extra = {}) => ({
 const wingTypeGroup = group('type', 'Wing type', null, [
   option('bone-breaded', 'Breaded Bone-in'),
   option('bone-non-breaded', 'Non-Breaded Bone-in'),
-  option('boneless', 'Breaded-Boneless', { price_delta_cents: 100 }),
+  option('boneless', 'Breaded-Boneless', { price_delta_cents: 0 }),
 ]);
 const flavourGroup = group('flavour', 'Flavour', null, [
   option('f-plain', 'Plain', { linked_flavour_id: 'f-plain' }),

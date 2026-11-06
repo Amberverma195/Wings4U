@@ -50,10 +50,10 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     const selectionIds: string[] = [];
     const request = { lineCount: 1 };
     const run = (path: string) => {
-      const lines = Array.from({ length: request.lineCount }, () => ({ menuItemId: item.id, quantity: 2, builderPayload: payload,
+      const lines = Array.from({ length: request.lineCount }, () => ({ menuItemId: item.id, quantity: 2, builderPayload: payload, unitPriceCents: 1,
         modifierSelections: selectionIds.map(id => ({ modifierOptionId: id })) }));
       return path === 'quote' || path === 'cart'
-        ? cart[path === 'cart' ? 'validateItems' : 'computeQuote']('local', 'PICKUP', lines.map(line => ({ menu_item_id: line.menuItemId, quantity: line.quantity, builder_payload: line.builderPayload,
+        ? cart[path === 'cart' ? 'validateItems' : 'computeQuote']('local', 'PICKUP', lines.map(line => ({ menu_item_id: line.menuItemId, quantity: line.quantity, builder_payload: line.builderPayload, unit_price_cents: 1,
           modifier_selections: selectionIds.map(id => ({ modifier_option_id: id })) })))
         : path === 'checkout'
           ? checkout.placeOrder({ userId: 'customer', locationId: 'local', fulfillmentType: 'PICKUP', idempotencyKey: 'fixture', items: lines })
@@ -169,6 +169,42 @@ describe('quote / checkout / POS ordering integrity parity', () => {
     return { ...f, groups };
   }
   it.each(['cart', 'quote', 'checkout', 'pos'].flatMap(path => [
+    { slug: 'wings-1.5lb', weight: 1.5, price: 1000, combo: false, slots: 1 },
+    { slug: 'combo-1.5lb', weight: 1.5, price: 1000, combo: true, slots: 1 },
+    { slug: 'lunch-5-wings', weight: 0.33, price: 999, combo: false, slots: 1 },
+    { slug: 'party-75-wings', weight: 8, price: 8999, combo: false, slots: 5 },
+    { slug: 'party-100-wings', weight: 11, price: 11699, combo: false, slots: 5 },
+  ].flatMap(product => [false, true].flatMap(boneless => [false, true].map(extra => ({ path, ...product, boneless, extra }))))))(
+    '$path reprices saved $slug (boneless=$boneless, extra=$extra) and ignores submitted prices', async ({ path, slug, weight, price, combo, slots, boneless, extra }) => {
+      const f = wingFixture(combo);
+      Object.assign(f.item, { id: slug, slug, basePriceCents: price });
+      for (const group of f.groups) group.menuItemId = slug;
+      for (let n = 2; n <= slots; n++) f.groups.push({ ...f.groups[1], modifierGroupId: `flavour-${n}`,
+        modifierGroup: { ...f.groups[1].modifierGroup, id: `flavour-${n}`, name: `Flavour ${n}` } });
+      Object.assign(f.payload, { weight_lb: weight, saucing_method: slots === 1 ? 'ON_SIDE' : 'SPLIT_EVENLY',
+        flavour_slots: Array.from({ length: slots }, (_, n) => ({ slot_no: n + 1, wing_flavour_id: 'hot', placement: slots === 1 ? 'ON_SIDE' : 'ON_WINGS' })) });
+      if (!boneless) {
+        f.payload.wing_type = 'BONE_IN';
+        f.groups[0].modifierGroup.options[0].name = 'House Breaded Bone-In';
+      }
+      f.db.modifierGroup.findMany.mockResolvedValue(f.groups.map(group => group.modifierGroup) as never);
+      f.db.modifierOption.findMany.mockResolvedValue(f.groups.flatMap(group => group.modifierGroup.options.map(option => ({ ...option, modifierGroup: group.modifierGroup }))) as never);
+      if (!extra) delete f.payload.extra_flavour;
+      Object.assign(f.payload, { unit_price_cents: 1, price_delta_cents: -999 });
+      // Catalogue base + $1.50 dip; combo has a $2 side. Boneless modifier itself is free.
+      const unit = price + 150 + (combo ? 200 : 0) + (boneless ? 150 : 0) + (extra ? 100 : 0);
+      const subtotal = unit * 2, tax = Math.round(subtotal * 0.13);
+      if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: subtotal, lineDetails: [{ unit_price_cents: unit, line_total_cents: subtotal }] });
+      else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: subtotal, tax_cents: tax, final_payable_cents: subtotal + tax });
+      else {
+        await expect(f.run(path)).rejects.toBe(stop);
+        expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+          itemSubtotalCents: subtotal, taxCents: tax, finalPayableCents: subtotal + tax,
+        }) }));
+      }
+    },
+  );
+  it.each(['cart', 'quote', 'checkout', 'pos'].flatMap(path => [
     ...['Caesar Salad', 'Garden Salad', 'Greek Salad'].map(label => ({ problem: 'valid', label })),
     ...['missing-addon', 'too-many-addons', 'unauthorized', 'stale', 'large-only', 'duplicate', 'price-conflict',
       'mismatch', 'wrong-location', 'non-salad', 'wrong-category', 'archived', 'hidden', 'unavailable', 'out-of-stock', 'inactive-category', 'archived-category',
@@ -242,11 +278,11 @@ describe('quote / checkout / POS ordering integrity parity', () => {
       await expect(f.run(path)).rejects.toMatchObject({ response: expect.objectContaining({ reason: expect.any(String) }) });
       expect(f.db.order.create).not.toHaveBeenCalled(); return;
     }
-    if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: 2800 });
-    else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2800 });
+    if (path === 'cart') expect(await f.run(path)).toMatchObject({ itemSubtotalCents: 2900 });
+    else if (path === 'quote') expect(await f.run(path)).toMatchObject({ item_subtotal_cents: 2900 });
     else {
       await expect(f.run(path)).rejects.toBe(stop);
-      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2800 }) }));
+      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2900 }) }));
     }
   });
   it.each(['quote', 'checkout', 'pos'].flatMap(path => [true, false].flatMap(isAvailable =>
@@ -276,10 +312,10 @@ describe('quote / checkout / POS ordering integrity parity', () => {
   });
   it.each(['quote', 'checkout', 'pos'])('%s accepts a valid fractional SKU with paid modifiers and extra flavour', async path => {
     const { run, db } = wingFixture();
-    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 2700, lines: [{ unit_price_cents: 1350 }] });
+    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 2800, lines: [{ unit_price_cents: 1400 }] });
     else {
       await expect(run(path)).rejects.toBe(stop);
-      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2700 }) }));
+      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 2800 }) }));
     }
   });
   it.each([
@@ -340,10 +376,10 @@ describe('quote / checkout / POS ordering integrity parity', () => {
   });
   it.each(['quote', 'checkout', 'pos'])('%s accepts a valid combo with exact side/drink charges', async path => {
     const { run, db } = wingFixture(true);
-    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 3100 });
+    if (path === 'quote') expect(await run(path)).toMatchObject({ item_subtotal_cents: 3200 });
     else {
       await expect(run(path)).rejects.toBe(stop);
-      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 3100 }) }));
+      expect(db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ itemSubtotalCents: 3200 }) }));
     }
   });
   it.each(['quote', 'checkout', 'pos'])('%s rejects a tampered SKU weight before persistence', async path => {
@@ -465,7 +501,7 @@ describe('quote / checkout / POS ordering integrity parity', () => {
   it.each([8, 16].flatMap(balance => [1, 2, 5].map(quantity => ({ balance, quantity }))))('loyalty checkout discounts one base pound at $balance stamps, quantity $quantity', async ({ balance, quantity }) => {
     const f = loyaltyFixture(balance);
     const quote = await f.quote(quantity);
-    expect(quote).toMatchObject({ item_subtotal_cents: 1350 * quantity, item_discount_total_cents: 1000,
+    expect(quote).toMatchObject({ item_subtotal_cents: 1400 * quantity, item_discount_total_cents: 1000,
       wings_reward: { available_stamps: balance, pounds_in_cart: quantity, applied: true, discount_cents: 1000 } });
     await expect(f.checkout(quantity)).rejects.toBe(stop);
     expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({

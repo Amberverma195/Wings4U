@@ -26,7 +26,7 @@ import type {
 /*  Price constants (mirrored from web's cart-item-utils.ts)           */
 /* ------------------------------------------------------------------ */
 
-export const BONELESS_WINGS_UPCHARGE_CENTS = 100;
+export const BONELESS_WINGS_UPCHARGE_CENTS = 150;
 export const EXTRA_FLAVOUR_PRICE_CENTS = 100;
 export const SIDE_POP_BUNDLE_PRICE_CENTS = 499;
 

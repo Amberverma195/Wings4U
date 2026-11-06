@@ -7,7 +7,7 @@ import { savedSelectionReview } from "../lib/cart-validation";
  *
  * Implements:
  *  - Combo size selection (pounds + flavours per size)
- *  - Wing Preparation (Breaded Bone-In / Non-Breaded Bone-In / Breaded-Boneless +$1.00)
+ *  - Wing Preparation (Breaded Bone-In / Non-Breaded Bone-In / Breaded-Boneless +$1.50)
  *  - Multi-slot Flavour selection with heat-level tabs
  *  - Saucing method distribution rules (half/half, side, split, mixed, tell-us-how)
  *  - Side selection (mandatory per combo side slot)
