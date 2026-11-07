@@ -8,7 +8,7 @@ import {
 } from "./delivery-pricing.constants";
 
 export type DeliveryQuotePayload = {
-  version: 1;
+  version: typeof DELIVERY_PRICING_RULE_VERSION;
   location_id: string;
   address_fingerprint: string;
   delivery_fee_cents: number;

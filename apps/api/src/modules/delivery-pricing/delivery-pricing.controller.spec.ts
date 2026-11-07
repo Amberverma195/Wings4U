@@ -112,7 +112,7 @@ describe("POST /api/v1/delivery/quote", () => {
       .expect(201);
 
     expect(response.body.data).toMatchObject({
-      delivery_fee_cents: 700,
+      delivery_fee_cents: 1000,
       attribution: "Google Maps",
     });
     expect(response.body.data.delivery_quote_token).toEqual(expect.any(String));

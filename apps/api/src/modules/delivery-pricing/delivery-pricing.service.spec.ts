@@ -135,13 +135,13 @@ describe("DeliveryPricingService", () => {
       300,
       900_000,
     );
-    expect(first.delivery_fee_cents).toBe(700);
-    expect(second.delivery_fee_cents).toBe(700);
+    expect(first.delivery_fee_cents).toBe(1000);
+    expect(second.delivery_fee_cents).toBe(1000);
     expect(redis.setJson).toHaveBeenCalledWith(
       expect.stringMatching(
         new RegExp(`^wings4u:delivery-route:v${DELIVERY_PRICING_RULE_VERSION}:`),
       ),
-      { within_delivery_radius: true, delivery_fee_cents: 700 },
+      { within_delivery_radius: true, delivery_fee_cents: 1000 },
       3_600,
     );
     const payload = JSON.parse(
@@ -162,7 +162,7 @@ describe("DeliveryPricingService", () => {
     const redis = createRedisMock({
       getJson: jest.fn().mockResolvedValue({
         within_delivery_radius: true,
-        delivery_fee_cents: 700,
+        delivery_fee_cents: 1000,
       }),
     });
     const rateLimiter = createRateLimiterMock();
@@ -180,7 +180,7 @@ describe("DeliveryPricingService", () => {
       scheduledFor: SCHEDULED_FOR,
     });
 
-    expect(quote.delivery_fee_cents).toBe(700);
+    expect(quote.delivery_fee_cents).toBe(1000);
     expect(googleRoutes.computeDrivingDistanceMetres).not.toHaveBeenCalled();
     expect(rateLimiter.check).not.toHaveBeenCalled();
     expect(redis.getJson).toHaveBeenCalledWith(

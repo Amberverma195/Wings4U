@@ -198,7 +198,7 @@ export async function seedRestaurant(prisma: PrismaClient) {
         taxDeliveryFee: true,
         taxTip: false,
         discountsReduceTaxableBase: true,
-        deliveryFeeCents: 500,
+        deliveryFeeCents: 800,
         freeDeliveryThresholdCents: 4000,
         minimumDeliverySubtotalCents: 2000,
         defaultPrepTimeMinutes: 30,

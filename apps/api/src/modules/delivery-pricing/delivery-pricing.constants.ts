@@ -3,11 +3,16 @@ export const RESTAURANT_ORIGIN = {
   longitude: -81.1943749,
 } as const;
 
-export const DELIVERY_INCLUDED_DISTANCE_METRES = 5_000;
+export const DELIVERY_INCLUDED_DISTANCE_METRES = 4_950;
+export const DELIVERY_MID_TIER_START_METRES = 4_951;
+export const DELIVERY_UPPER_TIER_START_METRES = 8_000;
+export const DELIVERY_INCREMENT_START_METRES = 10_000;
 export const DELIVERY_MAXIMUM_DISTANCE_METRES = 20_000;
-export const DELIVERY_BASE_FEE_CENTS = 500;
+export const DELIVERY_BASE_FEE_CENTS = 800;
+export const DELIVERY_MID_TIER_FEE_CENTS = 1_000;
+export const DELIVERY_UPPER_TIER_FEE_CENTS = 1_200;
 export const DELIVERY_INCREMENT_CENTS = 100;
-export const DELIVERY_PRICING_RULE_VERSION = 1 as const;
+export const DELIVERY_PRICING_RULE_VERSION = 2 as const;
 export const DELIVERY_QUOTE_LIFETIME_MS = 60 * 60 * 1_000;
 export const DELIVERY_ROUTE_CACHE_TTL_SECONDS = 60 * 60;
 export const DELIVERY_ROUTE_LOCAL_CACHE_MAX_ENTRIES = 1_000;
@@ -23,9 +28,9 @@ export const GOOGLE_ROUTES_URL =
 export const GOOGLE_ROUTES_TIMEOUT_MS = 5_000;
 
 export const DELIVERY_QUOTE_SIGNING_CONTEXT =
-  "wings4u.delivery-quote.distance-pricing.v1";
+  "wings4u.delivery-quote.distance-pricing.v2";
 export const FIXED_DELIVERY_QUOTE_SIGNING_CONTEXT =
-  "wings4u.delivery-quote.fixed-pricing.v1";
+  "wings4u.delivery-quote.fixed-pricing.v2";
 
 export function isDeliveryDistancePricingEnabled(): boolean {
   return process.env.DELIVERY_DISTANCE_PRICING_ENABLED?.trim().toLowerCase() === "true";
@@ -39,8 +44,18 @@ export function calculateDeliveryFeeCents(distanceMetres: number): number | null
     return null;
   }
 
-  const additionalKilometres = Math.ceil(
-    Math.max(0, distanceMetres - DELIVERY_INCLUDED_DISTANCE_METRES) / 1_000,
-  );
-  return DELIVERY_BASE_FEE_CENTS + additionalKilometres * DELIVERY_INCREMENT_CENTS;
+  if (distanceMetres <= DELIVERY_INCLUDED_DISTANCE_METRES) {
+    return DELIVERY_BASE_FEE_CENTS;
+  }
+  if (distanceMetres < DELIVERY_UPPER_TIER_START_METRES) {
+    return DELIVERY_MID_TIER_FEE_CENTS;
+  }
+  if (distanceMetres < DELIVERY_INCREMENT_START_METRES) {
+    return DELIVERY_UPPER_TIER_FEE_CENTS;
+  }
+
+  // $1 for each started kilometre beginning at 10.0 km.
+  const additionalKilometres =
+    Math.floor((distanceMetres - DELIVERY_INCREMENT_START_METRES) / 1_000) + 1;
+  return DELIVERY_UPPER_TIER_FEE_CENTS + additionalKilometres * DELIVERY_INCREMENT_CENTS;
 }
