@@ -1082,12 +1082,11 @@ export function CheckoutClient() {
                     </span>
                     Free
                   </>
+                ) : quote?.delivery_fee_cents != null ||
+                  deliveryQuote?.delivery_fee_cents != null ? (
+                  cents(quote?.delivery_fee_cents ?? deliveryQuote?.delivery_fee_cents ?? 0)
                 ) : (
-                  cents(
-                    quote?.delivery_fee_cents ??
-                      deliveryQuote?.delivery_fee_cents ??
-                      500,
-                  )
+                  "Estimating delivery fee…"
                 )}
               </span>
             </div>

@@ -9,8 +9,11 @@ export type DeliveryQuote = {
   attribution: "Google Maps" | null;
 };
 
-const DELIVERY_QUOTES_STORAGE_KEY = "wings4u.delivery-quotes.v2";
-const LEGACY_DELIVERY_QUOTES_STORAGE_KEY = "wings4u.delivery-quotes.v1";
+const DELIVERY_QUOTES_STORAGE_KEY = "wings4u.delivery-quotes.v3";
+const LEGACY_DELIVERY_QUOTES_STORAGE_KEYS = [
+  "wings4u.delivery-quotes.v2",
+  "wings4u.delivery-quotes.v1",
+] as const;
 const expiryTimers = new Map<string, number>();
 
 function normalizePart(value: string): string {
@@ -53,7 +56,7 @@ function loadQuoteMap(): Record<string, DeliveryQuote> {
   if (typeof window === "undefined") return {};
 
   try {
-    window.sessionStorage.removeItem(LEGACY_DELIVERY_QUOTES_STORAGE_KEY);
+    LEGACY_DELIVERY_QUOTES_STORAGE_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
     const raw = window.sessionStorage.getItem(DELIVERY_QUOTES_STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
@@ -75,7 +78,7 @@ function loadQuoteMap(): Record<string, DeliveryQuote> {
   } catch {
     try {
       window.sessionStorage.removeItem(DELIVERY_QUOTES_STORAGE_KEY);
-      window.sessionStorage.removeItem(LEGACY_DELIVERY_QUOTES_STORAGE_KEY);
+      LEGACY_DELIVERY_QUOTES_STORAGE_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
     } catch {
       // Storage may be disabled; quotes still work without client-side reuse.
     }
@@ -160,7 +163,7 @@ export function clearStoredDeliveryQuotes(): void {
   expiryTimers.clear();
   try {
     window.sessionStorage.removeItem(DELIVERY_QUOTES_STORAGE_KEY);
-    window.sessionStorage.removeItem(LEGACY_DELIVERY_QUOTES_STORAGE_KEY);
+    LEGACY_DELIVERY_QUOTES_STORAGE_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
   } catch {
     // Best-effort cleanup when browser storage is unavailable.
   }

@@ -3,6 +3,7 @@ import {
   type DeliveryQuotePayload,
 } from "./delivery-quote-token.service";
 import { DeliveryQuoteVerifierService } from "./delivery-quote-verifier.service";
+import { DELIVERY_PRICING_RULE_VERSION } from "./delivery-pricing.constants";
 import {
   getAddressFingerprint,
   normalizeDeliveryAddress,
@@ -18,12 +19,12 @@ const ADDRESS = {
 function payload(overrides: Partial<DeliveryQuotePayload> = {}): DeliveryQuotePayload {
   const now = Date.now();
   return {
-    version: 1,
+    version: DELIVERY_PRICING_RULE_VERSION,
     location_id: LOCATION_ID,
     address_fingerprint: getAddressFingerprint(
       normalizeDeliveryAddress(ADDRESS),
     ),
-    delivery_fee_cents: 700,
+    delivery_fee_cents: 1000,
     within_delivery_radius: true,
     issued_at: now,
     expires_at: now + 60_000,
@@ -55,7 +56,7 @@ describe("delivery quote tokens", () => {
         deliveryQuoteToken: token,
         required: true,
       }),
-    ).toMatchObject({ delivery_fee_cents: 700 });
+    ).toMatchObject({ delivery_fee_cents: 1000 });
   });
 
   it("rejects tampering", () => {
@@ -97,12 +98,22 @@ describe("delivery quote tokens", () => {
 
     const unknownVersion = {
       ...payload(),
-      version: 2,
+      version: 3,
     } as unknown as DeliveryQuotePayload;
     expect(() =>
       tokens.verifyDistanceQuote(
         tokens.signDistanceQuote(unknownVersion as DeliveryQuotePayload),
       ),
+    ).toThrow("unsupported pricing version");
+  });
+
+  it("rejects a signed quote from the previous fee schedule", () => {
+    const previousVersion = {
+      ...payload(),
+      version: 1,
+    } as unknown as DeliveryQuotePayload;
+    expect(() =>
+      tokens.verifyDistanceQuote(tokens.signDistanceQuote(previousVersion)),
     ).toThrow("unsupported pricing version");
   });
 
