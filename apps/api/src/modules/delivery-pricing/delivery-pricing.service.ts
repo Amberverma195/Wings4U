@@ -16,13 +16,11 @@ import {
   getScheduleContext,
 } from "../shared/order-validation";
 import {
-  assertPostalCodeAllowed,
   formatGoogleDestination,
   getAddressFingerprint,
   normalizeDeliveryAddress,
 } from "./delivery-address";
 import {
-  DELIVERY_BASE_FEE_CENTS,
   DELIVERY_PRICING_RULE_VERSION,
   DELIVERY_QUOTE_GLOBAL_BURST_LIMIT,
   DELIVERY_QUOTE_GLOBAL_BURST_WINDOW_MS,
@@ -32,7 +30,6 @@ import {
   DELIVERY_ROUTE_CACHE_TTL_SECONDS,
   DELIVERY_ROUTE_LOCAL_CACHE_MAX_ENTRIES,
   calculateDeliveryFeeCents,
-  isDeliveryDistancePricingEnabled,
 } from "./delivery-pricing.constants";
 import {
   type DeliveryQuotePayload,
@@ -112,16 +109,8 @@ export class DeliveryPricingService {
       fulfillmentType: "DELIVERY",
       context: getScheduleContext(referenceDate, timezone),
     });
-    assertPostalCodeAllowed(address.postalCode, settings.allowedPostalCodes);
-
-    if (!isDeliveryDistancePricingEnabled()) {
-      return this.buildQuoteResponse({
-        locationId: params.locationId,
-        fingerprint,
-        feeCents: DELIVERY_BASE_FEE_CENTS,
-        useDistanceSignature: false,
-      });
-    }
+    // Postal zones are legacy configuration, not municipal boundaries. Every
+    // syntactically valid postal code must reach authoritative route eligibility.
 
     const startedAt = Date.now();
     try {
@@ -142,7 +131,6 @@ export class DeliveryPricingService {
           locationId: params.locationId,
           fingerprint,
           feeCents: cached.delivery_fee_cents,
-          useDistanceSignature: true,
         });
       }
 
@@ -151,8 +139,8 @@ export class DeliveryPricingService {
         fingerprint,
         formatGoogleDestination(address),
       );
-      const feeCents = calculateDeliveryFeeCents(distanceMetres);
-      if (feeCents == null) {
+      const distanceFeeCents = calculateDeliveryFeeCents(distanceMetres);
+      if (distanceFeeCents == null) {
         await this.setCachedRouteResult(params.locationId, fingerprint, {
           within_delivery_radius: false,
         });
@@ -173,6 +161,8 @@ export class DeliveryPricingService {
         });
       }
 
+      const feeCents = distanceFeeCents;
+
       await this.setCachedRouteResult(params.locationId, fingerprint, {
         within_delivery_radius: true,
         delivery_fee_cents: feeCents,
@@ -192,7 +182,6 @@ export class DeliveryPricingService {
         locationId: params.locationId,
         fingerprint,
         feeCents,
-        useDistanceSignature: true,
       });
     } catch (error) {
       if (error instanceof HttpException) {
@@ -212,6 +201,15 @@ export class DeliveryPricingService {
         }),
       );
 
+      if (
+        error instanceof GoogleRoutesClientError && error.reason === "OUTSIDE_CITY"
+      ) {
+        throw new UnprocessableEntityException({
+          code: "DELIVERY_CITY_UNAVAILABLE",
+          message: "Delivery is only available within London, Ontario",
+          field: "address_snapshot_json",
+        });
+      }
       if (
         error instanceof GoogleRoutesClientError &&
         error.reason === "UNROUTABLE"
@@ -245,7 +243,7 @@ export class DeliveryPricingService {
   }
 
   private routeCacheKey(locationId: string, fingerprint: string): string {
-    return `wings4u:delivery-route:v${DELIVERY_PRICING_RULE_VERSION}:${locationId}:${fingerprint}`;
+    return `wings4u:delivery-route:v${DELIVERY_PRICING_RULE_VERSION}:london-boundary-approved-tiers-v3:${locationId}:${fingerprint}`;
   }
 
   private getLocalRouteResult(key: string): CachedRouteResult | null {
@@ -377,7 +375,6 @@ export class DeliveryPricingService {
     locationId: string;
     fingerprint: string;
     feeCents: number;
-    useDistanceSignature: boolean;
   }): DeliveryQuoteResponse {
     const issuedAt = Date.now();
     const expiresAt = issuedAt + DELIVERY_QUOTE_LIFETIME_MS;
@@ -390,15 +387,14 @@ export class DeliveryPricingService {
       issued_at: issuedAt,
       expires_at: expiresAt,
     };
-    const token = params.useDistanceSignature
-      ? this.tokens.signDistanceQuote(payload)
-      : this.tokens.signFixedQuote(payload);
+    // Both pricing modes require the same verified geographic eligibility.
+    const token = this.tokens.signDistanceQuote(payload);
 
     return {
       delivery_quote_token: token,
       delivery_fee_cents: params.feeCents,
       expires_at: new Date(expiresAt).toISOString(),
-      attribution: params.useDistanceSignature ? "Google Maps" : null,
+      attribution: "Google Maps",
     };
   }
 }

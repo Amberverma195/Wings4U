@@ -127,10 +127,10 @@ test.each(['pending', 'unavailable', 'estimated', 'confirmed', 'coupon', 'thresh
     expect(output).not.toContain('Delivery fee');
     expect(output).not.toContain('Free');
   } else if (['estimated', 'confirmed', 'waived-zero'].includes(mode)) {
-    expect(output).toContain('From $5 — calculated at checkout');
+    expect(output).toContain('From $8 — calculated at checkout');
     expect(output).not.toContain('Free');
   } else {
-    expect(output).toContain('From $5 Free');
+    expect(output).toContain('From $8 Free');
     expect(renderer.root.findAllByType('Text').some(node => node.props.style?.textDecorationLine === 'line-through')).toBe(true);
   }
 });
@@ -402,7 +402,7 @@ test('tip refresh keeps the entire server breakdown visible and sends only the l
   expect(coupons.props.quote).toBeNull();
   await act(async () => jest.advanceTimersByTime(250)); await act(async () => release());
   expect(summaryAmount('Tax')).toBe('$2.83'); expect(summaryAmount('Tip')).toBe('$2.00'); expect(summaryAmount('Estimated total')).toBe('$21.58');
-  expect(summaryAmount('Delivery fee')).toBe('From $5 — calculated at checkout'); expect(screenText()).not.toContain('Previous amounts shown');
+  expect(summaryAmount('Delivery fee')).toBe('From $8 — calculated at checkout'); expect(screenText()).not.toContain('Previous amounts shown');
 });
 
 test.each(['PICKUP', 'DELIVERY'])('closed-store %s errors offer order setup instead of generic pricing retry', async type => {

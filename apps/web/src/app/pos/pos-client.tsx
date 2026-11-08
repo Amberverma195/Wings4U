@@ -10,6 +10,7 @@ import { LegacySizePickerModal } from "@/components/legacy-size-picker-modal";
 import { LunchSpecialBuilder } from "@/components/lunch-special-builder";
 import { WingsBuilder } from "@/components/wings-builder";
 import { apiFetch, getApiErrorMessage } from "@/lib/api";
+import type { DeliveryQuote } from "@/lib/delivery-quote";
 import { CartContext, type CartContextValue } from "@/lib/cart";
 import {
   getCartItemUnitPrice,
@@ -50,6 +51,8 @@ type MenuResponse = {
     name: string;
     timezone?: string;
     tax_rate_bps?: number;
+    tax_delivery_fee?: boolean;
+    free_delivery_threshold_cents?: number | null;
     delivery_currently_available?: boolean;
     delivery_unavailable_reason?: string | null;
   };
@@ -448,6 +451,47 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   const [orderSource, setOrderSource] = useState<OrderSource>("POS");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [deliveryLine1, setDeliveryLine1] = useState("");
+  const [deliveryPostalCode, setDeliveryPostalCode] = useState("");
+  const [deliveryQuote, setDeliveryQuote] = useState<(DeliveryQuote & { addressKey: string }) | null>(null);
+  const [checkingDelivery, setCheckingDelivery] = useState(false);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const deliveryRequest = useRef(0);
+  const deliveryAddressKey = JSON.stringify([deliveryLine1.trim(), deliveryPostalCode.trim().toUpperCase()]);
+  const deliveryReady = fulfillmentType !== "DELIVERY" || Boolean(deliveryQuote &&
+    deliveryQuote.addressKey === deliveryAddressKey && Date.parse(deliveryQuote.expires_at) > Date.now());
+
+  useEffect(() => {
+    if (!deliveryQuote) return;
+    const timer = window.setTimeout(() => setDeliveryQuote(null), Math.max(0, Date.parse(deliveryQuote.expires_at) - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [deliveryQuote]);
+
+  const checkDelivery = async () => {
+    const generation = ++deliveryRequest.current;
+    setCheckingDelivery(true); setDeliveryQuote(null); setDeliveryError(null);
+    try {
+      const quote = await posJson<DeliveryQuote>("/api/v1/pos/delivery/quote", {
+        method: "POST", locationId: DEFAULT_LOCATION_ID, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address_snapshot_json: { line1: deliveryLine1, city: "London", postal_code: deliveryPostalCode } }),
+      });
+      if (!quote.delivery_quote_token || !Number.isInteger(quote.delivery_fee_cents) ||
+          !Number.isFinite(Date.parse(quote.expires_at)) || Date.parse(quote.expires_at) <= Date.now()) {
+        throw new Error("Delivery could not be confirmed. Check the address again.");
+      }
+      if (generation === deliveryRequest.current) setDeliveryQuote({ ...quote, addressKey: deliveryAddressKey });
+    } catch (error) {
+      if (generation === deliveryRequest.current) setDeliveryError(error instanceof Error ? error.message : "Could not check delivery.");
+    } finally {
+      if (generation === deliveryRequest.current) setCheckingDelivery(false);
+    }
+  };
+
+  const changeDeliveryAddress = (field: "line1" | "postalCode", value: string) => {
+    deliveryRequest.current++; setCheckingDelivery(false); setDeliveryQuote(null); setDeliveryError(null);
+    if (field === "line1") setDeliveryLine1(value); else setDeliveryPostalCode(value);
+  };
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [amountTendered, setAmountTendered] = useState<string>("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -797,6 +841,8 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     setOrderNotes("");
     setCustomerName("");
     setCustomerPhone("");
+    setDeliveryLine1(""); setDeliveryPostalCode(""); setDeliveryQuote(null);
+    deliveryRequest.current++; setCheckingDelivery(false); setDeliveryError(null);
     setAppliedDiscount(null);
     setPlaceError(null);
     setPlaceSuccess(null);
@@ -869,11 +915,15 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   }, [appliedDiscount, subtotalCents]);
 
   const taxRateBps = menu?.location.tax_rate_bps ?? 1300;
+  const deliveryFeeWaived = menu?.location.free_delivery_threshold_cents != null &&
+    subtotalCents >= menu.location.free_delivery_threshold_cents;
+  const deliveryFeeCents = fulfillmentType === "DELIVERY" && deliveryReady && !deliveryFeeWaived
+    ? deliveryQuote?.delivery_fee_cents ?? 0 : 0;
   const subtotalAfterDiscount = subtotalCents - discountCents;
   const estimatedTaxCents = Math.round(
-    (subtotalAfterDiscount * taxRateBps) / 10_000,
+    ((subtotalAfterDiscount + (menu?.location.tax_delivery_fee ? deliveryFeeCents : 0)) * taxRateBps) / 10_000,
   );
-  const estimatedTotalCents = subtotalAfterDiscount + estimatedTaxCents;
+  const estimatedTotalCents = subtotalAfterDiscount + deliveryFeeCents + estimatedTaxCents;
   const remainingBalanceCents = Math.max(
     0,
     estimatedTotalCents - amountAlreadyPaidCents,
@@ -895,6 +945,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     amountTenderedCents?: number;
   }) => {
     if (cart.length === 0) return;
+    if (!deliveryReady) { setPlaceError("Check the delivery address before collecting payment."); return; }
     setPlacing(true);
     setPlaceError(null);
     setPlaceSuccess(null);
@@ -930,6 +981,10 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
         fulfillment_type: fulfillmentType,
         order_source: orderSource,
         payment_method: finalPaymentMethod,
+        ...(fulfillmentType === "DELIVERY" ? {
+          delivery_quote_token: deliveryQuote!.delivery_quote_token,
+          address_snapshot_json: { line1: deliveryLine1, city: "London", postal_code: deliveryPostalCode },
+        } : {}),
         items: cart.map((l) => ({
           menu_item_id: l.menu_item_id === "open-food" ? undefined : l.menu_item_id,
           name: l.menu_item_id === "open-food" ? l.name : undefined,
@@ -996,6 +1051,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
     cart,
     customerName,
     customerPhone,
+    deliveryReady, deliveryQuote, deliveryLine1, deliveryPostalCode, remainingBalanceCents,
     discountCents,
     fulfillmentType,
     loadOrders,
@@ -1244,6 +1300,20 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 </label>
               )}
             </div>
+            {fulfillmentType === "DELIVERY" ? (
+              <div className="pos-customer-fields" aria-label="Delivery address">
+                <label className="pos-field">STREET ADDRESS
+                  <input value={deliveryLine1} maxLength={120} onChange={e => changeDeliveryAddress("line1", e.target.value)} autoComplete="street-address" />
+                </label>
+                <label className="pos-field">POSTAL CODE (LONDON, ON)
+                  <input value={deliveryPostalCode} maxLength={16} onChange={e => changeDeliveryAddress("postalCode", e.target.value)} autoComplete="postal-code" />
+                </label>
+                <button type="button" onClick={() => void checkDelivery()} disabled={checkingDelivery || !deliveryLine1.trim() || !deliveryPostalCode.trim()}>
+                  {checkingDelivery ? "Checking delivery…" : "Check delivery address"}
+                </button>
+                <p role="status">{deliveryError || (deliveryReady ? "Delivery confirmed · Google Maps" : "Confirm delivery before collecting payment.")}</p>
+              </div>
+            ) : null}
             {currentOrderId && (
               <div className="pos-order-id-display">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1390,6 +1460,9 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                   <span>Tax (est.)</span>
                   <span>{cents(estimatedTaxCents)}</span>
                 </div>
+                {fulfillmentType === "DELIVERY" ? <div className="pos-cart-totals-row">
+                  <span>Delivery</span><span>{deliveryReady ? cents(deliveryFeeCents) : "Check address"}</span>
+                </div> : null}
                 <div className="pos-cart-totals-row pos-cart-totals-row--emph">
                   <span>Total</span>
                   <span>{cents(estimatedTotalCents)}</span>
@@ -1426,7 +1499,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 <button
                   type="button"
                   className="pos-payment-btn"
-                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0}
+                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0 || !deliveryReady}
                   onClick={() => {
                     setPaymentMethod("CASH");
                     setAmountTendered((remainingBalanceCents / 100).toString());
@@ -1441,7 +1514,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 <button
                   type="button"
                   className="pos-payment-btn"
-                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0}
+                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0 || !deliveryReady}
                   aria-pressed={showCashModal}
                   onClick={() => {
                     setPaymentMethod("CASH");
@@ -1453,7 +1526,7 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
                 <button
                   type="button"
                   className="pos-payment-btn"
-                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0}
+                  disabled={cart.length === 0 || placing || remainingBalanceCents <= 0 || !deliveryReady}
                   aria-pressed={paymentMethod === "CARD_TERMINAL"}
                   onClick={() => {
                     setPaymentMethod("CARD_TERMINAL");

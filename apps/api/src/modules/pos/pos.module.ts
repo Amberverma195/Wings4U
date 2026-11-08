@@ -7,9 +7,10 @@ import { StoreNetworkGuard } from "../../common/guards/store-network.guard";
 import { PosStationGuard } from "../../common/guards/pos-station.guard";
 
 import { RealtimeModule } from "../realtime/realtime.module";
+import { DeliveryPricingModule } from "../delivery-pricing/delivery-pricing.module";
 
 @Module({
-  imports: [RealtimeModule],
+  imports: [RealtimeModule, DeliveryPricingModule],
   controllers: [PosController, PosAuthController],
   providers: [
     PosService,

@@ -33,7 +33,8 @@ describe("GoogleRoutesClient", () => {
   it("requests only traffic-unaware driving distance", async () => {
     const fetchMock = jest
       .fn()
-      .mockResolvedValue(response(200, { routes: [{ distanceMeters: 6_001 }] }));
+      .mockResolvedValue(response(200, { routes: [{ distanceMeters: 6_001,
+        legs: [{ endLocation: { latLng: RESTAURANT_ORIGIN } }] }] }));
     global.fetch = fetchMock as typeof fetch;
 
     await expect(
@@ -49,7 +50,7 @@ describe("GoogleRoutesClient", () => {
     expect(init.headers).toEqual({
       "Content-Type": "application/json",
       "X-Goog-Api-Key": "server-only-test-key",
-      "X-Goog-FieldMask": "routes.distanceMeters",
+      "X-Goog-FieldMask": "routes.distanceMeters,routes.legs.endLocation.latLng",
     });
     expect(JSON.parse(String(init.body))).toEqual({
       origin: { location: { latLng: RESTAURANT_ORIGIN } },
@@ -85,7 +86,8 @@ describe("GoogleRoutesClient", () => {
   });
 
   it.each([
-    [400, "UNROUTABLE"],
+    [400, "INVALID_REQUEST"],
+    [404, "INVALID_REQUEST"],
     [401, "NOT_CONFIGURED"],
     [403, "NOT_CONFIGURED"],
     [429, "RATE_LIMITED"],
@@ -104,7 +106,12 @@ describe("GoogleRoutesClient", () => {
 
   it.each([
     [{ routes: [] }, "UNROUTABLE"],
-    [{}, "MALFORMED_RESPONSE"],
+    [{}, "UNROUTABLE"],
+    [null, "MALFORMED_RESPONSE"],
+    [[], "MALFORMED_RESPONSE"],
+    [{ routes: null }, "MALFORMED_RESPONSE"],
+    [{ routes: {} }, "MALFORMED_RESPONSE"],
+    [{ routes: [{ distanceMeters: 6000 }] }, "MALFORMED_RESPONSE"],
     [{ routes: [{ distanceMeters: "6000" }] }, "MALFORMED_RESPONSE"],
   ])("rejects unusable route response %#", async (body, reason) => {
     global.fetch = jest.fn().mockResolvedValue(response(200, body)) as typeof fetch;
@@ -116,5 +123,22 @@ describe("GoogleRoutesClient", () => {
         reason: reason as GoogleRoutesClientError["reason"],
       }),
     );
+  });
+
+  it("rejects a routed destination outside the municipality even with London in the input", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(200, { routes: [{
+      distanceMeters: 10000,
+      legs: [{ endLocation: { latLng: { latitude: 43.01, longitude: -81.09 } } }],
+    }] })) as typeof fetch;
+    await expect(new GoogleRoutesClient().computeDrivingDistanceMetres("Forged city, London, ON"))
+      .rejects.toMatchObject({ reason: "OUTSIDE_CITY" });
+  });
+
+  it("never includes provider error bodies, addresses or credentials in errors", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(400, {
+      error: { message: "private address server-only-test-key", status: "INVALID_ARGUMENT" },
+    })) as typeof fetch;
+    await expect(new GoogleRoutesClient().computeDrivingDistanceMetres("private address"))
+      .rejects.toMatchObject({ reason: "INVALID_REQUEST", message: "Google Routes rejected the request" });
   });
 });

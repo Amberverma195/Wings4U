@@ -77,12 +77,9 @@ describe("delivery address and fee rules", () => {
   });
 
   it.each([
-    [5_000, 500],
-    [5_001, 600],
-    [6_000, 600],
-    [6_001, 700],
-    [20_000, 2_000],
-    [20_001, null],
+    [0, 800], [4_950, 800], [4_951, 1000], [7_999, 1000],
+    [8_000, 1200], [9_999, 1200], [10_000, 1300], [14_000, 1700],
+    [20_000, 2300], [20_001, null],
   ])("prices %i metres at %s cents", (distance, expected) => {
     expect(calculateDeliveryFeeCents(distance)).toBe(expected);
   });

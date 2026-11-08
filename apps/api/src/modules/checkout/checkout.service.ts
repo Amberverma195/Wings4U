@@ -69,7 +69,6 @@ import {
   throwScheduleViolations,
 } from "../shared/order-validation";
 import {
-  assertPostalCodeAllowed,
   normalizeDeliveryAddress,
 } from "../delivery-pricing/delivery-address";
 import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
@@ -591,10 +590,6 @@ export class CheckoutService {
         documentFuturePrepaymentPolicy();
         assertCustomerMayUseDelivery(deliveryEligibility);
 
-        assertPostalCodeAllowed(
-          deliveryAddress?.postalCode ?? "",
-          settings.allowedPostalCodes,
-        );
       }
 
       // PRD §8: minimum lead time. Scheduled orders cannot be placed for a

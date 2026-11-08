@@ -6,7 +6,7 @@ import {
   DELIVERY_ROUTE_LOCAL_CACHE_MAX_ENTRIES,
 } from "./delivery-pricing.constants";
 import { DeliveryQuoteTokenService } from "./delivery-quote-token.service";
-import { GoogleRoutesClient } from "./google-routes.client";
+import { GoogleRoutesClient, GoogleRoutesClientError } from "./google-routes.client";
 
 const LOCATION_ID = "11111111-1111-4111-8111-111111111111";
 const ADDRESS = {
@@ -206,12 +206,6 @@ describe("DeliveryPricingService", () => {
       ADDRESS,
       "Delivery is currently unavailable",
     ],
-    [
-      "disallowed postal code",
-      { allowedPostalCodes: ["N6A"] },
-      ADDRESS,
-      "Delivery is not available to postal code",
-    ],
   ])(
     "does not contact Google for %s",
     async (_label, settings, address, expectedMessage) => {
@@ -333,7 +327,7 @@ describe("DeliveryPricingService", () => {
     const cache = getCacheInternals(service);
     cache.setLocalRouteResult("expired", {
       within_delivery_radius: true,
-      delivery_fee_cents: 500,
+      delivery_fee_cents: 800,
     });
     const expired = cache.localRouteCache.get("expired");
     if (!expired) throw new Error("Expected cache entry");
@@ -341,7 +335,7 @@ describe("DeliveryPricingService", () => {
 
     cache.setLocalRouteResult("fresh", {
       within_delivery_radius: true,
-      delivery_fee_cents: 600,
+      delivery_fee_cents: 1000,
     });
 
     expect(cache.localRouteCache.has("expired")).toBe(false);
@@ -360,14 +354,14 @@ describe("DeliveryPricingService", () => {
     for (let index = 0; index < DELIVERY_ROUTE_LOCAL_CACHE_MAX_ENTRIES; index += 1) {
       cache.setLocalRouteResult(`cache-${index}`, {
         within_delivery_radius: true,
-        delivery_fee_cents: 500,
+        delivery_fee_cents: 800,
       });
     }
 
     cache.getLocalRouteResult("cache-0");
     cache.setLocalRouteResult("cache-new", {
       within_delivery_radius: true,
-      delivery_fee_cents: 600,
+      delivery_fee_cents: 1000,
     });
 
     expect(cache.localRouteCache.size).toBe(
@@ -390,7 +384,71 @@ describe("DeliveryPricingService", () => {
     expect(
       getCacheInternals(service).routeCacheKey(LOCATION_ID, "fingerprint"),
     ).toBe(
-      `wings4u:delivery-route:v${DELIVERY_PRICING_RULE_VERSION}:${LOCATION_ID}:fingerprint`,
+      `wings4u:delivery-route:v${DELIVERY_PRICING_RULE_VERSION}:london-boundary-approved-tiers-v3:${LOCATION_ID}:fingerprint`,
     );
+  });
+
+  it.each(["true", "false", undefined])("evaluates N6K at exactly 20 km with distance pricing %s", async (enabled) => {
+    if (enabled === undefined) delete process.env.DELIVERY_DISTANCE_PRICING_ENABLED;
+    else process.env.DELIVERY_DISTANCE_PRICING_ENABLED = enabled;
+    const googleRoutes = { computeDrivingDistanceMetres: jest.fn().mockResolvedValue(20000) };
+    const tokens = new DeliveryQuoteTokenService();
+    const service = new DeliveryPricingService(createPrisma() as never, googleRoutes as never,
+      tokens, createRedisMock() as never, createRateLimiterMock() as never);
+    const quote = await service.createQuote({ locationId: LOCATION_ID,
+      addressSnapshotJson: { ...ADDRESS, postal_code: "N6K 1A1" }, scheduledFor: SCHEDULED_FOR });
+    expect(googleRoutes.computeDrivingDistanceMetres).toHaveBeenCalledTimes(1);
+    expect(tokens.verifyDistanceQuote(quote.delivery_quote_token)).toMatchObject({
+      within_delivery_radius: true, delivery_fee_cents: 2300,
+    });
+  });
+
+  it.each([true, false])("quotes N6K at 14 km for $17 with the former pricing flag %s", async enabled => {
+    process.env.DELIVERY_DISTANCE_PRICING_ENABLED = String(enabled);
+    const tokens = new DeliveryQuoteTokenService();
+    const service = new DeliveryPricingService(createPrisma() as never,
+      { computeDrivingDistanceMetres: jest.fn().mockResolvedValue(14000) } as never,
+      tokens, createRedisMock() as never, createRateLimiterMock() as never);
+    const quote = await service.createQuote({ locationId: LOCATION_ID,
+      addressSnapshotJson: { ...ADDRESS, postal_code: "N6K 1A1" }, scheduledFor: SCHEDULED_FOR });
+    expect(quote.delivery_fee_cents).toBe(1700);
+    expect(tokens.verifyDistanceQuote(quote.delivery_quote_token).delivery_fee_cents).toBe(1700);
+  });
+
+  it.each([0, 100_00, null])("cannot waive eligibility with free-delivery threshold %s", async threshold => {
+    const google = { computeDrivingDistanceMetres: jest.fn().mockResolvedValue(20001) };
+    const tokens = new DeliveryQuoteTokenService();
+    const sign = jest.spyOn(tokens, "signDistanceQuote");
+    const service = new DeliveryPricingService(createPrisma({ freeDeliveryThresholdCents: threshold }) as never,
+      google as never, tokens, createRedisMock() as never, createRateLimiterMock() as never);
+    await expect(service.createQuote({ locationId: LOCATION_ID,
+      addressSnapshotJson: { ...ADDRESS, postal_code: "N6K 1A1", delivery_fee_cents: 0,
+        within_delivery_radius: true, distance_metres: 0 }, scheduledFor: SCHEDULED_FOR }))
+      .rejects.toMatchObject({ response: { code: "DELIVERY_OUTSIDE_RADIUS" } });
+    expect(sign).not.toHaveBeenCalled();
+  });
+
+  it("still rejects above 20 km when distance pricing is disabled", async () => {
+    process.env.DELIVERY_DISTANCE_PRICING_ENABLED = "false";
+    const service = new DeliveryPricingService(createPrisma() as never,
+      { computeDrivingDistanceMetres: jest.fn().mockResolvedValue(20001) } as never,
+      new DeliveryQuoteTokenService(), createRedisMock() as never, createRateLimiterMock() as never);
+    await expect(service.createQuote({ locationId: LOCATION_ID,
+      addressSnapshotJson: { ...ADDRESS, postal_code: "N6K 1A1" }, scheduledFor: SCHEDULED_FOR }))
+      .rejects.toMatchObject({ response: { code: "DELIVERY_OUTSIDE_RADIUS" } });
+  });
+
+  it.each([
+    ["UNROUTABLE", 422, "DELIVERY_ADDRESS_UNROUTABLE"],
+    ["INVALID_REQUEST", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+    ["OUTSIDE_CITY", 422, "DELIVERY_CITY_UNAVAILABLE"],
+  ] as const)("classifies %s without issuing or caching a quote", async (reason, status, code) => {
+    const redis = createRedisMock();
+    const service = new DeliveryPricingService(createPrisma() as never,
+      { computeDrivingDistanceMetres: jest.fn().mockRejectedValue(new GoogleRoutesClientError(reason, "private")) } as never,
+      new DeliveryQuoteTokenService(), redis as never, createRateLimiterMock() as never);
+    await expect(service.createQuote({ locationId: LOCATION_ID,
+      addressSnapshotJson: ADDRESS, scheduledFor: SCHEDULED_FOR })).rejects.toMatchObject({ status, response: { code } });
+    expect(redis.setJson).not.toHaveBeenCalled();
   });
 });

@@ -9,8 +9,9 @@ export type DeliveryQuote = {
   attribution: "Google Maps" | null;
 };
 
-const DELIVERY_QUOTES_STORAGE_KEY = "wings4u.delivery-quotes.v3";
+const DELIVERY_QUOTES_STORAGE_KEY = "wings4u.delivery-quotes.v4";
 const LEGACY_DELIVERY_QUOTES_STORAGE_KEYS = [
+  "wings4u.delivery-quotes.v3",
   "wings4u.delivery-quotes.v2",
   "wings4u.delivery-quotes.v1",
 ] as const;

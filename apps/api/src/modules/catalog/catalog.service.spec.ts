@@ -11,6 +11,7 @@ const baseMenu: CatalogMenuBasePayload = {
     estimated_prep_minutes: 30,
     delivery_fee_cents: 0,
     tax_rate_bps: 1300,
+    tax_delivery_fee: false,
     free_delivery_threshold_cents: null,
     minimum_delivery_subtotal_cents: 0,
     delivery_disabled: false,

@@ -30,6 +30,7 @@ import { PosStationGuard } from "../../common/guards/pos-station.guard";
 import { Public } from "../../common/decorators/roles.decorator";
 import { MAX_AVAILABLE_STAMPS } from "../rewards/rewards.service";
 import { PosService } from "./pos.service";
+import { DeliveryPricingService } from "../delivery-pricing/delivery-pricing.service";
 
 class PosModifierSelectionDto {
   @IsOptional()
@@ -91,7 +92,21 @@ class PosOrderItemDto {
   special_instructions?: string;
 }
 
+class PosDeliveryQuoteDto {
+  @IsObject()
+  address_snapshot_json!: Record<string, unknown>;
+}
+
 class CreatePosOrderDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(8192)
+  delivery_quote_token?: string;
+
+  @IsOptional()
+  @IsObject()
+  address_snapshot_json?: Record<string, unknown>;
+
   @IsIn(["PICKUP", "DELIVERY"])
   fulfillment_type!: string;
 
@@ -193,7 +208,16 @@ class PosRewardsIssueDto extends PosRewardsLookupDto {
 @Public()
 @UseGuards(LocationScopeGuard, StoreNetworkGuard, PosStationGuard)
 export class PosController {
-  constructor(private readonly posService: PosService) {}
+  constructor(private readonly posService: PosService,
+    private readonly deliveryPricing: DeliveryPricingService) {}
+
+  @Post("delivery/quote")
+  async deliveryQuote(@Body() body: PosDeliveryQuoteDto, @Req() req: Request) {
+    // Station/network guards above authorize staff. Shared route-cache and
+    // Google provider budgets still apply; customer per-IP quotas do not.
+    return this.deliveryPricing.createQuote({ locationId: req.locationId!,
+      addressSnapshotJson: body.address_snapshot_json });
+  }
 
   @Post("orders")
   async createOrder(@Body() body: CreatePosOrderDto, @Req() req: Request) {
@@ -201,6 +225,8 @@ export class PosController {
       actorUserId: null,
       locationId: req.locationId!,
       fulfillmentType: body.fulfillment_type,
+      deliveryQuoteToken: body.delivery_quote_token,
+      addressSnapshotJson: body.address_snapshot_json,
       orderSource: body.order_source as "POS" | "PHONE",
       items: body.items.map((i) => ({
         menuItemId: i.menu_item_id,

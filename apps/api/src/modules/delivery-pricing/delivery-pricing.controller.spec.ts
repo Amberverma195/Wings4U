@@ -9,7 +9,7 @@ import { RedisService } from "../redis/redis.service";
 import { DeliveryPricingController } from "./delivery-pricing.controller";
 import { DeliveryPricingService } from "./delivery-pricing.service";
 import { DeliveryQuoteTokenService } from "./delivery-quote-token.service";
-import { GoogleRoutesClient } from "./google-routes.client";
+import { GoogleRoutesClient, GoogleRoutesClientError } from "./google-routes.client";
 
 const LOCATION_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -92,7 +92,7 @@ describe("POST /api/v1/delivery/quote", () => {
       deliveryAvailableUntilMinutes: null,
       allowedPostalCodes: ["N5W"],
     };
-    googleRoutes.computeDrivingDistanceMetres.mockClear();
+    googleRoutes.computeDrivingDistanceMetres.mockReset().mockResolvedValue(6001);
     rateLimiterCheck.mockClear();
   });
 
@@ -156,16 +156,6 @@ describe("POST /api/v1/delivery/quote", () => {
         deliveryAvailableFromMinutes: null,
         deliveryAvailableUntilMinutes: null,
         allowedPostalCodes: ["N5W"],
-      },
-      "N5W 3C1",
-    ],
-    [
-      "disallowed postal",
-      {
-        deliveryDisabled: false,
-        deliveryAvailableFromMinutes: null,
-        deliveryAvailableUntilMinutes: null,
-        allowedPostalCodes: ["N6A"],
       },
       "N5W 3C1",
     ],
@@ -270,5 +260,33 @@ describe("POST /api/v1/delivery/quote", () => {
       .expect(429);
 
     expect(googleRoutes.computeDrivingDistanceMetres).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [20000, 201, null],
+    [20001, 422, "DELIVERY_OUTSIDE_RADIUS"],
+  ])("evaluates N6K at %i metres without a postal whitelist rejection", async (distance, status, code) => {
+    googleRoutes.computeDrivingDistanceMetres.mockResolvedValue(distance);
+    const response = await request(app.getHttpServer()).post("/api/v1/delivery/quote")
+      .set("X-Location-Id", LOCATION_ID).send({ location_id: LOCATION_ID,
+        address_snapshot_json: { line1: `${distance} Example Street`, city: "London", postal_code: "N6K 1A1" },
+        scheduled_for: "2026-07-22T18:00:00.000Z" }).expect(status);
+    expect(googleRoutes.computeDrivingDistanceMetres).toHaveBeenCalledTimes(1);
+    if (code) expect(response.body.errors[0].code).toBe(code);
+    else expect(response.body.data.delivery_fee_cents).toBe(2300);
+  });
+
+  it.each([
+    ["UNROUTABLE", 422, "DELIVERY_ADDRESS_UNROUTABLE"],
+    ["INVALID_REQUEST", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+  ] as const)("returns a safe API error for %s", async (reason, status, code) => {
+    googleRoutes.computeDrivingDistanceMetres.mockRejectedValue(new GoogleRoutesClientError(reason, "private provider detail"));
+    const response = await request(app.getHttpServer()).post("/api/v1/delivery/quote")
+      .set("X-Location-Id", LOCATION_ID).send({ location_id: LOCATION_ID,
+        address_snapshot_json: { line1: reason, city: "London", postal_code: "N6K 1A1" },
+        scheduled_for: "2026-07-22T18:00:00.000Z" }).expect(status);
+    expect(response.body.errors[0].code).toBe(code);
+    expect(JSON.stringify(response.body)).not.toContain("private provider detail");
+    expect(response.body.data?.delivery_quote_token).toBeUndefined();
   });
 });

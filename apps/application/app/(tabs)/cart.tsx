@@ -234,8 +234,8 @@ export default function CartScreen() {
               {quote && cart.fulfillmentType === 'DELIVERY' ? <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery fee</Text>
                 <Text style={styles.summaryValue}>{quote.delivery_fee_waived && quote.delivery_fee_stated_cents > 0 ? <>
-                  <Text style={{ textDecorationLine: 'line-through', opacity: 0.65 }}>From $5</Text>{' '}Free
-                </> : 'From $5 — calculated at checkout'}</Text>
+                  <Text style={{ textDecorationLine: 'line-through', opacity: 0.65 }}>From $8</Text>{' '}Free
+                </> : 'From $8 — calculated at checkout'}</Text>
               </View> : null}
               {quote && quote.driver_tip_cents > 0 ? <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Tip</Text><Text style={styles.summaryValue}>{formatPrice(quote.driver_tip_cents)}</Text></View> : null}
               <View style={styles.divider} />

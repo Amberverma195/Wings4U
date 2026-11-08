@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import type { OrderStatus, PaymentTenderMethod } from "@prisma/client";
@@ -15,6 +16,8 @@ import {
   requireDeliveryPinFromPhone,
 } from "../../common/utils/delivery-pin-phone";
 import { PrismaService } from "../../database/prisma.service";
+import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
+import { normalizeDeliveryAddress } from "../delivery-pricing/delivery-address";
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import {
@@ -120,6 +123,8 @@ interface CreatePosOrderParams {
   discountAmountCents?: number;
   discountReason?: string;
   specialInstructions?: string;
+  deliveryQuoteToken?: string;
+  addressSnapshotJson?: Record<string, unknown>;
 }
 
 interface ApplyManualDiscountParams {
@@ -219,6 +224,7 @@ export class PosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    @Optional() private readonly deliveryQuoteVerifier?: DeliveryQuoteVerifierService,
   ) {}
 
   private phoneCandidates(phone: string): string[] {
@@ -306,6 +312,18 @@ export class PosService {
   }
 
   async createPosOrder(params: CreatePosOrderParams) {
+    const deliveryQuote = params.fulfillmentType === "DELIVERY"
+      ? this.deliveryQuoteVerifier?.verifyForDelivery({ locationId: params.locationId,
+          deliveryQuoteToken: params.deliveryQuoteToken, addressSnapshotJson: params.addressSnapshotJson,
+          required: true }) : null;
+    if (params.fulfillmentType === "DELIVERY" && !deliveryQuote) {
+      throw new UnprocessableEntityException({
+        code: "DELIVERY_QUOTE_REQUIRED",
+        message: "Check the delivery address to obtain a current route quote before placing this order.",
+        field: "delivery_quote_token",
+      });
+    }
+    const deliveryAddress = deliveryQuote ? normalizeDeliveryAddress(params.addressSnapshotJson) : null;
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Resolve customer.
       //
@@ -766,12 +784,16 @@ export class PosService {
         0,
         itemSubtotalCents - orderDiscountCents,
       );
-      const taxableSubtotalCents = discountedSubtotalCents;
+      // Discounts/waivers affect price only, after geographic eligibility.
+      const deliveryFeeWaived = Boolean(deliveryQuote && settings.freeDeliveryThresholdCents != null &&
+        itemSubtotalCents >= settings.freeDeliveryThresholdCents);
+      const deliveryFeeCents = deliveryQuote && !deliveryFeeWaived ? deliveryQuote.delivery_fee_cents : 0;
+      const taxableSubtotalCents = discountedSubtotalCents + (settings.taxDeliveryFee ? deliveryFeeCents : 0);
       const taxCents = Math.max(
         0,
         Math.round((taxableSubtotalCents * settings.taxRateBps) / 10_000),
       );
-      const finalPayableCents = discountedSubtotalCents + taxCents;
+      const finalPayableCents = discountedSubtotalCents + deliveryFeeCents + taxCents;
 
       // 5b. STORE_CREDIT: validate and debit wallet atomically
       let walletAppliedCents = 0;
@@ -825,7 +847,10 @@ export class PosService {
         taxable_subtotal_cents: taxableSubtotalCents,
         tax_cents: taxCents,
         tax_rate_bps: settings.taxRateBps,
-        delivery_fee_cents: 0,
+        delivery_fee_cents: deliveryFeeCents,
+        ...(deliveryQuote ? { delivery_fee_stated_cents: deliveryQuote.delivery_fee_cents,
+          delivery_fee_waived: deliveryFeeWaived, delivery_eligibility_verified: true,
+          delivery_pricing_rule_version: deliveryQuote.version } : {}),
         driver_tip_cents: 0,
         wallet_applied_cents: walletAppliedCents,
         final_payable_cents: finalPayableCents,
@@ -852,6 +877,10 @@ export class PosService {
           taxableSubtotalCents,
           taxCents,
           taxRateBps: settings.taxRateBps,
+          deliveryFeeCents,
+          ...(deliveryAddress ? { addressSnapshotJson: {
+            line1: deliveryAddress.line1, city: deliveryAddress.city, postal_code: deliveryAddress.postalCode,
+          } } : {}),
           finalPayableCents,
           walletAppliedCents,
           customerOrderNotes: params.specialInstructions ?? null,

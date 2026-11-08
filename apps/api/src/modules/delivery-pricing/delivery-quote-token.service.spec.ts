@@ -1,13 +1,15 @@
+import { DELIVERY_PRICING_RULE_VERSION } from "./delivery-pricing.constants";
 import {
   DeliveryQuoteTokenService,
   type DeliveryQuotePayload,
 } from "./delivery-quote-token.service";
 import { DeliveryQuoteVerifierService } from "./delivery-quote-verifier.service";
-import { DELIVERY_PRICING_RULE_VERSION } from "./delivery-pricing.constants";
 import {
   getAddressFingerprint,
   normalizeDeliveryAddress,
 } from "./delivery-address";
+import { createHmac } from "node:crypto";
+import { getJwtSecret } from "../../common/utils/jwt-secret";
 
 const LOCATION_ID = "11111111-1111-4111-8111-111111111111";
 const ADDRESS = {
@@ -98,7 +100,7 @@ describe("delivery quote tokens", () => {
 
     const unknownVersion = {
       ...payload(),
-      version: 3,
+      version: 99,
     } as unknown as DeliveryQuotePayload;
     expect(() =>
       tokens.verifyDistanceQuote(
@@ -107,19 +109,40 @@ describe("delivery quote tokens", () => {
     ).toThrow("unsupported pricing version");
   });
 
-  it("rejects a signed quote from the previous fee schedule", () => {
-    const previousVersion = {
-      ...payload(),
-      version: 1,
-    } as unknown as DeliveryQuotePayload;
-    expect(() =>
-      tokens.verifyDistanceQuote(tokens.signDistanceQuote(previousVersion)),
-    ).toThrow("unsupported pricing version");
-  });
-
   it("does not accept a fixed-rollout quote after distance pricing is enabled", () => {
     expect(() =>
       tokens.verifyDistanceQuote(tokens.signFixedQuote(payload())),
     ).toThrow("malformed or invalid");
+  });
+
+  it.each(["true", "false"])("requires eligibility quotes with distance pricing %s", (enabled) => {
+    process.env.DELIVERY_DISTANCE_PRICING_ENABLED = enabled;
+    expect(() => verifier.verifyForDelivery({ locationId: LOCATION_ID,
+      addressSnapshotJson: ADDRESS, required: true })).toThrow("current delivery quote is required");
+    expect(() => verifier.verifyForDelivery({ locationId: LOCATION_ID,
+      addressSnapshotJson: ADDRESS, required: true,
+      deliveryQuoteToken: tokens.signFixedQuote(payload()) })).toThrow("malformed or invalid");
+    // A cart may show an explicitly marked estimate before an address is chosen.
+    expect(verifier.verifyForDelivery({ locationId: LOCATION_ID, required: false })).toBeNull();
+  });
+
+  it.each(["wings4u.delivery-quote.distance-pricing.v1", "wings4u.delivery-quote.distance-pricing.v2",
+    "wings4u.delivery-quote.london-boundary-20km.v2"])("rejects unexpired legacy context %s", context => {
+    const encoded = Buffer.from(JSON.stringify(payload())).toString("base64url");
+    const signature = createHmac("sha256", getJwtSecret())
+      .update(context).update("\0").update(encoded).digest("base64url");
+    expect(() => tokens.verifyDistanceQuote(`${encoded}.${signature}`)).toThrow("malformed or invalid");
+  });
+
+  it("rejects an old pricing payload even with the current signing context", () => {
+    const old = { ...payload(), version: 1 } as unknown as DeliveryQuotePayload;
+    expect(() => tokens.verifyDistanceQuote(tokens.signDistanceQuote(old))).toThrow("unsupported pricing version");
+  });
+
+  it("rejects editing the signed price in a forged payload", () => {
+    const token = tokens.signDistanceQuote(payload());
+    const [, signature] = token.split(".");
+    const encoded = Buffer.from(JSON.stringify(payload({ delivery_fee_cents: 0 }))).toString("base64url");
+    expect(() => tokens.verifyDistanceQuote(`${encoded}.${signature}`)).toThrow("malformed or invalid");
   });
 });

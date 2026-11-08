@@ -6,6 +6,7 @@ import { PrismaService } from "../../database/prisma.service";
 import { getDeliveryAvailability } from "../../common/utils/delivery-availability";
 import { getDeliveryEligibilityForCustomer } from "../customers/no-show-policy";
 import { CatalogCacheService } from "./catalog-cache.service";
+import { DELIVERY_BASE_FEE_CENTS } from "../delivery-pricing/delivery-pricing.constants";
 
 export type CatalogFulfillmentType = "PICKUP" | "DELIVERY";
 
@@ -223,6 +224,7 @@ export type CatalogMenuBasePayload = {
     estimated_prep_minutes: number;
     delivery_fee_cents: number;
     tax_rate_bps: number;
+    tax_delivery_fee: boolean;
     free_delivery_threshold_cents: number | null;
     minimum_delivery_subtotal_cents: number;
     delivery_disabled: boolean;
@@ -559,8 +561,9 @@ export class CatalogService {
         is_open: location.isActive,
         busy_mode: settings?.busyModeEnabled ?? false,
         estimated_prep_minutes: prepMinutes,
-        delivery_fee_cents: settings?.deliveryFeeCents ?? 0,
+        delivery_fee_cents: DELIVERY_BASE_FEE_CENTS,
         tax_rate_bps: settings?.taxRateBps ?? 1300,
+        tax_delivery_fee: settings?.taxDeliveryFee ?? false,
         free_delivery_threshold_cents: settings?.freeDeliveryThresholdCents ?? null,
         minimum_delivery_subtotal_cents: settings?.minimumDeliverySubtotalCents ?? 0,
         delivery_disabled: settings?.deliveryDisabled ?? false,

@@ -6,13 +6,15 @@ import { CartService } from '../cart/cart.service';
 import { CheckoutService } from '../checkout/checkout.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { firstOrderDealCode } from '../promotions/first-order-deal';
+import { DeliveryQuoteVerifierService } from '../delivery-pricing/delivery-quote-verifier.service';
+import { DeliveryQuoteTokenService } from '../delivery-pricing/delivery-quote-token.service';
 
 describe('authoritative coupon pricing through real quote and checkout services', () => {
   const stop = new Error('STOP_AT_MOCK_ORDER_WRITE');
   beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-10-19T16:00:00Z')); });
   afterEach(() => jest.useRealTimers());
   function fixture(type: string, options: { first?: boolean; minimum?: number; burgerQty?: number; party?: string; onlyParty?: boolean; delivery?: boolean; standardFreeThreshold?: number; taxDiscount?: boolean;
-    fee?: number; cap?: number | null; additionalFirst?: Array<'PERCENT' | 'FIXED_AMOUNT'>; taxDelivery?: boolean; scheduledFor?: string; noCoupon?: boolean } = {}) {
+    fee?: number; cap?: number | null; additionalFirst?: Array<'PERCENT' | 'FIXED_AMOUNT'>; taxDelivery?: boolean; scheduledFor?: string; noCoupon?: boolean; realVerifier?: boolean } = {}) {
     const category = { id: 'ordinary', name: 'Menu', slug: 'burgers', availableFromMinutes: null, availableUntilMinutes: null };
     const base = { locationId: 'store', isAvailable: true, stockStatus: 'NORMAL', archivedAt: null, allowedFulfillmentType: 'BOTH', requiresSpecialInstructions: false,
       categoryId: 'ordinary', category, schedules: [], modifierGroups: [], removableIngredients: [], builderType: null };
@@ -57,7 +59,8 @@ describe('authoritative coupon pricing through real quote and checkout services'
     db.$transaction.mockImplementation(callback => callback(db));
     const rewards = { computeEligibility: jest.fn().mockResolvedValue({ eligible: false, availableStamps: 0, poundsInCart: 0 }) };
     const promotions = new PromotionsService(db as never);
-    const verifier = { verifyForDelivery: jest.fn().mockReturnValue({ delivery_fee_cents: options.fee ?? 500 }) };
+    const verifier = options.realVerifier ? new DeliveryQuoteVerifierService(new DeliveryQuoteTokenService())
+      : { verifyForDelivery: jest.fn().mockReturnValue({ delivery_fee_cents: options.fee ?? 500 }) };
     const cart = new CartService(db as never, rewards as never, promotions, verifier as never);
     const checkout = new CheckoutService(db as never, {} as never, {} as never, rewards as never, promotions, {} as never, verifier as never, { enforce: jest.fn().mockResolvedValue(undefined) } as never);
     const payload = { builder_type: 'WINGS', weight_lb: slug === 'party-75-wings' ? 8 : 11, wing_type: 'BONE_IN', preparation: 'BREADED', saucing_method: 'ON_WINGS',
@@ -77,6 +80,17 @@ describe('authoritative coupon pricing through real quote and checkout services'
           modifierSelections: item.modifier_selections.map(selection => ({ modifierOptionId: selection.modifier_option_id })) })) } as never),
     };
   }
+
+  it.each([
+    { type: 'FREE_DELIVERY', first: false, standardFreeThreshold: 0 },
+    { type: 'FREE_DELIVERY', first: true, standardFreeThreshold: 0 },
+    { type: 'PERCENT', first: false, standardFreeThreshold: 0 },
+  ])('a high-value cart, threshold, or $type promotion cannot authorize delivery', async row => {
+    const f = fixture(row.type, { ...row, delivery: true, realVerifier: true, burgerQty: 100, fee: 0 });
+    await expect(f.quote()).rejects.toMatchObject({ response: { code: 'INVALID_DELIVERY_QUOTE' } });
+    await expect(f.place()).rejects.toMatchObject({ response: { code: 'INVALID_DELIVERY_QUOTE' } });
+    expect(f.db.order.create).not.toHaveBeenCalled();
+  });
 
   it.each([true, false])('checkout delivery=%s keeps only the order snapshot without saving an address-book row', async delivery => {
     const f = fixture('PERCENT', { delivery, noCoupon: true });

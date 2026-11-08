@@ -28,7 +28,7 @@ export const GOOGLE_ROUTES_URL =
 export const GOOGLE_ROUTES_TIMEOUT_MS = 5_000;
 
 export const DELIVERY_QUOTE_SIGNING_CONTEXT =
-  "wings4u.delivery-quote.distance-pricing.v2";
+  "wings4u.delivery-quote.london-boundary-approved-tiers.v3";
 export const FIXED_DELIVERY_QUOTE_SIGNING_CONTEXT =
   "wings4u.delivery-quote.fixed-pricing.v2";
 

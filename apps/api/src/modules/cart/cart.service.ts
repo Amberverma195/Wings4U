@@ -36,7 +36,6 @@ import {
 import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
 import {
   DELIVERY_BASE_FEE_CENTS,
-  isDeliveryDistancePricingEnabled,
 } from "../delivery-pricing/delivery-pricing.constants";
 
 type CartItemInput = {
@@ -399,8 +398,7 @@ export class CartService {
 
       deliveryFeeStatedCents =
         deliveryQuote?.delivery_fee_cents ?? DELIVERY_BASE_FEE_CENTS;
-      deliveryFeeIsEstimate =
-        isDeliveryDistancePricingEnabled() && deliveryQuote == null;
+      deliveryFeeIsEstimate = deliveryQuote == null;
       if (settings.minimumDeliverySubtotalCents > 0 && itemSubtotalCents < settings.minimumDeliverySubtotalCents) {
         const shortfallCents = settings.minimumDeliverySubtotalCents - itemSubtotalCents;
         throw new UnprocessableEntityException({

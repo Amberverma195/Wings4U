@@ -8,7 +8,6 @@ import {
   type DeliveryQuotePayload,
   DeliveryQuoteTokenService,
 } from "./delivery-quote-token.service";
-import { isDeliveryDistancePricingEnabled } from "./delivery-pricing.constants";
 
 type VerifyDeliveryQuoteParams = {
   locationId: string;
@@ -33,10 +32,6 @@ export class DeliveryQuoteVerifierService {
   verifyForDelivery(
     params: VerifyDeliveryQuoteParams,
   ): DeliveryQuotePayload | null {
-    if (!isDeliveryDistancePricingEnabled()) {
-      return null;
-    }
-
     const token = params.deliveryQuoteToken?.trim();
     if (!token) {
       if (!params.required) return null;

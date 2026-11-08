@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { isWithinLondon } from "./delivery-area";
 import {
   GOOGLE_ROUTES_TIMEOUT_MS,
   GOOGLE_ROUTES_URL,
@@ -9,6 +10,8 @@ export type GoogleRoutesFailure =
   | "NOT_CONFIGURED"
   | "TIMEOUT"
   | "UNROUTABLE"
+  | "OUTSIDE_CITY"
+  | "INVALID_REQUEST"
   | "RATE_LIMITED"
   | "PROVIDER_ERROR"
   | "MALFORMED_RESPONSE";
@@ -24,7 +27,10 @@ export class GoogleRoutesClientError extends Error {
 }
 
 type ComputeRoutesResponse = {
-  routes?: Array<{ distanceMeters?: unknown }>;
+  routes?: Array<{
+    distanceMeters?: unknown;
+    legs?: Array<{ endLocation?: { latLng?: { latitude?: unknown; longitude?: unknown } } }>;
+  }>;
 };
 
 @Injectable()
@@ -47,7 +53,7 @@ export class GoogleRoutesClient {
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": "routes.distanceMeters",
+          "X-Goog-FieldMask": "routes.distanceMeters,routes.legs.endLocation.latLng",
         },
         body: JSON.stringify({
           origin: {
@@ -83,8 +89,8 @@ export class GoogleRoutesClient {
           );
         }
         throw new GoogleRoutesClientError(
-          "UNROUTABLE",
-          "Google Routes rejected the destination",
+          "INVALID_REQUEST",
+          "Google Routes rejected the request",
         );
       }
 
@@ -98,13 +104,19 @@ export class GoogleRoutesClient {
         );
       }
 
-      const distance = body.routes?.[0]?.distanceMeters;
-      if (body.routes?.length === 0) {
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        throw new GoogleRoutesClientError("MALFORMED_RESPONSE", "Google Routes returned an invalid response");
+      }
+      // Protobuf JSON omits empty repeated fields, so {} also means no route.
+      if (!Object.prototype.hasOwnProperty.call(body, "routes") ||
+          (Array.isArray(body.routes) && body.routes.length === 0)) {
         throw new GoogleRoutesClientError(
           "UNROUTABLE",
           "Google Routes found no driving route",
         );
       }
+      const route = Array.isArray(body?.routes) ? body.routes[0] : undefined;
+      const distance = route?.distanceMeters;
       if (
         typeof distance !== "number" ||
         !Number.isInteger(distance) ||
@@ -114,6 +126,19 @@ export class GoogleRoutesClient {
           "MALFORMED_RESPONSE",
           "Google Routes response did not contain a valid distance",
         );
+      }
+
+      // Use the provider's routed destination, never customer-supplied coordinates
+      // or the editable city label, for municipal eligibility.
+      const endpoint = route?.legs?.[0]?.endLocation?.latLng;
+      if (typeof endpoint?.latitude !== "number" ||
+          typeof endpoint.longitude !== "number" ||
+          !Number.isFinite(endpoint.latitude) || !Number.isFinite(endpoint.longitude) ||
+          Math.abs(endpoint.latitude) > 90 || Math.abs(endpoint.longitude) > 180) {
+        throw new GoogleRoutesClientError("MALFORMED_RESPONSE", "Google Routes omitted the destination location");
+      }
+      if (!isWithinLondon(endpoint.latitude, endpoint.longitude)) {
+        throw new GoogleRoutesClientError("OUTSIDE_CITY", "The routed destination is outside London, Ontario");
       }
 
       return distance;

@@ -989,12 +989,12 @@ export function CartPage() {
                                 marginRight: 6,
                               }}
                             >
-                              From $5
+                              From $8
                             </span>
                             Free
                           </>
                         ) : (
-                          "From $5 — calculated at checkout"
+                          "From $8 — calculated at checkout"
                         )}
                       </span>
                     </div>

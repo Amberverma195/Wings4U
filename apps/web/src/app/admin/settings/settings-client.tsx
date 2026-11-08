@@ -90,11 +90,11 @@ const FIELDS: FieldDef[] = [
   },
   {
     key: "allowedPostalCodes",
-    label: "Delivery postal zones",
+    label: "Legacy delivery postal zones",
     group: "Delivery",
     kind: "postal-list",
     description:
-      "Comma- or line-separated Canadian FSA prefixes (e.g. N5W) or full postal codes. Blank allows all London postal codes.",
+      "Retained for reference. Delivery eligibility uses the City of London boundary and a Google driving route of at most 20 km; these postal zones do not restrict delivery.",
   },
   {
     key: "defaultDeliveryMinMinutes",
