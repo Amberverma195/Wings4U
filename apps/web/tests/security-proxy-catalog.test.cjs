@@ -29,6 +29,15 @@ test('proxy overwrites spoofed signatures and preserves auth, idempotency, cooki
   expect(result.status).toBe(429); expect(result.headers.get('retry-after')).toBe('30');
   expect(result.headers.get('set-cookie')).toContain('HttpOnly');
 });
+
+test('saved-cart requests retain the expected-owner guard through the website proxy', async () => {
+  const headers = new Headers({ 'content-type': 'application/json' }); headers.getSetCookie = () => [];
+  global.fetch.mockResolvedValue({ status: 200, headers, body: null });
+  await proxy(new Request('https://web.example.test/api/v1/cart/me', { method: 'PUT', headers: {
+    'content-type': 'application/json', 'x-cart-owner': 'user:customer-a', 'x-location-id': 'store',
+  }, body: '{}' }));
+  expect(global.fetch.mock.calls[0][1].headers.get('x-cart-owner')).toBe('user:customer-a');
+});
 test('rejects duplicate and unknown catalog params and malformed dates before upstream requests', async () => {
   expect(validCatalogQuery(new URLSearchParams('location_id=a&location_id=b'), ['location_id'])).toBe(false);
   expect(normalizeCatalogScheduledFor('2026')).toEqual({ ok: false });

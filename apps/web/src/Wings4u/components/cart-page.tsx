@@ -1,4 +1,5 @@
 "use client";
+import { CartRestorationError } from "@/components/cart-restoration-error";
 
 import Link from "next/link";
 import { Info } from "lucide-react";
@@ -704,7 +705,10 @@ export function CartPage() {
     </div>
   );
 
-  if (cart.isCartHydrating && cart.items.length === 0) {
+  if (cart.cartHydrationError) return <CartRestorationError message={cart.cartHydrationError}
+    conflict={cart.cartHydrationConflict} retry={cart.retryCartRestoration} />;
+
+  if (cart.isCartHydrating) {
     return hydratingSurface;
   }
 

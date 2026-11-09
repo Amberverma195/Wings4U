@@ -7,7 +7,7 @@ import type { CartIdentity, CartSnapshot } from "./saved-cart.types";
  * this interface — it caches *snapshots* of what the DB already holds.
  */
 export interface CartStore {
-  /** Return a usable snapshot, an empty expired tombstone, or null if no ACTIVE row exists. */
+  /** Return a usable snapshot, an empty expired/converted marker, or null if neither exists. */
   getSnapshot(
     identity: CartIdentity,
     locationId: string,
@@ -22,16 +22,18 @@ export interface CartStore {
     identity: CartIdentity,
     locationId: string,
     snapshot: Omit<CartSnapshot, "expires_at" | "is_guest">,
+    expectedRevision?: string | null,
   ): Promise<CartSnapshot>;
 
-  /** Delete the active cart for identity+location, if any. */
+  /** Clear the active cart and retain a conversion marker against stale saves. */
   clear(identity: CartIdentity, locationId: string): Promise<void>;
 
   /**
    * Mark the active cart as CONVERTED (called after successful checkout).
-   * A CONVERTED cart is retained for history but is no longer returned by
-   * getSnapshot. The @@unique on (identity, locationId, status) still allows
-   * a new ACTIVE cart to be created afterwards.
+   * A CONVERTED cart's lines are never returned by getSnapshot.
+   * The @@unique on (identity, locationId, status) still allows
+   * a new ACTIVE cart to be created afterwards. Empty reads expose only its
+   * revision marker, so old requests cannot resurrect converted contents.
    */
   markConverted(identity: CartIdentity, locationId: string): Promise<void>;
 

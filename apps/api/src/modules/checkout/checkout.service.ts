@@ -14,6 +14,7 @@ import { requireDeliveryPinFromPhone } from "../../common/utils/delivery-pin-pho
 import { allocateNextOrderNumber } from "../../database/order-number";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import { PrismaService } from "../../database/prisma.service";
+import { markCartConvertedInTransaction } from "../saved-cart/db-cart-store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { KdsAutoAcceptScheduler } from "../kds/kds-auto-accept.scheduler";
 import {
@@ -1605,6 +1606,8 @@ export class CheckoutService {
         where: { idempotencyKey: params.idempotencyKey },
         data: { orderId: createdOrder.id },
       });
+
+      await markCartConvertedInTransaction(tx, { kind: "user", userId: params.userId }, params.locationId);
 
       return createdOrder.id;
       });

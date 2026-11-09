@@ -4,11 +4,16 @@ import { getAuthSessionGeneration } from "./auth-events";
 import type { CartItem, FulfillmentType } from "./types";
 import type { DriverTipPercent } from "./cart";
 
+async function cartFetch(path: string, init: Parameters<typeof apiFetch>[1]) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try { return await apiFetch(path, { ...init, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+
 /**
- * Client for /api/v1/cart/{me,merge}. All helpers catch network/server
- * errors and return null so the cart UI stays responsive when the backend
- * is unavailable (e.g. before the saved_carts migration is applied). The
- * caller decides whether to fall back to in-memory state.
+ * Saved-cart failures are not empty carts. Mutations are serialized and
+ * queued replacements coalesce to the newest state for the same owner.
  */
 
 export type SavedCartItemSnapshot = {
@@ -26,6 +31,8 @@ export type SavedCartItemSnapshot = {
 };
 
 export type SavedCartSnapshot = {
+  revision?: string | null;
+  converted?: boolean;
   items: SavedCartItemSnapshot[];
   fulfillment_type: FulfillmentType;
   location_timezone: string;
@@ -63,18 +70,24 @@ function itemToPayload(item: CartItem): SavedCartItemSnapshot {
 
 export async function fetchSavedCart(
   locationId: string,
+  ownerId?: string | null,
 ): Promise<SavedCartSnapshot | null> {
   try {
-    const res = await apiFetch("/api/v1/cart/me", { locationId });
-    if (!res.ok) return null;
+    const res = await cartFetch("/api/v1/cart/me", { locationId, headers: ownerHeaders(ownerId) });
+    if (!res.ok) throw await requestError(res);
     const env = (await res.json()) as ApiEnvelope<SavedCartSnapshot>;
-    return env.data ?? null;
-  } catch {
-    return null;
+    if (!env || !("data" in env) || (env.data !== null && !Array.isArray(env.data?.items))) {
+      throw new SavedCartRequestError(502);
+    }
+    revisions.set(scope(locationId, ownerId), env.data?.revision ?? null);
+    return env.data;
+  } catch (error) {
+    throw error instanceof SavedCartRequestError ? error : new SavedCartRequestError(0);
   }
 }
 
 type SavedCartWrite = {
+  ownerId?: string | null;
   items: CartItem[];
   fulfillmentType: FulfillmentType;
   locationTimezone: string;
@@ -82,105 +95,137 @@ type SavedCartWrite = {
   driverTipPercent: DriverTipPercent;
 };
 
-/**
- * After a 429 the full-replace autosave is held until Retry-After, and only
- * the newest snapshot is sent then: one request per throttle window instead
- * of a retry per edit, without losing the customer's latest cart.
- */
+export class SavedCartRequestError extends Error {
+  constructor(readonly status: number, readonly code?: string) {
+    super(code === "SAVED_CART_OWNER_CHANGED" ? "Your session needs to be verified. Your cart draft has been kept. Please retry."
+      : status === 409 ? "Your saved cart changed. Restore it before continuing."
+      : "We could not restore or save your cart. Your browser draft has been kept. Please retry.");
+    this.name = "SavedCartRequestError";
+  }
+}
+
+async function requestError(res: Response): Promise<SavedCartRequestError> {
+  const body = await res.json().catch(() => null);
+  return new SavedCartRequestError(res.status, body?.errors?.[0]?.code);
+}
+
+function ownerHeaders(ownerId?: string | null): Record<string, string> {
+  return ownerId === undefined ? {} : { "X-Cart-Owner": ownerId === null ? "guest" : `user:${ownerId}` };
+}
+const scope = (location: string, owner?: string | null) => JSON.stringify([location, owner]);
+const revisions = new Map<string, string | null>();
+type WriteJob = {
+  kind: "write"; locationId: string; state: SavedCartWrite; generation: number; epoch: number;
+  resolve: (value: SavedCartSnapshot | null) => void; reject: (error: unknown) => void;
+};
+type ControlJob = { kind: "control"; run: () => Promise<void> };
+let jobs: Array<WriteJob | ControlJob> = [];
+let active = false;
+let epoch = 0;
 let writesBlockedUntil = 0;
-let deferredWrite: {
-  locationId: string;
-  state: SavedCartWrite;
-  generation: number;
-  resolve: (snapshot: SavedCartSnapshot | null) => void;
-} | null = null;
 let deferredTimer: ReturnType<typeof setTimeout> | null = null;
 
-function deferSavedCartWrite(
-  locationId: string,
-  state: SavedCartWrite,
-): Promise<SavedCartSnapshot | null> {
-  deferredWrite?.resolve(null);
-  return new Promise((resolve) => {
-    deferredWrite = { locationId, state, generation: getAuthSessionGeneration(), resolve };
-    if (deferredTimer) return;
-    deferredTimer = setTimeout(() => {
-      deferredTimer = null;
-      const next = deferredWrite;
-      deferredWrite = null;
-      if (!next) return;
-      // A cart from before a sign-in/out must not be written to the new owner.
-      if (next.generation !== getAuthSessionGeneration()) {
-        next.resolve(null);
-        return;
-      }
-      void putSavedCart(next.locationId, next.state).then(next.resolve);
-    }, Math.max(0, writesBlockedUntil - Date.now()));
-  });
-}
-
 export function cancelDeferredSavedCartWrite(): void {
+  epoch++;
   if (deferredTimer) clearTimeout(deferredTimer);
   deferredTimer = null;
-  deferredWrite?.resolve(null);
-  deferredWrite = null;
+  for (const job of jobs) if (job.kind === "write") job.resolve(null);
+  jobs = jobs.filter(job => job.kind !== "write");
+  writesBlockedUntil = 0;
 }
 
-export async function putSavedCart(
-  locationId: string,
-  state: SavedCartWrite,
-): Promise<SavedCartSnapshot | null> {
-  const generation = getAuthSessionGeneration();
-  if (Date.now() < writesBlockedUntil) return deferSavedCartWrite(locationId, state);
+async function pump(): Promise<void> {
+  if (active || !jobs.length) return;
+  if (jobs[0].kind === "write" && Date.now() < writesBlockedUntil) {
+    if (!deferredTimer) deferredTimer = setTimeout(() => {
+      deferredTimer = null; void pump();
+    }, writesBlockedUntil - Date.now());
+    return;
+  }
+  active = true;
+  const job = jobs.shift()!;
   try {
-    const res = await apiFetch("/api/v1/cart/me", {
-      locationId,
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: state.items.map(itemToPayload),
-        fulfillment_type: state.fulfillmentType,
-        location_timezone: state.locationTimezone,
-        scheduled_for: state.scheduledFor,
-        driver_tip_percent: driverTipToString(state.driverTipPercent),
+    if (job.kind === "control") { await job.run(); return; }
+    if (job.generation !== getAuthSessionGeneration() || job.epoch !== epoch) { job.resolve(null); return; }
+    const key = scope(job.locationId, job.state.ownerId);
+    const res = await cartFetch("/api/v1/cart/me", {
+      locationId: job.locationId, method: "PUT",
+      headers: { "Content-Type": "application/json", ...ownerHeaders(job.state.ownerId) },
+      body: JSON.stringify({ items: job.state.items.map(itemToPayload),
+        fulfillment_type: job.state.fulfillmentType, location_timezone: job.state.locationTimezone,
+        scheduled_for: job.state.scheduledFor, driver_tip_percent: driverTipToString(job.state.driverTipPercent),
+        ...(revisions.has(key) ? { expected_revision: revisions.get(key) } : {}),
       }),
     });
-    // The cart belongs to whoever was signed in when the save started.
-    if (generation !== getAuthSessionGeneration()) return null;
+    if (job.generation !== getAuthSessionGeneration()) { job.resolve(null); return; }
+    if (job.epoch !== epoch) {
+      // A clear cancels the callback, not a request already accepted by the
+      // server. Keep its revision so the subsequent empty save can supersede it.
+      if (res.ok) {
+        const env = (await res.json()) as ApiEnvelope<SavedCartSnapshot>;
+        if (env?.data) revisions.set(key, env.data.revision ?? null);
+      }
+      job.resolve(null); return;
+    }
     if (res.status === 429) {
       const body = await res.json().catch(() => null);
       writesBlockedUntil = Date.now() + (getRetryAfterSeconds(res, body) ?? 30) * 1000;
-      return deferSavedCartWrite(locationId, state);
+      if (jobs.some(next => next.kind === "write" && scope(next.locationId, next.state.ownerId) === key)) job.resolve(null);
+      else jobs.unshift(job);
+      return;
     }
-    if (!res.ok) return null;
+    if (!res.ok) throw await requestError(res);
     const env = (await res.json()) as ApiEnvelope<SavedCartSnapshot>;
-    return env.data ?? null;
-  } catch {
-    return null;
+    if (!env?.data || !Array.isArray(env.data.items)) throw new SavedCartRequestError(502);
+    revisions.set(key, env.data.revision ?? null);
+    job.resolve(env.data);
+  } catch (error) {
+    if (job.kind === "write") {
+      if (job.epoch !== epoch || job.generation !== getAuthSessionGeneration()) job.resolve(null);
+      else job.reject(error instanceof SavedCartRequestError ? error : new SavedCartRequestError(0));
+    }
+  } finally {
+    active = false; void pump();
   }
 }
 
-export async function deleteSavedCart(locationId: string): Promise<void> {
+export function putSavedCart(locationId: string, state: SavedCartWrite): Promise<SavedCartSnapshot | null> {
+  const key = scope(locationId, state.ownerId);
+  jobs = jobs.filter(job => {
+    if (job.kind !== "write" || scope(job.locationId, job.state.ownerId) !== key) return true;
+    job.resolve(null); return false;
+  });
+  return new Promise((resolve, reject) => {
+    jobs.push({ kind: "write", locationId, state, generation: getAuthSessionGeneration(), epoch, resolve, reject });
+    void pump();
+  });
+}
+
+function exclusively<T>(operation: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    jobs.push({ kind: "control", run: async () => { try { resolve(await operation()); } catch (error) { reject(error); } } });
+    void pump();
+  });
+}
+
+export async function deleteSavedCart(locationId: string, ownerId?: string | null): Promise<void> {
   cancelDeferredSavedCartWrite();
-  try {
-    await apiFetch("/api/v1/cart/me", { method: "DELETE", locationId });
-  } catch {
-    // best-effort
-  }
+  await exclusively(async () => {
+    const res = await cartFetch("/api/v1/cart/me", { method: "DELETE", locationId, headers: ownerHeaders(ownerId) });
+    if (!res.ok) throw await requestError(res);
+    revisions.set(scope(locationId, ownerId), null);
+  });
 }
 
-export async function mergeSavedCartOnLogin(
-  locationId: string,
-): Promise<MergeResult> {
-  try {
-    const res = await apiFetch("/api/v1/cart/merge", {
-      method: "POST",
-      locationId,
-    });
-    if (!res.ok) return { snapshot: null, merge_outcome: "no_guest" };
+export async function mergeSavedCartOnLogin(locationId: string, ownerId?: string | null): Promise<MergeResult> {
+  const generation = getAuthSessionGeneration();
+  return exclusively(async () => {
+    if (generation !== getAuthSessionGeneration()) throw new SavedCartRequestError(409);
+    const res = await cartFetch("/api/v1/cart/merge", { method: "POST", locationId, headers: ownerHeaders(ownerId) });
+    if (!res.ok) throw await requestError(res);
     const env = (await res.json()) as ApiEnvelope<MergeResult>;
-    return env.data ?? { snapshot: null, merge_outcome: "no_guest" };
-  } catch {
-    return { snapshot: null, merge_outcome: "no_guest" };
-  }
+    if (!env?.data) throw new SavedCartRequestError(502);
+    revisions.set(scope(locationId, ownerId), env.data.snapshot?.revision ?? null);
+    return env.data;
+  });
 }

@@ -48,6 +48,8 @@ import type { ApiEnvelope } from "@wings4u/contracts";
 
 import { ContactlessPreferenceCombo } from "./contactless-preference-combo";
 import { deleteSavedCart } from "@/lib/saved-cart-api";
+import { CartRestorationError } from "@/components/cart-restoration-error";
+import { getAuthSessionGeneration } from "@/lib/auth-events";
 import {
   PROMO_HANDOFF_STORAGE_KEY,
   WINGS_REWARD_STORAGE_KEY,
@@ -109,6 +111,8 @@ export function CheckoutClient() {
   const router = useRouter();
   const cart = useCart();
   const session = useSession();
+  const currentOwnerRef = useRef(session.user?.id ?? null);
+  currentOwnerRef.current = session.user?.id ?? null;
   const { address, openAddressPicker } = useDeliveryAddress();
   const [state, setState] = useState<CheckoutState>({ step: "review" });
   const [quote, setQuote] = useState<CartQuoteResponse | null>(null);
@@ -465,7 +469,7 @@ export function CheckoutClient() {
   }, [quoteError, router]);
 
   useEffect(() => {
-    if (cart.items.length === 0) return;
+    if (cart.items.length === 0 || !cart.isCartHydrated || cart.isCartHydrating || cart.cartHydrationError) return;
     if (
       cart.fulfillmentType === "DELIVERY" &&
       (!deliveryQuoteReady || !deliveryQuote || !selectedDeliveryAddress)
@@ -548,6 +552,9 @@ export function CheckoutClient() {
     };
   }, [
     quoteContextKey,
+    cart.isCartHydrated,
+    cart.isCartHydrating,
+    cart.cartHydrationError,
     cart.fulfillmentType,
     cart.items,
     cart.locationId,
@@ -602,6 +609,10 @@ export function CheckoutClient() {
   }, [state]);
 
   const doSubmit = useCallback(async () => {
+    if (!cart.isCartHydrated || cart.isCartHydrating || cart.cartHydrationError) return;
+    const submittedOwner = session.user?.id ?? null;
+    const submittedGeneration = getAuthSessionGeneration();
+    const stillCurrentOwner = () => currentOwnerRef.current === submittedOwner && submittedGeneration === getAuthSessionGeneration();
     if (!quote || !quoteIsCurrent) {
       setState({
         step: "error",
@@ -716,11 +727,21 @@ export function CheckoutClient() {
       }
 
       const order = (body as ApiEnvelope<CheckoutResponse>).data as CheckoutResponse;
+      if (!stillCurrentOwner()) {
+        setState({ step: "error", message: "Your session changed while the order was submitted. Check order history in the account used to place it." });
+        return;
+      }
       
       // Phase 4: Mark saved cart as CONVERTED after successful checkout
-      await deleteSavedCart(cart.locationId);
+      // Order placement already converts the server cart transactionally.
+      // A cleanup network failure must not turn a placed order into a retry.
+      await deleteSavedCart(cart.locationId, session.user?.id ?? null).catch(() => undefined);
+      if (!stillCurrentOwner()) {
+        setState({ step: "error", message: "Your session changed. Check order history in the account used to place the order." });
+        return;
+      }
       
-      cart.clear();
+      cart.clear({ afterCheckout: true });
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(WINGS_REWARD_STORAGE_KEY);
         clearPromoHandoffStorage();
@@ -892,7 +913,10 @@ export function CheckoutClient() {
     );
   }
 
-  if (cart.isCartHydrating && cart.items.length === 0) {
+  if (cart.cartHydrationError) return <CartRestorationError message={cart.cartHydrationError}
+    conflict={cart.cartHydrationConflict} retry={cart.retryCartRestoration} />;
+
+  if (cart.isCartHydrating) {
     return (
       <section className="surface-card">
         <div className="cart-empty">

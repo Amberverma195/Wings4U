@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import {
   GUEST_CART_COOKIE,
@@ -15,6 +15,7 @@ import type {
 } from "./saved-cart.types";
 
 type SaveInput = {
+  expected_revision?: string | null;
   items: CartItemSnapshot[];
   fulfillment_type: "PICKUP" | "DELIVERY";
   location_timezone: string;
@@ -59,6 +60,7 @@ export class SavedCartService {
    */
   async getForRequest(req: Request, locationId: string): Promise<CartResult> {
     const identity = this.identityFromRequest(req, { mintIfMissing: false });
+    this.assertOwner(req, identity);
     if (!identity) {
       return {
         snapshot: emptySnapshot({ isGuest: true, expiresAt: null }),
@@ -86,13 +88,14 @@ export class SavedCartService {
     input: SaveInput,
   ): Promise<CartResult> {
     const { identity } = this.identityForWrite(req);
+    this.assertOwner(req, identity);
     const snapshot = await this.store.saveSnapshot(identity, locationId, {
       items: input.items,
       fulfillment_type: input.fulfillment_type,
       location_timezone: input.location_timezone,
       scheduled_for: input.scheduled_for,
       driver_tip_percent: input.driver_tip_percent,
-    });
+    }, input.expected_revision);
     return {
       snapshot,
       cookies: identity.kind === "guest"
@@ -103,6 +106,7 @@ export class SavedCartService {
 
   async clearForRequest(req: Request, locationId: string): Promise<SessionResponse> {
     const identity = this.identityFromRequest(req, { mintIfMissing: false });
+    this.assertOwner(req, identity);
     if (!identity) return { cookies: [] };
     await this.store.clear(identity, locationId);
     // A guest who clears their own cart no longer needs the cookie.
@@ -123,6 +127,7 @@ export class SavedCartService {
    * the signed-in session stops carrying it around.
    */
   async mergeOnLogin(req: Request, locationId: string): Promise<MergeResult> {
+    this.assertOwner(req, this.identityFromRequest(req, { mintIfMissing: false }));
     if (!req.user?.userId) {
       return { snapshot: null, mergeOutcome: "no_guest", cookies: [] };
     }
@@ -164,6 +169,15 @@ export class SavedCartService {
     return { kind: "guest", guestToken: mintGuestToken() };
   }
 
+  private assertOwner(req: Request, identity: CartIdentity | null): void {
+    const expected = req.headers?.["x-cart-owner"];
+    const actual = identity?.kind === "user" ? `user:${identity.userId}` : "guest";
+    if (expected !== undefined && expected !== actual) {
+      throw new ConflictException({ code: "SAVED_CART_OWNER_CHANGED",
+        message: "Your session changed. Restore the cart for the current account." });
+    }
+  }
+
   private identityForWrite(req: Request): {
     identity: CartIdentity;
     mintedGuestToken: string | null;
@@ -188,6 +202,7 @@ export class SavedCartService {
 
 function emptySnapshot(opts: { isGuest: boolean; expiresAt: string | null }): CartSnapshot {
   return {
+    revision: null,
     ...EMPTY_SNAPSHOT,
     items: [],
     expires_at: opts.expiresAt,

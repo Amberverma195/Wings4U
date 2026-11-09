@@ -21,6 +21,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from "class-validator";
@@ -113,6 +114,10 @@ class CartItemBody {
 }
 
 class SaveCartBody {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  expected_revision?: string | null;
   @IsArray()
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
@@ -192,6 +197,7 @@ export class SavedCartController {
       req,
       req.locationId!,
       {
+        expected_revision: body.expected_revision,
         items: body.items.map((item) => ({
           key: item.key,
           menu_item_id: item.menu_item_id,

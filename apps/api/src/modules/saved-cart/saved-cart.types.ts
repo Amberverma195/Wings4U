@@ -37,6 +37,10 @@ export type CartItemSnapshot = {
 export type DriverTipPercentSnapshot = "none" | "10" | "15" | "20";
 
 export type CartSnapshot = {
+  /** Opaque compare-and-swap token; no schema migration required. */
+  revision?: string | null;
+  /** Empty revision marker after checkout/clear; contains no historical items. */
+  converted?: boolean;
   items: CartItemSnapshot[];
   fulfillment_type: "PICKUP" | "DELIVERY";
   location_timezone: string;

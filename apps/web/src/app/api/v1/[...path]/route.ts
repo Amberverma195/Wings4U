@@ -17,7 +17,7 @@ async function proxy(request: Request) {
   }
   const upstreamHeaders = new Headers(buildSignedClientIpHeaders(request.headers));
   // Never copy caller-supplied proxy signatures or the privileged catalog-server header.
-  for (const name of ["accept", "content-type", "cookie", "authorization", "x-csrf-token", "x-location-id", "x-w4u-signup-device", "idempotency-key", "x-idempotency-key", "x-request-id"]) {
+  for (const name of ["accept", "content-type", "cookie", "authorization", "x-csrf-token", "x-location-id", "x-cart-owner", "x-w4u-signup-device", "idempotency-key", "x-idempotency-key", "x-request-id"]) {
     const value = request.headers.get(name);
     if (value) upstreamHeaders.set(name, value);
   }

@@ -34,6 +34,7 @@ import {
   fetchSavedCart,
   mergeSavedCartOnLogin,
   putSavedCart,
+  cancelDeferredSavedCartWrite,
   type SavedCartItemSnapshot,
   type SavedCartSnapshot,
 } from "./saved-cart-api";
@@ -83,9 +84,12 @@ export type CartState = {
   isCartHydrated: boolean;
   /** True while saved cart is still loading/reconciling — prefer over showing an empty cart. */
   isCartHydrating: boolean;
+  cartHydrationError?: string | null;
+  cartHydrationConflict?: boolean;
 };
 
 export type CartActions = {
+  retryCartRestoration?: () => void;
   addItem: (item: Omit<CartItem, "key">) => void;
   removeItem: (key: string) => void;
   updateQuantity: (key: string, quantity: number) => void;
@@ -101,7 +105,7 @@ export type CartActions = {
   setSchedulingConfig: (config: SchedulingConfig) => void;
   resetOrderContext: () => void;
   setDriverTipPercent: (percent: DriverTipPercent) => void;
-  clear: () => void;
+  clear: (options?: { afterCheckout?: boolean }) => void;
   itemCount: number;
 };
 
@@ -129,6 +133,8 @@ const CART_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CART_DRAFT_TRUST_OVER_SERVER_MS = 120_000;
 
 type PersistedCartDraftV1 = {
+  pending?: boolean;
+  baseRevision?: string | null;
   ownerId?: string | null;
   expiresAt?: string | null;
   v: 1;
@@ -143,9 +149,9 @@ type PersistedCartDraftV1 = {
 
 function loadPersistedCartDraft(locationId: string): PersistedCartDraftV1 | null {
   if (typeof window === "undefined") return null;
-  const raw = window.sessionStorage.getItem(CART_ITEMS_DRAFT_STORAGE_KEY);
-  if (!raw) return null;
   try {
+    const raw = window.sessionStorage.getItem(CART_ITEMS_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedCartDraftV1;
     if (
       parsed.v !== 1 ||
@@ -177,13 +183,15 @@ function persistCartDraftToStorage(payload: {
   locationTimezone: string;
   scheduledFor: string | null;
   driverTipPercent: DriverTipPercent;
-}, ownerId: string | null, expiresAt: string | null): void {
+}, ownerId: string | null, expiresAt: string | null, pending = false, baseRevision?: string | null): void {
   if (typeof window === "undefined") return;
   try {
     const data: PersistedCartDraftV1 = {
       v: 1,
       ownerId,
       expiresAt,
+      pending,
+      baseRevision,
       locationId: payload.locationId,
       savedAt: Date.now(),
       items: payload.items,
@@ -197,7 +205,7 @@ function persistCartDraftToStorage(payload: {
       const signature = (draft: PersistedCartDraftV1) => JSON.stringify([draft.ownerId ?? null, draft.locationId,
         draft.items.map(cartItemToSavedSnapshot), draft.fulfillmentType, draft.locationTimezone, draft.scheduledFor, draft.driverTipPercent]);
       if (signature(previous) === signature(data)) {
-        if (previous.expiresAt === data.expiresAt) return;
+        if (previous.expiresAt === data.expiresAt && previous.pending === pending && previous.baseRevision === baseRevision) return;
         data.savedAt = previous.savedAt;
       }
     }
@@ -273,10 +281,14 @@ function reconcileSavedCartHydration(args: {
   let { draft } = args;
   if (draft && (draft.ownerId ?? null) !== (args.ownerId ?? null)) draft = null;
   if (draft && authenticated && !draft.ownerId) draft = null;
-  if (draft?.expiresAt && Date.parse(draft.expiresAt) <= now) draft = null;
+  if (draft?.expiresAt && (!Number.isFinite(Date.parse(draft.expiresAt)) || Date.parse(draft.expiresAt) <= now)) draft = null;
 
   if (!draft || draft.locationId !== locationId) draft = null;
   else if (!Number.isFinite(draft.savedAt) || now < draft.savedAt || now - draft.savedAt > CART_DRAFT_MAX_AGE_MS) draft = null;
+
+  if (server?.converted && !(draft?.pending && draft.baseRevision === server.revision)) {
+    return { snapshot: server, writeBackDraft: null };
+  }
 
   if (server?.expired || (server?.expires_at && Date.parse(server.expires_at) <= now)) {
     return { snapshot: { ...server, items: [] }, writeBackDraft: null };
@@ -285,8 +297,9 @@ function reconcileSavedCartHydration(args: {
   if (!server && !draft) {
     return { snapshot: null, writeBackDraft: null };
   }
+  if (draft?.pending === false) return { snapshot: server, writeBackDraft: null };
   if (!server) {
-    if (!draft || !draft.items.length) {
+    if (!draft || (!draft.items.length && !draft.pending)) {
       return { snapshot: null, writeBackDraft: null };
     }
     return {
@@ -297,6 +310,13 @@ function reconcileSavedCartHydration(args: {
   if (!draft) {
     return { snapshot: server, writeBackDraft: null };
   }
+
+  if (draft.pending && draft.baseRevision !== undefined && server.revision !== undefined &&
+      draft.baseRevision !== server.revision && snapshotContentSignature(server) !==
+        snapshotContentSignature(snapshotFromDraft(draft, authenticated))) {
+    throw Object.assign(new Error("Your saved cart changed while this browser had unsaved edits. Your draft has been kept. Restore the saved cart to continue."), { status: 409 });
+  }
+  if (draft.pending) return { snapshot: serverSnapshotWithDraft(server, draft), writeBackDraft: draft };
 
   const draftAge = now - draft.savedAt;
   const serverEmpty = server.items.length === 0;
@@ -318,6 +338,12 @@ function reconcileSavedCartHydration(args: {
   return { snapshot: server, writeBackDraft: null };
 }
 
+function snapshotContentSignature(snapshot: SavedCartSnapshot | null): string {
+  return JSON.stringify([snapshot?.items.map(item => cartItemToSavedSnapshot(snapshotItemToCartItem(item))) ?? [],
+    snapshot?.fulfillment_type ?? "PICKUP", snapshot?.location_timezone ?? "America/Toronto",
+    snapshot?.scheduled_for ?? null, snapshot?.driver_tip_percent ?? "none"]);
+}
+
 function loadPersistedOrderContext(): {
   hasCommittedOrderContext: boolean;
   fulfillmentType: FulfillmentType;
@@ -337,19 +363,9 @@ function loadPersistedOrderContext(): {
     };
   }
 
-  const raw = window.sessionStorage.getItem(ORDER_CONTEXT_STORAGE_KEY);
-  if (!raw) {
-    return {
-      hasCommittedOrderContext: false,
-      fulfillmentType: "PICKUP",
-      locationTimezone: "America/Toronto",
-      scheduledFor: null,
-      schedulingConfig: DEFAULT_SCHEDULING_CONFIG,
-      driverTipPercent: "none",
-    };
-  }
-
   try {
+    const raw = window.sessionStorage.getItem(ORDER_CONTEXT_STORAGE_KEY);
+    if (!raw) return { ...SSR_ORDER_CONTEXT_INITIAL };
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
       hasCommittedOrderContext: parsed.committed === true,
@@ -457,53 +473,32 @@ export function useCartState(locationId: string): CartContextValue {
   const [cartExpiresAt, setCartExpiresAt] = useState<string | null>(null);
   const [isGuestCart, setIsGuestCart] = useState(true);
   const [isCartHydrated, setIsCartHydrated] = useState(false);
+  const [hydratedScope, setHydratedScope] = useState<string | null>(null);
+  const [cartHydrationError, setCartHydrationError] = useState<string | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [acknowledgement, setAcknowledgement] = useState(0);
 
   const session = useSession();
+  const ownerId = session.authenticated ? session.user?.id ?? null : null;
+  const ownerKnown = session.loaded && session.resolved !== false && (!session.authenticated || ownerId !== null);
+  const scope = JSON.stringify([locationId, ownerId]);
+  const ready = ownerKnown && isCartHydrated && hydratedScope === scope;
+  const displayedScopeRef = useRef<string | null>(null);
+  const activeScopeRef = useRef(scope);
+  activeScopeRef.current = ownerKnown ? scope : "unresolved";
+  const acknowledgedSignature = useRef<string | null>(null);
+  const revisionRef = useRef<string | null | undefined>(undefined);
+  const previousOwner = useRef<{ authenticated: boolean; ownerId: string | null } | null>(null);
   /** Consumed by the persistence effect to avoid PUT-ing state we just
    * *received* (hydration, merge, logout wipe). Each snapshot apply sets
    * this true; the effect's next pass reads-and-clears it. */
   const skipNextSyncRef = useRef(false);
-  /** Null until the first auth-aware hydration decides the initial branch;
-   * after that, tracks previous `session.authenticated` so we can detect
-   * login (false→true = merge) and logout (true→false = local wipe). */
-  const hydrationLocationRef = useRef<string | null>(null);
-  const lastAuthenticatedRef = useRef<boolean | null>(null);
 
   /** SessionStorage is unavailable during SSR; hydrate after mount so server === first client paint. */
   const orderContextHydratedRef = useRef(false);
   useLayoutEffect(() => {
-    const now = Date.now();
     const p = loadPersistedOrderContext();
-    const draft = loadPersistedCartDraft(locationId);
-    const draftUsable =
-      draft &&
-      (draft.ownerId ?? null) === (session.user?.id ?? null) &&
-      draft.locationId === locationId &&
-      Number.isFinite(draft.savedAt) && now >= draft.savedAt &&
-      (!draft.expiresAt || Date.parse(draft.expiresAt) > now) &&
-      now - draft.savedAt <= CART_DRAFT_MAX_AGE_MS &&
-      draft.items.length > 0;
-
-    if (draftUsable) {
-      setItems(draft.items);
-      setFulfillmentType(draft.fulfillmentType);
-      setLocationTimezone(draft.locationTimezone);
-      setScheduledFor(draft.scheduledFor);
-      setDriverTipPercent(draft.driverTipPercent);
-      setSchedulingConfig(p.schedulingConfig);
-      setHasCommittedOrderContext(
-        p.hasCommittedOrderContext ||
-          Boolean(draft.scheduledFor) ||
-          draft.fulfillmentType === "DELIVERY",
-      );
-    } else {
-      setHasCommittedOrderContext(p.hasCommittedOrderContext);
-      setFulfillmentType(p.fulfillmentType);
-      setLocationTimezone(p.locationTimezone);
-      setScheduledFor(p.scheduledFor);
-      setSchedulingConfig(p.schedulingConfig);
-      setDriverTipPercent(p.driverTipPercent);
-    }
+    setSchedulingConfig(p.schedulingConfig);
     orderContextHydratedRef.current = true;
   }, [locationId]);
 
@@ -635,10 +630,19 @@ export function useCartState(locationId: string): CartContextValue {
     [],
   );
 
-  const clear = useCallback(() => {
+  const clear = useCallback((options?: { afterCheckout?: boolean }) => {
+    cancelDeferredSavedCartWrite?.();
+    syncPayloadRef.current = { ...syncPayloadRef.current, items: [], driverTipPercent: "none" };
     setItems([]);
     setDriverTipPercent("none");
     clearPersistedCartDraft();
+    if (options?.afterCheckout) {
+      // Checkout already converted the cart. Read its new revision before
+      // accepting the next order's edits; do not autosave an empty old revision.
+      skipNextSyncRef.current = true;
+      setIsCartHydrated(false);
+      setRestoreAttempt(value => value + 1);
+    }
   }, []);
 
   const commitOrderContext = useCallback(
@@ -665,9 +669,9 @@ export function useCartState(locationId: string): CartContextValue {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!orderContextHydratedRef.current) return;
+    if (!ready) return;
 
-    window.sessionStorage.setItem(
+    try { window.sessionStorage.setItem(
       ORDER_CONTEXT_STORAGE_KEY,
       JSON.stringify({
         committed: hasCommittedOrderContext,
@@ -677,7 +681,7 @@ export function useCartState(locationId: string): CartContextValue {
         scheduling_config: schedulingConfig,
         driver_tip_percent: driverTipPercent,
       }),
-    );
+    ); } catch { /* The server remains usable when browser storage is unavailable. */ }
   }, [
     fulfillmentType,
     locationTimezone,
@@ -685,6 +689,7 @@ export function useCartState(locationId: string): CartContextValue {
     schedulingConfig,
     hasCommittedOrderContext,
     driverTipPercent,
+    ready,
   ]);
 
   /* ------------------------------------------------------------------ */
@@ -704,12 +709,17 @@ export function useCartState(locationId: string): CartContextValue {
         if (snapshot.expired) setHasCommittedOrderContext(false);
         // If the snapshot carries meaningful schedule/fulfillment data, mirror
         // the existing sessionStorage committed logic.
-        if (snapshot.scheduled_for || snapshot.fulfillment_type === "DELIVERY") {
+        if (snapshot.items.length > 0 || snapshot.scheduled_for || snapshot.fulfillment_type === "DELIVERY") {
           setHasCommittedOrderContext(true);
         }
       } else {
         // null snapshot → empty/defaults
         setItems([]);
+        setFulfillmentType("PICKUP");
+        setLocationTimezone("America/Toronto");
+        setScheduledFor(null);
+        setDriverTipPercent("none");
+        setHasCommittedOrderContext(false);
         setCartExpiresAt(null);
         setIsGuestCart(!session.authenticated);
       }
@@ -722,9 +732,12 @@ export function useCartState(locationId: string): CartContextValue {
     if (!cartExpiresAt || !Number.isFinite(Date.parse(cartExpiresAt))) return;
     let timer: ReturnType<typeof setTimeout>;
     const check = () => {
+      if (activeScopeRef.current !== scope) return;
       const remaining = Date.parse(cartExpiresAt) - Date.now();
       if (remaining > 0) { timer = setTimeout(check, Math.min(remaining, 2_147_483_647)); return; }
       skipNextSyncRef.current = true;
+      cancelDeferredSavedCartWrite?.();
+      acknowledgedSignature.current = snapshotContentSignature(null);
       clearPersistedCartDraft();
       setHasCommittedOrderContext(false);
       applySnapshot({ items: [], fulfillment_type: "PICKUP", location_timezone: "America/Toronto",
@@ -732,158 +745,109 @@ export function useCartState(locationId: string): CartContextValue {
     };
     check();
     return () => clearTimeout(timer);
-  }, [cartExpiresAt, applySnapshot, session.authenticated]);
+  }, [cartExpiresAt, applySnapshot, session.authenticated, scope]);
 
-  /* ------------------------------------------------------------------ */
-  /*  Hydration: fetch saved cart after session finishes loading          */
-  /* ------------------------------------------------------------------ */
-
-  useEffect(() => {
-    if (!session.loaded) return;
-    if (!orderContextHydratedRef.current) return;
-
-    if (hydrationLocationRef.current === locationId && lastAuthenticatedRef.current !== null) return;
-    let cancelled = false;
-    void (async () => {
-      const server = await fetchSavedCart(locationId);
-      if (cancelled) return;
-      if (server?.expired) clearPersistedCartDraft();
-      const draft = loadPersistedCartDraft(locationId);
-      const reconciled = reconcileSavedCartHydration({
-        server,
-        draft,
-        locationId,
-        now: Date.now(),
-        authenticated: session.authenticated,
-        ownerId: session.user?.id ?? null,
-      });
-      if (cancelled) return;
-      applySnapshot(reconciled.snapshot);
-      setIsCartHydrated(true);
-      skipNextSyncRef.current = true;
-      // Seed lastAuthenticatedRef so subsequent transitions are detected
-      // correctly and the initial mount is not treated as a "logout".
-      lastAuthenticatedRef.current = session.authenticated;
-      hydrationLocationRef.current = locationId;
-      // If the browser draft beat the server snapshot, immediately write it
-      // back so future tabs / reloads see the recovered cart too.
-      if (reconciled.writeBackDraft) {
-        const res = await putSavedCart(locationId, {
-          items: reconciled.writeBackDraft.items,
-          fulfillmentType: reconciled.writeBackDraft.fulfillmentType,
-          locationTimezone: reconciled.writeBackDraft.locationTimezone,
-          scheduledFor: reconciled.writeBackDraft.scheduledFor,
-          driverTipPercent: reconciled.writeBackDraft.driverTipPercent,
-        });
-        if (cancelled || !res) return;
-        setCartExpiresAt(res.expires_at);
-        setIsGuestCart(res.is_guest);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // Run once after session.loaded becomes true (and order-context hydration
-    // is complete). Auth dependencies cancel initial reads on account changes;
-    // subsequent login/logout transitions use the dedicated effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.loaded, locationId, session.authenticated, session.user?.id]);
-
-  /* ------------------------------------------------------------------ */
-  /*  Debounced PUT: sync local mutations to the backend                 */
-  /* ------------------------------------------------------------------ */
-
-  const putTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ownership must be resolved before reading or replacing any draft. One
+  // lifecycle handles initial hydration, login, logout, account and location changes.
+  const [cartHydrationConflict, setCartHydrationConflict] = useState(false);
+  const retryCartRestoration = useCallback(() => {
+    if (cartHydrationConflict && ownerKnown && activeScopeRef.current === scope) clearPersistedCartDraft(); // explicit "Use saved cart" action
+    void Promise.resolve(session.refresh?.()).finally(() => setRestoreAttempt(value => value + 1));
+  }, [session.refresh, cartHydrationConflict, ownerKnown, scope]);
 
   useEffect(() => {
-    if (!isCartHydrated) return;
-
-    if (skipNextSyncRef.current) {
-      skipNextSyncRef.current = false;
+    if (!ownerKnown) {
+      setIsCartHydrated(false);
+      setCartHydrationError(session.loaded ? session.error || "We could not verify your session. Please retry restoring your cart." : null);
       return;
     }
-
-    if (putTimerRef.current) clearTimeout(putTimerRef.current);
-
-    const generation = getAuthSessionGeneration();
-    putTimerRef.current = setTimeout(() => {
-      if (generation !== getAuthSessionGeneration()) return;
-      void (async () => {
-        const res = await putSavedCart(locationId, {
-          items,
-          fulfillmentType,
-          locationTimezone,
-          scheduledFor,
-          driverTipPercent,
-        });
-        if (res && generation === getAuthSessionGeneration()) {
+    let cancelled = false;
+    const previous = previousOwner.current;
+    const changedOwner = previous !== null && previous.ownerId !== ownerId;
+    if (changedOwner) {
+      cancelDeferredSavedCartWrite?.();
+      if (previous.authenticated) clearPersistedCartDraft();
+    }
+    previousOwner.current = { ownerId, authenticated: session.authenticated };
+    displayedScopeRef.current = scope;
+    setIsCartHydrated(false);
+    setCartHydrationError(null);
+    setCartHydrationConflict(false);
+    setItems([]);
+    setCartExpiresAt(null);
+    void (async () => {
+      try {
+        const merged = previous && !previous.authenticated && session.authenticated
+          ? await mergeSavedCartOnLogin(locationId, ownerId) : null;
+        if (cancelled) return;
+        const server = merged?.snapshot ?? await fetchSavedCart(locationId, ownerId);
+        if (cancelled) return;
+        if (server?.expired) clearPersistedCartDraft();
+        const reconciled = reconcileSavedCartHydration({ server, draft: loadPersistedCartDraft(locationId),
+          locationId, now: Date.now(), authenticated: session.authenticated, ownerId });
+        acknowledgedSignature.current = snapshotContentSignature(server);
+        revisionRef.current = server?.revision;
+        skipNextSyncRef.current = true;
+        applySnapshot(reconciled.snapshot);
+        setHydratedScope(scope);
+        setIsCartHydrated(true);
+        if (reconciled.writeBackDraft) {
+          const draft = reconciled.writeBackDraft;
+          const signature = snapshotContentSignature(snapshotFromDraft(draft, session.authenticated));
+          const res = await putSavedCart(locationId, { ...draft, ownerId });
+          if (cancelled || !res) return;
+          acknowledgedSignature.current = signature;
+          revisionRef.current = res.revision;
           setCartExpiresAt(res.expires_at);
           setIsGuestCart(res.is_guest);
+          setAcknowledgement(value => value + 1);
         }
-      })();
-    }, 400);
-
-    return () => {
-      if (putTimerRef.current) clearTimeout(putTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, fulfillmentType, locationTimezone, scheduledFor, driverTipPercent]);
-
-  /* ------------------------------------------------------------------ */
-  /*  Login transition: merge guest cart into user cart                   */
-  /* ------------------------------------------------------------------ */
-
-  const lastCartOwnerRef = useRef(session.user?.id);
-  useEffect(() => {
-    if (!session.loaded) return;
-    const switchedOwner = lastCartOwnerRef.current !== session.user?.id;
-    lastCartOwnerRef.current = session.user?.id;
-    if (lastAuthenticatedRef.current === null) return; // not yet initialised
-    if (lastAuthenticatedRef.current === session.authenticated && !switchedOwner) return;
-
-    let cancelled = false;
-    const wasAuthenticated = lastAuthenticatedRef.current;
-    lastAuthenticatedRef.current = session.authenticated;
-
-    if (!wasAuthenticated && session.authenticated) {
-      // Login: merge guest → user
-      void (async () => {
-        const mergeResult = await mergeSavedCartOnLogin(locationId);
+      } catch (error) {
         if (cancelled) return;
-        if (mergeResult.snapshot) {
-          applySnapshot(mergeResult.snapshot);
-          skipNextSyncRef.current = true;
-        } else {
-          // Merge returned no snapshot — fall back to fetching user's cart
-          const snapshot = await fetchSavedCart(locationId);
-          if (cancelled) return;
-          applySnapshot(snapshot);
-          skipNextSyncRef.current = true;
-        }
-      })();
-    } else if (wasAuthenticated && (!session.authenticated || switchedOwner)) {
-      // Logout: wipe local cart (DB cart stays for next sign-in)
-      clearPersistedCartDraft();
-      setItems([]);
-      setDriverTipPercent("none");
-      setCartExpiresAt(null);
-      setIsGuestCart(true);
-      skipNextSyncRef.current = true;
-      // Fetch the (now-guest) cart state
-      void (async () => {
-        const snapshot = await fetchSavedCart(locationId);
-        if (!cancelled && snapshot) {
-          applySnapshot(snapshot);
-          skipNextSyncRef.current = true;
-        }
-      })();
-    }
+        const draft = loadPersistedCartDraft(locationId);
+        const fallback = reconcileSavedCartHydration({ server: null,
+          draft: draft ? { ...draft, pending: undefined } : null,
+          locationId, now: Date.now(), authenticated: session.authenticated, ownerId });
+        if (fallback.snapshot) applySnapshot(fallback.snapshot);
+        setCartHydrationError(error instanceof Error ? error.message : "Your cart could not be restored. Please retry.");
+        const failure = error as { status?: number; code?: string };
+        setCartHydrationConflict(failure?.status === 409 && failure.code !== "SAVED_CART_OWNER_CHANGED");
+      }
+    })();
     return () => { cancelled = true; };
+    // The owner/scope dependencies cancel reads and merges from an earlier account.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.loaded, session.authenticated, session.user?.id, locationId]);
+  }, [ownerKnown, scope, session.loaded, session.resolved, session.authenticated, session.error, restoreAttempt]);
 
-  /* ------------------------------------------------------------------ */
+  useEffect(() => {
+    if (!ready || cartHydrationError) return;
+    if (skipNextSyncRef.current) { skipNextSyncRef.current = false; return; }
+    const payload = { locationId, items, fulfillmentType, locationTimezone, scheduledFor, driverTipPercent };
+    const signature = snapshotContentSignature(snapshotFromDraft({ ...payload, v: 1, savedAt: Date.now() }, session.authenticated));
+    if (signature === acknowledgedSignature.current) return;
+    const generation = getAuthSessionGeneration();
+    const timer = setTimeout(() => {
+      if (activeScopeRef.current !== scope || generation !== getAuthSessionGeneration()) return;
+      void putSavedCart(locationId, { ...payload, ownerId }).then(res => {
+        if (!res || activeScopeRef.current !== scope || generation !== getAuthSessionGeneration()) return;
+        acknowledgedSignature.current = signature;
+        revisionRef.current = res.revision;
+        setCartExpiresAt(res.expires_at);
+        setIsGuestCart(res.is_guest);
+        setAcknowledgement(value => value + 1);
+        const latest = snapshotContentSignature(snapshotFromDraft({ ...syncPayloadRef.current, v: 1, savedAt: Date.now() }, session.authenticated));
+        if (latest === signature) { setCartHydrationError(null); setCartHydrationConflict(false); }
+      }).catch(error => {
+        if (activeScopeRef.current !== scope || generation !== getAuthSessionGeneration()) return;
+        const latest = snapshotContentSignature(snapshotFromDraft({ ...syncPayloadRef.current, v: 1, savedAt: Date.now() }, session.authenticated));
+        if (latest !== signature) return;
+        setCartHydrationError(error instanceof Error ? error.message : "Your latest cart could not be saved. Please retry.");
+        setCartHydrationConflict(error?.status === 409 && error?.code !== "SAVED_CART_OWNER_CHANGED");
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [ready, cartHydrationError, scope, locationId, ownerId, items, fulfillmentType, locationTimezone,
+    scheduledFor, driverTipPercent, acknowledgement, session.authenticated]);
 
   const itemCount = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
@@ -907,56 +871,46 @@ export function useCartState(locationId: string): CartContextValue {
     driverTipPercent,
   };
 
-  const cartOwnerRef = useRef<string | null>(session.user?.id ?? null);
-  cartOwnerRef.current = session.user?.id ?? null;
+  const draftReadyRef = useRef(false);
+  draftReadyRef.current = ready;
+  const draftOwnerRef = useRef(ownerId);
+  draftOwnerRef.current = ownerId;
   const cartExpiryRef = useRef(cartExpiresAt);
   cartExpiryRef.current = cartExpiresAt;
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!orderContextHydratedRef.current) return;
-
-    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    draftTimerRef.current = setTimeout(() => {
-      persistCartDraftToStorage({
-        locationId,
-        items,
-        fulfillmentType,
-        locationTimezone,
-        scheduledFor,
-        driverTipPercent,
-      }, session.user?.id ?? null, cartExpiresAt);
-    }, 200);
-
-    return () => {
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    };
-  }, [items, fulfillmentType, locationId, locationTimezone, scheduledFor, driverTipPercent, session.user?.id, cartExpiresAt]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const flushDraft = () => {
-      const p = syncPayloadRef.current;
-      persistCartDraftToStorage(p, cartOwnerRef.current, cartExpiryRef.current);
-    };
-    window.addEventListener("pagehide", flushDraft);
-    return () => window.removeEventListener("pagehide", flushDraft);
+  const persistCurrentDraft = useCallback(() => {
+    if (!draftReadyRef.current) return;
+    const p = syncPayloadRef.current;
+    const signature = snapshotContentSignature(snapshotFromDraft({ ...p, v: 1, savedAt: Date.now() }, draftOwnerRef.current !== null));
+    persistCartDraftToStorage(p, draftOwnerRef.current, cartExpiryRef.current,
+      signature !== acknowledgedSignature.current, revisionRef.current);
   }, []);
+  // Synchronous after a committed edit: a refresh before the backend debounce
+  // must still see this exact cart. Never persist pre-hydration defaults.
+  useLayoutEffect(() => { persistCurrentDraft(); }, [persistCurrentDraft, ready, items, fulfillmentType,
+    locationId, locationTimezone, scheduledFor, driverTipPercent, cartExpiresAt, acknowledgement]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.addEventListener("pagehide", persistCurrentDraft);
+    return () => window.removeEventListener("pagehide", persistCurrentDraft);
+  }, [persistCurrentDraft]);
 
   return {
-    items,
-    hasCommittedOrderContext,
-    fulfillmentType,
+    items: ownerKnown && displayedScopeRef.current === scope ? items : [],
+    hasCommittedOrderContext: ownerKnown && displayedScopeRef.current === scope ? hasCommittedOrderContext : false,
+    fulfillmentType: ownerKnown && displayedScopeRef.current === scope ? fulfillmentType : "PICKUP",
     locationId,
-    locationTimezone,
-    scheduledFor,
+    locationTimezone: ownerKnown && displayedScopeRef.current === scope ? locationTimezone : "America/Toronto",
+    scheduledFor: ownerKnown && displayedScopeRef.current === scope ? scheduledFor : null,
     schedulingConfig,
     cartAddNonce,
-    driverTipPercent,
+    driverTipPercent: ownerKnown && displayedScopeRef.current === scope ? driverTipPercent : "none",
     cartExpiresAt,
     isGuestCart,
-    isCartHydrated,
-    isCartHydrating: !isCartHydrated,
+    isCartHydrated: ready && !cartHydrationError,
+    isCartHydrating: !ready && !cartHydrationError,
+    cartHydrationError,
+    cartHydrationConflict: ownerKnown && activeScopeRef.current === scope && cartHydrationConflict,
+    retryCartRestoration,
     addItem,
     removeItem,
     updateQuantity,
@@ -969,6 +923,6 @@ export function useCartState(locationId: string): CartContextValue {
     resetOrderContext,
     setDriverTipPercent,
     clear,
-    itemCount,
+    itemCount: ownerKnown && displayedScopeRef.current === scope ? itemCount : 0,
   };
 }

@@ -89,3 +89,113 @@ test('an expired guest cookie cannot revive a draft carrying its old server dead
   await mount();await tick();
   expect(cart.items).toEqual([]);expect(api.putSavedCart).not.toHaveBeenCalled();
 });
+
+test.each(['/checkout', '/cart'])('hard reload on %s preserves a signed-in draft through slow session and API hydration', async () => {
+  const rich = { ...draft(Date.now(), 'customer-a'), fulfillmentType: 'DELIVERY', driverTipPercent: 20,
+    scheduledFor: '2026-10-24T18:00:00Z', items: [{ ...item, quantity: 3,
+      modifier_selections: [{ modifier_option_id: 'cheese', group_name: 'Extras', option_name: 'Cheese', price_delta_cents: 200 }],
+      removed_ingredients: [{ id: 'onion', name: 'Onion' }], builder_payload: { builder_type: 'ITEM_CUSTOMIZATION' } }] };
+  const original = JSON.stringify(rich); storage.set(key, original);
+  mockSession = { loaded: false, authenticated: false, user: null };
+  await mount(); await tick(); window.dispatchEvent(new Event('pagehide'));
+  expect(storage.get(key)).toBe(original); expect(api.fetchSavedCart).not.toHaveBeenCalled();
+  expect(cart.isCartHydrating).toBe(true); expect(cart.items).toEqual([]);
+  let resolve; api.fetchSavedCart.mockReturnValue(new Promise(done => { resolve = done; }));
+  mockSession = { loaded: true, authenticated: true, user: { id: 'customer-a' } };
+  await act(async () => renderer.update(tree())); await tick();
+  expect(storage.get(key)).toBe(original); expect(cart.isCartHydrating).toBe(true);
+  await act(async () => resolve({ ...snapshot([]), is_guest: false }));
+  expect(cart.items).toMatchObject(rich.items); expect(cart.fulfillmentType).toBe('DELIVERY');
+  expect(cart.driverTipPercent).toBe(20); expect(cart.scheduledFor).toBe(rich.scheduledFor);
+  expect(cart.isCartHydrated).toBe(true);
+});
+
+test('a guest refresh before the 400 ms backend save restores the synchronously saved draft', async () => {
+  await mount(); api.putSavedCart.mockClear();
+  await act(async () => { cart.addItem({ ...item, quantity: 4 }); cart.setDriverTipPercent(15);
+    cart.commitOrderContext({ fulfillmentType: 'DELIVERY', scheduledFor: '2026-10-24T18:00:00Z' }); });
+  expect(api.putSavedCart).not.toHaveBeenCalled();
+  const saved = JSON.parse(storage.get(key)); expect(saved.items[0].quantity).toBe(4); expect(saved.pending).toBe(true);
+  await act(async () => renderer.unmount()); renderer = null;
+  await mount();
+  expect(cart.items[0].quantity).toBe(4); expect(cart.driverTipPercent).toBe(15);
+  expect(cart.fulfillmentType).toBe('DELIVERY'); expect(api.putSavedCart).toHaveBeenCalledTimes(1);
+});
+
+test('a failed read keeps the draft intact and exposes a retryable error rather than an empty cart', async () => {
+  const original = JSON.stringify(draft()); storage.set(key, original);
+  api.fetchSavedCart.mockRejectedValue(new Error('Temporary API failure'));
+  await mount(); await tick(); window.dispatchEvent(new Event('pagehide'));
+  expect(cart.cartHydrationError).toContain('Temporary API failure'); expect(cart.isCartHydrated).toBe(false);
+  expect(cart.items).toHaveLength(1); expect(storage.get(key)).toBe(original); expect(api.putSavedCart).not.toHaveBeenCalled();
+  api.fetchSavedCart.mockResolvedValue(snapshot([]));
+  await act(async () => cart.retryCartRestoration());
+  expect(cart.isCartHydrated).toBe(true); expect(cart.cartHydrationError).toBeNull(); expect(cart.items).toHaveLength(1);
+});
+
+test('an unverified session after a network failure must not treat a private draft as a guest cart', async () => {
+  const original = JSON.stringify(draft(Date.now(), 'customer-a')); storage.set(key, original);
+  mockSession = { loaded: true, resolved: false, authenticated: false, user: null, error: 'Session unavailable' };
+  await mount(); await tick(); window.dispatchEvent(new Event('pagehide'));
+  expect(cart.items).toEqual([]); expect(cart.cartHydrationError).toBe('Session unavailable');
+  expect(storage.get(key)).toBe(original); expect(api.fetchSavedCart).not.toHaveBeenCalled();
+});
+
+test('explicit clear is a pending empty draft and cannot resurrect the previous server cart on refresh', async () => {
+  api.fetchSavedCart.mockResolvedValue(snapshot([item])); await mount();
+  await act(async () => cart.clear());
+  expect(JSON.parse(storage.get(key))).toMatchObject({ items: [], pending: true });
+  await act(async () => renderer.unmount()); renderer = null; await mount();
+  expect(cart.items).toEqual([]); expect(api.putSavedCart.mock.calls.at(-1)[1].items).toEqual([]);
+});
+
+test('an acknowledged draft cannot revive a legitimately empty server cart', async () => {
+  storage.set(key, JSON.stringify({ ...draft(), pending: false })); await mount();
+  expect(cart.items).toEqual([]); expect(api.putSavedCart).not.toHaveBeenCalled();
+});
+
+test('a server revision conflict preserves the browser draft until the user chooses the saved version', async () => {
+  storage.set(key, JSON.stringify({ ...draft(), pending: true, baseRevision: 'old' }));
+  api.fetchSavedCart.mockResolvedValue({ ...snapshot([{ ...item, quantity: 8 }]), revision: 'new' });
+  await mount(); expect(cart.cartHydrationConflict).toBe(true); expect(api.putSavedCart).not.toHaveBeenCalled();
+  expect(JSON.parse(storage.get(key)).items[0].quantity).toBe(1);
+  await act(async () => cart.retryCartRestoration());
+  expect(cart.items[0].quantity).toBe(8); expect(cart.cartHydrationError).toBeNull();
+});
+
+test('a delayed read from a prior account cannot show or persist its private cart', async () => {
+  let finish; api.fetchSavedCart.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  mockSession = { loaded: true, authenticated: true, user: { id: 'customer-a' } }; await mount();
+  mockSession = { ...mockSession, user: { id: 'customer-b' } };
+  api.fetchSavedCart.mockResolvedValue({ ...snapshot([]), is_guest: false });
+  await act(async () => renderer.update(tree()));
+  await act(async () => finish({ ...snapshot([item]), is_guest: false })); await tick();
+  expect(cart.items).toEqual([]); expect(cart.itemCount).toBe(0); expect(api.putSavedCart).not.toHaveBeenCalled();
+  expect(JSON.parse(storage.get(key)).ownerId).toBe('customer-b');
+});
+
+test('browser storage restrictions do not prevent server cart hydration', async () => {
+  window.sessionStorage.getItem = () => { throw new Error('Storage denied'); };
+  window.sessionStorage.setItem = () => { throw new Error('Storage denied'); };
+  api.fetchSavedCart.mockResolvedValue(snapshot([item]));
+  await mount(); expect(cart.isCartHydrated).toBe(true); expect(cart.items).toHaveLength(1);
+});
+
+test('an ownership conflict refreshes the session without discarding the private recovery draft', async () => {
+  const original = JSON.stringify(draft(Date.now(), 'customer-a')); storage.set(key, original);
+  mockSession = { loaded: true, authenticated: true, user: { id: 'customer-a' }, refresh: jest.fn().mockResolvedValue(true) };
+  api.fetchSavedCart.mockRejectedValue(Object.assign(new Error('Verify session'), { status: 409, code: 'SAVED_CART_OWNER_CHANGED' }));
+  await mount(); expect(cart.cartHydrationConflict).toBe(false); expect(storage.get(key)).toBe(original);
+  api.fetchSavedCart.mockResolvedValue({ ...snapshot([]), is_guest: false });
+  await act(async () => cart.retryCartRestoration());
+  expect(mockSession.refresh).toHaveBeenCalled(); expect(cart.items).toHaveLength(1);
+});
+
+test('a converted cart invalidates an older pending draft but permits a new cart based on its marker', async () => {
+  storage.set(key, JSON.stringify({ ...draft(), pending: true, baseRevision: null }));
+  api.fetchSavedCart.mockResolvedValue({ ...snapshot([]), converted: true, revision: 'after-checkout' });
+  await mount(); expect(cart.items).toEqual([]); expect(api.putSavedCart).not.toHaveBeenCalled();
+  await act(async () => { cart.addItem({ ...item, quantity: 6 }); });
+  await act(async () => renderer.unmount()); renderer = null; await mount();
+  expect(cart.items[0].quantity).toBe(6); expect(api.putSavedCart).toHaveBeenCalledTimes(1);
+});

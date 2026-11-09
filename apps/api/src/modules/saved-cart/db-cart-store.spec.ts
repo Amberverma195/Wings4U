@@ -29,7 +29,7 @@ function fixture(identity = user, options: { expiry?: Date | null; updatedAt?: D
         rows.push(row); return clone(row);
       }),
       update: jest.fn(async ({ where, data }: any) => {
-        const row = rows.find(row => matches(row, where)); Object.assign(row, data, { updatedAt: new Date() }); return clone(row);
+        const row = rows.find(row => matches(row, where)); Object.assign(row, data, { updatedAt: data.updatedAt ?? new Date() }); return clone(row);
       }),
       deleteMany: jest.fn(async ({ where }: any) => { rows = rows.filter(row => !matches(row, where)); }),
     },
@@ -54,6 +54,66 @@ function fixture(identity = user, options: { expiry?: Date | null; updatedAt?: D
 
 beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(now); });
 afterEach(() => jest.useRealTimers());
+
+it('rejects stale replacement writes instead of overwriting a newer cart', async () => {
+  const f = fixture(user); await f.seed();
+  const before = await f.store.getSnapshot(user, 'store');
+  const newer = { ...input, items: [{ ...input.items[0], quantity: 5 }] };
+  const saved = await f.store.saveSnapshot(user, 'store', newer, before!.revision);
+  expect(saved.revision).not.toBe(before!.revision);
+  await expect(f.store.saveSnapshot(user, 'store', { ...input, items: [] }, before!.revision))
+    .rejects.toMatchObject({ response: { code: 'SAVED_CART_CONFLICT' } });
+  expect((await f.store.getSnapshot(user, 'store'))?.items[0].quantity).toBe(5);
+});
+
+it('serializes competing conditional writes and permits only one winner', async () => {
+  const f = fixture(user); await f.seed();
+  const before = await f.store.getSnapshot(user, 'store');
+  const results = await Promise.allSettled([3, 4].map(quantity => f.store.saveSnapshot(user, 'store', {
+    ...input, items: [{ ...input.items[0], quantity }], driver_tip_percent: '15',
+  }, before!.revision)));
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  expect(results.filter(result => result.status === 'rejected')).toHaveLength(1);
+});
+
+it('a delayed old save cannot recreate a converted checkout cart', async () => {
+  const f = fixture(user); await f.seed();
+  const old = await f.store.getSnapshot(user, 'store');
+  await f.store.markConverted(user, 'store');
+  await expect(f.store.saveSnapshot(user, 'store', input, old!.revision))
+    .rejects.toMatchObject({ response: { code: 'SAVED_CART_CONFLICT' } });
+  expect(await f.store.getSnapshot(user, 'store')).toMatchObject({ items: [], converted: true });
+});
+
+it('guards the expected owner before any saved-cart write', async () => {
+  const store = { saveSnapshot: jest.fn() };
+  const service = new SavedCartService(store as never);
+  await expect(service.saveForRequest({ user: { userId: 'new-customer' },
+    headers: { 'x-cart-owner': 'user:old-customer' } } as never, 'store', input))
+    .rejects.toMatchObject({ response: { code: 'SAVED_CART_OWNER_CHANGED' } });
+  expect(store.saveSnapshot).not.toHaveBeenCalled();
+});
+
+it('revision tokens do not repeat for A-B-A edits within the same millisecond', async () => {
+  const f = fixture(user); await f.seed();
+  const initial = await f.store.getSnapshot(user, 'store');
+  const middle = await f.store.saveSnapshot(user, 'store', { ...input, driver_tip_percent: '20' }, initial!.revision);
+  const final = await f.store.saveSnapshot(user, 'store', input, middle.revision);
+  expect(final.revision).not.toBe(initial!.revision);
+  await expect(f.store.saveSnapshot(user, 'store', { ...input, items: [] }, initial!.revision))
+    .rejects.toMatchObject({ response: { code: 'SAVED_CART_CONFLICT' } });
+});
+
+it('checkout before the first save rejects a delayed null-revision write and permits a genuinely new cart', async () => {
+  const f = fixture(user);
+  await f.store.markConverted(user, 'store');
+  await expect(f.store.saveSnapshot(user, 'store', input, null))
+    .rejects.toMatchObject({ response: { code: 'SAVED_CART_CONFLICT' } });
+  const cleared = await f.store.getSnapshot(user, 'store');
+  expect(cleared).toMatchObject({ converted: true, items: [] });
+  const fresh = await f.store.saveSnapshot(user, 'store', input, cleared!.revision);
+  expect(fresh.items).toHaveLength(1);
+});
 
 it.each([[guest, GUEST_CART_TTL_MS], [user, CUSTOMER_CART_TTL_MS]] as const)('enforces inactivity boundary for %j', async (identity, ttl) => {
   const f = fixture(identity); await f.seed();
@@ -125,6 +185,14 @@ it('merging an expired guest into an empty user cart returns an expiry marker fo
   expect(result.snapshot).toMatchObject({ items: [], expired: true });
 });
 
+it('an expired guest merge uses the customer revision, allowing the next intentional customer save', async () => {
+  const f = fixture(guest, { expiry: new Date(now) }); await f.seed();
+  const merged = await f.store.mergeGuestIntoUser('a'.repeat(64), 'customer', 'store');
+  expect(merged.snapshot).toMatchObject({ expired: true, revision: null });
+  const saved = await f.store.saveSnapshot(user, 'store', input, merged.snapshot!.revision);
+  expect(saved.items).toHaveLength(1);
+});
+
 it('an empty guest merge that changes no customer content does not restart inactivity', async () => {
   const f = fixture(user); await f.seed(); const expiresAt = f.rows()[0].expiresAt;
   jest.setSystemTime(now + 1000);
@@ -133,12 +201,12 @@ it('an empty guest merge that changes no customer content does not restart inact
   expect(f.rows()[0].expiresAt).toEqual(expiresAt);
 });
 
-it('expired clear/conversion is a no-op and a usable checkout conversion remains hidden', async () => {
+it('clear/conversion returns only an empty revision marker and never historical items', async () => {
   const f = fixture(user, { expiry: new Date(now) }); await f.seed();
   await f.store.clear(user, 'store'); await f.store.markConverted(user, 'store');
-  expect(f.tx.savedCart.update).not.toHaveBeenCalled(); expect(f.tx.savedCart.deleteMany).not.toHaveBeenCalled();
+  expect(await f.store.getSnapshot(user, 'store')).toMatchObject({ items: [], converted: true });
   await f.store.saveSnapshot(user, 'store', input); await f.store.markConverted(user, 'store');
-  expect(f.rows()[0].status).toBe('CONVERTED'); expect(await f.store.getSnapshot(user, 'store')).toBeNull();
+  expect(f.rows()[0].status).toBe('CONVERTED'); expect(await f.store.getSnapshot(user, 'store')).toMatchObject({ items: [], converted: true });
 });
 
 it('keeps locations and accounts isolated', async () => {

@@ -8,6 +8,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { apiFetch } from "./api";
 import {
@@ -44,6 +45,9 @@ export interface SessionUser {
 export interface SessionState {
   /** null while the initial fetch is in-flight */
   loaded: boolean;
+  /** False when an initial network failure left ownership unverified. */
+  resolved?: boolean;
+  error?: string | null;
   authenticated: boolean;
   user: SessionUser | null;
   isPosSession: boolean;
@@ -81,12 +85,24 @@ function hasRefreshSessionHint(): boolean {
   return /(?:^|;\s*)csrf_token=/.test(document.cookie);
 }
 
+async function readSessionResponse(res: Response): Promise<SessionApiResponse> {
+  const envelope = await res.json() as ApiEnvelope<SessionApiResponse>;
+  const next = envelope?.data;
+  if (typeof next?.authenticated !== "boolean" ||
+      (next.authenticated && typeof next.user?.id !== "string")) {
+    throw new Error("The session response could not be verified");
+  }
+  return next;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
 
 const SessionContext = createContext<SessionState>({
   loaded: false,
+  resolved: false,
+  error: null,
   authenticated: false,
   user: null,
   isPosSession: false,
@@ -110,6 +126,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [loaded, setLoaded] = useState(false);
   const [data, setData] = useState<SessionApiResponse>(SIGNED_OUT_SESSION);
+  const [resolved, setResolved] = useState(false);
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
+  const [error, setError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
 
   // KDS and POS use station password access instead of redirecting to
   // /login. Their server layouts perform the store-network gate first.
@@ -117,15 +138,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     pathname?.startsWith("/admin") === true;
 
   const applySignedOut = useCallback(() => {
+    requestSequence.current++;
     setData(SIGNED_OUT_SESSION);
+    setResolved(true);
+    setError(null);
     setLoaded(true);
   }, []);
 
   const fetchSession = useCallback(async (): Promise<boolean> => {
+    const request = ++requestSequence.current;
     const generation = getAuthSessionGeneration();
-    const current = () => generation === getAuthSessionGeneration();
+    const current = () => request === requestSequence.current && generation === getAuthSessionGeneration();
+    let verified = false;
     const applyCurrent = (next: SessionApiResponse) => {
-      if (current()) setData(next);
+      verified = true;
+      if (current()) { setData(next); setResolved(true); setError(null); }
     };
     let timeoutId: number | undefined;
     try {
@@ -138,8 +165,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         signal: controller.signal,
       });
       if (res.ok) {
-        const envelope = (await res.json()) as ApiEnvelope<SessionApiResponse>;
-        const next = envelope.data ?? SIGNED_OUT_SESSION;
+        const next = await readSessionResponse(res);
         if (next.authenticated === true) {
           applyCurrent(next);
           return true;
@@ -155,8 +181,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           if (refresh.refreshed) {
             const retry = await apiFetch("/api/v1/auth/session");
             if (retry.ok) {
-              const retryEnvelope = (await retry.json()) as ApiEnvelope<SessionApiResponse>;
-              const recovered = retryEnvelope.data ?? SIGNED_OUT_SESSION;
+              const recovered = await readSessionResponse(retry);
               applyCurrent(recovered);
               return recovered.authenticated === true;
             }
@@ -186,8 +211,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (refreshed) {
           const retry = await apiFetch("/api/v1/auth/session");
           if (retry.ok) {
-            const envelope = (await retry.json()) as ApiEnvelope<SessionApiResponse>;
-            const next = envelope.data ?? SIGNED_OUT_SESSION;
+            const next = await readSessionResponse(retry);
             applyCurrent(next);
             return next.authenticated === true;
           }
@@ -217,7 +241,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       return data.authenticated === true;
     } finally {
       if (timeoutId) window.clearTimeout(timeoutId);
-      setLoaded(true);
+      if (current()) {
+        setLoaded(true);
+        if (!verified && !resolvedRef.current) setError("We could not verify your session. Please retry restoring your cart.");
+      }
     }
   }, [applySignedOut, data.authenticated]);
 
@@ -280,6 +307,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SessionState>(
     () => ({
       loaded,
+      resolved,
+      error,
       authenticated: data.authenticated,
       user: data.user ?? null,
       isPosSession: data.is_pos_session === true,
@@ -289,7 +318,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       refresh: fetchSession,
       clear,
     }),
-    [loaded, data, fetchSession, clear],
+    [loaded, resolved, error, data, fetchSession, clear],
   );
 
   return (
