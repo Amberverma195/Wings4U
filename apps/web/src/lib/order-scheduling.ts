@@ -17,6 +17,8 @@ export type SchedulingHours = {
   pickup: LocationServiceHours[];
   delivery: LocationServiceHours[];
   store: LocationServiceHours[];
+  deliveryAvailableFromMinutes?: number | null;
+  deliveryAvailableUntilMinutes?: number | null;
 };
 
 export type ScheduleDateOption = {
@@ -86,7 +88,7 @@ function getDefaultTimingWindow(
     : DEFAULT_SCHEDULING_CONFIG.pickup;
 }
 
-function getDateFormatter(timezone?: string): Intl.DateTimeFormat {
+function getDateFormatter(timezone = "America/Toronto"): Intl.DateTimeFormat {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -95,26 +97,12 @@ function getDateFormatter(timezone?: string): Intl.DateTimeFormat {
   });
 }
 
-function getTimeFormatter(timezone?: string): Intl.DateTimeFormat {
+function getTimeFormatter(timezone = "America/Toronto"): Intl.DateTimeFormat {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZone: timezone,
   });
-}
-
-function startOfLocalDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function roundUpToInterval(totalMinutes: number, intervalMinutes: number): number {
-  return Math.ceil(totalMinutes / intervalMinutes) * intervalMinutes;
 }
 
 function minutesFromHHMM(value: string): number {
@@ -127,13 +115,6 @@ function minutesFromHHMM(value: string): number {
 
 function nextDayOfWeek(dayOfWeek: number): number {
   return (dayOfWeek + 1) % 7;
-}
-
-function buildIsoForDateAndMinutes(dateKey: string, totalMinutes: number): string {
-  const [year, month, day] = dateKey.split("-").map((part) => Number.parseInt(part, 10));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
 }
 
 function formatDateOptionLabel(
@@ -161,7 +142,7 @@ function hourTouchesDay(slot: LocationServiceHours, dayOfWeek: number): boolean 
   if (slot.is_closed) return false;
   const startMinutes = minutesFromHHMM(slot.time_from);
   const endMinutes = minutesFromHHMM(slot.time_to);
-  if (startMinutes === endMinutes) return slot.day_of_week === dayOfWeek;
+  if (startMinutes === endMinutes) return slot.day_of_week === dayOfWeek || (startMinutes > 0 && nextDayOfWeek(slot.day_of_week) === dayOfWeek);
   if (startMinutes < endMinutes) return slot.day_of_week === dayOfWeek;
   return slot.day_of_week === dayOfWeek || nextDayOfWeek(slot.day_of_week) === dayOfWeek;
 }
@@ -174,12 +155,6 @@ function getWindowSegmentsForDay(
 
   const startMinutes = minutesFromHHMM(slot.time_from);
   const endMinutes = minutesFromHHMM(slot.time_to);
-  if (startMinutes === endMinutes) {
-    return slot.day_of_week === dayOfWeek
-      ? [{ startMinutes: 0, endMinutes: 24 * 60 }]
-      : [];
-  }
-
   if (startMinutes < endMinutes) {
     return slot.day_of_week === dayOfWeek
       ? [{ startMinutes, endMinutes }]
@@ -233,16 +208,12 @@ export function formatEtaLabel(
   return `ASAP (${window.minMinutes}-${window.maxMinutes} min)`;
 }
 
-export function getDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+export function getDateKey(date: Date, timezone = "America/Toronto"): string {
+  return restaurantClock(date, timezone).dateKey;
 }
 
-export function getSelectedDateKey(scheduledFor: string | null, now = new Date()): string {
-  if (!scheduledFor) return getDateKey(now);
-  return getDateKey(new Date(scheduledFor));
+export function getSelectedDateKey(scheduledFor: string | null, now = new Date(), timezone = "America/Toronto"): string {
+  return getDateKey(scheduledFor ? new Date(scheduledFor) : now, timezone);
 }
 
 export function formatScheduleDateLabel(
@@ -251,8 +222,8 @@ export function formatScheduleDateLabel(
   now = new Date(),
 ): string {
   const target = scheduledFor ? new Date(scheduledFor) : now;
-  const todayKey = getDateKey(now);
-  return formatDateOptionLabel(target, getDateKey(target) === todayKey, timezone);
+  const todayKey = getDateKey(now, timezone);
+  return formatDateOptionLabel(target, getDateKey(target, timezone) === todayKey, timezone ?? "America/Toronto");
 }
 
 export function formatScheduleTimeLabel(
@@ -273,31 +244,7 @@ export function buildScheduleDateOptions(
   timezone?: string,
   now = new Date(),
 ): ScheduleDateOption[] {
-  if (fulfillmentType === "PICKUP") return buildPickupDateOptions(hours, timezone, now);
-  const sourceHours = getHoursForType(fulfillmentType, hours);
-  const todayKey = getDateKey(now);
-  const availableDays = new Set(
-    sourceHours.flatMap((slot) =>
-      Array.from({ length: 7 }, (_, dayOfWeek) => dayOfWeek).filter((dayOfWeek) =>
-        hourTouchesDay(slot, dayOfWeek),
-      ),
-    ),
-  );
-
-  return Array.from({ length: DAYS_AHEAD }, (_, offset) => {
-    const date = startOfLocalDay(addDays(now, offset));
-    return date;
-  })
-    .filter((date) => availableDays.size === 0 || availableDays.has(date.getDay()))
-    .map((date) => {
-      const isToday = getDateKey(date) === todayKey;
-      return {
-        value: getDateKey(date),
-        label: formatDateOptionLabel(date, isToday, timezone),
-        dayOfWeek: date.getDay(),
-        isToday,
-      };
-    });
+  return buildRestaurantDateOptions(fulfillmentType, hours, timezone, now);
 }
 
 export function buildScheduleTimeOptions(params: {
@@ -312,106 +259,104 @@ export function buildScheduleTimeOptions(params: {
   pickupLeadMinutes?: number;
 }): ScheduleTimeOption[] {
   if (params.fulfillmentType === "PICKUP") return buildPickupTimeOptions(params);
-  const {
-    fulfillmentType,
-    selectedDateKey,
-    config,
-    hours,
-    timezone,
-    now = new Date(),
-  } = params;
-  const todayKey = getDateKey(now);
-  const timeFormatter = getTimeFormatter(timezone);
-  const dayOfWeek = new Date(`${selectedDateKey}T00:00:00`).getDay();
-  const sourceHours = getHoursForType(fulfillmentType, hours).filter(
-    (slot) => hourTouchesDay(slot, dayOfWeek),
-  );
-  const timingWindow = getTimingWindow(config, fulfillmentType);
-  const options: ScheduleTimeOption[] = [];
-
-  if (selectedDateKey === todayKey) {
-    options.push({
-      value: "ASAP",
-      label: formatEtaLabel(fulfillmentType, config),
-    });
-  }
-
-  for (const slot of sourceHours) {
-    for (const segment of getWindowSegmentsForDay(slot, dayOfWeek)) {
-      const { startMinutes, endMinutes } = segment;
-      const earliestMinutes =
-        selectedDateKey === todayKey
-          ? roundUpToInterval(
-              now.getHours() * 60 + now.getMinutes() + timingWindow.minMinutes,
-              SLOT_INTERVAL_MINUTES,
-            )
-          : startMinutes;
-      const firstSlot = Math.max(startMinutes, earliestMinutes);
-
-      for (
-        let totalMinutes = firstSlot;
-        totalMinutes <= endMinutes - SLOT_INTERVAL_MINUTES;
-        totalMinutes += SLOT_INTERVAL_MINUTES
-      ) {
-        const isoValue = buildIsoForDateAndMinutes(selectedDateKey, totalMinutes);
-        options.push({
-          value: isoValue,
-          label: timeFormatter.format(new Date(isoValue)),
-        });
-      }
-    }
-  }
-
-  return options;
+  return buildDeliveryTimeOptions(params);
 }
 
-// Pickup slot calculation uses the restaurant's clock, not the browser's zone.
-const pickupClockFormatters = new Map<string, Intl.DateTimeFormat>();
-function pickupClock(date: Date, timezone = "America/Toronto") {
-  let formatter = pickupClockFormatters.get(timezone);
+function withinDeliveryWindow(minutes: number, hours?: SchedulingHours): boolean {
+  const from = hours?.deliveryAvailableFromMinutes;
+  const until = hours?.deliveryAvailableUntilMinutes;
+  if (from == null || until == null || from === until) return true;
+  return from < until ? minutes >= from && minutes < until : minutes >= from || minutes < until;
+}
+
+function buildDeliveryTimeOptions(params: {
+  selectedDateKey: string; config: SchedulingConfig; hours?: SchedulingHours;
+  timezone?: string; now?: Date; pickupLeadMinutes?: number;
+}): ScheduleTimeOption[] {
+  const now = params.now ?? new Date();
+  const timezone = params.timezone ?? "America/Toronto";
+  const clock = restaurantClock(now, timezone);
+  const source = getHoursForType("DELIVERY", params.hours);
+  const isOpen = (date: Date) => {
+    const local = restaurantClock(date, timezone);
+    const day = new Date(local.dateKey + "T12:00:00Z").getUTCDay();
+    return withinDeliveryWindow(local.minutes, params.hours) && source.some(slot =>
+      getWindowSegmentsForDay(slot, day).some(segment => local.minutes >= segment.startMinutes && local.minutes < segment.endMinutes));
+  };
+  const options: ScheduleTimeOption[] = [];
+  if (params.selectedDateKey === clock.dateKey && isOpen(now)) {
+    options.push({ value: "ASAP", label: formatEtaLabel("DELIVERY", params.config) });
+  }
+  const start = restaurantInstant(params.selectedDateKey, 0, timezone);
+  const nextDay = new Date(params.selectedDateKey + "T12:00:00Z");
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const end = restaurantInstant(nextDay.toISOString().slice(0, 10), 0, timezone);
+  if (!start || !end) return options;
+  const lead = Math.max(getTimingWindow(params.config, "DELIVERY").minMinutes, params.pickupLeadMinutes ?? 0);
+  const earliest = now.getTime() + lead * 60_000;
+  const formatter = getTimeFormatter(timezone);
+  // Iterate real instants: spring gaps disappear and both fall-back occurrences
+  // retain distinct UTC values. Never construct restaurant times in the browser zone.
+  for (let time = start.getTime(); time < end.getTime(); time += SLOT_INTERVAL_MINUTES * 60_000) {
+    const instant = new Date(time);
+    if (time < earliest || !isOpen(instant)) continue;
+    options.push({ value: instant.toISOString(), label: formatter.format(instant) });
+  }
+  const labelCounts = new Map<string, number>();
+  for (const option of options) labelCounts.set(option.label, (labelCounts.get(option.label) ?? 0) + 1);
+  const offsetFormatter = new Intl.DateTimeFormat("en-US", { timeZone: timezone,
+    hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  return options.map(option => (labelCounts.get(option.label) ?? 0) > 1
+    ? { ...option, label: offsetFormatter.format(new Date(option.value)) } : option);
+}
+
+// Slot calculation uses the restaurant's clock, not the browser's zone.
+const restaurantClockFormatters = new Map<string, Intl.DateTimeFormat>();
+function restaurantClock(date: Date, timezone = "America/Toronto") {
+  let formatter = restaurantClockFormatters.get(timezone);
   if (!formatter) {
     formatter = new Intl.DateTimeFormat("en-CA", {
       timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit", hourCycle: "h23",
     });
-    pickupClockFormatters.set(timezone, formatter);
+    restaurantClockFormatters.set(timezone, formatter);
   }
   const parts = Object.fromEntries(formatter.formatToParts(date).map(part => [part.type, part.value]));
   return { dateKey: `${parts.year}-${parts.month}-${parts.day}`,
     minutes: Number(parts.hour) * 60 + Number(parts.minute) };
 }
 
-function pickupInstant(dateKey: string, minutes: number, timezone?: string): Date | null {
+function restaurantInstant(dateKey: string, minutes: number, timezone?: string): Date | null {
   const [year, month, day] = dateKey.split("-").map(Number);
   const desired = Date.UTC(year, month - 1, day) + minutes * 60_000;
   let instant = new Date(desired);
   for (let pass = 0; pass < 3; pass++) {
-    const clock = pickupClock(instant, timezone);
+    const clock = restaurantClock(instant, timezone);
     const projected = Date.parse(`${clock.dateKey}T00:00:00Z`) + clock.minutes * 60_000;
     instant = new Date(instant.getTime() + desired - projected);
   }
-  const clock = pickupClock(instant, timezone);
+  const clock = restaurantClock(instant, timezone);
   // Skip nonexistent local times during a spring DST transition.
   return clock.dateKey === dateKey && clock.minutes === minutes ? instant : null;
 }
 
-function buildPickupDateOptions(hours: SchedulingHours | undefined, timezone: string | undefined, now: Date): ScheduleDateOption[] {
-  const today = pickupClock(now, timezone).dateKey;
-  const source = getHoursForType("PICKUP", hours);
+function buildRestaurantDateOptions(fulfillmentType: FulfillmentType, hours: SchedulingHours | undefined, timezone: string | undefined, now: Date): ScheduleDateOption[] {
+  const today = restaurantClock(now, timezone).dateKey;
+  const source = getHoursForType(fulfillmentType, hours);
   return Array.from({ length: DAYS_AHEAD }, (_, offset) => {
     const day = new Date(`${today}T12:00:00Z`);
     day.setUTCDate(day.getUTCDate() + offset);
     const value = day.toISOString().slice(0, 10);
     return { value, dayOfWeek: day.getUTCDay(), isToday: offset === 0 };
   }).filter(day => source.some(slot => hourTouchesDay(slot, day.dayOfWeek)))
-    .map(day => ({ ...day, label: formatDateOptionLabel(pickupInstant(day.value, 12 * 60, timezone)!, day.isToday, timezone ?? "America/Toronto") }));
+    .map(day => ({ ...day, label: formatDateOptionLabel(restaurantInstant(day.value, 12 * 60, timezone)!, day.isToday, timezone ?? "America/Toronto") }));
 }
 
 function buildPickupTimeOptions(params: {
   selectedDateKey: string; hours?: SchedulingHours; timezone?: string; now?: Date; pickupLeadMinutes?: number;
 }): ScheduleTimeOption[] {
   const now = params.now ?? new Date();
-  const clock = pickupClock(now, params.timezone);
+  const clock = restaurantClock(now, params.timezone);
   const day = new Date(`${params.selectedDateKey}T12:00:00Z`).getUTCDay();
   const segments = getHoursForType("PICKUP", params.hours).flatMap(slot => getWindowSegmentsForDay(slot, day))
     .sort((a, b) => a.startMinutes - b.startMinutes);
@@ -425,7 +370,7 @@ function buildPickupTimeOptions(params: {
   const formatter = getTimeFormatter(params.timezone ?? "America/Toronto");
   for (const segment of segments) {
     for (let minutes = segment.startMinutes; minutes <= segment.endMinutes - SLOT_INTERVAL_MINUTES; minutes += SLOT_INTERVAL_MINUTES) {
-      const instant = pickupInstant(params.selectedDateKey, minutes, params.timezone);
+      const instant = restaurantInstant(params.selectedDateKey, minutes, params.timezone);
       if (!instant || instant.getTime() < earliest) continue;
       const value = instant.toISOString();
       if (!options.some(option => option.value === value)) options.push({ value, label: formatter.format(instant) });

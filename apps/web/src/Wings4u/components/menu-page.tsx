@@ -9,7 +9,8 @@ import { useCart } from "@/lib/cart";
 import { useDeliveryAddress } from "@/components/delivery-address-provider";
 import { hasCompleteDeliveryAddress } from "@/lib/delivery-address";
 import {
-  getDeliveryUnavailableMessage,
+  getDeliveryRestrictionMessage,
+  getDeliveryScheduleMessage,
 } from "@/lib/delivery-restrictions";
 import { isTargetInsideWkMethodOverlay } from "@/lib/wk-overlay";
 import { DEFAULT_LOCATION_ID } from "@/lib/env";
@@ -260,8 +261,8 @@ export function MenuPage({
   const [draftDateKey, setDraftDateKey] = useState(() =>
     getSelectedDateKey(scheduledFor),
   );
-  const [pickupScheduleRevision, setPickupScheduleRevision] = useState(0);
-  const [pickupScheduleNotice, setPickupScheduleNotice] = useState<string | null>(null);
+  const [scheduleRevision, setScheduleRevision] = useState(0);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [draftTimeValue, setDraftTimeValue] = useState(() =>
     scheduledFor ?? "ASAP",
   );
@@ -275,8 +276,10 @@ export function MenuPage({
   );
   const { address: deliveryAddress, openAddressPicker } = useDeliveryAddress();
   const hasSelectedDeliveryAddress = hasCompleteDeliveryAddress(deliveryAddress);
-  const deliveryUnavailableMessage = getDeliveryUnavailableMessage(menu);
-  const deliveryUnavailable = Boolean(deliveryUnavailableMessage);
+  const deliveryUnavailable = Boolean(getDeliveryRestrictionMessage(menu));
+  const deliveryUnavailableMessage = !orderSettingsOpen ? null : getDeliveryRestrictionMessage(menu) ??
+    (draftFulfillmentType === "DELIVERY" ? getDeliveryScheduleMessage(menu, draftDateKey, draftTimeValue) : null) ??
+    (menu ? getDeliveryScheduleMessage(menu, getDateKey(new Date(), menu.location.timezone), "ASAP") : null);
 
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const catRowRef = useRef<HTMLDivElement | null>(null);
@@ -306,6 +309,8 @@ export function MenuPage({
             pickup: menu.location.pickup_hours,
             delivery: menu.location.delivery_hours,
             store: menu.location.store_hours ?? [],
+            deliveryAvailableFromMinutes: menu.location.delivery_available_from_minutes,
+            deliveryAvailableUntilMinutes: menu.location.delivery_available_until_minutes,
           }
         : undefined,
     [menu],
@@ -322,7 +327,7 @@ export function MenuPage({
         schedulingHours,
         menu?.location.timezone,
       ),
-    [draftFulfillmentType, menu?.location.timezone, schedulingHours, pickupScheduleRevision],
+    [draftFulfillmentType, menu?.location.timezone, schedulingHours, scheduleRevision],
   );
   const draftTimeOptions = useMemo(
     () =>
@@ -334,7 +339,7 @@ export function MenuPage({
         hours: schedulingHours,
         timezone: menu?.location.timezone,
       }),
-    [draftDateKey, draftFulfillmentType, menu?.location.timezone, menu?.location.estimated_prep_minutes, schedulingConfig, schedulingHours, pickupScheduleRevision],
+    [draftDateKey, draftFulfillmentType, menu?.location.timezone, menu?.location.estimated_prep_minutes, schedulingConfig, schedulingHours, scheduleRevision],
   );
   const scheduleDateLabel = formatScheduleDateLabel(
     scheduledFor,
@@ -379,6 +384,7 @@ export function MenuPage({
         return;
       }
       setDraftFulfillmentType(next);
+      setScheduleNotice(null);
       setDeliveryAddressError(null);
     },
     [deliveryUnavailable],
@@ -835,14 +841,19 @@ export function MenuPage({
     if (isCommittingFulfillment) return;
 
     if (!orderSettingsOpen) {
-      setPickupScheduleNotice(null);
+      setScheduleNotice(null);
       syncDraftOrderSettings();
       setOrderSettingsOpen(true);
       return;
     }
 
-    if (draftFulfillmentType === "DELIVERY" && deliveryUnavailable) {
-      return;
+    if (draftFulfillmentType === "DELIVERY") {
+      const message = getDeliveryScheduleMessage(menu, draftDateKey, draftTimeValue);
+      if (message) {
+        setScheduleRevision(value => value + 1);
+        setScheduleNotice(message);
+        return;
+      }
     }
 
     if (draftFulfillmentType === "DELIVERY" && !hasSelectedDeliveryAddress) {
@@ -850,18 +861,18 @@ export function MenuPage({
       return;
     }
 
-    if (draftFulfillmentType === "PICKUP") {
-      const current = buildScheduleTimeOptions({ fulfillmentType: "PICKUP", selectedDateKey: draftDateKey,
+    {
+      const current = buildScheduleTimeOptions({ fulfillmentType: draftFulfillmentType, selectedDateKey: draftDateKey,
         config: schedulingConfig, hours: schedulingHours, timezone: menu?.location.timezone,
         pickupLeadMinutes: menu?.location.estimated_prep_minutes });
       if (!current.some(option => option.value === draftTimeValue)) {
-        setPickupScheduleRevision(value => value + 1);
-        setPickupScheduleNotice("Pickup availability changed. Please choose an available time.");
+        setScheduleRevision(value => value + 1);
+        setScheduleNotice(`${draftFulfillmentType === "DELIVERY" ? "Delivery" : "Pickup"} availability changed. Please choose an available time.`);
         setDraftTimeValue(current[0]?.value ?? "ASAP");
         return;
       }
     }
-    setPickupScheduleNotice(null);
+    setScheduleNotice(null);
 
     const nextScheduledFor = draftTimeValue === "ASAP" ? null : draftTimeValue;
     const fulfillmentChanged =
@@ -904,7 +915,7 @@ export function MenuPage({
     menu?.location.timezone,
     menu?.location.estimated_prep_minutes,
     draftFulfillmentType,
-    deliveryUnavailable,
+    menu,
     hasSelectedDeliveryAddress,
     isCommittingFulfillment,
     orderSettingsOpen,
@@ -1256,8 +1267,8 @@ export function MenuPage({
                   </p>
                 ) : null}
 
-                {draftFulfillmentType === "PICKUP" && pickupScheduleNotice && (
-                  <p className="wk-order-settings-restriction-note" role="alert">{pickupScheduleNotice}</p>
+                {scheduleNotice && (
+                  <p className="wk-order-settings-restriction-note" role="alert">{scheduleNotice}</p>
                 )}
                 <div className="wk-order-settings-grid">
                   <div className="wk-order-settings-field">
@@ -1270,7 +1281,7 @@ export function MenuPage({
                         className="wk-order-settings-select"
                         value={draftDateKey}
                         aria-label="Date"
-                        onChange={(event) => setDraftDateKey(event.target.value)}
+                        onChange={(event) => { setDraftDateKey(event.target.value); setScheduleNotice(null); }}
                       >
                         {draftDateOptions.map((option) => (
                           <option key={option.value} value={option.value}>
@@ -1291,7 +1302,7 @@ export function MenuPage({
                         className="wk-order-settings-select"
                         value={draftTimeValue}
                         aria-label="Time"
-                        onChange={(event) => setDraftTimeValue(event.target.value)}
+                        onChange={(event) => { setDraftTimeValue(event.target.value); setScheduleNotice(null); }}
                       >
                         {draftTimeOptions.map((option) => (
                           <option key={option.value} value={option.value}>

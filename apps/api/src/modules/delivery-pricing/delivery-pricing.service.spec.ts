@@ -195,7 +195,7 @@ describe("DeliveryPricingService", () => {
       "disabled delivery",
       { deliveryDisabled: true },
       ADDRESS,
-      "Delivery is currently unavailable",
+      "Delivery has been disabled by the restaurant",
     ],
     [
       "closed delivery hours",

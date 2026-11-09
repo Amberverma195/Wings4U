@@ -30,7 +30,8 @@ import {
   type SchedulingHours,
 } from "@/lib/order-scheduling";
 import {
-  getDeliveryUnavailableMessage,
+  getDeliveryRestrictionMessage,
+  getDeliveryScheduleMessage,
 } from "@/lib/delivery-restrictions";
 import type { FulfillmentType, MenuResponse } from "@/lib/types";
 
@@ -133,7 +134,7 @@ export function OrderMethodModal({
     initialScheduledFor ?? "ASAP",
   );
   const [schedulingConfig, setSchedulingConfig] = useState(DEFAULT_SCHEDULING_CONFIG);
-  const [pickupScheduleRevision, setPickupScheduleRevision] = useState(0);
+  const [scheduleRevision, setScheduleRevision] = useState(0);
   const [schedulingLeadMinutes, setSchedulingLeadMinutes] = useState<number | undefined>(undefined);
   const [schedulingHours, setSchedulingHours] = useState<SchedulingHours | undefined>(
     undefined,
@@ -151,7 +152,10 @@ export function OrderMethodModal({
     active: open,
   });
 
-  const [deliveryUnavailableMessage, setDeliveryUnavailableMessage] = useState<string | null>(null);
+  const [scheduleMenu, setScheduleMenu] = useState<MenuResponse | null>(null);
+  const deliveryUnavailableMessage = getDeliveryRestrictionMessage(scheduleMenu);
+  const deliveryStatusMessage = scheduleMenu ? getDeliveryScheduleMessage(scheduleMenu,
+    getDateKey(new Date(), scheduleMenu.location.timezone), "ASAP") : null;
   
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -202,7 +206,7 @@ export function OrderMethodModal({
     setAddressPostal(initialAddress?.postalCode ?? EMPTY_DELIVERY_ADDRESS.postalCode);
     setScheduleDateKey(getSelectedDateKey(initialScheduledFor));
     setScheduleTimeValue(initialScheduledFor ?? "ASAP");
-    setDeliveryUnavailableMessage(null);
+    setScheduleMenu(null);
   }, [open, defaultMethod, initialStepProp, addressOnly, initialScheduledFor, editingSavedAddressId, addressContext]);
 
   useEffect(() => {
@@ -225,7 +229,8 @@ export function OrderMethodModal({
           { locationId: DEFAULT_LOCATION_ID },
         );
 
-        if (cancelled || !response.data) return;
+        if (cancelled) return;
+        if (!response.data) throw new Error("Missing scheduling context");
 
         setSchedulingConfig(
           normalizeSchedulingConfig({
@@ -244,18 +249,20 @@ export function OrderMethodModal({
           pickup: response.data.location.pickup_hours,
           delivery: response.data.location.delivery_hours,
           store: response.data.location.store_hours ?? [],
+          deliveryAvailableFromMinutes: response.data.location.delivery_available_from_minutes,
+          deliveryAvailableUntilMinutes: response.data.location.delivery_available_until_minutes,
         });
         setScheduleTimezone(response.data.location.timezone);
         const nextDeliveryUnavailableMessage =
-          getDeliveryUnavailableMessage(response.data);
-        setDeliveryUnavailableMessage(nextDeliveryUnavailableMessage);
+          getDeliveryRestrictionMessage(response.data);
+        setScheduleMenu(response.data);
         if (nextDeliveryUnavailableMessage) {
           setMethod("PICKUP");
         }
       } catch {
         if (!cancelled) {
           setScheduleNotice(
-            "Using fallback scheduling windows until live store timings load.",
+            "Store timings could not be loaded. Please try again before scheduling delivery.",
           );
         }
       } finally {
@@ -307,7 +314,7 @@ export function OrderMethodModal({
   const scheduleDateOptions = useMemo(
     () =>
       buildScheduleDateOptions(method, schedulingHours, scheduleTimezone),
-    [method, schedulingHours, scheduleTimezone, pickupScheduleRevision],
+    [method, schedulingHours, scheduleTimezone, scheduleRevision],
   );
 
   const scheduleTimeOptions = useMemo(
@@ -320,7 +327,7 @@ export function OrderMethodModal({
         hours: schedulingHours,
         timezone: scheduleTimezone,
       }),
-    [method, scheduleDateKey, schedulingConfig, schedulingHours, scheduleTimezone, schedulingLeadMinutes, pickupScheduleRevision],
+    [method, scheduleDateKey, schedulingConfig, schedulingHours, scheduleTimezone, schedulingLeadMinutes, scheduleRevision],
   );
 
   useEffect(() => {
@@ -360,11 +367,13 @@ export function OrderMethodModal({
     return "CONTINUE TO SCHEDULE ->";
   }, [addressEditMode, addressContext, addressOnly, saveToAccount, method, step]);
 
+  const scheduleSelectionMessage = method === "DELIVERY" && !scheduleLoading
+    ? getDeliveryScheduleMessage(scheduleMenu, scheduleDateKey, scheduleTimeValue) : null;
   const continueDisabled = savingAddress || (
     step === "schedule" &&
     (scheduleLoading ||
       scheduleDateOptions.length === 0 ||
-      scheduleTimeOptions.length === 0));
+      scheduleTimeOptions.length === 0 || Boolean(scheduleSelectionMessage)));
 
   if (!open) return null;
 
@@ -378,12 +387,16 @@ export function OrderMethodModal({
 
     if (step === "schedule") {
       if (continueDisabled) return;
-      if (method === "PICKUP") {
-        const current = buildScheduleTimeOptions({ fulfillmentType: "PICKUP", selectedDateKey: scheduleDateKey,
+      {
+        if (method === "DELIVERY") {
+          const message = getDeliveryScheduleMessage(scheduleMenu, scheduleDateKey, scheduleTimeValue);
+          if (message) { setScheduleNotice(message); setScheduleRevision(value => value + 1); return; }
+        }
+        const current = buildScheduleTimeOptions({ fulfillmentType: method, selectedDateKey: scheduleDateKey,
           config: schedulingConfig, hours: schedulingHours, timezone: scheduleTimezone, pickupLeadMinutes: schedulingLeadMinutes });
         if (!current.some(option => option.value === scheduleTimeValue)) {
-          setPickupScheduleRevision(value => value + 1);
-          setScheduleNotice("Pickup availability changed. Please choose an available time.");
+          setScheduleRevision(value => value + 1);
+          setScheduleNotice(`${method === "DELIVERY" ? "Delivery" : "Pickup"} availability changed. Please choose an available time.`);
           setScheduleTimeValue(getInitialTimeValue(null, current));
           return;
         }
@@ -401,6 +414,10 @@ export function OrderMethodModal({
       return;
     }
 
+    if (!addressOnly && method === "DELIVERY") {
+      const message = getDeliveryScheduleMessage(scheduleMenu, scheduleDateKey, scheduleTimeValue);
+      if (message) { setScheduleNotice(message); setStep("schedule"); return; }
+    }
     const normalizedAddress = {
       line1: addressLine1.trim(),
       city: FIXED_DELIVERY_CITY,
@@ -566,13 +583,13 @@ export function OrderMethodModal({
                   ) : null}
                 </div>
                 <div className="wk-method-tags">
-                  <span className="wk-method-tag">FROM $5</span>
-                  <span className="wk-method-tag">~30 MIN</span>
+                  <span className="wk-method-tag">FROM $8</span>
+                  <span className="wk-method-tag">{deliveryUnavailableMessage ? "UNAVAILABLE" : deliveryStatusMessage ? "SCHEDULE AHEAD" : "~30 MIN"}</span>
                 </div>
                 <div className="wk-method-option-name">DELIVERY</div>
                 <div className="wk-method-option-desc">
-                  {deliveryUnavailableMessage
-                    ? deliveryUnavailableMessage
+                  {deliveryStatusMessage
+                    ? deliveryStatusMessage
                     : "We bring the heat straight to your door. Fast and fresh."}
                 </div>
               </button>
@@ -590,7 +607,7 @@ export function OrderMethodModal({
                       className="wk-order-settings-select"
                       value={scheduleDateKey}
                       aria-label="Date"
-                      onChange={(event) => setScheduleDateKey(event.target.value)}
+                      onChange={(event) => { setScheduleDateKey(event.target.value); setScheduleNotice(null); }}
                       disabled={scheduleLoading || scheduleDateOptions.length === 0}
                     >
                       {scheduleDateOptions.map((option) => (
@@ -612,7 +629,7 @@ export function OrderMethodModal({
                       className="wk-order-settings-select"
                       value={scheduleTimeValue}
                       aria-label="Time"
-                      onChange={(event) => setScheduleTimeValue(event.target.value)}
+                      onChange={(event) => { setScheduleTimeValue(event.target.value); setScheduleNotice(null); }}
                       disabled={scheduleLoading || scheduleTimeOptions.length === 0}
                     >
                       {scheduleTimeOptions.map((option) => (
@@ -628,8 +645,8 @@ export function OrderMethodModal({
               {scheduleLoading ? (
                 <p className="wk-method-form-error">Loading live scheduling windows...</p>
               ) : null}
-              {!scheduleLoading && scheduleNotice ? (
-                <p className="wk-method-form-error">{scheduleNotice}</p>
+              {!scheduleLoading && (scheduleNotice || scheduleSelectionMessage) ? (
+                <p className="wk-method-form-error" role="alert">{scheduleNotice || scheduleSelectionMessage}</p>
               ) : null}
 
               <button

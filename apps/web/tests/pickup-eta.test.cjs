@@ -88,17 +88,19 @@ test('delivery scheduling still uses its loaded API values in the actual modal',
   expect(text(renderer)).toContain('ASAP (45-65 min)');
 });
 
-test('delivery configured/fallback labels and slot calculation remain unchanged', () => {
+test('delivery labels retain configured values and slots also respect effective kitchen prep', () => {
   const config = scheduling.normalizeSchedulingConfig(oldConfig());
   expect(scheduling.formatEtaLabel('DELIVERY', config)).toBe('ASAP (45-65 min)');
   expect(scheduling.formatEtaLabel('DELIVERY', scheduling.DEFAULT_SCHEDULING_CONFIG)).toBe('ASAP (40-60 min)');
-  const now = new Date(2026, 9, 19, 12, 0, 0);
+  const now = new Date('2026-10-19T16:00:00Z');
   const params = { fulfillmentType: 'DELIVERY', selectedDateKey: scheduling.getDateKey(now), config,
     hours: { pickup: hours, delivery: hours, store: hours }, now };
   const options = scheduling.buildScheduleTimeOptions(params);
   expect(options[0].label).toBe('ASAP (45-65 min)');
   expect(new Date(options[1].value).getTime() - now.getTime()).toBe(45 * 60_000);
-  expect(scheduling.buildScheduleTimeOptions({ ...params, pickupLeadMinutes: 90 })).toEqual(options);
+  const busySlots = scheduling.buildScheduleTimeOptions({ ...params, pickupLeadMinutes: 90 });
+  expect(busySlots[0]).toEqual(options[0]);
+  expect(Date.parse(busySlots[1].value) - now.getTime()).toBe(90 * 60_000);
 });
 
 test('unknown prep has no explicit pickup slots; loaded/busy prep preserves backend lead including seconds', () => {

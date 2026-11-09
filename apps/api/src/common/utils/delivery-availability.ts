@@ -2,6 +2,8 @@ import { UnprocessableEntityException } from "@nestjs/common";
 
 export const DELIVERY_UNAVAILABLE_MESSAGE =
   "Delivery is currently unavailable. Pickup is still available.";
+export const DELIVERY_DISABLED_MESSAGE =
+  "Delivery has been disabled by the restaurant. Pickup is still available.";
 
 type DeliveryAvailabilitySettings = {
   deliveryDisabled?: boolean | null;
@@ -47,7 +49,7 @@ export function getDeliveryAvailability(params: {
   if (settings?.deliveryDisabled) {
     return {
       available: false,
-      message: DELIVERY_UNAVAILABLE_MESSAGE,
+      message: DELIVERY_DISABLED_MESSAGE,
     };
   }
 

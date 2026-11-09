@@ -109,3 +109,19 @@ test.each([CartPage, CheckoutClient])('a failed cart read shows recovery control
   const retry = renderer.root.findAllByType('button').find(node => node.props.children === 'Retry restoration');
   await act(async () => retry.props.onClick()); expect(screen()).toContain('Wings');
 });
+
+test.each([['/cart', CartPage], ['/checkout', CheckoutClient]])('%s preserves a newly selected future delivery schedule through refresh before autosave', async (_path, Page) => {
+  mockSession = { ...mockSession, loaded: true, authenticated: true, profileComplete: true,
+    user: { id: 'customer-a', displayName: 'Customer', phone: '5195550123' } };
+  saved.fetchSavedCart.mockResolvedValue({ ...empty, items: [item], revision: 'base', fulfillment_type: 'DELIVERY',
+    scheduled_for: '2026-11-09T17:45:00.000Z', driver_tip_percent: '15' });
+  await act(async () => { renderer = create(React.createElement(Root, { Page })); });
+  await act(async () => cart.commitOrderContext({ fulfillmentType: 'DELIVERY', scheduledFor: '2026-11-10T18:15:00.000Z' }));
+  expect(JSON.parse(storage.get(key)).scheduledFor).toBe('2026-11-10T18:15:00.000Z');
+  await act(async () => renderer.unmount()); renderer = null;
+  await act(async () => { renderer = create(React.createElement(Root, { Page })); });
+  expect(cart.fulfillmentType).toBe('DELIVERY');
+  expect(cart.scheduledFor).toBe('2026-11-10T18:15:00.000Z');
+  expect(cart.driverTipPercent).toBe(15);
+  expect(cart.items[0]).toMatchObject(item);
+});
