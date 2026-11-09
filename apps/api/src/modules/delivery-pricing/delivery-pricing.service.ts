@@ -113,6 +113,7 @@ export class DeliveryPricingService {
     // syntactically valid postal code must reach authoritative route eligibility.
 
     const startedAt = Date.now();
+    let failureStage = "cache_read";
     try {
       const cached = await this.getCachedRouteResult(
         params.locationId,
@@ -127,6 +128,7 @@ export class DeliveryPricingService {
             field: "address_snapshot_json",
           });
         }
+        failureStage = "quote_signing";
         return this.buildQuoteResponse({
           locationId: params.locationId,
           fingerprint,
@@ -134,13 +136,16 @@ export class DeliveryPricingService {
         });
       }
 
+      failureStage = "routing";
       const distanceMetres = await this.getSharedDistance(
         params.locationId,
         fingerprint,
         formatGoogleDestination(address),
       );
+      failureStage = "pricing";
       const distanceFeeCents = calculateDeliveryFeeCents(distanceMetres);
       if (distanceFeeCents == null) {
+        failureStage = "cache_write";
         await this.setCachedRouteResult(params.locationId, fingerprint, {
           within_delivery_radius: false,
         });
@@ -149,7 +154,6 @@ export class DeliveryPricingService {
             event: "delivery_route.outside_radius",
             provider: "google_routes",
             location_id: params.locationId,
-            fingerprint_prefix: fingerprint.slice(0, 12),
             latency_ms: Date.now() - startedAt,
           }),
         );
@@ -163,6 +167,7 @@ export class DeliveryPricingService {
 
       const feeCents = distanceFeeCents;
 
+      failureStage = "cache_write";
       await this.setCachedRouteResult(params.locationId, fingerprint, {
         within_delivery_radius: true,
         delivery_fee_cents: feeCents,
@@ -173,11 +178,11 @@ export class DeliveryPricingService {
           event: "delivery_route.success",
           provider: "google_routes",
           location_id: params.locationId,
-          fingerprint_prefix: fingerprint.slice(0, 12),
           calculated_fee_cents: feeCents,
           latency_ms: Date.now() - startedAt,
         }),
       );
+      failureStage = "quote_signing";
       return this.buildQuoteResponse({
         locationId: params.locationId,
         fingerprint,
@@ -188,15 +193,19 @@ export class DeliveryPricingService {
         throw error;
       }
 
-      const reason =
-        error instanceof GoogleRoutesClientError ? error.reason : "PROVIDER_ERROR";
+      const providerError = error instanceof GoogleRoutesClientError ? error : null;
+      const diagnostics = providerError?.diagnostics;
       this.logger.warn(
         JSON.stringify({
           event: "delivery_route.failure",
           provider: "google_routes",
-          provider_result: reason.toLowerCase(),
+          provider_result: providerError?.reason.toLowerCase() ?? "internal_error",
+          failure_stage: failureStage,
+          provider_http_status: diagnostics?.httpStatus ?? null,
+          provider_status: diagnostics?.apiStatus ?? null,
+          provider_error_reason: diagnostics?.errorReason ?? null,
+          ...(diagnostics?.responseIssue ? { response_issue: diagnostics.responseIssue } : {}),
           location_id: params.locationId,
-          fingerprint_prefix: fingerprint.slice(0, 12),
           latency_ms: Date.now() - startedAt,
         }),
       );

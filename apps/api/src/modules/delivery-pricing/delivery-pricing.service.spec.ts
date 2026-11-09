@@ -441,14 +441,87 @@ describe("DeliveryPricingService", () => {
   it.each([
     ["UNROUTABLE", 422, "DELIVERY_ADDRESS_UNROUTABLE"],
     ["INVALID_REQUEST", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+    ["NOT_CONFIGURED", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+    ["TIMEOUT", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+    ["RATE_LIMITED", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+    ["PROVIDER_ERROR", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
+    ["MALFORMED_RESPONSE", 503, "DELIVERY_QUOTE_PROVIDER_UNAVAILABLE"],
     ["OUTSIDE_CITY", 422, "DELIVERY_CITY_UNAVAILABLE"],
   ] as const)("classifies %s without issuing or caching a quote", async (reason, status, code) => {
     const redis = createRedisMock();
+    const tokens = new DeliveryQuoteTokenService();
+    const sign = jest.spyOn(tokens, "signDistanceQuote");
     const service = new DeliveryPricingService(createPrisma() as never,
       { computeDrivingDistanceMetres: jest.fn().mockRejectedValue(new GoogleRoutesClientError(reason, "private")) } as never,
-      new DeliveryQuoteTokenService(), redis as never, createRateLimiterMock() as never);
+      tokens, redis as never, createRateLimiterMock() as never);
     await expect(service.createQuote({ locationId: LOCATION_ID,
       addressSnapshotJson: ADDRESS, scheduledFor: SCHEDULED_FOR })).rejects.toMatchObject({ status, response: { code } });
     expect(redis.setJson).not.toHaveBeenCalled();
+    expect(sign).not.toHaveBeenCalled();
+  });
+
+  it('logs safe provider evidence without provider bodies, credentials or addresses', async () => {
+    const service = new DeliveryPricingService(createPrisma() as never,
+      { computeDrivingDistanceMetres: jest.fn().mockRejectedValue(new GoogleRoutesClientError('NOT_CONFIGURED', 'private address/key',
+        { httpStatus: 403, apiStatus: 'PERMISSION_DENIED', errorReason: 'API_KEY_SERVICE_BLOCKED' })) } as never,
+      new DeliveryQuoteTokenService(), createRedisMock() as never, createRateLimiterMock() as never);
+    const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => {});
+    await expect(service.createQuote({ locationId: LOCATION_ID, addressSnapshotJson: ADDRESS, scheduledFor: SCHEDULED_FOR }))
+      .rejects.toMatchObject({ status: 503 });
+    const log = JSON.parse(warn.mock.calls[0][0] as string);
+    expect(log).toMatchObject({ event: 'delivery_route.failure', provider_result: 'not_configured', failure_stage: 'routing',
+      provider_http_status: 403, provider_status: 'PERMISSION_DENIED', provider_error_reason: 'API_KEY_SERVICE_BLOCKED' });
+    expect(JSON.stringify(log)).not.toMatch(/private|Example Street|N5W|postal|apiKey/);
+    expect(log).not.toHaveProperty('fingerprint_prefix');
+  });
+
+  it('distinguishes local signing failure from Google routing failure', async () => {
+    const tokens = new DeliveryQuoteTokenService();
+    jest.spyOn(tokens, 'signDistanceQuote').mockImplementation(() => { throw new Error('private secret'); });
+    const service = new DeliveryPricingService(createPrisma() as never,
+      { computeDrivingDistanceMetres: jest.fn().mockResolvedValue(6000) } as never,
+      tokens, createRedisMock() as never, createRateLimiterMock() as never);
+    const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => {});
+    await expect(service.createQuote({ locationId: LOCATION_ID, addressSnapshotJson: ADDRESS, scheduledFor: SCHEDULED_FOR }))
+      .rejects.toMatchObject({ status: 503 });
+    expect(JSON.parse(warn.mock.calls[0][0] as string)).toMatchObject({ provider_result: 'internal_error', failure_stage: 'quote_signing' });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private');
+  });
+
+  it.each([
+    [400, 'INVALID_ARGUMENT', undefined, 'invalid_request'],
+    [401, 'UNAUTHENTICATED', 'API_KEY_INVALID', 'not_configured'],
+    [403, 'PERMISSION_DENIED', 'SERVICE_DISABLED', 'not_configured'],
+    [429, 'RESOURCE_EXHAUSTED', 'QUOTA_EXCEEDED', 'rate_limited'],
+    [500, 'INTERNAL', undefined, 'provider_error'],
+  ] as const)('logs sanitized HTTP %i evidence through the real client and preserves the customer error', async (status, apiStatus, reason, classification) => {
+    const previousFetch = global.fetch;
+    const previousKey = process.env.GOOGLE_MAPS_ROUTES_API_KEY;
+    try {
+      process.env.GOOGLE_MAPS_ROUTES_API_KEY = 'PRIVATE_KEY_FIXTURE';
+      global.fetch = jest.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
+        status: apiStatus, message: 'PRIVATE_ADDRESS_FIXTURE PRIVATE_KEY_FIXTURE',
+        details: reason ? [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', domain: 'googleapis.com', reason,
+          metadata: { consumer: 'PRIVATE_CUSTOMER_FIXTURE' } }] : [],
+      } }), { status })) as typeof fetch;
+      const tokens = new DeliveryQuoteTokenService();
+      const sign = jest.spyOn(tokens, 'signDistanceQuote');
+      const redis = createRedisMock();
+      const service = new DeliveryPricingService(createPrisma() as never, new GoogleRoutesClient(), tokens,
+        redis as never, createRateLimiterMock() as never);
+      const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => {});
+      await expect(service.createQuote({ locationId: LOCATION_ID, addressSnapshotJson: ADDRESS, scheduledFor: SCHEDULED_FOR }))
+        .rejects.toMatchObject({ status: 503, response: { code: 'DELIVERY_QUOTE_PROVIDER_UNAVAILABLE',
+          message: 'Delivery could not be confirmed right now. Please retry or choose pickup.' } });
+      const log = JSON.parse(warn.mock.calls[0][0] as string);
+      expect(log).toMatchObject({ provider_http_status: status, provider_status: apiStatus,
+        provider_error_reason: reason ?? null, provider_result: classification, failure_stage: 'routing' });
+      expect(JSON.stringify(log)).not.toMatch(/PRIVATE|Example Street|N5W|fingerprint|authorization|api-key/i);
+      expect(sign).not.toHaveBeenCalled(); expect(redis.setJson).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = previousFetch;
+      if (previousKey === undefined) delete process.env.GOOGLE_MAPS_ROUTES_API_KEY;
+      else process.env.GOOGLE_MAPS_ROUTES_API_KEY = previousKey;
+    }
   });
 });
