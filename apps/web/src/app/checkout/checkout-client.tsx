@@ -1075,23 +1075,6 @@ export function CheckoutClient() {
             <div className="quote-row">
               <span>
                 Delivery fee
-                {deliveryQuoteReady &&
-                deliveryQuote?.attribution === "Google Maps" ? (
-                  <small
-                    style={{
-                      display: "block",
-                      marginTop: 2,
-                      fontSize: 12,
-                      fontFamily: "sans-serif",
-                      fontWeight: 400,
-                      fontStyle: "normal",
-                      letterSpacing: "normal",
-                      color: "#1f1f1f",
-                    }}
-                  >
-                    Calculated using <span translate="no" style={{ whiteSpace: "nowrap" }}>Google Maps</span>
-                  </small>
-                ) : null}
               </span>
               <span>
                 {!deliveryQuoteReady ? (
