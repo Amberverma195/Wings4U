@@ -19,8 +19,10 @@ import { PrismaService } from "../../database/prisma.service";
 import { DeliveryQuoteVerifierService } from "../delivery-pricing/delivery-quote-verifier.service";
 import { normalizeDeliveryAddress } from "../delivery-pricing/delivery-address";
 import { allocateNextOrderNumber } from "../../database/order-number";
+import { lockOrderForLocation } from "../../database/order-row-lock";
 import { lockAndReadWalletBalanceCents } from "../../database/wallet-row-lock";
 import {
+  computePricing,
   getBuilderPriceDelta,
   getLunchAddonOptionIds,
   getSaladCustomization,
@@ -785,10 +787,11 @@ export class PosService {
         itemSubtotalCents - orderDiscountCents,
       );
       // Discounts/waivers affect price only, after geographic eligibility.
-      const deliveryFeeWaived = Boolean(deliveryQuote && settings.freeDeliveryThresholdCents != null &&
-        itemSubtotalCents >= settings.freeDeliveryThresholdCents);
-      const deliveryFeeCents = deliveryQuote && !deliveryFeeWaived ? deliveryQuote.delivery_fee_cents : 0;
-      const taxableSubtotalCents = discountedSubtotalCents + (settings.taxDeliveryFee ? deliveryFeeCents : 0);
+      const deliveryFeeWaived = false;
+      const deliveryFeeCents = deliveryQuote?.delivery_fee_cents ?? 0;
+      const taxableSubtotalCents =
+        (settings.discountsReduceTaxableBase === false ? itemSubtotalCents : discountedSubtotalCents) +
+        (settings.taxDeliveryFee ? deliveryFeeCents : 0);
       const taxCents = Math.max(
         0,
         Math.round((taxableSubtotalCents * settings.taxRateBps) / 10_000),
@@ -840,6 +843,7 @@ export class PosService {
       const initialStatus: OrderStatus = "PREPARING";
 
       const pricingSnapshot = {
+        discounts_reduce_taxable_base: settings.discountsReduceTaxableBase,
         item_subtotal_cents: itemSubtotalCents,
         item_discount_total_cents: 0,
         order_discount_total_cents: orderDiscountCents,
@@ -877,6 +881,8 @@ export class PosService {
           taxableSubtotalCents,
           taxCents,
           taxRateBps: settings.taxRateBps,
+          taxDeliveryFeeApplied: settings.taxDeliveryFee,
+          taxTipApplied: settings.taxTip,
           deliveryFeeCents,
           ...(deliveryAddress ? { addressSnapshotJson: {
             line1: deliveryAddress.line1, city: deliveryAddress.city, postal_code: deliveryAddress.postalCode,
@@ -1205,77 +1211,124 @@ export class PosService {
   }
 
   async applyManualDiscount(params: ApplyManualDiscountParams) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: params.orderId },
-    });
+    return this.prisma.$transaction(async tx => {
+      if (!(await lockOrderForLocation(tx, params.orderId, params.locationId))) {
+        throw new NotFoundException("Order not found at this location");
+      }
+      const order = await tx.order.findUnique({
+        where: { id: params.orderId },
+      });
 
-    if (!order) {
-      throw new NotFoundException("Order not found");
-    }
-    if (order.locationId !== params.locationId) {
-      throw new ForbiddenException("Order does not belong to this location");
-    }
-    if (order.status === "CANCELLED") {
-      throw new BadRequestException("Cannot apply discount to a cancelled order");
-    }
+      if (!order) {
+        throw new NotFoundException("Order not found");
+      }
+      if (order.locationId !== params.locationId) {
+        throw new ForbiddenException("Order does not belong to this location");
+      }
+      if (order.status === "CANCELLED") {
+        throw new BadRequestException("Cannot apply discount to a cancelled order");
+      }
 
-    // Create the discount record with attribution
-    const discount = await this.prisma.orderDiscount.create({
-      data: {
-        orderId: params.orderId,
-        discountType: "MANUAL",
-        discountAmountCents: params.discountAmountCents,
-        description: params.description ?? `Manual discount`,
-        appliedByUserId: params.actorUserId ?? null,
-        reasonText: params.reason,
-      },
-    });
+      // Manual food discounts cannot consume delivery charges, including on retries.
+      const remainingFoodCents = Math.max(0, order.itemSubtotalCents - order.itemDiscountTotalCents - order.orderDiscountTotalCents);
+      if (order.fulfillmentType === "DELIVERY" && params.discountAmountCents > remainingFoodCents) {
+        throw new BadRequestException("Manual discounts cannot exceed remaining food charges or waive delivery fees");
+      }
 
-    // Update order totals
-    const newDiscountTotal =
-      order.orderDiscountTotalCents + params.discountAmountCents;
-    const newFinalPayable = Math.max(
-      0,
-      order.finalPayableCents - params.discountAmountCents,
-    );
+      const snapshot = order.pricingSnapshotJson && typeof order.pricingSnapshotJson === "object" && !Array.isArray(order.pricingSnapshotJson)
+        ? order.pricingSnapshotJson : {};
+      if (order.fulfillmentType === "DELIVERY" && (
+        typeof snapshot.discounts_reduce_taxable_base !== "boolean" ||
+        order.netPaidAmountCents > 0 || order.walletAppliedCents > 0 ||
+        order.paymentStatusSummary !== "UNPAID"
+      )) {
+        throw new BadRequestException("Delivery discounts require a new unpaid order with a stored tax policy; historical or collected orders cannot be repriced");
+      }
+      const deliveryPricing = order.fulfillmentType === "DELIVERY" ? computePricing({
+        itemSubtotalCents: order.itemSubtotalCents,
+        itemDiscountTotalCents: order.itemDiscountTotalCents,
+        orderDiscountTotalCents: order.orderDiscountTotalCents + params.discountAmountCents,
+        deliveryFeeCents: order.deliveryFeeCents,
+        driverTipCents: order.driverTipCents,
+        walletAppliedCents: order.walletAppliedCents,
+      }, {
+        taxRateBps: order.taxRateBps,
+        taxDeliveryFee: order.taxDeliveryFeeApplied,
+        taxTip: order.taxTipApplied,
+        discountsReduceTaxableBase: snapshot.discounts_reduce_taxable_base === true,
+      }) : null;
 
-    await this.prisma.order.update({
-      where: { id: params.orderId },
-      data: {
-        orderDiscountTotalCents: newDiscountTotal,
-        finalPayableCents: newFinalPayable,
-      },
-    });
-
-    // Audit log — POS station discounts have no individual actor.
-    await this.prisma.adminAuditLog.create({
-      data: {
-        locationId: params.locationId,
-        actorUserId: params.actorUserId ?? null,
-        actorRoleSnapshot: params.actorUserId ? "STAFF" : "POS_STATION",
-        actionKey: "POS_MANUAL_DISCOUNT",
-        entityType: "ORDER",
-        entityId: params.orderId,
-        reasonText: params.reason,
-        payloadJson: {
-          discount_amount_cents: params.discountAmountCents,
-          description: params.description,
-          new_final_payable_cents: newFinalPayable,
+      // Create the discount record with attribution
+      const discount = await tx.orderDiscount.create({
+        data: {
+          orderId: params.orderId,
+          discountType: "MANUAL",
+          discountAmountCents: params.discountAmountCents,
+          description: params.description ?? `Manual discount`,
+          appliedByUserId: params.actorUserId ?? null,
+          reasonText: params.reason,
         },
-      },
-    });
+      });
 
-    return {
-      id: discount.id,
-      order_id: params.orderId,
-      discount_type: "MANUAL",
-      discount_amount_cents: params.discountAmountCents,
-      reason: params.reason,
-      description: discount.description,
-      applied_by_user_id: params.actorUserId ?? null,
-      applied_at: discount.appliedAt,
-      new_final_payable_cents: newFinalPayable,
-    };
+      // Update order totals
+      const newDiscountTotal =
+        order.orderDiscountTotalCents + params.discountAmountCents;
+      const newFinalPayable = deliveryPricing?.finalPayableCents ?? Math.max(
+        0,
+        order.finalPayableCents - params.discountAmountCents,
+      );
+
+      await tx.order.update({
+        where: { id: params.orderId },
+        data: {
+          orderDiscountTotalCents: newDiscountTotal,
+          finalPayableCents: newFinalPayable,
+          ...(deliveryPricing ? {
+            discountedSubtotalCents: deliveryPricing.discountedSubtotalCents,
+            taxableSubtotalCents: deliveryPricing.taxableSubtotalCents,
+            taxCents: deliveryPricing.taxCents,
+            pricingSnapshotJson: {
+              ...snapshot,
+              order_discount_total_cents: newDiscountTotal,
+              discounted_subtotal_cents: deliveryPricing.discountedSubtotalCents,
+              taxable_subtotal_cents: deliveryPricing.taxableSubtotalCents,
+              tax_cents: deliveryPricing.taxCents,
+              final_payable_cents: newFinalPayable,
+            },
+          } : {}),
+        },
+      });
+
+      // Audit log — POS station discounts have no individual actor.
+      await tx.adminAuditLog.create({
+        data: {
+          locationId: params.locationId,
+          actorUserId: params.actorUserId ?? null,
+          actorRoleSnapshot: params.actorUserId ? "STAFF" : "POS_STATION",
+          actionKey: "POS_MANUAL_DISCOUNT",
+          entityType: "ORDER",
+          entityId: params.orderId,
+          reasonText: params.reason,
+          payloadJson: {
+            discount_amount_cents: params.discountAmountCents,
+            description: params.description,
+            new_final_payable_cents: newFinalPayable,
+          },
+        },
+      });
+
+      return {
+        id: discount.id,
+        order_id: params.orderId,
+        discount_type: "MANUAL",
+        discount_amount_cents: params.discountAmountCents,
+        reason: params.reason,
+        description: discount.description,
+        applied_by_user_id: params.actorUserId ?? null,
+        applied_at: discount.appliedAt,
+        new_final_payable_cents: newFinalPayable,
+      };
+    });
   }
 
   async listStaff(locationId: string) {

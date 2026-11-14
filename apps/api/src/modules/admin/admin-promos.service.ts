@@ -242,6 +242,9 @@ export class AdminPromosService {
   constructor(private readonly prisma: PrismaService) {}
 
   private validatePromoPayload(data: CreateUpdatePromoPayload) {
+    if (data.discountType === "FREE_DELIVERY") {
+      throw new BadRequestException("Free delivery promotions are no longer available");
+    }
     const startsAt = data.startsAt ? new Date(data.startsAt) : null;
     const endsAt = data.endsAt ? new Date(data.endsAt) : null;
 
@@ -656,8 +659,8 @@ export class AdminPromosService {
 
     return {
       couponCode: publicCode,
-      enabled: promos.some((promo) => promo.archivedAt == null && promo.isActive),
-      freeDelivery: Boolean(freeDelivery && freeDelivery.archivedAt == null),
+      enabled: promos.some((promo) => promo.discountType !== "FREE_DELIVERY" && promo.archivedAt == null && promo.isActive),
+      freeDelivery: false,
       percentOff:
         percent && percent.archivedAt == null
           ? Number(percent.discountValue)
@@ -670,6 +673,9 @@ export class AdminPromosService {
   }
 
   async updateFirstOrderDeal(locationId: string, data: FirstOrderDealPayload) {
+    if (data.freeDelivery) {
+      throw new BadRequestException("Free delivery promotions are no longer available");
+    }
     const percentOff =
       data.percentOff == null ? null : Number(data.percentOff);
     const fixedAmountCents =

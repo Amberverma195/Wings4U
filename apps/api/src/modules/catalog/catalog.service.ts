@@ -225,6 +225,7 @@ export type CatalogMenuBasePayload = {
     delivery_fee_cents: number;
     tax_rate_bps: number;
     tax_delivery_fee: boolean;
+    discounts_reduce_taxable_base?: boolean;
     free_delivery_threshold_cents: number | null;
     minimum_delivery_subtotal_cents: number;
     delivery_disabled: boolean;
@@ -564,7 +565,8 @@ export class CatalogService {
         delivery_fee_cents: DELIVERY_BASE_FEE_CENTS,
         tax_rate_bps: settings?.taxRateBps ?? 1300,
         tax_delivery_fee: settings?.taxDeliveryFee ?? false,
-        free_delivery_threshold_cents: settings?.freeDeliveryThresholdCents ?? null,
+        discounts_reduce_taxable_base: settings?.discountsReduceTaxableBase ?? true,
+        free_delivery_threshold_cents: null,
         minimum_delivery_subtotal_cents: settings?.minimumDeliverySubtotalCents ?? 0,
         delivery_disabled: settings?.deliveryDisabled ?? false,
         delivery_available_from_minutes:

@@ -378,7 +378,7 @@ export class CartService {
 
     let deliveryFeeCents = 0;
     let deliveryFeeStatedCents = 0;
-    let deliveryFeeWaived = false;
+    const deliveryFeeWaived = false;
     let deliveryFeeIsEstimate = false;
     if (fulfillmentType === "DELIVERY") {
       const deliveryQuote = this.deliveryQuoteVerifier.verifyForDelivery({
@@ -407,11 +407,7 @@ export class CartService {
         });
       }
 
-      const waived =
-        settings.freeDeliveryThresholdCents != null &&
-        itemSubtotalCents >= settings.freeDeliveryThresholdCents;
-      deliveryFeeWaived = waived;
-      deliveryFeeCents = waived ? 0 : deliveryFeeStatedCents;
+      deliveryFeeCents = deliveryFeeStatedCents;
     }
 
     const policy: PricingPolicy = {
@@ -495,10 +491,6 @@ export class CartService {
 
       appliedPromoCodes.push(promoApplication.promoCode);
       promoDiscountCents = promoApplication.discountCents;
-      if (promoApplication.waivesDelivery) {
-        deliveryFeeWaived = true;
-        deliveryFeeCents = 0;
-      }
     }
 
     const firstOrderDeal = await this.promotionsService.evaluateFirstOrderDeal({
@@ -514,10 +506,6 @@ export class CartService {
     if (firstOrderDeal) {
       appliedPromoCodes.push(firstOrderDeal.promoCode);
       promoDiscountCents += firstOrderDeal.discountCents;
-      if (firstOrderDeal.waivesDelivery) {
-        deliveryFeeWaived = true;
-        deliveryFeeCents = 0;
-      }
     }
 
     appliedPromoCode = appliedPromoCodes.length

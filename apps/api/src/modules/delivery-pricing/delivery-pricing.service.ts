@@ -308,7 +308,7 @@ export class DeliveryPricingService {
     if (
       cached.within_delivery_radius &&
       (!Number.isInteger(cached.delivery_fee_cents) ||
-        cached.delivery_fee_cents < 0)
+        cached.delivery_fee_cents <= 0)
     ) {
       return null;
     }

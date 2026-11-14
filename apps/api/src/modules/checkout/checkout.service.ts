@@ -1057,7 +1057,7 @@ export class CheckoutService {
       });
 
       let deliveryFeeCents = 0;
-      let deliveryFeeWaived = false;
+      const deliveryFeeWaived = false;
       if (params.fulfillmentType === "DELIVERY") {
         if (
           settings.minimumDeliverySubtotalCents > 0 &&
@@ -1069,11 +1069,7 @@ export class CheckoutService {
             field: "fulfillment_type",
           });
         }
-        const waived =
-          settings.freeDeliveryThresholdCents != null &&
-          itemSubtotalCents >= settings.freeDeliveryThresholdCents;
-        deliveryFeeWaived = waived;
-        deliveryFeeCents = waived ? 0 : statedDeliveryFeeCents;
+        deliveryFeeCents = statedDeliveryFeeCents;
       }
 
       const driverTipCents = params.driverTipCents ?? 0;
@@ -1188,10 +1184,6 @@ export class CheckoutService {
           promoId: promoApplication.promoId,
           discountAmountCents: promoApplication.redemptionValueCents,
         });
-        if (promoApplication.waivesDelivery) {
-          deliveryFeeWaived = true;
-          deliveryFeeCents = 0;
-        }
       }
 
       const firstOrderDeal = await this.promotionsService.evaluateFirstOrderDeal({
@@ -1209,10 +1201,6 @@ export class CheckoutService {
         appliedPromoCodes.push(firstOrderDeal.promoCode);
         promoDiscountCents += firstOrderDeal.discountCents;
         promoRedemptions.push(...firstOrderDeal.redemptions);
-        if (firstOrderDeal.waivesDelivery) {
-          deliveryFeeWaived = true;
-          deliveryFeeCents = 0;
-        }
       }
 
       appliedPromoCode = appliedPromoCodes.length
@@ -1300,6 +1288,7 @@ export class CheckoutService {
       const estimatedReadyAt = new Date(Date.now() + prepMinutes * 60 * 1000);
 
       const pricingSnapshot = {
+        discounts_reduce_taxable_base: settings.discountsReduceTaxableBase,
         item_subtotal_cents: pricing.itemSubtotalCents,
         item_discount_total_cents: pricing.itemDiscountTotalCents,
         order_discount_total_cents: pricing.orderDiscountTotalCents,

@@ -35,6 +35,11 @@ function payload(overrides: Partial<DeliveryQuotePayload> = {}): DeliveryQuotePa
 }
 
 describe("delivery quote tokens", () => {
+  it.each([0, -1])("rejects a signed nonpositive fee (%i) for new delivery", fee => {
+    const service = new DeliveryQuoteTokenService();
+    expect(() => service.verifyDistanceQuote(service.signDistanceQuote(payload({ delivery_fee_cents: fee }))))
+      .toThrow("malformed or invalid");
+  });
   const originalEnabled = process.env.DELIVERY_DISTANCE_PRICING_ENABLED;
   let tokens: DeliveryQuoteTokenService;
   let verifier: DeliveryQuoteVerifierService;

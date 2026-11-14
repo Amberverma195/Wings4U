@@ -27,6 +27,7 @@ const quote = { delivery_quote_token: 'signed-eligibility', delivery_fee_cents: 
   expires_at: '2026-11-08T20:00:00Z', attribution: 'Google Maps' };
 const response = (data, ok = true) => ({ ok, json: async () => ok ? { data } : { errors: [{ message: 'Outside our 20 km delivery area' }] } });
 let renderer;
+let discountsReduceTaxableBase = true;
 const text = node => Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' && node ? text(node.props?.children ?? node.children) : String(node ?? '');
 const button = label => renderer.root.findAllByType('button').find(node => text(node.props.children).trim() === label);
 const click = async label => { const node = button(label); if (!node) throw new Error(`Missing ${label}; buttons: ${renderer.root.findAllByType('button').map(n => text(n.props.children)).join(' | ')}`); expect(node.props.disabled).not.toBe(true); await act(async () => node.props.onClick()); };
@@ -39,7 +40,9 @@ beforeEach(async () => {
   apiFetch.mockReset().mockImplementation(async (url, init) => {
     if (url.includes('/auth/status')) return response({ authenticated: true });
     if (url.includes('/menu?')) return response({ location: { name: 'Fixture', tax_rate_bps: 1300,
-      tax_delivery_fee: false, delivery_currently_available: true }, categories: [{ id: 'ordinary', name: 'Menu', slug: 'burgers',
+      tax_delivery_fee: false, free_delivery_threshold_cents: 0,
+      discounts_reduce_taxable_base: discountsReduceTaxableBase,
+      delivery_currently_available: true }, categories: [{ id: 'ordinary', name: 'Menu', slug: 'burgers',
       items: [{ id: 'burger', slug: 'burger', name: 'Burger', base_price_cents: 1000, modifier_groups: [], removable_ingredients: [], stock_status: 'NORMAL', is_available: true }] }] });
     if (url === '/api/v1/pos/delivery/quote') return response(quote);
     if (url === '/api/v1/pos/orders' && init?.method === 'POST') return response({ order_number: 1, final_payable_cents: 2830 });
@@ -53,6 +56,7 @@ beforeEach(async () => {
   await input(node => node.props.autoComplete === 'postal-code', 'N6K 1A1');
 });
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null;
+  discountsReduceTaxableBase = true;
   jest.useRealTimers(); delete global.window; delete global.document; });
 
 test('phone delivery requires verification, shows $17, and submits the bound address/token', async () => {
@@ -81,4 +85,19 @@ test('a rejected route prevents order placement and staff can switch to pickup',
   expect(JSON.stringify(renderer.toJSON())).toContain('Outside our 20 km');
   await click('To-Go');
   expect(button('Exact Amount').props.disabled).toBe(false);
+});
+
+test.each([true, false])('POS discount estimate honors taxable-base policy %s', async reduce => {
+  // Reload the menu to exercise the policy field supplied by the catalog.
+  discountsReduceTaxableBase = reduce;
+  await act(async () => renderer.unmount());
+  await act(async () => { renderer = create(React.createElement(PosClient)); });
+  await click('New Order');
+  await act(async () => renderer.root.findByProps({ className: 'pos-item-card' }).props.onClick());
+  await click('Staff');
+  await act(async () => renderer.root.findAllByProps({ className: 'pos-staff-opt' })
+    .find(node => text(node.props.children).includes('Apply Discount')).props.onClick());
+  await input(node => node.props.placeholder === 'e.g. 10', '50');
+  await click('Apply Discount');
+  expect(JSON.stringify(renderer.toJSON())).toContain(reduce ? '$5.65' : '$6.30');
 });

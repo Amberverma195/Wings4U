@@ -82,6 +82,15 @@ function getCacheInternals(service: DeliveryPricingService): CacheInternals {
 }
 
 describe("DeliveryPricingService", () => {
+  it("recomputes a stale zero-fee cache entry instead of signing free delivery", async () => {
+    const google = { computeDrivingDistanceMetres: jest.fn().mockResolvedValue(6000) };
+    const redis = createRedisMock({ getJson: jest.fn().mockResolvedValue({ within_delivery_radius: true, delivery_fee_cents: 0 }) });
+    const service = new DeliveryPricingService(createPrisma({ freeDeliveryThresholdCents: 0 }) as never,
+      google as never, new DeliveryQuoteTokenService(), redis as never, createRateLimiterMock() as never);
+    expect(await service.createQuote({ locationId: LOCATION_ID, addressSnapshotJson: ADDRESS, scheduledFor: SCHEDULED_FOR }))
+      .toMatchObject({ delivery_fee_cents: 1000 });
+    expect(google.computeDrivingDistanceMetres).toHaveBeenCalledTimes(1);
+  });
   const originalEnabled = process.env.DELIVERY_DISTANCE_PRICING_ENABLED;
 
   beforeEach(() => {

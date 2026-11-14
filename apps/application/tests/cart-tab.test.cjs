@@ -107,7 +107,7 @@ test('pickup has no delivery fee row', async () => {
   await mount(); await act(async () => jest.advanceTimersByTime(250));
   expect(renderedText(renderer.toJSON())).not.toContain('Delivery fee');
 });
-test.each(['pending', 'unavailable', 'estimated', 'confirmed', 'coupon', 'threshold', 'waived-zero'])('cart delivery fee presentation: %s', async mode => {
+test.each(['pending', 'unavailable', 'estimated', 'confirmed', 'coupon', 'large-order'])('cart delivery fee presentation: %s', async mode => {
   mockCart.fulfillmentType = 'DELIVERY';
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation(async (url, init) => {
@@ -115,10 +115,10 @@ test.each(['pending', 'unavailable', 'estimated', 'confirmed', 'coupon', 'thresh
     if (mode === 'pending') return new Promise(() => {});
     if (mode === 'unavailable') throw new Error('Quote unavailable');
     return { data: { item_subtotal_cents: 1000, tax_cents: 130, final_payable_cents: 1905, lines: [],
-      delivery_fee_cents: ['coupon', 'threshold', 'waived-zero'].includes(mode) ? 0 : 775,
-      delivery_fee_stated_cents: mode === 'waived-zero' ? 0 : 775,
-      delivery_fee_waived: ['coupon', 'threshold', 'waived-zero'].includes(mode), delivery_fee_is_estimate: mode !== 'confirmed',
-      applied_promo_code: mode === 'coupon' ? 'FREEDEL' : undefined } };
+      delivery_fee_cents: 1000,
+      delivery_fee_stated_cents: 1000,
+      delivery_fee_waived: false, delivery_fee_is_estimate: mode !== 'confirmed',
+      applied_promo_code: mode === 'coupon' ? 'FOOD10' : undefined } };
   });
   await mount(); await act(async () => jest.advanceTimersByTime(250));
   const output = renderedText(renderer.toJSON());
@@ -126,12 +126,9 @@ test.each(['pending', 'unavailable', 'estimated', 'confirmed', 'coupon', 'thresh
   if (mode === 'pending' || mode === 'unavailable') {
     expect(output).not.toContain('Delivery fee');
     expect(output).not.toContain('Free');
-  } else if (['estimated', 'confirmed', 'waived-zero'].includes(mode)) {
+  } else {
     expect(output).toContain('From $8 — calculated at checkout');
     expect(output).not.toContain('Free');
-  } else {
-    expect(output).toContain('From $8 Free');
-    expect(renderer.root.findAllByType('Text').some(node => node.props.style?.textDecorationLine === 'line-through')).toBe(true);
   }
 });
 

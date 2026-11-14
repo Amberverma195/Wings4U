@@ -39,6 +39,21 @@ beforeEach(() => {
   http.apiFetch.mockImplementation(async url => ({ ok: true, json: async () => ({ data: url.includes('/menu') ? menu : quote }) }));
 });
 
+test.each([true, false])('cart distinguishes estimated and verified backend totals (estimate=%s)', async estimated => {
+  mockSession = { ...mockSession, loaded: true, authenticated: true, user: { id: 'customer-a' } };
+  saved.fetchSavedCart.mockResolvedValue({ ...empty, items: [item], fulfillment_type: 'DELIVERY' });
+  const priced = { ...quote, delivery_fee_cents: 800, delivery_fee_is_estimate: estimated,
+    final_payable_cents: 3616, tax_cents: 416 };
+  const original = http.apiJson.getMockImplementation();
+  http.apiJson.mockImplementation((url, options) => url === '/api/v1/cart/quote'
+    ? Promise.resolve({ data: priced }) : original(url, options));
+  await act(async () => { renderer = create(React.createElement(Root, { Page: CartPage })); });
+  await act(async () => jest.advanceTimersByTime(800));
+  const total = renderer.root.findAllByProps({ className: 'quote-row quote-total' })[0];
+  expect(total.findAllByType('span')[0].props.children).toBe(estimated ? 'Estimated total' : 'Total');
+  expect(total.findAllByType('span')[1].props.children).toBe('$36.16');
+});
+
 test('successful checkout clears the cart even if the redundant cleanup request fails', async () => {
   mockSession = { ...mockSession, loaded: true, authenticated: true, profileComplete: true,
     user: { id: 'customer-a', displayName: 'Customer', phone: '5195550123' } };

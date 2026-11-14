@@ -1,6 +1,14 @@
 # Google Routes production investigation — November 9, 2026
 
-The production incident is **not yet resolved**. The supplied runtime event confirms a Google HTTP request rejection, but the deployed client discarded the HTTP status and Google error details needed to identify the exact cause. No speculative request, pricing, boundary, or production-configuration change was made.
+## Resolution update — November 9, 2026
+
+The operator reports that correcting the `GOOGLE_MAPS_ROUTES_API_KEY` value in Railway restored production delivery quotes. Supplied evidence: checkout displays a Google Maps-calculated $8.00 delivery fee, and `delivery_route.success` records `provider: google_routes`, `calculated_fee_cents: 800`, and `latency_ms: 298`. No credential value is recorded here. The earlier failing request's exact Google HTTP status and structured reason remain unknown.
+
+The investigation below is a historical record of the evidence available before that correction. Its unresolved-status statements, local-change status, and proposed deployment/reproduction steps describe that earlier investigation, not current operational instructions. The diagnostic update was subsequently committed as `067e32d37a12cc825fecd0389bdc8eaeea16a0ce`; retain its sanitized logging. No additional production request was made during this cleanup audit.
+
+## Original investigation
+
+At the time of investigation, the production incident was **not yet resolved**. The supplied runtime event confirmed a Google HTTP request rejection, but the deployed client discarded the HTTP status and Google error details needed to identify the exact cause. No speculative request, pricing, boundary, or production-configuration change was made.
 
 Evidence:
 

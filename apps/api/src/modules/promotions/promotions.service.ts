@@ -2,7 +2,7 @@ import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { formatUsdFromCents } from "../../common/utils/money";
 import { PrismaService } from "../../database/prisma.service";
-import { canWaiveDelivery, DELIVERY_CAP_MESSAGE, isPromoScheduledNow, PROMO_SCHEDULE_MESSAGE } from './promotion-schedule';
+import { isPromoScheduledNow, PROMO_SCHEDULE_MESSAGE } from './promotion-schedule';
 import {
   FIRST_ORDER_DEAL_CODE_PREFIX,
   FIRST_ORDER_DEAL_KINDS,
@@ -338,7 +338,7 @@ export class PromotionsService {
     });
 
     const timezone = await this.locationTimezone(this.prisma, locationId);
-    const serializedPromos = promos.filter(promo => isPromoScheduledNow(promo, now, timezone)).map((promo) => serializePromo(promo));
+    const serializedPromos = promos.filter(promo => promo.discountType !== "FREE_DELIVERY" && isPromoScheduledNow(promo, now, timezone)).map((promo) => serializePromo(promo));
     if (!userId) {
       return serializedPromos;
     }
@@ -367,7 +367,7 @@ export class PromotionsService {
     });
     const firstOrderDeal = serializeFirstOrderDealPromo(
       locationId,
-      firstOrderPromos.filter(promo => isPromoScheduledNow(promo, now, timezone)),
+      firstOrderPromos.filter(promo => promo.discountType !== "FREE_DELIVERY" && isPromoScheduledNow(promo, now, timezone)),
     );
 
     return firstOrderDeal
@@ -497,7 +497,7 @@ export class PromotionsService {
 
     let discountCents = 0;
     let redemptionValueCents = 0;
-    let waivesDelivery = false;
+    const waivesDelivery = false;
 
     if (promo.discountType === "PERCENT") {
       discountCents = Math.floor(
@@ -511,23 +511,11 @@ export class PromotionsService {
       );
       redemptionValueCents = discountCents;
     } else if (promo.discountType === "FREE_DELIVERY") {
-      if (params.fulfillmentType !== "DELIVERY") {
-        throw new UnprocessableEntityException({
-          message: "This promo code is only valid for delivery orders",
-          field: "promo_code",
-        });
-      }
-      if (params.deliveryFeeCents <= 0) {
-        throw new UnprocessableEntityException({
-          message: "Delivery is already free for this order",
-          field: "promo_code",
-        });
-      }
-      if (!canWaiveDelivery(params.deliveryFeeCents, promo.maxDiscountCents)) {
-        throw new UnprocessableEntityException({ message: DELIVERY_CAP_MESSAGE, field: 'promo_code' });
-      }
-      waivesDelivery = true;
-      redemptionValueCents = params.deliveryFeeCents;
+      throw new UnprocessableEntityException({
+        code: "FREE_DELIVERY_DISABLED",
+        message: "Free delivery promotions are no longer available",
+        field: "promo_code",
+      });
     } else if (promo.discountType === "BXGY") {
       discountCents = computeBxgyDiscountCents(promo, eligible.lines);
       if (discountCents <= 0) {
@@ -654,7 +642,7 @@ export class PromotionsService {
       eligible.subtotalCents - (params.existingDiscountCents ?? 0),
     );
     let discountCents = 0;
-    let waivesDelivery = false;
+    const waivesDelivery = false;
     const redemptions: EvaluatedFirstOrderDeal["redemptions"] = [];
     let unmetMinimum: number | null = null;
     let rejectedTargets = false;
@@ -677,19 +665,7 @@ export class PromotionsService {
       }
 
       if (promo.discountType === "FREE_DELIVERY") {
-        if (params.fulfillmentType !== "DELIVERY" || params.deliveryFeeCents <= 0) {
-          deliveryRejection = params.fulfillmentType !== 'DELIVERY' ? 'This promo code is only valid for delivery orders' : 'Delivery is already free for this order';
-          continue;
-        }
-        if (!canWaiveDelivery(params.deliveryFeeCents, promo.maxDiscountCents)) {
-          deliveryRejection = DELIVERY_CAP_MESSAGE;
-          continue;
-        }
-        waivesDelivery = true;
-        redemptions.push({
-          promoId: promo.id,
-          discountAmountCents: params.deliveryFeeCents,
-        });
+        deliveryRejection = "Free delivery promotions are no longer available";
         continue;
       }
 

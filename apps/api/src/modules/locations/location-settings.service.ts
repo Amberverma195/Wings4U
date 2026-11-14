@@ -184,6 +184,9 @@ export class LocationSettingsService {
   }
 
   async updateSettings(locationId: string, data: Record<string, any>, actorUserId: string) {
+    if (data.freeDeliveryThresholdCents != null || data.free_delivery_threshold_cents != null) {
+      throw new BadRequestException("Free delivery is disabled; delivery fees cannot be waived");
+    }
     if (
       Object.prototype.hasOwnProperty.call(data, "deliveryFeeCents") ||
       Object.prototype.hasOwnProperty.call(data, "delivery_fee_cents")

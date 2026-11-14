@@ -8,6 +8,7 @@ import { PromotionsService } from '../promotions/promotions.service';
 import { firstOrderDealCode } from '../promotions/first-order-deal';
 import { DeliveryQuoteVerifierService } from '../delivery-pricing/delivery-quote-verifier.service';
 import { DeliveryQuoteTokenService } from '../delivery-pricing/delivery-quote-token.service';
+import { calculateDeliveryFeeCents } from '../delivery-pricing/delivery-pricing.constants';
 
 describe('authoritative coupon pricing through real quote and checkout services', () => {
   const stop = new Error('STOP_AT_MOCK_ORDER_WRITE');
@@ -81,6 +82,38 @@ describe('authoritative coupon pricing through real quote and checkout services'
     };
   }
 
+  it.each([2000, 4000, 8000, 20000, 50000].flatMap(subtotal =>
+    [0, 4951, 8000, 10000, 20000].flatMap(metres => [true, false].map(taxDelivery => ({ subtotal, metres, taxDelivery })))))
+    ('quote/checkout persist $subtotal cents at $metres m with delivery tax=$taxDelivery and no threshold waiver', async row => {
+      const fee = calculateDeliveryFeeCents(row.metres)!;
+      const f = fixture('PERCENT', { onlyParty: true, noCoupon: true, delivery: true,
+        fee, standardFreeThreshold: 4000, taxDelivery: row.taxDelivery });
+      f.party.basePriceCents = row.subtotal;
+      const tax = Math.round((row.subtotal + (row.taxDelivery ? fee : 0)) * .13);
+      const total = row.subtotal + fee + tax;
+      expect(await f.quote()).toMatchObject({ delivery_fee_cents: fee, delivery_fee_waived: false,
+        tax_cents: tax, final_payable_cents: total });
+      await expect(f.place()).rejects.toBe(stop);
+      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        deliveryFeeCents: fee, taxCents: tax, finalPayableCents: total,
+        pricingSnapshotJson: expect.objectContaining({ delivery_fee_cents: fee, final_payable_cents: total,
+          delivery_pricing: expect.objectContaining({ delivery_fee_waived: false }) }),
+      }) }));
+    });
+
+  it.each(['PERCENT', 'FIXED_AMOUNT'])('food %s discounts retain the delivery charge exactly once', async type => {
+    const f = fixture(type, { delivery: true, fee: 1000, standardFreeThreshold: 0, taxDelivery: true });
+    const discount = type === 'PERCENT' ? 150 : 1500;
+    const tax = Math.round((10500 - discount + 1000) * .13);
+    const total = 10500 - discount + 1000 + tax;
+    expect(await f.quote()).toMatchObject({ delivery_fee_cents: 1000, promo_discount_cents: discount,
+      tax_cents: tax, final_payable_cents: total });
+    await expect(f.place()).rejects.toBe(stop);
+    expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      deliveryFeeCents: 1000, orderDiscountTotalCents: discount, taxCents: tax, finalPayableCents: total,
+    }) }));
+  });
+
   it.each([
     { type: 'FREE_DELIVERY', first: false, standardFreeThreshold: 0 },
     { type: 'FREE_DELIVERY', first: true, standardFreeThreshold: 0 },
@@ -109,8 +142,6 @@ describe('authoritative coupon pricing through real quote and checkout services'
     { type: 'PERCENT', party: 'party-100-wings', discount: 150, subtotal: 13500, tax: 1736, total: 15086 },
     { type: 'PERCENT', first: true, discount: 150, subtotal: 10500, tax: 1346, total: 11696 },
     { type: 'FIXED_AMOUNT', first: true, discount: 1500, subtotal: 10500, tax: 1170, total: 10170 },
-    { type: 'FREE_DELIVERY', delivery: true, discount: 0, subtotal: 10500, tax: 1365, total: 11865 },
-    { type: 'FREE_DELIVERY', delivery: true, first: true, discount: 0, subtotal: 10500, tax: 1365, total: 11865 },
     { type: 'PERCENT', taxDiscount: false, discount: 150, subtotal: 10500, tax: 1365, total: 11715 },
   ])('$type first=$first delivery=$delivery discounts eligible merchandise by $discount with quote/checkout parity', async row => {
     const f = fixture(row.type, row);
@@ -138,11 +169,11 @@ describe('authoritative coupon pricing through real quote and checkout services'
     await expect(f.place()).rejects.toBe(stop);
     expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ orderDiscountTotalCents: 300 }) }));
   });
-  it('standard non-promotional free-delivery threshold still includes the entire merchandise amount', async () => {
+  it('legacy threshold never waives the verified delivery fee', async () => {
     const f = fixture('PERCENT', { delivery: true, standardFreeThreshold: 10000 });
-    expect(await f.quote()).toMatchObject({ delivery_fee_cents: 0, promo_discount_cents: 150 });
+    expect(await f.quote()).toMatchObject({ delivery_fee_cents: 500, promo_discount_cents: 150 });
     await expect(f.place()).rejects.toBe(stop);
-    expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryFeeCents: 0, orderDiscountTotalCents: 150 }) }));
+    expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryFeeCents: 500, orderDiscountTotalCents: 150 }) }));
   });
   it('coupon and loyalty redemption stacking protection remains enforced', async () => {
     const f = fixture('PERCENT');
@@ -182,17 +213,9 @@ describe('authoritative coupon pricing through real quote and checkout services'
     { fee: 500, cap: 200, allowed: false }, { fee: 0, cap: 500, allowed: false }, { fee: 750, cap: 1000, allowed: true },
   ].map(row => ({ first, ...row }))))('free-delivery parity first=$first fee=$fee cap=$cap allowed=$allowed', async ({ first, fee, cap, allowed }) => {
     const f = fixture('FREE_DELIVERY', { first, delivery: true, fee, cap });
-    if (allowed) {
-      expect(await f.quote()).toMatchObject({ delivery_fee_stated_cents: fee, delivery_fee_cents: 0, delivery_fee_waived: true,
-        promo_discount_cents: 0, tax_cents: 1365, final_payable_cents: 11865 });
-      await expect(f.place()).rejects.toBe(stop);
-      expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryFeeCents: 0,
-        orderDiscountTotalCents: 0, taxCents: 1365, finalPayableCents: 11865 }) }));
-    } else {
-      await expect(f.quote()).rejects.toThrow(fee ? 'cannot cover the delivery fee' : 'already free');
-      await expect(f.place()).rejects.toThrow(fee ? 'cannot cover the delivery fee' : 'already free');
-      expect(f.db.order.create).not.toHaveBeenCalled();
-    }
+    await expect(f.quote()).rejects.toThrow('no longer available');
+    await expect(f.place()).rejects.toThrow('no longer available');
+    expect(f.db.order.create).not.toHaveBeenCalled();
   });
   it.each([
     { additionalFirst: ['PERCENT'] as Array<'PERCENT' | 'FIXED_AMOUNT'>, discount: 150, tax: 1411, total: 12261 },
@@ -206,18 +229,11 @@ describe('authoritative coupon pricing through real quote and checkout services'
     expect(f.db.order.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryFeeCents: 500,
       orderDiscountTotalCents: row.discount, taxCents: row.tax, finalPayableCents: row.total }) }));
   });
-  it.each([false, true])('accepted waiver records the entire actual fee (first=%s) through mocked Checkout writes', async first => {
+  it.each([false, true])('disabled delivery offers never create a redemption (first=%s)', async first => {
     const f = fixture('FREE_DELIVERY', { first, delivery: true, fee: 750, cap: 1000, taxDelivery: true });
-    expect(await f.quote()).toMatchObject({ delivery_fee_cents: 0, promo_discount_cents: 0, tax_cents: 1365, final_payable_cents: 11865 });
-    f.db.order.create.mockResolvedValue({ id: 'order' } as never);
-    const redemption = jest.fn().mockResolvedValue({});
-    Object.assign(f.db, { orderStatusEvent: { create: jest.fn().mockResolvedValue({}) }, orderItem: { create: jest.fn().mockResolvedValue({ id: 'line' }) },
-      orderItemModifier: { create: jest.fn().mockResolvedValue({}) }, orderItemWingConfig: { create: jest.fn().mockResolvedValue({}) }, orderItemFlavour: { create: jest.fn().mockResolvedValue({}) } });
-    Object.assign(f.db.promoRedemption, { create: redemption }); Object.assign(f.db.promoCode, { update: jest.fn().mockResolvedValue({}) });
-    Object.assign(f.db.checkoutIdempotencyKey, { update: jest.fn().mockRejectedValue(stop) });
-    await expect(f.place()).rejects.toBe(stop);
-    expect(redemption).toHaveBeenCalledTimes(1);
-    expect(redemption).toHaveBeenCalledWith({ data: { promoCodeId: 'promo', orderId: 'order', customerUserId: 'customer', discountAmountCents: 750 } });
+    await expect(f.quote()).rejects.toThrow('no longer available');
+    await expect(f.place()).rejects.toThrow('no longer available');
+    expect(f.db.order.create).not.toHaveBeenCalled();
   });
   it('first-order cap rejection never creates a delivery redemption while valid merchandise redemptions persist', async () => {
     const f = fixture('FREE_DELIVERY', { first: true, delivery: true, fee: 500, cap: 200, additionalFirst: ['PERCENT', 'FIXED_AMOUNT'] });

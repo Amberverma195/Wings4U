@@ -337,18 +337,16 @@ test('removing a tip hides the previous breakdown until the new total is confirm
   expect(place().props.disabled).toBe(false);
 });
 
-test.each(['exact', 'coupon', 'threshold'])('checkout displays the current backend delivery fee: %s', async mode => {
+test.each([2000, 4000, 8000, 20000, 50000])('checkout displays backend paid delivery at subtotal %i', async subtotal => {
   const original = apiJson.getMockImplementation();
   apiJson.mockImplementation(async (url, init) => url === '/api/v1/cart/quote' ? { data: {
-    ...confirmedQuote(JSON.parse(init.body)), delivery_fee_waived: mode !== 'exact', delivery_fee_cents: mode === 'exact' ? 675 : 0,
-    applied_promo_code: mode === 'coupon' ? 'FREEDEL' : undefined,
+    ...confirmedQuote(JSON.parse(init.body)), item_subtotal_cents: subtotal,
+    delivery_fee_waived: false, delivery_fee_cents: 1000, delivery_fee_stated_cents: 1000,
+    applied_promo_code: 'FOOD10',
   } } : original(url, init));
   await settle();
-  if (mode === 'exact') expect(summary('Delivery')).toBe('$6.75');
-  else {
-    expect(text(renderer.toJSON())).toContain('$6.75 Free');
-    expect(renderer.root.findAllByType('Text').some(node => node.props.style?.textDecorationLine === 'line-through' && text(node).includes('$6.75'))).toBe(true);
-  }
+  expect(summary('Delivery')).toBe('$10.00');
+  expect(text(renderer.toJSON())).not.toContain('Free');
   expect(quoteRequests().map(call => JSON.parse(call[1].body)).every(body => body.delivery_quote_token)).toBe(true);
 });
 

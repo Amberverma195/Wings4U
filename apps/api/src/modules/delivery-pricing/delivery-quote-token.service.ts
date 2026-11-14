@@ -35,7 +35,7 @@ function isDeliveryQuotePayload(value: unknown): value is DeliveryQuotePayload {
     typeof payload.address_fingerprint === "string" &&
     /^[a-f0-9]{64}$/.test(payload.address_fingerprint) &&
     Number.isInteger(payload.delivery_fee_cents) &&
-    Number(payload.delivery_fee_cents) >= 0 &&
+    Number(payload.delivery_fee_cents) > 0 &&
     payload.within_delivery_radius === true &&
     Number.isInteger(payload.issued_at) &&
     Number.isInteger(payload.expires_at)

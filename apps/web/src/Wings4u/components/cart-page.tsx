@@ -1022,7 +1022,7 @@ export function CartPage() {
                     </div>
                   )}
                   <div className="quote-row quote-total">
-                    <span>{quote ? "Total" : "Est. Subtotal"}</span>
+                    <span>{quote ? (quote.delivery_fee_is_estimate ? "Estimated total" : "Total") : "Est. Subtotal"}</span>
                     <span>{cents(quote?.final_payable_cents ?? fallbackSubtotal)}</span>
                   </div>
 

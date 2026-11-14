@@ -460,7 +460,9 @@ export function PromoModal({ promoId, onClose, onSaved }: Props) {
               >
                 <option value="PERCENT">Percentage off</option>
                 <option value="FIXED_AMOUNT">Fixed amount off</option>
-                <option value="FREE_DELIVERY">Free delivery</option>
+                {form.discountType === "FREE_DELIVERY" && (
+                  <option value="FREE_DELIVERY" disabled>Free delivery (disabled)</option>
+                )}
                 <option value="BXGY">Free item / Buy X Get Y</option>
               </select>
             </div>

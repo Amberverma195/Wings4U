@@ -16,6 +16,7 @@ import {
   type PaymentSummary,
 } from "@/components/payment-collection";
 import { CalendarClock, X } from "lucide-react";
+import { DeliveryFeeRow } from "./delivery-fee-row";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -1960,11 +1961,7 @@ function KdsOrderDetailModal({ order, session, onRefresh, onClose }: { order: Kd
                   <span>Discounts</span><span>-{cents(order.item_discount_total_cents + order.order_discount_total_cents)}</span>
                 </div>
               )}
-              {order.delivery_fee_cents > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-                  <span>Delivery Fee</span><span>{cents(order.delivery_fee_cents)}</span>
-                </div>
-              )}
+              <DeliveryFeeRow order={order} />
               {order.tax_cents > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
                   <span>Tax</span><span>{cents(order.tax_cents)}</span>

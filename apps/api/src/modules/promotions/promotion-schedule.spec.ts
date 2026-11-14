@@ -85,11 +85,11 @@ describe('coupon schedules use restaurant-local server evaluation time', () => {
     const f = fixture('FREE_DELIVERY');
     f.firstRows.push({ ...f.firstRows[0], id: 'percent', code: firstOrderDealCode('store', 'PERCENT'), discountType: 'PERCENT', ...restriction([2]) },
       { ...f.firstRows[0], id: 'fixed', code: firstOrderDealCode('store', 'FIXED_AMOUNT'), discountType: 'FIXED_AMOUNT', discountValue: 300 });
-    expect(await f.first()).toMatchObject({ discountCents: 300, waivesDelivery: true,
-      redemptions: [{ promoId: 'first', discountAmountCents: 500 }, { promoId: 'fixed', discountAmountCents: 300 }] });
+    expect(await f.first()).toMatchObject({ discountCents: 300, waivesDelivery: false,
+      redemptions: [{ promoId: 'fixed', discountAmountCents: 300 }] });
     Object.assign(f.promo, restriction([2]));
     const offers = await f.service.getActivePromos('store', 'customer');
-    expect(offers).toHaveLength(1); expect(offers[0]).toMatchObject({ code: 'FIRSTCUSTOM', benefitSummary: 'Free delivery + $3.00 off' });
+    expect(offers).toHaveLength(1); expect(offers[0]).toMatchObject({ code: 'FIRSTCUSTOM', benefitSummary: '$3.00 off' });
   });
   it('recognizes a custom first-order code even when its schedule/status is unavailable, then rejects eligibility', async () => {
     const f = fixture(); Object.assign(f.firstRows[0], { ...restriction([2]), isActive: false });
@@ -114,13 +114,10 @@ describe('free-delivery cap accounting', () => {
     { fee: 500, cap: 200, allowed: false }, { fee: 0, cap: 500, allowed: false }, { fee: 750, cap: 1000, allowed: true },
   ].map(row => ({ first, ...row }))))('first=$first fee=$fee cap=$cap => $allowed', async ({ first, fee, cap, allowed }) => {
     const f = fixture('FREE_DELIVERY', cap); f.params.deliveryFeeCents = fee;
-    if (allowed) expect(await (first ? f.first() : f.run())).toMatchObject(first
-      ? { discountCents: 0, waivesDelivery: true, redemptions: [{ promoId: 'first', discountAmountCents: fee }] }
-      : { discountCents: 0, waivesDelivery: true, redemptionValueCents: fee });
-    else await expect(first ? f.first() : f.run()).rejects.toThrow(fee === 0 ? 'already free' : DELIVERY_CAP_MESSAGE);
+    await expect(first ? f.first() : f.run()).rejects.toThrow('no longer available');
   });
   it.each([false, true])('pickup never receives free delivery (first=%s)', async first => {
-    const f = fixture('FREE_DELIVERY'); f.params.fulfillmentType = 'PICKUP'; await expect(first ? f.first() : f.run()).rejects.toThrow('only valid for delivery');
+    const f = fixture('FREE_DELIVERY'); f.params.fulfillmentType = 'PICKUP'; await expect(first ? f.first() : f.run()).rejects.toThrow('no longer available');
   });
   it.each(['PERCENT', 'FIXED_AMOUNT'])('a rejected first-order delivery component preserves valid %s and records only its benefit', async type => {
     const f = fixture('FREE_DELIVERY', 200); f.firstRows.push({ ...f.firstRows[0], id: 'other', code: firstOrderDealCode('store', type as never),

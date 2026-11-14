@@ -52,6 +52,7 @@ type MenuResponse = {
     timezone?: string;
     tax_rate_bps?: number;
     tax_delivery_fee?: boolean;
+    discounts_reduce_taxable_base?: boolean;
     free_delivery_threshold_cents?: number | null;
     delivery_currently_available?: boolean;
     delivery_unavailable_reason?: string | null;
@@ -915,13 +916,13 @@ function PosShell({ onLocked }: { onLocked: () => void }) {
   }, [appliedDiscount, subtotalCents]);
 
   const taxRateBps = menu?.location.tax_rate_bps ?? 1300;
-  const deliveryFeeWaived = menu?.location.free_delivery_threshold_cents != null &&
-    subtotalCents >= menu.location.free_delivery_threshold_cents;
-  const deliveryFeeCents = fulfillmentType === "DELIVERY" && deliveryReady && !deliveryFeeWaived
+  const deliveryFeeCents = fulfillmentType === "DELIVERY" && deliveryReady
     ? deliveryQuote?.delivery_fee_cents ?? 0 : 0;
   const subtotalAfterDiscount = subtotalCents - discountCents;
+  const taxableItemSubtotal = menu?.location.discounts_reduce_taxable_base === false
+    ? subtotalCents : subtotalAfterDiscount;
   const estimatedTaxCents = Math.round(
-    ((subtotalAfterDiscount + (menu?.location.tax_delivery_fee ? deliveryFeeCents : 0)) * taxRateBps) / 10_000,
+    ((taxableItemSubtotal + (menu?.location.tax_delivery_fee ? deliveryFeeCents : 0)) * taxRateBps) / 10_000,
   );
   const estimatedTotalCents = subtotalAfterDiscount + deliveryFeeCents + estimatedTaxCents;
   const remainingBalanceCents = Math.max(

@@ -61,9 +61,13 @@ describe('Party Special coupon exclusions across every supported promo type', ()
   it.each(['PERCENT', 'FIXED_AMOUNT', 'FREE_DELIVERY', 'BXGY'])('%s minimum spend ignores Party value', async type => {
     const f = fixture(type, { minSubtotalCents: 2500 });
     await expect(f.run([party75(), burger()])).rejects.toThrow('Minimum order');
+    if (type === 'FREE_DELIVERY') {
+      await expect(f.run([party75(), burger(2)])).rejects.toThrow('no longer available');
+      return;
+    }
     const result = await f.run([party75(), burger(2)]);
     expect(result.discountCents).toBeLessThanOrEqual(3000);
-    expect(result.waivesDelivery).toBe(type === 'FREE_DELIVERY');
+    expect(result.waivesDelivery).toBe(false);
   });
   it.each(['product', 'category'])('BXGY excludes Party qualifiers and rewards for %s targeting', async target => {
     const f = fixture('BXGY');
@@ -81,9 +85,13 @@ describe('Party Special coupon exclusions across every supported promo type', ()
       const f = fixture(type, target === 'product' ? { productTargets: [{ menuItemId: 'party-75-wings' }] } : { categoryTargets: [{ menuCategoryId: 'party' }] });
       await expect(f.run([party75(), burger(2)])).rejects.toThrow('No eligible items');
       Object.assign(f.promo, target === 'product' ? { productTargets: [{ menuItemId: 'burger' }] } : { categoryTargets: [{ menuCategoryId: 'ordinary' }] });
+      if (type === 'FREE_DELIVERY') {
+        await expect(f.run([party75(), burger(2)])).rejects.toThrow('no longer available');
+        return;
+      }
       const result = await f.run([party75(), burger(2), line('unrelated', 5000, 1, 'other')]);
       expect(result).toMatchObject({ discountCents: type === 'PERCENT' ? 300 : type === 'BXGY' ? 1500 : type === 'FIXED_AMOUNT' ? 10 : 0,
-        waivesDelivery: type === 'FREE_DELIVERY' });
+        waivesDelivery: false });
     },
   );
   it.each([5, 6.67, 8, 11])('legacy/current Party payload weight %s cannot change BOGO eligibility', async weight => {
@@ -99,14 +107,15 @@ describe('Party Special coupon exclusions across every supported promo type', ()
   });
   it('first-order percent/fixed/free-delivery benefits share eligible bases and retain their combined cap', async () => {
     const f = fixture(); f.setFirst(['FREE_DELIVERY', 'PERCENT', 'FIXED_AMOUNT']);
-    expect(await f.first([party75(), burger()])).toMatchObject({ discountCents: 650, waivesDelivery: true,
-      redemptions: [{ promoId: 'FREE_DELIVERY', discountAmountCents: 500 }, { promoId: 'PERCENT', discountAmountCents: 150 }, { promoId: 'FIXED_AMOUNT', discountAmountCents: 500 }] });
+    expect(await f.first([party75(), burger()])).toMatchObject({ discountCents: 650, waivesDelivery: false,
+      redemptions: [{ promoId: 'PERCENT', discountAmountCents: 150 }, { promoId: 'FIXED_AMOUNT', discountAmountCents: 500 }] });
     expect(await f.first([party75(), burger()], 1400)).toMatchObject({ discountCents: 100 });
   });
   it.each(['PERCENT', 'FIXED_AMOUNT', 'FREE_DELIVERY'])('first-order %s respects eligible-only minimum spend', async type => {
     const f = fixture(); f.setFirst([type], 2500);
     await expect(f.first([party100(), burger()])).rejects.toThrow('Minimum order');
-    expect(await f.first([party100(), burger(2)])).toMatchObject(type === 'FREE_DELIVERY' ? { waivesDelivery: true } : { discountCents: type === 'PERCENT' ? 300 : 500 });
+    if (type === 'FREE_DELIVERY') await expect(f.first([party100(), burger(2)])).rejects.toThrow('no longer available');
+    else expect(await f.first([party100(), burger(2)])).toMatchObject({ discountCents: type === 'PERCENT' ? 300 : 500 });
   });
   it.each(['PERCENT', 'FIXED_AMOUNT', 'FREE_DELIVERY'])('first-order %s cannot target an exempt Party SKU in a mixed cart', async type => {
     const f = fixture(type, { productTargets: [{ menuItemId: 'party-75-wings' }] }); f.setFirst([type]);

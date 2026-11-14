@@ -77,7 +77,7 @@ function normalizeFirstOrderDeal(
   return {
     couponCode: deal?.couponCode?.trim() || emptyFirstOrderDeal.couponCode,
     enabled: Boolean(deal?.enabled),
-    freeDelivery: Boolean(deal?.freeDelivery),
+    freeDelivery: false,
     percentOff:
       typeof deal?.percentOff === "number" ? deal.percentOff : null,
     fixedAmountCents:
@@ -152,7 +152,7 @@ export function AdminPromosClient() {
             <p className="surface-eyebrow">Admin Menu</p>
             <h1>Promo codes</h1>
             <p className="surface-muted">
-              Manage discount codes, free delivery offers, and promotional rules.
+              Manage food discount codes and promotional rules.
             </p>
           </div>
 
@@ -221,22 +221,6 @@ export function AdminPromosClient() {
               </div>
             </div>
 
-            <div className={styles.formRow}>
-              <label className={styles.checkbox}>
-                <input
-                  type="checkbox"
-                  checked={firstOrderDeal.freeDelivery}
-                  disabled={!firstOrderDeal.enabled}
-                  onChange={(event) =>
-                    setFirstOrderDeal((deal) => ({
-                      ...deal,
-                      freeDelivery: event.target.checked,
-                    }))
-                  }
-                />
-                Free delivery
-              </label>
-            </div>
 
             <div className={styles.formRow}>
               <label className={styles.checkbox}>

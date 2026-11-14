@@ -74,13 +74,6 @@ const FIELDS: FieldDef[] = [
     kind: "boolean",
   },
   {
-    key: "freeDeliveryThresholdCents",
-    label: "Free delivery threshold",
-    group: "Delivery",
-    kind: "nullable-int",
-    description: "Subtotal in cents at which delivery fee is waived. Blank to disable.",
-  },
-  {
     key: "minimumDeliverySubtotalCents",
     label: "Minimum delivery subtotal",
     group: "Delivery",
