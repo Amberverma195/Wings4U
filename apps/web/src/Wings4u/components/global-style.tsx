@@ -66,13 +66,13 @@ export function WingKingsGlobalStyle() {
         scrollbar-gutter: stable;
       }
 
-      /* Color one glyph so the hero's yellow cap always follows the visible stem,
-         including during font loading and across responsive font sizes. */
+      /* Color one glyph so the floating yellow cap stays aligned with the stem.
+         The transparent band matches the separation in the navbar wordmark. */
       .hero-title-wing-i {
         display: inline-block;
         vertical-align: baseline;
         line-height: 1;
-        background: linear-gradient(to bottom, #fed400 24%, #fff 24%);
+        background: linear-gradient(to bottom, #fed400 24%, transparent 24% 30%, #fff 30%);
         background-clip: text;
         -webkit-background-clip: text;
         color: transparent;
