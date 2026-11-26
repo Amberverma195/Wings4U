@@ -66,9 +66,19 @@ export function WingKingsGlobalStyle() {
         scrollbar-gutter: stable;
       }
 
-      /* Dotless-i + yellow bar: same proportions on hero (Black Han Sans) and nav (Bebas Neue).
-         Em units are relative to the stem’s font size. */
-      .hero-title-wing-i,
+      /* Color one glyph so the hero's yellow cap always follows the visible stem,
+         including during font loading and across responsive font sizes. */
+      .hero-title-wing-i {
+        display: inline-block;
+        vertical-align: baseline;
+        line-height: 1;
+        background: linear-gradient(to bottom, #fed400 24%, #fff 24%);
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+      }
+
       .nav-brand-wing-i {
         --wing-i-dot-width: 0.25em;
         --wing-i-dot-height: 0.12em;
@@ -79,20 +89,6 @@ export function WingKingsGlobalStyle() {
         white-space: nowrap;
       }
 
-      .hero-title-wing-i {
-        --wing-i-dot-height: 0.18em;
-        --wing-i-dot-top: 0.02em;
-      }
-
-      @media (max-width: 768px) {
-        .hero-title-wing-i {
-          /* The dotless glyph has extra left-side bearing at smaller sizes.
-             Use an em offset so the yellow bar stays centered on the visible stem. */
-          --wing-i-dot-left: calc(50% + 0.055em);
-        }
-      }
-
-      .hero-title-wing-i__stem,
       .nav-brand-wing-i__stem {
         position: relative;
         display: inline-block;
@@ -112,7 +108,6 @@ export function WingKingsGlobalStyle() {
         vertical-align: baseline;
       }
 
-      .hero-title-wing-i__dot,
       .nav-brand-wing-i__dot {
         position: absolute;
         left: var(--wing-i-dot-left);

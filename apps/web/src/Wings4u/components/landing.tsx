@@ -58,10 +58,7 @@ export function Landing({
               <span className="wk-hero-title-line" style={styles.heroTitleWings}>
                 W
                 <span className="hero-title-wing-i">
-                  <span className="hero-title-wing-i__stem">
-                    <span className="hero-title-wing-i__dot" aria-hidden="true" />
-                    {"\u{0131}"}
-                  </span>
+                  I
                 </span>
                 NGS
               </span>
